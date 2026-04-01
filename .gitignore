@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+data/
+uploads/
+exports/
+chroma_db/
+metadata.json
+database.sqlite
+.gemini/
+.agent/
+brain/
+*.log
+update_and_restart.bat

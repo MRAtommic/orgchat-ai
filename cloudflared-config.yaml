@@ -1,0 +1,7 @@
+tunnel: 50fb952d-5642-4cc9-9e52-1022c4a75a86
+credentials-file: /home/arka/.cloudflared/50fb952d-5642-4cc9-9e52-1022c4a75a86.json
+
+ingress:
+  - hostname: openchat.sbs
+    service: http://localhost:5000
+  - service: http_status:404

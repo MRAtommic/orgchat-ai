@@ -1,0 +1,14 @@
+[Unit]
+Description=Gunicorn instance to serve OrgChat on Raspberry Pi
+After=network.target
+
+[Service]
+User=arka
+Group=www-data
+WorkingDirectory=/home/arka/webai
+Environment="PATH=/home/arka/webai/venv/bin"
+# Optimized for Pi 4 (1 worker to prevent OOM) + Increased timeout for AI embedding
+ExecStart=/home/arka/webai/venv/bin/gunicorn --worker-class gevent --workers 1 --timeout 300 --bind 0.0.0.0:5000 app:app
+
+[Install]
+WantedBy=multi-user.target

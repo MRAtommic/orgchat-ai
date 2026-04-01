@@ -1,0 +1,32 @@
+{
+  "e906382cf13632410a7bd601b12ed0e68c3422991418d0b33375373f68644c01": {
+    "name": "salary.data.csv",
+    "path": "/home/arka/webai/uploads/ea36c27d_salary.data.csv",
+    "chunks": 67,
+    "size": 22918,
+    "type": "csv",
+    "department": "General",
+    "category_id": "1",
+    "api_key_status": "volt1..."
+  },
+  "c5c9564b9ab1884acc831c982731da29c26cb843638596de623db8619ed477af": {
+    "name": "name.txt",
+    "path": "/home/arka/webai/uploads/109e4ad0_name.txt",
+    "chunks": 1,
+    "size": 262,
+    "type": "txt",
+    "department": "General",
+    "category_id": null,
+    "api_key_status": "volt1..."
+  },
+  "ac0577974fa7872739515ab6a41ddad9c72d0c6cd415cb5c0600b65cb62ec701": {
+    "name": "รายชื่อแม่บ้าน(Sheet1) (1).csv",
+    "path": "/home/arka/webai/uploads/34a360c7_Sheet1_1.csv",
+    "chunks": 6,
+    "size": 23349,
+    "type": "csv",
+    "department": "General",
+    "category_id": null,
+    "api_key_status": "volt1..."
+  }
+}
