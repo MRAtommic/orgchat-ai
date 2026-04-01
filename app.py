@@ -2,26 +2,20 @@
 import os
 import sys
 
-# --- CRITICAL: Aggressive Monkey Patching (MUST be before ANY other imports) ---
-# Detect worker type to apply the correct patch as early as possible
-_worker_type = os.environ.get('GUNICORN_CMD_ARGS', '').lower()
-if 'eventlet' in _worker_type or 'eventlet' in sys.modules:
-    try:
-        import eventlet
-        eventlet.monkey_patch()
-        print("✅ Eventlet monkey_patch applied successfully.")
-    except Exception as e:
-        print(f"⚠️ Eventlet patch error: {e}")
-elif 'gevent' in _worker_type or 'gevent' in sys.modules:
-    try:
-        import gevent.monkey
-        gevent.monkey.patch_all()
-        print("✅ Gevent monkey_patch applied successfully.")
-    except Exception as e:
-        print(f"⚠️ Gevent patch error: {e}")
+# --- สำคัญมาก: Monkey Patch gevent ก่อน import อื่นทั้งหมด ---
+# บังคับ gevent เสมอ (ตรง Procfile ระบุ --worker-class gevent)
+# ไม่ใช้ eventlet เพราะ deprecated และไม่ compatible กับ google-genai SDK
+try:
+    import gevent.monkey
+    gevent.monkey.patch_all()
+    print("✅ Gevent monkey_patch สำเร็จ — พร้อมใช้งาน", flush=True)
+except ImportError:
+    print("⚠️ ไม่พบ gevent — ระบบจะทำงานแบบ synchronous", flush=True)
+except Exception as e:
+    print(f"⚠️ Gevent patch error: {e}", flush=True)
 
 import io
-print("🚀 SYSTEM v9.0 [REST/NON-STREAM] READY.", flush=True)
+print("🚀 SYSTEM v10.0 [GEVENT/NON-STREAM] READY.", flush=True)
 
 # Force UTF-8 output encoding for Windows compatibility
 if sys.stdout.encoding != 'utf-8':
@@ -54,7 +48,8 @@ import time
 from datetime import datetime
 import sqlite3
 import threading
-import google.generativeai as genai
+# ใช้ google-genai (SDK ใหม่) แทน google-generativeai (deprecated)
+from google import genai
 import rag_engine
 import database
 import export_service
@@ -364,7 +359,8 @@ def _get_gemini_api_key() -> str | None:
 
 
 def _configure_gemini(api_key: str):
-    genai.configure(api_key=api_key)
+    # google-genai ใหม่สร้าง client ต่อ session — ไม่มี configure() แบบ global
+    pass  # ไม่จำเป็นต้อง configure global แล้ว
 
 
 def login_required(f):
@@ -743,13 +739,40 @@ def api_login_google():
         return jsonify({"ok": False, "error": "การตรวจสอบสิทธิ์กับ Google ล้มเหลว"}), 401
 
 # --- LINE BOT HELPERS ---
-def verify_line_signature(body, signature):
+def verify_line_signature(body: bytes, signature: str) -> bool:
+    """
+    ตรวจสอบ signature จาก LINE Messaging API
+    ตาม spec: HMAC-SHA256(channel_secret, body) → Base64
+    """
     channel_secret = os.environ.get("LINE_CHANNEL_SECRET", "").strip()
-    if not channel_secret: return False
-    # Signature verification logic for LINE
-    hash_val = hmac.new(channel_secret.encode('utf-8'), body, hashlib.sha256).digest()
+    if not channel_secret:
+        print("❌ [LINE] ไม่พบ LINE_CHANNEL_SECRET ใน Environment Variables!", flush=True)
+        return False
+
+    # คำนวณ HMAC-SHA256 ตาม LINE API spec
+    hash_val = hmac.new(
+        channel_secret.encode('utf-8'),
+        body,  # ต้องเป็น raw bytes ก่อน request.json ถูกอ่าน
+        hashlib.sha256
+    ).digest()
     expected_signature = base64.b64encode(hash_val).decode('utf-8')
-    return hmac.compare_digest(signature, expected_signature)
+
+    # clean signature จาก header (กำจัด whitespace/newline ที่ LINE อาจส่งมา)
+    received_signature = signature.strip()
+
+    # เปรียบเทียบแบบ constant-time เพื่อความปลอดภัย
+    try:
+        match = hmac.compare_digest(received_signature, expected_signature)
+    except (TypeError, ValueError):
+        match = False
+
+    if not match:
+        print(f"🛡️ [LINE] Signature ไม่ตรง!", flush=True)
+        print(f"  → รับมา  : {received_signature[:20]}...", flush=True)
+        print(f"  → คาดหวัง: {expected_signature[:20]}...", flush=True)
+        print(f"  → SECRET ยาว {len(channel_secret)} ตัวอักษร", flush=True)
+
+    return match
 
 def reply_to_line(reply_token, text):
     token = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "").strip()
@@ -935,14 +958,15 @@ def broadcast_line_announcement(title, text, fields=None):
 
 @app.route("/api/line/webhook", methods=["POST"])
 def line_webhook():
-    signature = request.headers.get("X-Line-Signature")
+    # อ่าน raw body ก่อนสิ่งอื่น (สำคัญ: ต้องอ่านก่อน request.json)
     body = request.get_data()
-    
+    signature = request.headers.get("X-Line-Signature", "").strip()
+
     if not signature:
+        print("⚠️ [LINE] ไม่มี X-Line-Signature header มาด้วย", flush=True)
         return "No signature", 400
-        
+
     if not verify_line_signature(body, signature):
-        print("🛡️ [LINE] Invalid signature detected.")
         return "Invalid signature", 400
         
     data = request.json

@@ -21,7 +21,8 @@ import gc
 from pathlib import Path
 from typing import Optional
 from dotenv import load_dotenv
-import google.generativeai as genai
+# ใช้ google-genai (SDK ใหม่) แทน google-generativeai (deprecated)
+from google import genai as _genai_client_factory
 import time
 
 try:
@@ -165,51 +166,52 @@ def _chunk_text(text: str, chunk_size: int = 800, overlap: int = 150) -> list[st
 # ─────────────────────────────────────────────
 # Vector Store
 # ─────────────────────────────────────────────
-class BatchedGoogleEmbeddingFunction(embedding_functions.GoogleGenerativeAiEmbeddingFunction):
-    """Custom embedding function that batches requests for speed."""
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._model_name = kwargs.get("model_name", "models/gemini-embedding-001")
+class BatchedGoogleEmbeddingFunction(embedding_functions.EmbeddingFunction):
+    """ฟังก์ชัน embedding โดยใช้ google-genai SDK ใหม่ แทน deprecated GoogleGenerativeAi."""
+    def __init__(self, api_key: str, model_name: str = "models/gemini-embedding-001"):
+        self._api_key = api_key
+        self._model_name = model_name
+        self._client = _genai_client_factory.Client(api_key=api_key, http_options={"api_version": "v1beta"})
         self.daily_quota_hit = False
 
     def __call__(self, input: list[str]) -> list[list[float]]:
         if not input: return []
-        # Gemini supports batching. We'll batch 100 at a time to stay safe.
         batch_size = 100
         all_embeddings = []
         for i in range(0, len(input), batch_size):
             batch = input[i : i + batch_size]
             try:
-                response = genai.embed_content(
+                # ใช้ google-genai Client API ใหม่
+                response = self._client.models.embed_content(
                     model=self._model_name,
-                    content=batch,
-                    task_type="retrieval_document"
+                    contents=batch,
+                    config={"task_type": "retrieval_document"}
                 )
-                all_embeddings.extend(response["embedding"])
-                # Rate limiting for Free Tier (Increased delay to prevent 429)
+                # SDK ใหม่คืน response.embeddings เป็น list[ContentEmbedding]
+                for emb in response.embeddings:
+                    all_embeddings.append(emb.values)
                 if len(input) > batch_size:
-                    time.sleep(5.0) 
+                    time.sleep(5.0)
             except Exception as e:
                 err_msg = str(e).lower()
                 if "429" in err_msg or "quota" in err_msg:
-                    # Detect hard daily limit (1,000 requests/day for Free Tier)
                     if any(x in err_msg for x in ["per day", "daily", "limit: 1000", "perday"]):
-                        print("🚫 DAILY Quota Exceeded. Aborting current embedding operations.")
+                        print("🚫 DAILY Quota Exceeded. หยุดการ embed ชั่วคราว")
                         self.daily_quota_hit = True
                         raise Exception("DAILY_QUOTA_EXCEEDED")
-                    
-                    print(f"⚠️ Rate Limit Hit. Waiting 30s...")
+                    print(f"⚠️ Rate Limit — รอ 30 วินาทีแล้วลองใหม่...")
                     time.sleep(30.0)
-                    # Retry once after wait
                     try:
-                        response = genai.embed_content(
+                        response = self._client.models.embed_content(
                             model=self._model_name,
-                            content=batch,
-                            task_type="retrieval_document"
+                            contents=batch,
+                            config={"task_type": "retrieval_document"}
                         )
-                        all_embeddings.extend(response["embedding"])
+                        for emb in response.embeddings:
+                            all_embeddings.append(emb.values)
                         continue
-                    except: pass
+                    except:
+                        pass
                 print(f"❌ Embedding API Error: {e}")
                 raise e
         return all_embeddings
@@ -281,7 +283,7 @@ class KnowledgeBase:
                 # We'll throw an error later if they try to use it
                 ef = None
         else:
-            print(f"☁️ Using Google Gemini Embeddings")
+            print(f"☁️ ใช้ Google Gemini Embeddings (google-genai SDK ใหม่)")
             ef = BatchedGoogleEmbeddingFunction(
                 api_key=self.api_key,
                 model_name="models/gemini-embedding-001"
@@ -316,23 +318,21 @@ class KnowledgeBase:
             print("✅ Database reset and ready.")
 
     def update_api_key(self, api_key: str):
-        """Update the embedding function with a new API key and refresh collection."""
+        """อัปเดต API key และรีเซ็ต collection"""
         if not api_key or api_key == "dummy_key_for_init":
             return
         self.api_key = api_key
-        genai.configure(api_key=api_key)
         ef = BatchedGoogleEmbeddingFunction(
             api_key=api_key,
             model_name="models/gemini-embedding-001"
         )
-        # We MUST re-fetch collection to ensure it uses the new EF
         client = chromadb.PersistentClient(path=str(CHROMA_DIR))
         self.collection = client.get_or_create_collection(
             name="org_knowledge",
             embedding_function=ef,
             metadata={"hnsw:space": "cosine"},
         )
-        print("✅ KnowledgeBase API Key updated and collection refreshed.")
+        print("✅ KnowledgeBase API Key อัปเดตแล้ว collection รีเซ็ตเรียบร้อย")
 
     def is_key_valid(self):
         """Simple check if we have a real key if provider is Gemini."""
