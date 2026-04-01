@@ -1918,7 +1918,7 @@ def dashboard_data():
     user_count = cursor.fetchone()[0]
     
     # 4. Recent Activity (Latest 5 events for this user)
-    cursor.execute("SELECT event, time FROM events WHERE user = ? ORDER BY time DESC LIMIT 5", (user,))
+    cursor.execute("SELECT event_text, time FROM events WHERE user = ? ORDER BY time DESC LIMIT 5", (user,))
     logs = cursor.fetchall()
     activity_count = len(logs)
     

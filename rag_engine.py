@@ -169,6 +169,7 @@ class BatchedGoogleEmbeddingFunction(embedding_functions.GoogleGenerativeAiEmbed
     """Custom embedding function that batches requests for speed."""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._model_name = kwargs.get("model_name", "models/gemini-embedding-001")
         self.daily_quota_hit = False
 
     def __call__(self, input: list[str]) -> list[list[float]]:

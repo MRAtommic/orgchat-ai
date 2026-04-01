@@ -18,7 +18,7 @@ class GeminiProvider(AIProvider):
         tools = []
         if os.environ.get("ENABLE_WEB_SEARCH", "true").lower() == "true":
             # Direct tool name for grounding
-            tools = ["google_search_retrieval"]
+            tools = [types.Tool(google_search_retrieval=types.GoogleSearchRetrieval())]
 
         model = genai.GenerativeModel(
             model_name="gemini-1.5-flash",
