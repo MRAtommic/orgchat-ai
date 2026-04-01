@@ -1,6 +1,9 @@
 flask==3.0.3
 flask-cors==4.0.1
 google-genai>=0.8.0
+eventlet>=0.33.0
+gevent>=24.2.1
+greenlet>=3.1.1
 chromadb>=0.6.0
 python-docx==1.1.2
 openpyxl==3.1.5
@@ -18,8 +21,7 @@ pywebpush==1.14.0
 bcrypt>=4.0.0
 APScheduler>=3.10.0
 flask-socketio==5.3.6
-gevent>=24.2.1
-greenlet>=3.0.3
+# gevent moved up
 beautifulsoup4==4.12.3
 google-auth==2.29.0
 # eventlet ถูกลบออกแล้ว — ใช้ gevent แทนตาม Procfile
