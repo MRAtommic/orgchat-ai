@@ -48,14 +48,17 @@ class GeminiProvider(AIProvider):
             
             response = model.generate_content(contents, stream=True)
         else:
-            # Standard text-only chat session
+            # Standard text-only chat session using direct content generation
             gemini_history = []
             for msg in history[-12:]:
                 role = "user" if msg.get("role") == "user" else "model"
                 gemini_history.append({"role": role, "parts": [{"text": msg.get("text", "")}]})
             
-            chat_session = model.start_chat(history=gemini_history)
-            response = chat_session.send_message(question, stream=True)
+            # Combine history with the current question for a single-turn-like call
+            contents = gemini_history + [{"role": "user", "parts": [{"text": question}]}]
+            
+            print(f"DEBUG: Final call to generate_content...", flush=True)
+            response = model.generate_content(contents, stream=True)
 
         print(f"DEBUG: Response stream initialized. Waiting for chunks...", flush=True)
         for chunk in response:
