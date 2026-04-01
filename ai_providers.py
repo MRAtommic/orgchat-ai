@@ -11,7 +11,7 @@ class AIProvider:
 class GeminiProvider(AIProvider):
     def __init__(self, api_key: str):
         self.api_key = api_key
-        genai.configure(api_key=api_key)
+        genai.configure(api_key=api_key, transport='rest')
 
     def chat_stream(self, question: str, history: list, system_prompt: str, image_data: bytes = None, mime_type: str = "image/jpeg"):
         # Configure tools (Web Search)
