@@ -12,6 +12,11 @@ class GeminiProvider(AIProvider):
     def __init__(self, api_key: str):
         self.api_key = api_key
         genai.configure(api_key=api_key)
+        # Debug: List available models to solve 404
+        try:
+            print(f"DEBUG: Available models for this key: {[m.name for m in genai.list_models()]}")
+        except Exception as e:
+            print(f"DEBUG: Could not list models: {e}")
 
     def chat_stream(self, question: str, history: list, system_prompt: str, image_data: bytes = None, mime_type: str = "image/jpeg"):
         # Configure tools (Web Search)
@@ -21,7 +26,7 @@ class GeminiProvider(AIProvider):
             tools = []
 
         model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash-latest",
+            model_name="gemini-pro",
             system_instruction=system_prompt,
             tools=tools
         )
