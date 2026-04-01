@@ -948,12 +948,12 @@ def line_webhook():
     data = request.json
     events = data.get("events", [])
     
-    for event in events:
+    def process_line_event(event):
         if event.get("type") == "message" and event["message"].get("type") == "text":
             reply_token = event.get("replyToken")
             user_text = event["message"].get("text").strip()
             line_user_id = event["source"].get("userId")
-            
+
             # --- Handler for Account Linking ---
             if user_text.lower().startswith("/link "):
                 target_user = user_text[6:].strip()
@@ -961,33 +961,24 @@ def line_webhook():
                     reply_to_line(reply_token, f"✅ ยินดีด้วยครับ! ชื่อบัญชี {target_user} ถูกเชื่อมต่อกับ LINE นี้แล้ว\nคุณจะได้รับการแจ้งเตือนสำคัญจาก OrgChat ทันทีครับ")
                 else:
                     reply_to_line(reply_token, f"❌ ไม่พบผู้ใช้ '{target_user}' ในระบบ กรุณาตรวจสอบชื่อผู้ใช้ของคุณบนหน้าเว็บ OrgChat อีกครั้งครับ")
-                continue
+                return
 
-            # 1. Retrieve RAG context
-            # We use a generic 'LINE' user identifier for logging if needed
             log_bot(f"📲 LINE Message: '{user_text[:30]}...' from {line_user_id[:8]}")
-            
-            # Retrieve context from Knowledge Base
             context, sources = rag_engine.retrieve_context(user_text, where=None)
-            
-            # 2. Add DB context (Schedules & Posts) to the AI knowledge
             activities = database.get_daily_activities()
             schedules = activities.get("schedules", [])
             posts = activities.get("posts", [])
-            
+
             db_context = ""
             if schedules:
                 sched_list = "\n".join([f"- {s['title']} วันที่ {s['date']} เวลา {s['time']} (หมวด: {s['category']})" for s in schedules])
-                db_context += f"\n\n--- 📅 กำหนดการองค์กรล่าสุด (Latest Schedules) ---\n{sched_list}"
-            
+                db_context += f"\n\n--- 📅 กำหนดการองค์กรล่าสุด ---\n{sched_list}"
             if posts:
                 post_list = "\n".join([f"- {p['author']} โพสต์: {p['content'][:100]}..." for p in posts])
-                db_context += f"\n\n--- 📢 โพสต์ข่าวสารถูกแชร์ล่าสุด (Recent Posts) ---\n{post_list}"
-            
+                db_context += f"\n\n--- 📢 โพสต์ข่าวสารล่าสุด ---\n{post_list}"
             if db_context:
                 context += db_context
-            
-            # 3. Call AI Provider for answer
+
             weather_ctx = get_weather_context()
             system_prompt = (
                 "คุณคือ 'AI-Assistant' ผู้ช่วยอัจฉริยะประจำองค์กรที่สื่อสารผ่าน LINE \n"
@@ -996,34 +987,35 @@ def line_webhook():
                 "2. ใช้ภาษาที่เป็นธรรมชาติ หลีกเลี่ยงสำนวนที่ดูเหมือนการแปลจากภาษาอื่น\n"
                 "3. ลงท้ายด้วย 'ครับ' และใช้สรรพนาม 'ผม' หรือ 'เรา' ตามความเหมาะสม\n"
                 "4. หากไม่พบข้อมูลใน Context ให้แจ้งอย่างสุภาพว่าไม่พบข้อมูลในฐานความรู้ปัจจุบัน\n"
-                "5. หากผู้ใช้ถามเรื่องอากาศ อุณหภูมิ ฝนตก PM2.5 หรือ UV ให้ใช้ข้อมูลจากส่วน 'สภาพอากาศกรุงเทพฯ' ด้านล่าง\n\n"
+                "5. หากผู้ใช้ถามเรื่องอากาศ อุณหภูมิ ฝนตก PM2.5 หรือ UV ให้ใช้ข้อมูลจากส่วน 'สภาพอากาศ' ด้านล่าง\n\n"
                 f"{weather_ctx}\n"
                 f"Context:\n{context}"
             )
-            
+
             try:
                 provider = ai_providers.get_provider()
-                # Aggregate stream into a single reply for LINE
                 full_answer = ""
                 for chunk in provider.chat_stream(user_text, [], system_prompt):
                     if chunk: full_answer += chunk
-                
+
                 if not full_answer:
                     full_answer = "ขออภัยครับ ผมไม่พบข้อมูลที่เกี่ยวข้องในระบบคลังความรู้ขององค์กร"
-                
-                # Truncate if too long for LINE text message (limit 5000)
+
                 if len(full_answer) > 4000:
                     full_answer = full_answer[:3900] + "\n...(มีเนื้อหาเพิ่มเติมในระบบเว็บ)..."
-                
-                # 3. Send back to LINE
+
                 reply_to_line(reply_token, full_answer)
                 log_bot(f"✅ LINE Reply sent ({len(full_answer)} chars)")
-                
+
             except Exception as e:
                 print(f"❌ LINE AI Processing Error: {e}")
                 reply_to_line(reply_token, "ขออภัยครับ เกิดข้อผิดพลาดในการประมวลผลข้อมูล")
 
-    return "OK"
+    for event in events:
+        threading.Thread(target=process_line_event, args=(event,), daemon=True).start()
+
+    return "OK", 200
+
 
 @app.route("/api/logout", methods=["POST"])
 def api_logout():
