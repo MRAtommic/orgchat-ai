@@ -21,6 +21,7 @@ elif 'gevent' in _worker_type or 'gevent' in sys.modules:
         print(f"⚠️ Gevent patch error: {e}")
 
 import io
+print("🚀 SYSTEM v9.0 [REST/NON-STREAM] READY.", flush=True)
 
 # Force UTF-8 output encoding for Windows compatibility
 if sys.stdout.encoding != 'utf-8':
