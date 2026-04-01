@@ -57,18 +57,14 @@ class GeminiProvider(AIProvider):
             # Combine history with the current question for a single-turn-like call
             contents = gemini_history + [{"role": "user", "parts": [{"text": question}]}]
             
-            print(f"DEBUG: Final call to generate_content...", flush=True)
-            response = model.generate_content(contents, stream=True)
-
-        print(f"DEBUG: Response stream initialized. Waiting for chunks...", flush=True)
-        for chunk in response:
-            try:
-                if chunk.text:
-                    print(f"🟢 DEBUG: Received chunk from Gemini ({len(chunk.text)} chars)", flush=True)
-                    yield chunk.text
-            except Exception as e:
-                print(f"⚠️ Chunk error (possibly safety filter or empty text): {e}", flush=True)
-                continue
+            print(f"DEBUG: Final call to generate_content (Stream=False for stability)...", flush=True)
+            response = model.generate_content(contents, stream=False)
+            
+            if response.text:
+                print(f"🟢 DEBUG: Received full response from Gemini ({len(response.text)} chars)", flush=True)
+                yield response.text
+            else:
+                print(f"⚠️ Warning: Gemini returned empty text. Response: {response}", flush=True)
 
 class GroqProvider(AIProvider):
     def __init__(self, api_key: str):
