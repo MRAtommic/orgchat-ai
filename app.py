@@ -226,7 +226,8 @@ def get_weather_context():
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "orgchat-super-secret-key-1234")
 CORS(app, supports_credentials=True)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode=None, max_http_payload_size=10*1024*1024)
+# บังคับ async_mode เป็น gevent เพื่อให้ตรงกับ gunicorn และ Patch ที่เราทำไว้ตอนเปิดเครื่อง
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent', max_http_payload_size=10*1024*1024)
 
 VERSION = "1.10.0-STABLE"
 
