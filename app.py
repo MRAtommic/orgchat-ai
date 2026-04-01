@@ -1,11 +1,6 @@
 # -*- coding: utf-8 -*-
-"""
-Flask API for the Organizational AI Chatbot.
-"""
-
-import sys
-import io
 import os
+import sys
 
 # --- CRITICAL: Aggressive Monkey Patching (MUST be before ANY other imports) ---
 # Detect worker type to apply the correct patch as early as possible
@@ -14,25 +9,18 @@ if 'eventlet' in _worker_type or 'eventlet' in sys.modules:
     try:
         import eventlet
         eventlet.monkey_patch()
-    except ImportError:
-        pass
+        print("✅ Eventlet monkey_patch applied successfully.")
+    except Exception as e:
+        print(f"⚠️ Eventlet patch error: {e}")
 elif 'gevent' in _worker_type or 'gevent' in sys.modules:
     try:
         import gevent.monkey
         gevent.monkey.patch_all()
-    except ImportError:
-        pass
-else:
-    # Default fallback: try gevent first, then eventlet
-    try:
-        from gevent import monkey
-        monkey.patch_all()
-    except ImportError:
-        try:
-            import eventlet
-            eventlet.monkey_patch()
-        except ImportError:
-            pass
+        print("✅ Gevent monkey_patch applied successfully.")
+    except Exception as e:
+        print(f"⚠️ Gevent patch error: {e}")
+
+import io
 
 # Force UTF-8 output encoding for Windows compatibility
 if sys.stdout.encoding != 'utf-8':

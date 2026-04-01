@@ -57,12 +57,14 @@ class GeminiProvider(AIProvider):
             chat_session = model.start_chat(history=gemini_history)
             response = chat_session.send_message(question, stream=True)
 
+        print(f"DEBUG: Response stream initialized. Waiting for chunks...", flush=True)
         for chunk in response:
             try:
                 if chunk.text:
+                    print(f"🟢 DEBUG: Received chunk from Gemini ({len(chunk.text)} chars)", flush=True)
                     yield chunk.text
             except Exception as e:
-                print(f"⚠️ Chunk error (possibly safety filter): {e}")
+                print(f"⚠️ Chunk error (possibly safety filter or empty text): {e}", flush=True)
                 continue
 
 class GroqProvider(AIProvider):
