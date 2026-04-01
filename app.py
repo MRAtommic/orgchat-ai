@@ -2000,9 +2000,12 @@ def dashboard_briefing():
 สรุปให้น่าสนใจและเน้นสิ่งที่ควรทราบที่สุดประจำวันนี้:"""
 
     try:
-        model = genai.GenerativeModel("gemini-1.5-flash")
-        response = model.generate_content(prompt)
-        briefing = response.text.strip()
+        # ใช้ ai_providers ใหม่แทน genai.GenerativeModel เก่า
+        provider = ai_providers.get_provider()
+        briefing = ""
+        for chunk in provider.chat_stream(prompt, [], "คุณคือ AI ผู้ช่วยสรุปข่าวสารองค์กร"):
+            if chunk: briefing += chunk
+        briefing = briefing.strip()
         return jsonify({"ok": True, "briefing": briefing})
     except Exception as e:
         print(f"Briefing Error: {e}")
@@ -2148,13 +2151,12 @@ def summarize_data():
 ตอบกระชับไม่เกิน 6 ประโยค ใช้ภาษาไทยที่เป็นธรรมชาติที่สุด"""
 
     try:
-        api_key = _get_gemini_api_key()
-        if not api_key:
-            return jsonify({"ok": False, "error": "ไม่มี API Key"}), 400
-        _configure_gemini(api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
-        response = model.generate_content(prompt)
-        summary = response.text.strip()
+        # ใช้ ai_providers ใหม่แทน genai.GenerativeModel เก่า
+        provider = ai_providers.get_provider()
+        summary = ""
+        for chunk in provider.chat_stream(prompt, [], "คุณคือนักวิเคราะห์ข้อมูลองค์กร"):
+            if chunk: summary += chunk
+        summary = summary.strip()
         return jsonify({"ok": True, "summary": summary})
     except Exception as e:
         print(f"❌ Summarize Data Error: {e}")
