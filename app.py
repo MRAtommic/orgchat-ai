@@ -1,21 +1,7 @@
-# -*- coding: utf-8 -*-
-import os
-import sys
-
-# --- สำคัญมาก: Monkey Patch gevent ก่อน import อื่นทั้งหมด ---
-# บังคับ gevent เสมอ (ตรง Procfile ระบุ --worker-class gevent)
-# ไม่ใช้ eventlet เพราะ deprecated และไม่ compatible กับ google-genai SDK
-try:
-    import gevent.monkey
-    gevent.monkey.patch_all()
-    print("✅ Gevent monkey_patch สำเร็จ — พร้อมใช้งาน", flush=True)
-except ImportError:
-    print("⚠️ ไม่พบ gevent — ระบบจะทำงานแบบ synchronous", flush=True)
-except Exception as e:
-    print(f"⚠️ Gevent patch error: {e}", flush=True)
-
 import io
-print("🚀 SYSTEM v10.0 [GEVENT/NON-STREAM] READY.", flush=True)
+# ระบบถูกปรับมาใช้ Gunicorn gthread worker เพื่อความเสถียรสูงสุดบน Python 3.12+
+# และแก้ไขปัญหา [CRITICAL] WORKER TIMEOUT โดยการใช้ Threading มาตรฐานครับ
+print("🚀 SYSTEM v11.0 [GTHREAD/STREAM] READY.", flush=True)
 
 # Force UTF-8 output encoding for Windows compatibility
 if sys.stdout.encoding != 'utf-8':
@@ -226,8 +212,8 @@ def get_weather_context():
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "orgchat-super-secret-key-1234")
 CORS(app, supports_credentials=True)
-# บังคับ async_mode เป็น gevent เพื่อให้ตรงกับ gunicorn และ Patch ที่เราทำไว้ตอนเปิดเครื่อง
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent', max_http_payload_size=10*1024*1024)
+# บังคับ async_mode เป็น threading เพื่อความเสถียรและทำงานร่วมกับ gthread ได้ดีที่สุด
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', max_http_payload_size=10*1024*1024)
 
 VERSION = "1.10.0-STABLE"
 
