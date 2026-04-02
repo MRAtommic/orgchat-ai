@@ -1,8 +1,8 @@
-# Fresh trigger for Railway Deployment - v11.0.1
+# Final trigger for Railway Deployment - v11.0.2 (Thai Voice Edition)
 import io
-# ระบบถูกปรับมาใช้ Gunicorn gthread worker เพื่อความเสถียรสูงสุดบน Python 3.12+
-# และแก้ไขปัญหา [CRITICAL] WORKER TIMEOUT โดยการใช้ Threading มาตรฐานครับ
-print("🚀 SYSTEM v11.0 [GTHREAD/STREAM] READY.", flush=True)
+# ระบบใช้ Gunicorn gthread worker และ Threading มาตรฐานรองรับ Python 3.12+
+# ติดตั้งระบบ AI พูดไทย (TTS) และ Auto-Speak สำเร็จ
+print("🚀 SYSTEM v11.0.2 [GTHREAD/STREAM/THAI-VOICE] READY.", flush=True)
 
 # Force UTF-8 output encoding for Windows compatibility
 if sys.stdout.encoding != 'utf-8':

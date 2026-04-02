@@ -2910,6 +2910,14 @@ function appendMessage(role, html, sources = [], scroll = true, msgId = null) {
     </div>`;
 
   chatArea.appendChild(row);
+  
+  // Trigger Auto-Speak if enabled and it's an AI message
+  if (!isUser && autoSpeakEnabled) {
+    // Extract plain text from HTML content (stripping tags for cleaner speech)
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = html;
+    speak(tempDiv.textContent || tempDiv.innerText || "");
+  }
 
   // Attach speak listener
   const speakBtn = row.querySelector('.speak-btn');
@@ -3543,16 +3551,41 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
   };
 }
 
+// --- Unified Thai Voice Engine (v11.0.2) ---
+let autoSpeakEnabled = false;
+const autoSpeakBtn = document.getElementById('autoSpeakBtn');
+
+if (autoSpeakBtn) {
+  autoSpeakBtn.onclick = () => {
+    autoSpeakEnabled = !autoSpeakEnabled;
+    autoSpeakBtn.classList.toggle('text-brand-600', autoSpeakEnabled);
+    autoSpeakBtn.classList.toggle('bg-brand-50', autoSpeakEnabled);
+    toast(`อ่านข้อความอัตโนมัติ: ${autoSpeakEnabled ? 'เปิด' : 'ปิด'}`, 'info');
+  };
+}
+
 function speak(text) {
   if (!('speechSynthesis' in window)) return;
-  // Stop any current speech
   window.speechSynthesis.cancel();
 
-  // Clean markdown for better speech
-  const cleanText = text.replace(/[#*`_~]/g, '').slice(0, 300); // Limit length
-  const msg = new SpeechSynthesisUtterance(cleanText);
-  msg.lang = 'th-TH';
-  window.speechSynthesis.speak(msg);
+  // Clean markdown for clearer speech
+  const cleanText = text.replace(/[#*`_~]/g, '').slice(0, 1000); 
+  const utter = new SpeechSynthesisUtterance(cleanText);
+  
+  // Detect Thai vs English
+  const isThai = /[\u0E00-\u0E7F]/.test(text);
+  
+  // Try to find natural voices (Google voices are usually best)
+  const voices = window.speechSynthesis.getVoices();
+  const bestVoice = voices.find(v => v.name.includes('Google') && v.lang.includes(isThai ? 'th' : 'en')) || 
+                    voices.find(v => v.lang.includes(isThai ? 'th' : 'en'));
+  
+  if (bestVoice) utter.voice = bestVoice;
+  utter.lang = isThai ? 'th-TH' : 'en-US';
+  utter.rate = 1.0;
+  utter.pitch = 1.0;
+  
+  window.speechSynthesis.speak(utter);
 }
 
 if (voiceBtn) {
@@ -9806,20 +9839,7 @@ async function renderHomeDashboard() {
 }
 
 // 🎙️ AI Voice Feedback
-function speak(text) {
-  if (!('speechSynthesis' in window)) {
-    toast('เบราว์เซอร์ไม่รองรับเสียงอ่าน', 'error');
-    return;
-  }
-  window.speechSynthesis.cancel();
-  const utter = new SpeechSynthesisUtterance(text);
-  const isThai = /[\u0E00-\u0E7F]/.test(text);
-  const v = window.speechSynthesis.getVoices().find(v => v.lang.includes(isThai ? 'th' : 'en'));
-  if (v) utter.voice = v;
-  utter.rate = 1.0;
-  window.speechSynthesis.speak(utter);
-  toast('กำลังอ่านข้อความ...', 'info');
-}
+// Version 9809 speak() function removed in favor of Unified Engine at 3546
 
 // 📄 AI Smart Scan (OCR/Summarize)
 async function scanFileWithAI(fileId) {
