@@ -1,8 +1,7 @@
-# Final trigger for Railway Deployment - v11.0.3 (Fast Start & Thai Voice)
+# ULTIMATE CACHE BUSTER - v11.0.4 [THAI-VOICE]
 import io
-# ระบบใช้ Gunicorn gthread worker และ Threading มาตรฐานรองรับ Python 3.12+
-# แก้ไขปัญหา Cloudflare 524 โดยการย้ายงานหนักไปรัน Background Thread
-print("🚀 SYSTEM v11.0.3 [FAST-START/THAI-VOICE] READY.", flush=True)
+# ระบบรันบน app_server.py เพื่อบังคับให้ Railway ล้างแคชใหม่ทั้งหมดครับ
+print("🚀 SYSTEM v11.0.4 [ULTIMATE/THAI-VOICE/GTHREAD] READY.", flush=True)
 
 # Force UTF-8 output encoding for Windows compatibility
 if sys.stdout.encoding != 'utf-8':
