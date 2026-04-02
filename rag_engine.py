@@ -245,7 +245,11 @@ class FastEmbedEmbeddingFunction(embedding_functions.EmbeddingFunction):
     def __init__(self, model_name="sentence-transformers/all-MiniLM-L6-v2"):
         try:
             from fastembed import TextEmbedding
-            self.model = TextEmbedding(model_name=model_name)
+            # Define a local cache directory to avoid Windows Temp permission issues
+            local_cache = os.path.join(os.getcwd(), "fastembed_cache")
+            if not os.path.exists(local_cache):
+                os.makedirs(local_cache, exist_ok=True)
+            self.model = TextEmbedding(model_name=model_name, cache_dir=local_cache)
         except ImportError:
             print("❌ 'fastembed' not installed. Please run: pip install fastembed")
             raise ImportError("fastembed not installed")
@@ -365,15 +369,10 @@ class KnowledgeBase:
                 except:
                     pass
                 
-                # Re-init collection via the init path (simplified: just crash and let the next run handle it, 
-                # or better yet, recreate it here).
-                ef = BatchedGoogleEmbeddingFunction(
-                    api_key=self.api_key,
-                    model_name="models/gemini-embedding-001"
-                )
+                # Re-init collection using current embedding function
                 self.collection = client.get_or_create_collection(
                     name="org_knowledge",
-                    embedding_function=ef,
+                    embedding_function=self.collection._embedding_function,
                     metadata={"hnsw:space": "cosine"},
                 )
                 # Retry once
