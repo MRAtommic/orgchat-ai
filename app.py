@@ -1,8 +1,8 @@
-# Final trigger for Railway Deployment - v11.0.2 (Thai Voice Edition)
+# Final trigger for Railway Deployment - v11.0.3 (Fast Start & Thai Voice)
 import io
 # ระบบใช้ Gunicorn gthread worker และ Threading มาตรฐานรองรับ Python 3.12+
-# ติดตั้งระบบ AI พูดไทย (TTS) และ Auto-Speak สำเร็จ
-print("🚀 SYSTEM v11.0.2 [GTHREAD/STREAM/THAI-VOICE] READY.", flush=True)
+# แก้ไขปัญหา Cloudflare 524 โดยการย้ายงานหนักไปรัน Background Thread
+print("🚀 SYSTEM v11.0.3 [FAST-START/THAI-VOICE] READY.", flush=True)
 
 # Force UTF-8 output encoding for Windows compatibility
 if sys.stdout.encoding != 'utf-8':
@@ -101,10 +101,41 @@ def batch_send_push_notification(usernames, title, message, url='/'):
         for uname in usernames:
             executor.submit(send_push_notification, uname, title, message, url)
 
-# Re-init KB to catch settings after load_dotenv
-rag_engine.reinit_kb()
+def async_startup_tasks():
+    """Run heavy initialization tasks in background to avoid Cloudflare 524."""
+    print("⏳ Starting background initialization tasks...", flush=True)
+    try:
+        rag_engine.reinit_kb() # Heavy ChromaDB sync
+        database.init_db()     # DB Migrations
+        
+        # Initialize "General" group if it doesn't exist
+        conn = sqlite3.connect(database.DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM chat_rooms WHERE id = 1")
+        if not cursor.fetchone():
+            cursor.execute("INSERT INTO chat_rooms (id, name, owner) VALUES (1, 'กลุ่มทั่วไป (General)', 'System')")
+            
+        # Ensure AI Assistant profile exists
+        cursor.execute("INSERT OR IGNORE INTO user_profiles (username, display_name, avatar_url) VALUES ('AI-Assistant', 'AI Assistant', 'https://cdn-icons-png.flaticon.com/512/4712/4712035.png')")
+        
+        # Ensure Admin has admin role
+        cursor.execute("INSERT OR IGNORE INTO user_settings (username, role) VALUES ('Admin', 'admin')")
+        cursor.execute("UPDATE user_settings SET role = 'admin' WHERE username = 'Admin'")
+        
+        # Ensure hardcoded users are in General room
+        temp_users = ["admin", "few", "do", "AI-Assistant"]
+        for u in temp_users:
+            cursor.execute("INSERT OR IGNORE INTO room_members (room_id, username) VALUES (1, ?)", (u.capitalize(),))
 
-database.init_db()
+        conn.commit()
+        conn.close()
+        print("✅ Background initialization complete.", flush=True)
+    except Exception as e:
+        print(f"❌ Background startup error: {e}", flush=True)
+
+# Start heavy background tasks immediately
+import threading
+threading.Thread(target=async_startup_tasks, daemon=True).start()
 
 # Hardcoded credentials for internal use
 USERS = {
@@ -112,32 +143,6 @@ USERS = {
     "few": "few1234",
     "do": "do1234"
 }
-
-# Initialize "General" group if it doesn't exist
-conn = sqlite3.connect(database.DB_PATH)
-cursor = conn.cursor()
-cursor.execute("SELECT id FROM chat_rooms WHERE id = 1")
-if not cursor.fetchone():
-    cursor.execute("INSERT INTO chat_rooms (id, name, owner) VALUES (1, 'กลุ่มทั่วไป (General)', 'System')")
-    
-# Always ensure hardcoded users and db users are in General room (ID: 1)
-all_usernames = set([u.capitalize() for u in USERS.keys()])
-all_usernames.add("AI-Assistant") # Bot member
-for u in database.get_all_usernames():
-    all_usernames.add(u)
-
-# Ensure AI Assistant profile exists
-cursor.execute("INSERT OR IGNORE INTO user_profiles (username, display_name, avatar_url) VALUES ('AI-Assistant', 'AI Assistant', 'https://cdn-icons-png.flaticon.com/512/4712/4712035.png')")
-
-# Ensure Admin has admin role
-cursor.execute("INSERT OR IGNORE INTO user_settings (username, role) VALUES ('Admin', 'admin')")
-cursor.execute("UPDATE user_settings SET role = 'admin' WHERE username = 'Admin'")
-
-for u in all_usernames:
-    cursor.execute("INSERT OR IGNORE INTO room_members (room_id, username) VALUES (1, ?)", (u,))
-
-conn.commit()
-conn.close()
 
 # --- Thai Holidays 2026 ---
 THAI_HOLIDAYS_2026 = {
