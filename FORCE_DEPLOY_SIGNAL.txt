@@ -1,0 +1,4 @@
+FORCE REBUILD TRIGGER - v11.0.4 [THAI-VOICE]
+TIMESTAMP: 2026-04-02 09:50:00
+REASON: Force Railway to detect new commits because webhook was stuck.
+ENTRY POINT: app_server.py
