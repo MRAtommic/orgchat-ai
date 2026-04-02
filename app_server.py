@@ -1,4 +1,6 @@
 # ULTIMATE CACHE BUSTER - v11.0.4 [THAI-VOICE]
+import sys
+import os
 import io
 # ระบบรันบน app_server.py เพื่อบังคับให้ Railway ล้างแคชใหม่ทั้งหมดครับ
 print("🚀 SYSTEM v11.0.4 [ULTIMATE/THAI-VOICE/GTHREAD] READY.", flush=True)
