@@ -54,21 +54,19 @@ class GeminiProvider(AIProvider):
             max_output_tokens=2048,
         )
 
-        print(f"DEBUG: เรียก Gemini API (google-genai SDK ใหม่, stream=False)...", flush=True)
+        print(f"DEBUG: เรียก Gemini API (google-genai SDK ใหม่, Real-time Streaming)...", flush=True)
 
         try:
-            response = self.client.models.generate_content(
+            # ✅ ใช้ generate_content_stream เพื่อให้ AI ทยอยตอบออกมาทีละนิด (Real-time)
+            response_stream = self.client.models.generate_content_stream(
                 model="gemini-2.0-flash",
                 contents=contents,
                 config=config,
             )
-            text = response.text
-            if text:
-                print(f"🟢 DEBUG: ได้รับคำตอบจาก Gemini ({len(text)} ตัวอักษร)", flush=True)
-                yield text
-            else:
-                print(f"⚠️ คำเตือน: Gemini ตอบกลับมาว่าง Response: {response}", flush=True)
-                yield "ขอโทษครับ ไม่สามารถสร้างคำตอบได้ในขณะนี้ โปรดลองใหม่อีกครั้ง"
+            
+            for chunk in response_stream:
+                if chunk.text:
+                    yield chunk.text
 
         except Exception as e:
             err_msg = str(e)
@@ -102,7 +100,8 @@ class GroqProvider(AIProvider):
                 text = text[:500] + "..."
             messages.append({"role": role, "content": text})
 
-        model_name = "llama-3.1-8b-instant"
+        # ใช้โมเดลตัวแรงล่าสุดของ Groq (70B) เพื่อความฉลาดสูงสุด
+        model_name = "llama-3.3-70b-versatile"
         final_question_content = question
 
         if image_data:
