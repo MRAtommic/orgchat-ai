@@ -1,3 +1,4 @@
+# Fresh trigger for Railway Deployment - v11.0.1
 import io
 # ระบบถูกปรับมาใช้ Gunicorn gthread worker เพื่อความเสถียรสูงสุดบน Python 3.12+
 # และแก้ไขปัญหา [CRITICAL] WORKER TIMEOUT โดยการใช้ Threading มาตรฐานครับ
