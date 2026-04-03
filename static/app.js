@@ -2542,59 +2542,102 @@ async function moveFileToCategory(fileId) {
 function renderFileList(files) {
   if (!files.length) {
     fileList.innerHTML = `
-      <div class="col-span-full py-20 text-center text-surface-400">
-        <i data-lucide="files" class="w-12 h-12 mx-auto mb-4 opacity-10"></i>
-        <p>ยังไม่มีไฟล์ถูกนำเข้ามาประมวลผล</p>
+      <div class="col-span-full py-20 text-center animate-in fade-in zoom-in duration-500">
+        <div class="w-20 h-20 bg-surface-50 dark:bg-surface-900 rounded-full flex items-center justify-center mx-auto mb-6 text-surface-200">
+          <i data-lucide="folder-open" class="w-10 h-10"></i>
+        </div>
+        <h3 class="text-lg font-black text-surface-900 dark:text-white mb-2">ยังไม่มีไฟล์ในคลังข้อมูล</h3>
+        <p class="text-sm text-surface-400 max-w-xs mx-auto">เริ่มต้นโดยการอัปโหลดไฟล์เอกสารเพื่อให้ AI เรียนรู้ข้อมูลองค์กรของคุณ</p>
       </div>`;
     initIcons();
     return;
   }
-  fileList.innerHTML = files.map(f => `
-    <div class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 p-4 rounded-xl flex items-center gap-4 transition-all hover:border-brand-600/50 group relative cursor-grab active:cursor-grabbing" 
-         id="file-${f.file_id}" 
-         draggable="true" 
-         ondragstart="handleFileDragStart(event, '${f.file_id}')">
-      ${canEditKB() ? `<input type="checkbox" class="file-checkbox w-4 h-4 rounded border-surface-300 text-brand-600 focus:ring-brand-600 cursor-pointer" data-id="${f.file_id}">` : ''}
-      <div class="w-10 h-10 bg-surface-50 dark:bg-surface-800 border border-surface-100 dark:border-surface-700 text-surface-500 rounded-lg flex items-center justify-center flex-shrink-0 group-hover:text-brand-600 transition-colors">
-        <i data-lucide="${FILE_LUCIDE[f.type] || 'file'}" class="w-5 h-5"></i>
-      </div>
-      <div class="flex-1 min-w-0">
-        <div class="font-bold text-xs truncate uppercase tracking-tight" title="${f.name}">${f.name}</div>
-        <div class="text-[10px] text-surface-400 mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-medium">
-          <span class="text-brand-600 bg-brand-50/50 dark:bg-brand-900/20 px-1.5 py-0.5 rounded">${f.chunks} CHUNKS</span>
-          <span class="hidden sm:inline text-surface-300">•</span>
-          <span class="text-purple-600 font-bold uppercase">${f.department || 'General'}</span>
-          <span class="hidden sm:inline text-surface-300">•</span>
-          <span class="text-emerald-600 font-bold uppercase">${getKBCategoryName(f.category_id)}</span>
-          <span class="hidden sm:inline text-surface-300">•</span>
-          <span class="text-surface-500 font-mono">${formatSize(f.size)}</span>
+
+  // Sort by timestamp (newest first) if available
+  const sorted = [...files].sort((a, b) => {
+    return new Date(b.timestamp || 0) - new Date(a.timestamp || 0);
+  });
+
+  fileList.innerHTML = sorted.map(f => {
+    const isProcessing = f.status === 'processing';
+    const isError = f.status === 'error';
+    const catName = getKBCategoryName(f.category_id);
+    const fileSize = formatSize(f.size);
+    
+    return `
+      <div class="group relative bg-white dark:bg-surface-900 border border-surface-100 dark:border-surface-800 rounded-3xl p-5 transition-all duration-300 hover:shadow-2xl hover:shadow-brand-500/10 hover:border-brand-500/50 flex flex-col gap-4 animate-in slide-in-from-bottom-4 duration-500" 
+           id="file-${f.file_id}" 
+           draggable="true" 
+           ondragstart="handleFileDragStart(event, '${f.file_id}')">
+        
+        <!-- Status Indicator -->
+        <div class="absolute top-4 right-4 flex items-center gap-2">
+          ${isProcessing ? `
+            <span class="flex h-2 w-2 relative">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+            </span>
+            <span class="text-[9px] font-black text-amber-500 uppercase tracking-tighter">Indexing...</span>
+          ` : isError ? `
+            <i data-lucide="alert-circle" class="w-3.5 h-3.5 text-rose-500"></i>
+            <span class="text-[9px] font-black text-rose-500 uppercase tracking-tighter">Failed</span>
+          ` : `
+            <div class="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]"></div>
+            <span class="text-[9px] font-black text-emerald-500 uppercase tracking-tighter">Ready</span>
+          `}
+        </div>
+
+        <div class="flex items-start gap-4">
+          <div class="w-12 h-12 rounded-2xl bg-surface-50 dark:bg-surface-800 border border-surface-100 dark:border-surface-700 flex items-center justify-center text-surface-400 group-hover:bg-brand-50 group-hover:text-brand-600 group-hover:border-brand-100 transition-all duration-300 transform group-hover:scale-110 group-hover:-rotate-3">
+            <i data-lucide="${FILE_LUCIDE[f.type] || 'file'}" class="w-6 h-6"></i>
+          </div>
+          <div class="min-w-0 flex-1 pt-1">
+            <h4 class="font-black text-sm text-surface-900 dark:text-white truncate uppercase tracking-tight mb-1" title="${f.name}">${f.name}</h4>
+            <div class="flex items-center gap-2">
+               <span class="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-purple-50 dark:bg-purple-900/20 text-purple-600 uppercase">${f.department || 'General'}</span>
+               <span class="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 uppercase truncate max-w-[80px]">${catName}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 mt-2">
+          <div class="bg-surface-50/50 dark:bg-surface-800/50 p-2.5 rounded-2xl border border-surface-100/50 dark:border-surface-700/50">
+            <p class="text-[8px] font-black text-surface-400 uppercase tracking-widest mb-1">Knowledge Units</p>
+            <p class="text-xs font-black text-brand-600">${isProcessing ? '---' : (f.chunks || 0) + ' CHUNKS'}</p>
+          </div>
+          <div class="bg-surface-50/50 dark:bg-surface-800/50 p-2.5 rounded-2xl border border-surface-100/50 dark:border-surface-700/50">
+            <p class="text-[8px] font-black text-surface-400 uppercase tracking-widest mb-1">File Size</p>
+            <p class="text-xs font-black text-surface-600 dark:text-surface-300 uppercase">${fileSize}</p>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between pt-2 border-t border-surface-100/50 dark:border-surface-800/50">
+          <div class="flex items-center gap-1">
+             ${canEditKB() ? `<input type="checkbox" class="file-checkbox w-4 h-4 rounded-md border-surface-300 text-brand-600 focus:ring-brand-600 cursor-pointer" data-id="${f.file_id}">` : ''}
+             <span class="text-[9px] font-bold text-surface-300 ml-1">ID: ${f.file_id}</span>
+          </div>
+          <div class="flex items-center gap-0.5">
+            <button class="file-view-btn p-2 text-surface-400 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-all rounded-xl" data-id="${f.file_id}" data-name="${f.name}" title="เปิดอ่าน">
+              <i data-lucide="eye" class="w-4 h-4"></i>
+            </button>
+            ${!isProcessing ? `
+              <button class="file-scan-btn p-2 text-surface-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-all rounded-xl" data-id="${f.file_id}" title="สแกนด้วย AI">
+                <i data-lucide="scan-search" class="w-4 h-4"></i>
+              </button>
+              ${canEditKB() ? `
+                <button class="file-move-btn p-2 text-surface-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all rounded-xl" data-id="${f.file_id}" title="เปลี่ยนหมวดหมู่">
+                  <i data-lucide="folder-input" class="w-4 h-4"></i>
+                </button>
+                <button class="file-del-btn p-2 text-surface-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all rounded-xl" data-id="${f.file_id}" title="ลบไฟล์">
+                  <i data-lucide="trash-2" class="w-4 h-4"></i>
+                </button>
+              ` : ''}
+            ` : ''}
+          </div>
         </div>
       </div>
-      <div class="flex items-center gap-1 flex-shrink-0">
-        <button class="file-view-btn p-2 text-surface-400 hover:text-brand-600 transition-colors focus:ring-2 focus:ring-brand-500/20 rounded-lg" data-id="${f.file_id}" data-name="${f.name}" title="เปิดอ่าน">
-          <i data-lucide="eye" class="w-4 h-4"></i>
-        </button>
-        <button class="file-scan-btn p-2 text-surface-400 hover:text-purple-600 transition-colors focus:ring-2 focus:ring-purple-500/20 rounded-lg" data-id="${f.file_id}" title="สแกนด้วย AI">
-          <i data-lucide="scan-search" class="w-4 h-4"></i>
-        </button>
-        ${canEditKB() ? `
-          <button class="file-move-btn p-2 text-surface-400 hover:text-emerald-600 transition-colors focus:ring-2 focus:ring-emerald-500/20 rounded-lg" data-id="${f.file_id}" title="เปลี่ยนหมวดหมู่">
-            <i data-lucide="folder-input" class="w-4 h-4"></i>
-          </button>
-        ` : ''}
-        ${(String(f.type).toLowerCase() === 'csv' || String(f.type).toLowerCase() === 'txt') && canEditKB() ? `
-          <button class="file-edit-btn p-2 text-surface-400 hover:text-brand-600 transition-colors focus:ring-2 focus:ring-brand-500/20 rounded-lg" data-id="${f.file_id}" data-type="${f.type}" title="แก้ไขไฟล์">
-            <i data-lucide="edit-3" class="w-4 h-4"></i>
-          </button>
-        ` : ''}
-        ${canEditKB() ? `
-          <button class="file-del-btn p-2 text-surface-400 hover:text-red-500 transition-colors focus:ring-2 focus:ring-red-500/20 rounded-lg" data-id="${f.file_id}" title="ลบไฟล์">
-            <i data-lucide="trash-2" class="w-4 h-4"></i>
-          </button>
-        ` : ''}
-      </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 
   // Re-bind events
   fileList.querySelectorAll('.file-del-btn').forEach(btn => {

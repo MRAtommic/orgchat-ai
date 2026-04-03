@@ -53,10 +53,11 @@
   transition: opacity 0.18s ease, transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
+
 .link-preview-card {
   border-top-left-radius: 4px !important;
   border-top-right-radius: 4px !important;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
   overflow: hidden;
   border: none !important;
   background: white !important;
@@ -203,7 +204,8 @@ body {
     flex: 1 !important;
     min-height: 0 !important;
     max-height: 100%;
-    overscroll-behavior-y: contain; /* Prevent iOS rubber-banding outside chat */
+    overscroll-behavior-y: contain;
+    /* Prevent iOS rubber-banding outside chat */
   }
 }
 
@@ -742,6 +744,7 @@ tr:hover .delete-row-btn {
 }
 
 @media (max-width: 1023px) {
+
   /* Fullscreen Control - Force Solid White/Dark background */
   #groupChatModal:not(.hidden) {
     position: fixed !important;
@@ -758,11 +761,14 @@ tr:hover .delete-row-btn {
     overflow: hidden !important;
   }
 
-  .dark #groupChatModal:not(.hidden) { background: #0f172a !important; }
+  .dark #groupChatModal:not(.hidden) {
+    background: #0f172a !important;
+  }
 
   /* Navigation Pattern: List vs Detail */
   #chatSidebarPanel {
-    width: 100% !important; /* Full width list on mobile */
+    width: 100% !important;
+    /* Full width list on mobile */
     height: 100% !important;
     display: flex !important;
     flex-direction: column !important;
@@ -774,7 +780,10 @@ tr:hover .delete-row-btn {
     transform: none !important;
     transition: opacity 0.3s ease;
   }
-  .dark #chatSidebarPanel { background: #0f172a !important; }
+
+  .dark #chatSidebarPanel {
+    background: #0f172a !important;
+  }
 
   /* When a chat is open, hide the list entirely */
   #groupChatModal.chat-open #chatSidebarPanel {
@@ -801,7 +810,9 @@ tr:hover .delete-row-btn {
     visibility: visible;
   }
 
-  .dark #chatMainArea { background: #0f172a !important; }
+  .dark #chatMainArea {
+    background: #0f172a !important;
+  }
 
   /* Fix Header and Buttons */
   #chatHeader {
@@ -810,19 +821,20 @@ tr:hover .delete-row-btn {
     background: rgba(255, 255, 255, 0.95) !important;
     backdrop-filter: blur(20px) !important;
     -webkit-backdrop-filter: blur(20px) !important;
-    border-bottom: 1px solid rgba(0,0,0,0.08) !important;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
     position: sticky !important;
     top: 0 !important;
     z-index: 50 !important;
     display: flex !important;
     align-items: center !important;
   }
-  .dark #chatHeader { 
+
+  .dark #chatHeader {
     background: rgba(15, 23, 42, 0.9) !important;
-    border-bottom-color: rgba(255,255,255,0.08) !important;
+    border-bottom-color: rgba(255, 255, 255, 0.08) !important;
   }
 
-  #chatBackToList { 
+  #chatBackToList {
     display: flex !important;
     width: 44px !important;
     height: 44px !important;
@@ -833,11 +845,15 @@ tr:hover .delete-row-btn {
     border-radius: 50% !important;
     margin-right: 4px !important;
   }
+
   #chatBackToList:active {
     background: rgba(0, 132, 255, 0.1) !important;
   }
 
-  #sidebarToggleInHeader, #fullscreenGroupChat, #closeGroupChat, #fullscreenChatSidebar {
+  #sidebarToggleInHeader,
+  #fullscreenGroupChat,
+  #closeGroupChat,
+  #fullscreenChatSidebar {
     display: none !important;
   }
 
@@ -858,7 +874,10 @@ tr:hover .delete-row-btn {
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .dark #chatHeaderName { color: #f5f6f7 !important; }
+
+  .dark #chatHeaderName {
+    color: #f5f6f7 !important;
+  }
 
   #chatHeaderStatus p {
     font-size: 10px !important;
@@ -870,34 +889,36 @@ tr:hover .delete-row-btn {
 
   /* Search Bar Refinements */
   #chatSearchInput {
-    background: rgba(0,0,0,0.04) !important;
+    background: rgba(0, 0, 0, 0.04) !important;
     font-size: 15px !important;
     padding: 10px 10px 10px 40px !important;
     height: 44px !important;
   }
-  
+
   /* Input area safety for modern phones and refined look */
   #chatInputArea {
     padding: 12px 16px calc(12px + env(safe-area-inset-bottom)) !important;
     background: rgba(255, 255, 255, 0.98) !important;
     backdrop-filter: blur(20px) !important;
     -webkit-backdrop-filter: blur(20px) !important;
-    border-top: 1px solid rgba(0,0,0,0.08) !important;
+    border-top: 1px solid rgba(0, 0, 0, 0.08) !important;
   }
+
   .dark #chatInputArea {
     background: rgba(15, 23, 42, 0.95) !important;
-    border-top-color: rgba(255,255,255,0.08) !important;
+    border-top-color: rgba(255, 255, 255, 0.08) !important;
   }
 
   #groupChatInput {
-    background: rgba(0,0,0,0.04) !important;
+    background: rgba(0, 0, 0, 0.04) !important;
     border-radius: 20px !important;
     padding: 10px 16px !important;
     font-size: 15px !important;
     border: 1px solid transparent !important;
   }
+
   .dark #groupChatInput {
-    background: rgba(255,255,255,0.06) !important;
+    background: rgba(255, 255, 255, 0.06) !important;
     color: white !important;
   }
 
@@ -907,33 +928,38 @@ tr:hover .delete-row-btn {
     font-size: 13px !important;
     font-weight: 600 !important;
     border-radius: 18px !important;
-    background: rgba(0,0,0,0.05) !important;
+    background: rgba(0, 0, 0, 0.05) !important;
     color: #65676b !important;
     flex-shrink: 0 !important;
   }
+
   .chat-filter-pill.active {
     background: rgba(0, 132, 255, 0.1) !important;
     color: #0084ff !important;
   }
+
   .dark .chat-filter-pill {
-    background: rgba(255,255,255,0.1) !important;
+    background: rgba(255, 255, 255, 0.1) !important;
     color: #b0b3b8 !important;
   }
 
   /* List Item Refinements */
   .messenger-chat-item {
     padding: 12px 16px !important;
-    border-bottom: none !important; /* Cleaner look */
+    border-bottom: none !important;
+    /* Cleaner look */
     margin: 4px 8px !important;
     border-radius: 12px !important;
     transition: background 0.2s ease !important;
   }
+
   .messenger-chat-item:active {
-    background: rgba(0,0,0,0.05) !important;
+    background: rgba(0, 0, 0, 0.05) !important;
     transform: scale(0.98);
   }
+
   .dark .messenger-chat-item:active {
-    background: rgba(255,255,255,0.05) !important;
+    background: rgba(255, 255, 255, 0.05) !important;
   }
 
   .messenger-avatar {
@@ -950,27 +976,39 @@ tr:hover .delete-row-btn {
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .dark .messenger-name { color: #f5f6f7 !important; }
+
+  .dark .messenger-name {
+    color: #f5f6f7 !important;
+  }
 
   .messenger-time {
     font-size: 12px !important;
     color: #65676b !important;
     font-weight: 400 !important;
   }
-  .dark .messenger-time { color: #8a8d91 !important; }
+
+  .dark .messenger-time {
+    color: #8a8d91 !important;
+  }
 
   .messenger-preview {
     font-size: 13px !important;
     color: #65676b !important;
     line-height: 1.4 !important;
   }
-  .dark .messenger-preview { color: #b0b3b8 !important; }
+
+  .dark .messenger-preview {
+    color: #b0b3b8 !important;
+  }
 
   .unread .messenger-preview {
     color: #1c1e21 !important;
     font-weight: 700 !important;
   }
-  .dark .unread .messenger-preview { color: #ffffff !important; }
+
+  .dark .unread .messenger-preview {
+    color: #ffffff !important;
+  }
 
   .messenger-unread-dot {
     width: 12px !important;
@@ -980,18 +1018,26 @@ tr:hover .delete-row-btn {
     flex-shrink: 0 !important;
     box-shadow: 0 0 0 2px white;
   }
-  .dark .messenger-unread-dot { box-shadow: 0 0 0 2px #0f172a; }
+
+  .dark .messenger-unread-dot {
+    box-shadow: 0 0 0 2px #0f172a;
+  }
 
   .messenger-online-dot {
     width: 14px !important;
     height: 14px !important;
     border: 3px solid white !important;
   }
+
   .messenger-online-dot.offline {
-    background: #000 !important; /* Black as requested */
+    background: #000 !important;
+    /* Black as requested */
     opacity: 0.6;
   }
-  .dark .messenger-online-dot { border-color: #0f172a !important; }
+
+  .dark .messenger-online-dot {
+    border-color: #0f172a !important;
+  }
 
   #chatHeaderAvatar {
     width: 40px !important;
@@ -1188,7 +1234,8 @@ tr:hover .delete-row-btn {
 }
 
 .messenger-chat-item.active {
-  background-color: rgba(0, 132, 255, 0.08); /* Light blue for active */
+  background-color: rgba(0, 132, 255, 0.08);
+  /* Light blue for active */
 }
 
 .messenger-avatar-container {
@@ -1358,7 +1405,7 @@ tr:hover .delete-row-btn {
 /* Ensure images and attachments also look good */
 .chat-img-attachment {
   border-radius: 16px !important;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
 .dark .chat-item-badge {
@@ -1419,7 +1466,8 @@ tr:hover .delete-row-btn {
     max-height: 100% !important;
     border-radius: 0 !important;
     /* Leave room for mobile bottom nav */
-    padding-bottom: 0 !important; /* Managed by safe area and mobile-nav-height internally */
+    padding-bottom: 0 !important;
+    /* Managed by safe area and mobile-nav-height internally */
   }
 
   /* Sidebar: icon-only strip (48px) on mobile */
@@ -1429,7 +1477,8 @@ tr:hover .delete-row-btn {
     min-width: 100% !important;
     flex-shrink: 0;
     padding: 0 !important;
-    overflow: hidden !important; /* Internal containers handle scrolling */
+    overflow: hidden !important;
+    /* Internal containers handle scrolling */
     display: flex !important;
   }
 
@@ -1439,7 +1488,7 @@ tr:hover .delete-row-btn {
   #groupChatModal aside h2,
   #groupChatModal aside h3,
   #groupChatModal .chat-item-name,
-  #groupChatModal aside header h1, 
+  #groupChatModal aside header h1,
   #groupChatModal aside header h2,
   #groupChatModal aside header button span {
     display: block !important;
@@ -1468,12 +1517,16 @@ tr:hover .delete-row-btn {
     padding: 12px 16px !important;
     padding-bottom: calc(12px + var(--safe-area-bottom)) !important;
     background: #ffffff;
-    border-top: 1px solid rgba(0,0,0,0.05);
+    border-top: 1px solid rgba(0, 0, 0, 0.05);
     z-index: 50;
     position: sticky;
     bottom: 0;
   }
-  .dark #chatInputArea { background: #0f172a; border-top-color: rgba(255,255,255,0.05); }
+
+  .dark #chatInputArea {
+    background: #0f172a;
+    border-top-color: rgba(255, 255, 255, 0.05);
+  }
 
   /* Mobile friendly scrolling */
   .view {
@@ -1897,7 +1950,7 @@ tr:hover .delete-row-btn {
   flex-wrap: wrap !important;
 }
 
-.briefing-actions button, 
+.briefing-actions button,
 .briefing-actions a {
   flex: 1 !important;
   min-width: 120px !important;
@@ -1908,7 +1961,8 @@ tr:hover .delete-row-btn {
   .briefing-actions {
     flex-direction: column !important;
   }
-  .briefing-actions button, 
+
+  .briefing-actions button,
   .briefing-actions a {
     width: 100% !important;
     min-width: auto !important;
@@ -2004,15 +2058,19 @@ tr:hover .delete-row-btn {
   .weather-metrics {
     gap: 12px !important;
   }
+
   .weather-metric-label {
     font-size: 10px !important;
   }
+
   .weather-metric-value {
     font-size: 14px !important;
   }
 }
+
 /* Ensure Smart Search box doesn't overflow */
-.chat-container, .response-container {
+.chat-container,
+.response-container {
   max-width: 100% !important;
   overflow-x: hidden !important;
 }
@@ -2082,7 +2140,8 @@ tr:hover .delete-row-btn {
 .msg-content-wrapper {
   display: flex !important;
   flex-direction: column !important;
-  flex: 1 !important; /* Take all available horizontal space */
+  flex: 1 !important;
+  /* Take all available horizontal space */
   min-width: 0 !important;
   height: auto !important;
   min-height: 0 !important;
@@ -2101,7 +2160,8 @@ tr:hover .delete-row-btn {
   width: fit-content !important;
   width: -moz-fit-content !important;
   width: -webkit-fit-content !important;
-  max-width: 85% !important; /* Bubble itself takes up to 85% of row */
+  max-width: 85% !important;
+  /* Bubble itself takes up to 85% of row */
   min-width: 50px !important;
   height: auto !important;
   min-height: 0 !important;
@@ -2109,7 +2169,7 @@ tr:hover .delete-row-btn {
   border-radius: 18px !important;
   font-size: 15px !important;
   line-height: 1.5 !important;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
   word-break: break-word !important;
   position: relative !important;
   margin: 0 !important;
@@ -2131,13 +2191,41 @@ tr:hover .delete-row-btn {
   margin-bottom: 0.5rem !important;
 }
 
-.bubble-me { background: #0084ff !important; color: white !important; border-bottom-right-radius: 4px !important; }
-.bubble-them { background: #f0f2f5 !important; color: #050505 !important; border-bottom-left-radius: 4px !important; }
-.dark .bubble-them { background: #242526 !important; color: #e4e6eb !important; border: 1px solid #333 !important; }
+.bubble-me {
+  background: #0084ff !important;
+  color: white !important;
+  border-bottom-right-radius: 4px !important;
+}
 
-.bubble-me { background: #0084ff !important; color: white !important; border-bottom-right-radius: 4px !important; }
-.bubble-them { background: #f0f2f5 !important; color: #050505 !important; border-bottom-left-radius: 4px !important; }
-.dark .bubble-them { background: #242526 !important; color: #e4e6eb !important; border: 1px solid #333 !important; }
+.bubble-them {
+  background: #f0f2f5 !important;
+  color: #050505 !important;
+  border-bottom-left-radius: 4px !important;
+}
+
+.dark .bubble-them {
+  background: #242526 !important;
+  color: #e4e6eb !important;
+  border: 1px solid #333 !important;
+}
+
+.bubble-me {
+  background: #0084ff !important;
+  color: white !important;
+  border-bottom-right-radius: 4px !important;
+}
+
+.bubble-them {
+  background: #f0f2f5 !important;
+  color: #050505 !important;
+  border-bottom-left-radius: 4px !important;
+}
+
+.dark .bubble-them {
+  background: #242526 !important;
+  color: #e4e6eb !important;
+  border: 1px solid #333 !important;
+}
 
 /* Feedback Panel Fixes */
 .chat-bubble [flex-col] {
@@ -2145,9 +2233,23 @@ tr:hover .delete-row-btn {
   justify-content: flex-start !important;
 }
 
-.bubble-me { background: #0084ff !important; color: white !important; border-bottom-right-radius: 4px !important; }
-.bubble-them { background: #f0f2f5 !important; color: #050505 !important; border-bottom-left-radius: 4px !important; }
-.dark .bubble-them { background: #242526 !important; color: #e4e6eb !important; border: 1px solid #333 !important; }
+.bubble-me {
+  background: #0084ff !important;
+  color: white !important;
+  border-bottom-right-radius: 4px !important;
+}
+
+.bubble-them {
+  background: #f0f2f5 !important;
+  color: #050505 !important;
+  border-bottom-left-radius: 4px !important;
+}
+
+.dark .bubble-them {
+  background: #242526 !important;
+  color: #e4e6eb !important;
+  border: 1px solid #333 !important;
+}
 
 .bubble-bot {
   background: #f1f5f9 !important;
@@ -2352,15 +2454,13 @@ tr:hover .delete-row-btn {
   transform: translateY(-2px);
 }
 
-@media (max-width: 768px) {
-
-}
+@media (max-width: 768px) {}
 
 /* Main Chat Area Mobile Adjustments */
 @media (max-width: 1023px) {
 
   #groupChatMessages {
-    padding-bottom: 24px !important; 
+    padding-bottom: 24px !important;
   }
 
   #unifiedChatList {
@@ -2397,7 +2497,8 @@ tr:hover .delete-row-btn {
     min-width: 0 !important;
     height: auto !important;
     min-height: 0 !important;
-    flex: 0 0 auto !important; /* NO VERTICAL STRETCH ON MOBILE */
+    flex: 0 0 auto !important;
+    /* NO VERTICAL STRETCH ON MOBILE */
   }
 
   /* Specific handling for user messages to avoid pushing content */
@@ -2406,6 +2507,7 @@ tr:hover .delete-row-btn {
   }
 
   @media (max-width: 480px) {
+
     #mainChat .chat-bubble,
     #groupChatMessages .chat-bubble {
       padding: 10px 14px !important;
@@ -2425,478 +2527,478 @@ tr:hover .delete-row-btn {
     }
   }
 
-/* Fix for unified/group chat scroll area */
-#groupChatMessages {
-  overflow-x: hidden !important;
-  width: 100% !important;
-}
+  /* Fix for unified/group chat scroll area */
+  #groupChatMessages {
+    overflow-x: hidden !important;
+    width: 100% !important;
+  }
 
-#groupChatMessages .prose {
-  word-break: break-word !important;
-  overflow-wrap: break-word !important;
-  max-width: 100% !important;
-}
+  #groupChatMessages .prose {
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    max-width: 100% !important;
+  }
 
-/* Ensure images in chat don't overflow */
-.chat-img-attachment img {
-  max-width: 100%;
-  height: auto;
-  border-radius: 12px;
-}
+  /* Ensure images in chat don't overflow */
+  .chat-img-attachment img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 12px;
+  }
 
-/* ═══════════════════════════════════════════════════
+  /* ═══════════════════════════════════════════════════
    📱 MOBILE SPACE OPTIMIZATION (Compact Mode)
    ═══════════════════════════════════════════════════ */
-@media (max-width: 640px) {
+  @media (max-width: 640px) {
 
-  /* Reduce padding in modals to save vertical space */
-  header.p-6,
-  footer.p-6,
-  .p-6,
-  .p-8 {
-    padding: 1rem !important;
+    /* Reduce padding in modals to save vertical space */
+    header.p-6,
+    footer.p-6,
+    .p-6,
+    .p-8 {
+      padding: 1rem !important;
+    }
+
+    header.h-16,
+    footer.h-16 {
+      height: 3.5rem !important;
+      /* Slightly shorter headers */
+    }
+
+    /* Compact Typography */
+    h1 {
+      font-size: 1.5rem !important;
+    }
+
+    h2 {
+      font-size: 1.1rem !important;
+    }
+
+    h3 {
+      font-size: 0.95rem !important;
+    }
+
+    p,
+    span,
+    div,
+    button,
+    input,
+    textarea {
+      font-size: 13px !important;
+    }
+
+    .text-xs {
+      font-size: 11px !important;
+    }
+
+    .text-\[10px\] {
+      font-size: 9px !important;
+    }
+
+    /* Compact Buttons */
+    .btn-primary,
+    .btn-secondary,
+    button:not(.mobile-nav-btn) {
+      padding-top: 0.5rem !important;
+      padding-bottom: 0.5rem !important;
+      border-radius: 0.75rem !important;
+    }
+
+    /* Compact CSV/Table Editor */
+    #csvDataTable th,
+    #csvDataTable td {
+      padding: 0.5rem 0.4rem !important;
+      font-size: 12px !important;
+    }
+
+    #csvDataTable td input {
+      padding: 2px 4px !important;
+      font-size: 12px !important;
+    }
+
+    /* Compact Sidebar/Nav */
+    .nav-item {
+      padding: 0.5rem 0.75rem !important;
+      font-size: 13px !important;
+    }
+
+    /* Compact Dashboard Cards */
+    .bg-white.rounded-3xl,
+    .bg-white.rounded-2xl {
+      border-radius: 1.25rem !important;
+    }
+
+    /* Message Bubbles - even more compact */
+    .prose {
+      padding: 8px 12px !important;
+      font-size: 13px !important;
+    }
+
+    /* Reduce gaps between items */
+    .space-y-6>*+* {
+      margin-top: 0.75rem !important;
+    }
+
+    .space-y-4>*+* {
+      margin-top: 0.5rem !important;
+    }
+
+    .gap-6 {
+      gap: 0.75rem !important;
+    }
+
+    .gap-4 {
+      gap: 0.5rem !important;
+    }
+
+    /* Compact File List */
+    .file-item {
+      padding: 0.75rem !important;
+      gap: 0.75rem !important;
+    }
+
+    /* Login Screen Adjustments */
+    #loginOverlay .p-8 {
+      padding: 1.5rem !important;
+    }
+
+    /* Fix full-screen modal padding on mobile */
+    #csvEditorModal>div,
+    #txtEditorModal>div,
+    #pdfViewerModal>div {
+      padding: 0 !important;
+    }
+
+    /* 🎯 TARGETED COMPACTNESS FOR USER REQUEST */
+
+    /* Kanban Header & Buttons - Ultra Compact */
+    #view-kanban header {
+      height: 3.5rem !important;
+      padding: 0 1rem !important;
+    }
+
+    #view-kanban header h2 {
+      font-size: 13px !important;
+    }
+
+    #view-kanban header .tracking-widest {
+      display: none !important;
+      /* Hide "Board" text in badge */
+    }
+
+    #addKanbanColumnBtn,
+    #addKanbanCardBtn {
+      padding: 0.4rem 0.75rem !important;
+      font-size: 11px !important;
+      min-height: 36px !important;
+      gap: 0.35rem !important;
+    }
+
+    /* KB & View Headers - Ultra Thin */
+    #view-kb header,
+    #view-summary header,
+    #view-search header,
+    #view-viz header,
+    #view-calendar header,
+    #view-feed header,
+    #view-profile header,
+    #view-settings header,
+    #view-stats header {
+      height: 3rem !important;
+      padding: 0 0.75rem !important;
+    }
+
+    /* Titles in headers */
+    header h2 {
+      font-size: 12px !important;
+      font-weight: 800 !important;
+    }
+
+    /* KB Stats in header - move/shrink */
+    #view-kb header .text-\[10px\] {
+      font-size: 8px !important;
+      gap: 0.5rem !important;
+      padding-right: 0.5rem !important;
+    }
+
+    #refreshFilesBtn {
+      font-size: 9px !important;
+    }
+
+    /* Summary View Controls - Compact stack */
+    #view-summary header {
+      flex-direction: column !important;
+      height: auto !important;
+      padding: 0.5rem 0.75rem !important;
+      gap: 0.25rem !important;
+    }
+
+    #view-summary header h2 {
+      align-self: flex-start;
+    }
+
+    #view-summary header div.flex-col {
+      width: 100%;
+      flex-direction: row !important;
+      gap: 0.25rem !important;
+    }
+
+    #summaryCategorySelect,
+    #summaryFocusInput,
+    #generateGlobalSummaryBtn {
+      padding: 0.35rem 0.5rem !important;
+      font-size: 10px !important;
+      border-width: 1px !important;
+    }
+
+    #summaryFocusInput {
+      padding-left: 1.75rem !important;
+    }
+
+    #generateGlobalSummaryBtn i {
+      width: 3rem !important;
+      height: 3rem !important;
+    }
+
+    /* Post Composer - Minimal height */
+    #postInput {
+      min-height: 50px !important;
+      font-size: 12px !important;
+      padding: 0.5rem 0 !important;
+    }
+
+    #postCategory {
+      min-width: 80px !important;
+      font-size: 10px !important;
+      padding: 0.25rem 0.5rem !important;
+    }
+
+    #submitPostBtn {
+      padding: 0.35rem 1rem !important;
+      font-size: 11px !important;
+    }
+
+    /* Sidebar Categories & Chips */
+    .kb-cat-item {
+      padding: 0.4rem 0.75rem !important;
+      font-size: 10px !important;
+    }
+
+    .admin-stat-chip {
+      padding: 2px 6px !important;
+      font-size: 9px !important;
+    }
+
+    /* Search Inputs */
+    #kbSearchInput,
+    #searchDmUser {
+      padding-top: 0.4rem !important;
+      padding-bottom: 0.4rem !important;
+      font-size: 11px !important;
+    }
+
+    /* Avatars - Slightly smaller */
+    div.w-10.h-10:not(#sidebarAvatar) {
+      width: 2rem !important;
+      height: 2rem !important;
+    }
+
+    div.w-10.h-10 i {
+      width: 1rem !important;
+      height: 1rem !important;
+    }
   }
 
-  header.h-16,
-  footer.h-16 {
-    height: 3.5rem !important;
-    /* Slightly shorter headers */
+  /* ─── @Mention Tag ─────────────────────────────────────────────── */
+  .mention-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 6px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 900;
+    background: rgba(37, 99, 235, 0.12);
+    color: #2563eb;
+    white-space: nowrap;
+    letter-spacing: 0.02em;
+    transition: background 0.15s;
   }
 
-  /* Compact Typography */
-  h1 {
-    font-size: 1.5rem !important;
+  .mention-tag:hover {
+    background: rgba(37, 99, 235, 0.22);
+    cursor: pointer;
   }
 
-  h2 {
-    font-size: 1.1rem !important;
+  /* Inside dark-colored chat bubbles (.bubble-me) keep white text */
+  .bubble-me .mention-tag {
+    background: rgba(255, 255, 255, 0.22);
+    color: #fff;
   }
 
-  h3 {
-    font-size: 0.95rem !important;
+  .dark .mention-tag {
+    background: rgba(96, 165, 250, 0.18);
+    color: #60a5fa;
   }
 
-  p,
-  span,
-  div,
-  button,
-  input,
-  textarea {
-    font-size: 13px !important;
+  /* ─── Kanban Board Styles ─── */
+  .kanban-board {
+    display: flex;
+    gap: 1.5rem;
+    overflow-x: auto;
+    padding: 1rem 0 2rem 0;
+    min-height: calc(100vh - 200px);
+    align-items: flex-start;
   }
 
-  .text-xs {
-    font-size: 11px !important;
+  .kanban-column {
+    flex: 0 0 320px;
+    background: rgba(241, 245, 249, 0.5);
+    border-radius: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    max-height: 100%;
+    border: 1px solid rgba(226, 232, 240, 0.8);
+    transition: all 0.3s ease;
   }
 
-  .text-\[10px\] {
-    font-size: 9px !important;
+  .dark .kanban-column {
+    background: rgba(30, 41, 59, 0.4);
+    border-color: rgba(51, 65, 85, 0.5);
   }
 
-  /* Compact Buttons */
-  .btn-primary,
-  .btn-secondary,
-  button:not(.mobile-nav-btn) {
-    padding-top: 0.5rem !important;
-    padding-bottom: 0.5rem !important;
-    border-radius: 0.75rem !important;
+  .kanban-column-header {
+    padding: 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid rgba(226, 232, 240, 0.5);
   }
 
-  /* Compact CSV/Table Editor */
-  #csvDataTable th,
-  #csvDataTable td {
-    padding: 0.5rem 0.4rem !important;
-    font-size: 12px !important;
+  .dark .kanban-column-header {
+    border-bottom-color: rgba(51, 65, 85, 0.3);
   }
 
-  #csvDataTable td input {
-    padding: 2px 4px !important;
-    font-size: 12px !important;
+  .kanban-list {
+    padding: 1rem;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 100px;
   }
 
-  /* Compact Sidebar/Nav */
-  .nav-item {
-    padding: 0.5rem 0.75rem !important;
-    font-size: 13px !important;
+  .kanban-card {
+    background: white;
+    border-radius: 1rem;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    cursor: grab;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    animation: card-pop 0.3s ease-out;
   }
 
-  /* Compact Dashboard Cards */
-  .bg-white.rounded-3xl,
-  .bg-white.rounded-2xl {
-    border-radius: 1.25rem !important;
+  .dark .kanban-card {
+    background: #1e293b;
+    border-color: #334155;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2);
   }
 
-  /* Message Bubbles - even more compact */
-  .prose {
-    padding: 8px 12px !important;
-    font-size: 13px !important;
+  .kanban-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 20px -5px rgba(0, 0, 0, 0.1);
+    border-color: var(--brand-600);
   }
 
-  /* Reduce gaps between items */
-  .space-y-6>*+* {
-    margin-top: 0.75rem !important;
+  .kanban-card:active {
+    cursor: grabbing;
   }
 
-  .space-y-4>*+* {
-    margin-top: 0.5rem !important;
+  @keyframes card-pop {
+    from {
+      opacity: 0;
+      transform: scale(0.95) translateY(10px);
+    }
+
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
   }
 
-  .gap-6 {
-    gap: 0.75rem !important;
-  }
-
-  .gap-4 {
-    gap: 0.5rem !important;
-  }
-
-  /* Compact File List */
-  .file-item {
-    padding: 0.75rem !important;
-    gap: 0.75rem !important;
-  }
-
-  /* Login Screen Adjustments */
-  #loginOverlay .p-8 {
-    padding: 1.5rem !important;
-  }
-
-  /* Fix full-screen modal padding on mobile */
-  #csvEditorModal>div,
-  #txtEditorModal>div,
-  #pdfViewerModal>div {
-    padding: 0 !important;
-  }
-
-  /* 🎯 TARGETED COMPACTNESS FOR USER REQUEST */
-
-  /* Kanban Header & Buttons - Ultra Compact */
-  #view-kanban header {
-    height: 3.5rem !important;
-    padding: 0 1rem !important;
-  }
-
-  #view-kanban header h2 {
-    font-size: 13px !important;
-  }
-
-  #view-kanban header .tracking-widest {
-    display: none !important;
-    /* Hide "Board" text in badge */
-  }
-
-  #addKanbanColumnBtn,
-  #addKanbanCardBtn {
-    padding: 0.4rem 0.75rem !important;
-    font-size: 11px !important;
-    min-height: 36px !important;
-    gap: 0.35rem !important;
-  }
-
-  /* KB & View Headers - Ultra Thin */
-  #view-kb header,
-  #view-summary header,
-  #view-search header,
-  #view-viz header,
-  #view-calendar header,
-  #view-feed header,
-  #view-profile header,
-  #view-settings header,
-  #view-stats header {
-    height: 3rem !important;
-    padding: 0 0.75rem !important;
-  }
-
-  /* Titles in headers */
-  header h2 {
-    font-size: 12px !important;
-    font-weight: 800 !important;
-  }
-
-  /* KB Stats in header - move/shrink */
-  #view-kb header .text-\[10px\] {
-    font-size: 8px !important;
-    gap: 0.5rem !important;
-    padding-right: 0.5rem !important;
-  }
-
-  #refreshFilesBtn {
-    font-size: 9px !important;
-  }
-
-  /* Summary View Controls - Compact stack */
-  #view-summary header {
-    flex-direction: column !important;
-    height: auto !important;
-    padding: 0.5rem 0.75rem !important;
-    gap: 0.25rem !important;
-  }
-
-  #view-summary header h2 {
-    align-self: flex-start;
-  }
-
-  #view-summary header div.flex-col {
+  /* ─── Wiki Styles ─── */
+  .wiki-container {
+    display: flex;
+    height: 100%;
     width: 100%;
-    flex-direction: row !important;
-    gap: 0.25rem !important;
+    overflow: hidden;
   }
 
-  #summaryCategorySelect,
-  #summaryFocusInput,
-  #generateGlobalSummaryBtn {
-    padding: 0.35rem 0.5rem !important;
-    font-size: 10px !important;
-    border-width: 1px !important;
+  .wiki-sidebar {
+    width: 300px;
+    border-right: 1px solid #e2e8f0;
+    display: flex;
+    flex-direction: column;
+    background: rgba(255, 255, 255, 0.5);
   }
 
-  #summaryFocusInput {
-    padding-left: 1.75rem !important;
+  .dark .wiki-sidebar {
+    border-right-color: #1e293b;
+    background: rgba(15, 23, 42, 0.5);
   }
 
-  #generateGlobalSummaryBtn i {
-    width: 3rem !important;
-    height: 3rem !important;
+  .wiki-content {
+    flex: 1;
+    overflow-y: auto;
+    background: white;
+    padding: 3rem;
   }
 
-  /* Post Composer - Minimal height */
-  #postInput {
-    min-height: 50px !important;
-    font-size: 12px !important;
-    padding: 0.5rem 0 !important;
+  .dark .wiki-content {
+    background: #0f172a;
   }
 
-  #postCategory {
-    min-width: 80px !important;
-    font-size: 10px !important;
-    padding: 0.25rem 0.5rem !important;
+  .wiki-page-item {
+    padding: 0.75rem 1rem;
+    margin: 0.25rem 0.75rem;
+    border-radius: 0.75rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #64748b;
   }
 
-  #submitPostBtn {
-    padding: 0.35rem 1rem !important;
-    font-size: 11px !important;
+  .wiki-page-item:hover {
+    background: rgba(37, 99, 235, 0.05);
+    color: var(--brand-600);
   }
 
-  /* Sidebar Categories & Chips */
-  .kb-cat-item {
-    padding: 0.4rem 0.75rem !important;
-    font-size: 10px !important;
+  .wiki-page-item.active {
+    background: var(--brand-600);
+    color: white;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
   }
 
-  .admin-stat-chip {
-    padding: 2px 6px !important;
-    font-size: 9px !important;
+  .wiki-editor-title {
+    font-size: 2.5rem;
+    font-weight: 800;
+    width: 100%;
+    border: none;
+    outline: none;
+    background: transparent;
+    margin-bottom: 2rem;
   }
 
-  /* Search Inputs */
-  #kbSearchInput,
-  #searchDmUser {
-    padding-top: 0.4rem !important;
-    padding-bottom: 0.4rem !important;
-    font-size: 11px !important;
+  .wiki-editor-body {
+    font-size: 1.125rem;
+    line-height: 1.8;
+    width: 100%;
+    min-height: 500px;
+    border: none;
+    outline: none;
+    background: transparent;
+    resize: none;
   }
-
-  /* Avatars - Slightly smaller */
-  div.w-10.h-10:not(#sidebarAvatar) {
-    width: 2rem !important;
-    height: 2rem !important;
-  }
-
-  div.w-10.h-10 i {
-    width: 1rem !important;
-    height: 1rem !important;
-  }
-}
-
-/* ─── @Mention Tag ─────────────────────────────────────────────── */
-.mention-tag {
-  display: inline-flex;
-  align-items: center;
-  padding: 0 6px;
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 900;
-  background: rgba(37, 99, 235, 0.12);
-  color: #2563eb;
-  white-space: nowrap;
-  letter-spacing: 0.02em;
-  transition: background 0.15s;
-}
-
-.mention-tag:hover {
-  background: rgba(37, 99, 235, 0.22);
-  cursor: pointer;
-}
-
-/* Inside dark-colored chat bubbles (.bubble-me) keep white text */
-.bubble-me .mention-tag {
-  background: rgba(255, 255, 255, 0.22);
-  color: #fff;
-}
-
-.dark .mention-tag {
-  background: rgba(96, 165, 250, 0.18);
-  color: #60a5fa;
-}
-
-/* ─── Kanban Board Styles ─── */
-.kanban-board {
-  display: flex;
-  gap: 1.5rem;
-  overflow-x: auto;
-  padding: 1rem 0 2rem 0;
-  min-height: calc(100vh - 200px);
-  align-items: flex-start;
-}
-
-.kanban-column {
-  flex: 0 0 320px;
-  background: rgba(241, 245, 249, 0.5);
-  border-radius: 1.5rem;
-  display: flex;
-  flex-direction: column;
-  max-height: 100%;
-  border: 1px solid rgba(226, 232, 240, 0.8);
-  transition: all 0.3s ease;
-}
-
-.dark .kanban-column {
-  background: rgba(30, 41, 59, 0.4);
-  border-color: rgba(51, 65, 85, 0.5);
-}
-
-.kanban-column-header {
-  padding: 1.25rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid rgba(226, 232, 240, 0.5);
-}
-
-.dark .kanban-column-header {
-  border-bottom-color: rgba(51, 65, 85, 0.3);
-}
-
-.kanban-list {
-  padding: 1rem;
-  overflow-y: auto;
-  flex: 1;
-  min-height: 100px;
-}
-
-.kanban-card {
-  background: white;
-  border-radius: 1rem;
-  padding: 1rem;
-  margin-bottom: 1rem;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-  cursor: grab;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  animation: card-pop 0.3s ease-out;
-}
-
-.dark .kanban-card {
-  background: #1e293b;
-  border-color: #334155;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2);
-}
-
-.kanban-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 12px 20px -5px rgba(0, 0, 0, 0.1);
-  border-color: var(--brand-600);
-}
-
-.kanban-card:active {
-  cursor: grabbing;
-}
-
-@keyframes card-pop {
-  from {
-    opacity: 0;
-    transform: scale(0.95) translateY(10px);
-  }
-
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
-
-/* ─── Wiki Styles ─── */
-.wiki-container {
-  display: flex;
-  height: 100%;
-  width: 100%;
-  overflow: hidden;
-}
-
-.wiki-sidebar {
-  width: 300px;
-  border-right: 1px solid #e2e8f0;
-  display: flex;
-  flex-direction: column;
-  background: rgba(255, 255, 255, 0.5);
-}
-
-.dark .wiki-sidebar {
-  border-right-color: #1e293b;
-  background: rgba(15, 23, 42, 0.5);
-}
-
-.wiki-content {
-  flex: 1;
-  overflow-y: auto;
-  background: white;
-  padding: 3rem;
-}
-
-.dark .wiki-content {
-  background: #0f172a;
-}
-
-.wiki-page-item {
-  padding: 0.75rem 1rem;
-  margin: 0.25rem 0.75rem;
-  border-radius: 0.75rem;
-  cursor: pointer;
-  transition: all 0.2s;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: #64748b;
-}
-
-.wiki-page-item:hover {
-  background: rgba(37, 99, 235, 0.05);
-  color: var(--brand-600);
-}
-
-.wiki-page-item.active {
-  background: var(--brand-600);
-  color: white;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
-}
-
-.wiki-editor-title {
-  font-size: 2.5rem;
-  font-weight: 800;
-  width: 100%;
-  border: none;
-  outline: none;
-  background: transparent;
-  margin-bottom: 2rem;
-}
-
-.wiki-editor-body {
-  font-size: 1.125rem;
-  line-height: 1.8;
-  width: 100%;
-  min-height: 500px;
-  border: none;
-  outline: none;
-  background: transparent;
-  resize: none;
-}
 }
 
 /* 🎨 WHITEBOARD MODERN UI FIXES */
@@ -2915,7 +3017,7 @@ tr:hover .delete-row-btn {
   height: 24px !important;
   border-radius: 9999px !important;
   border: 2px solid white !important;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.1) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1) !important;
   cursor: pointer !important;
 }
 
@@ -2926,7 +3028,8 @@ tr:hover .delete-row-btn {
     flex-wrap: wrap !important;
     justify-content: center !important;
     padding: 10px !important;
-    bottom: 90px !important; /* Above mobile bottom nav */
+    bottom: 90px !important;
+    /* Above mobile bottom nav */
     gap: 8px !important;
     border-radius: 24px !important;
     left: 50% !important;
@@ -2960,14 +3063,16 @@ tr:hover .delete-row-btn {
     padding: 8px !important;
     gap: 4px !important;
   }
-  
+
   .wb-toolbar-section {
     gap: 4px !important;
   }
-}
+}
+
 /* 📂 Category Settings Visibility Buttons */
 .cat-vis-btn {
-  color: #94a3b8 !important; /* text-slate-400 */
+  color: #94a3b8 !important;
+  /* text-slate-400 */
   border: 2px solid transparent !important;
   border-radius: 0.75rem !important;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -2981,15 +3086,18 @@ tr:hover .delete-row-btn {
 
 .cat-vis-btn.active {
   background: white !important;
-  color: #2563eb !important; /* brand-600 */
+  color: #2563eb !important;
+  /* brand-600 */
   box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.1), 0 4px 6px -4px rgba(37, 99, 235, 0.1) !important;
   border-color: #2563eb !important;
   transform: translateY(-1px);
 }
 
 .dark .cat-vis-btn.active {
-  background: #334155 !important; /* surface-700 */
-  color: #60a5fa !important; /* brand-400 */
+  background: #334155 !important;
+  /* surface-700 */
+  color: #60a5fa !important;
+  /* brand-400 */
   border-color: #2563eb !important;
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3) !important;
 }
@@ -3004,7 +3112,7 @@ tr:hover .delete-row-btn {
     min-height: 0 !important;
     overflow: hidden !important;
   }
-  
+
   /* Ensure the input area doesn't get covered or scroll away */
   #chatInputContainer {
     flex-shrink: 0 !important;
@@ -3031,7 +3139,7 @@ tr:hover .delete-row-btn {
   border: 2px solid white;
   z-index: 10;
   transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .dark .messenger-online-dot {
@@ -3046,7 +3154,8 @@ tr:hover .delete-row-btn {
 
 .messenger-online-dot.offline {
   background-color: #94a3b8;
-  display: none; /* Often hide offline dot for cleaner UI like Messenger */
+  display: none;
+  /* Often hide offline dot for cleaner UI like Messenger */
 }
 
 /* Show offline dot as a subtle gray ring if desired, but hidden is cleaner */
@@ -3094,8 +3203,15 @@ tr:hover .delete-row-btn {
 }
 
 @keyframes pulse-green {
-  0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
-  70% { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
-}
+  0% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+  }
 
+  70% {
+    box-shadow: 0 0 0 6px rgba(34, 197, 94, 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+  }
+}

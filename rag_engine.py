@@ -24,6 +24,7 @@ from dotenv import load_dotenv
 # ใช้ google-genai (SDK ใหม่) แทน google-generativeai (deprecated)
 from google import genai as _genai_client_factory
 import time
+from datetime import datetime
 
 try:
     import fitz # PyMuPDF
@@ -681,9 +682,24 @@ def ingest_file(file_path: Path, original_name: str, department: str = "General"
     fid = _file_hash(file_path)
 
     print(f"[INGEST] Ingesting: {original_name} ({fid}) | Dept: {department}")
-    if fid in meta:
+    if fid in meta and meta[fid].get("status") == "ready":
         print(f"⏩ Duplicate file: {original_name}")
         return {"status": "duplicate", "file_id": fid, "name": original_name}
+
+    # Initial state to show in UI while processing
+    meta[fid] = {
+        "name": original_name,
+        "path": str(file_path),
+        "chunks": 0,
+        "size": file_path.stat().st_size,
+        "type": file_path.suffix.lower().lstrip("."),
+        "department": department,
+        "category_id": category_id,
+        "status": "processing",
+        "api_key_status": _kb.api_key[:5] + "..." if _kb.is_key_valid() else "MISSING KEY",
+        "timestamp": datetime.now().isoformat()
+    }
+    _save_meta(meta)
 
     if not _kb.is_key_valid():
         print(f"❌ API Key not valid while ingesting {original_name}")
@@ -726,7 +742,9 @@ def ingest_file(file_path: Path, original_name: str, department: str = "General"
         "type": file_path.suffix.lower().lstrip("."),
         "department": department,
         "category_id": category_id,
-        "api_key_status": _kb.api_key[:5] + "..." if _kb.is_key_valid() else "MISSING KEY"
+        "status": "ready",
+        "api_key_status": _kb.api_key[:5] + "..." if _kb.is_key_valid() else "MISSING KEY",
+        "timestamp": meta[fid].get("timestamp", datetime.now().isoformat())
     }
     _save_meta(meta)
     return {"status": "ok", "file_id": fid, "name": original_name, "chunks": len(chunks), "department": department, "category_id": category_id}

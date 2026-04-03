@@ -483,6 +483,16 @@ def init_db():
         )
     """)
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS leave_comments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            leave_id INTEGER NOT NULL,
+            username TEXT NOT NULL,
+            comment TEXT NOT NULL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(leave_id) REFERENCES leave_requests(id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             event_text TEXT NOT NULL,

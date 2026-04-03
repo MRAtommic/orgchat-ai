@@ -13,3 +13,6 @@ database.sqlite
 brain/
 *.log
 update_and_restart.bat
+chat_history.db
+fastembed_cache/
+test_genai.py
