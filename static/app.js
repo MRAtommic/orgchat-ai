@@ -2601,22 +2601,22 @@ function renderFileList(files) {
         </div>
 
         <div class="grid grid-cols-2 gap-2 mt-2">
-          <div class="bg-surface-50/50 dark:bg-surface-800/50 p-2.5 rounded-2xl border border-surface-100/50 dark:border-surface-700/50">
+          <div class="bg-surface-50/50 dark:bg-surface-800/50 p-2.5 rounded-2xl border border-surface-100/50 dark:border-surface-700/50 flex flex-col justify-center">
             <p class="text-[8px] font-black text-surface-400 uppercase tracking-widest mb-1">Knowledge Units</p>
-            <p class="text-xs font-black text-brand-600">${isProcessing ? '---' : (f.chunks || 0) + ' CHUNKS'}</p>
+            <p class="text-xs font-black text-brand-600">${isProcessing ? '<span class="animate-pulse">---</span>' : (f.chunks || 0) + ' CHUNKS'}</p>
           </div>
-          <div class="bg-surface-50/50 dark:bg-surface-800/50 p-2.5 rounded-2xl border border-surface-100/50 dark:border-surface-700/50">
+          <div class="bg-surface-50/50 dark:bg-surface-800/50 p-2.5 rounded-2xl border border-surface-100/50 dark:border-surface-700/50 flex flex-col justify-center">
             <p class="text-[8px] font-black text-surface-400 uppercase tracking-widest mb-1">File Size</p>
             <p class="text-xs font-black text-surface-600 dark:text-surface-300 uppercase">${fileSize}</p>
           </div>
         </div>
 
-        <div class="flex items-center justify-between pt-2 border-t border-surface-100/50 dark:border-surface-800/50">
-          <div class="flex items-center gap-1">
-             ${canEditKB() ? `<input type="checkbox" class="file-checkbox w-4 h-4 rounded-md border-surface-300 text-brand-600 focus:ring-brand-600 cursor-pointer" data-id="${f.file_id}">` : ''}
-             <span class="text-[9px] font-bold text-surface-300 ml-1">ID: ${f.file_id}</span>
+        <div class="flex items-center justify-between pt-2 border-t border-surface-100/50 dark:border-surface-800/50 mt-auto">
+          <div class="flex items-center gap-1 min-w-0 flex-1 pr-2">
+             ${canEditKB() ? `<input type="checkbox" class="file-checkbox w-4 h-4 rounded-md border-surface-300 text-brand-600 focus:ring-brand-600 cursor-pointer flex-shrink-0" data-id="${f.file_id}">` : ''}
+             <span class="text-[9px] font-black text-surface-400 ml-1 truncate opacity-60" title="ID: ${f.file_id}">ID: ${f.file_id.substring(0, 8)}...</span>
           </div>
-          <div class="flex items-center gap-0.5">
+          <div class="flex items-center gap-0.5 flex-shrink-0">
             <button class="file-view-btn p-2 text-surface-400 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-all rounded-xl" data-id="${f.file_id}" data-name="${f.name}" title="เปิดอ่าน">
               <i data-lucide="eye" class="w-4 h-4"></i>
             </button>
