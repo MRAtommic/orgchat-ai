@@ -782,11 +782,14 @@ def reply_to_line(reply_token, text):
         "messages": [{"type": "text", "text": text}]
     }
     try:
-        res = requests.post(url, headers=headers, json=payload, timeout=10)
+        res = requests.post(url, headers=headers, json=payload, timeout=15)
         if res.status_code != 200:
-            print(f"⚠️ LINE API Error ({res.status_code}): {res.text}")
+            print(f"⚠️ [LINE] API Error ({res.status_code}): {res.text}", flush=True)
+        else:
+            # log_bot(f"✅ LINE Reply sent successfully")
+            pass
     except Exception as e:
-        print(f"❌ LINE Reply Exception: {e}")
+        print(f"❌ [LINE] Reply Exception: {e}", flush=True)
 
 def create_line_flex_bubble(title, subtitle, fields, color="#1DB446"):
     """Creates a beautiful LINE Flex Message JSON bubble."""
@@ -963,25 +966,32 @@ def line_webhook():
     if not verify_line_signature(body, signature):
         return "Invalid signature", 400
         
-    data = request.json
+    data = json.loads(body.decode('utf-8'))
     events = data.get("events", [])
     
-    def process_line_event(event):
-        if event.get("type") == "message" and event["message"].get("type") == "text":
-            reply_token = event.get("replyToken")
-            user_text = event["message"].get("text").strip()
-            line_user_id = event["source"].get("userId")
+    if not events:
+        return "OK", 200
 
-            # --- Handler for Account Linking ---
-            if user_text.lower().startswith("/link "):
-                target_user = user_text[6:].strip()
-                if database.link_line_user(target_user, line_user_id):
-                    reply_to_line(reply_token, f"✅ ยินดีด้วยครับ! ชื่อบัญชี {target_user} ถูกเชื่อมต่อกับ LINE นี้แล้ว\nคุณจะได้รับการแจ้งเตือนสำคัญจาก OrgChat ทันทีครับ")
-                else:
-                    reply_to_line(reply_token, f"❌ ไม่พบผู้ใช้ '{target_user}' ในระบบ กรุณาตรวจสอบชื่อผู้ใช้ของคุณบนหน้าเว็บ OrgChat อีกครั้งครับ")
-                return
+    def process_line_event(event_data):
+        try:
+            if event_data.get("type") == "message" and event_data["message"].get("type") == "text":
+                reply_token = event_data.get("replyToken")
+                user_text = event_data["message"].get("text", "").strip()
+                line_user_id = event_data["source"].get("userId", "unknown")
 
-            log_bot(f"📲 LINE Message: '{user_text[:30]}...' from {line_user_id[:8]}")
+                if not reply_token or not user_text:
+                    return
+
+                # --- Handler for Account Linking ---
+                if user_text.lower().startswith("/link "):
+                    target_user = user_text[6:].strip()
+                    if database.link_line_user(target_user, line_user_id):
+                        reply_to_line(reply_token, f"✅ ยินดีด้วยครับ! ชื่อบัญชี {target_user} ถูกเชื่อมต่อกับ LINE นี้แล้ว\nคุณจะได้รับการแจ้งเตือนสำคัญจาก OrgChat ทันทีครับ")
+                    else:
+                        reply_to_line(reply_token, f"❌ ไม่พบผู้ใช้ '{target_user}' ในระบบ กรูณาตรวจสอบชื่อผู้ใช้ของคุณบนหน้าเว็บ OrgChat อีกครั้งครับ")
+                    return
+
+                print(f"📲 [LINE] Message received: '{user_text[:20]}...' from {line_user_id[:6]}", flush=True)
             context, sources = rag_engine.retrieve_context(user_text, where=None)
             activities = database.get_daily_activities()
             schedules = activities.get("schedules", [])
@@ -1026,11 +1036,16 @@ def line_webhook():
                 log_bot(f"✅ LINE Reply sent ({len(full_answer)} chars)")
 
             except Exception as e:
-                print(f"❌ LINE AI Processing Error: {e}")
-                reply_to_line(reply_token, "ขออภัยครับ เกิดข้อผิดพลาดในการประมวลผลข้อมูล")
+                print(f"❌ [LINE] AI Error: {e}", flush=True)
+                import traceback
+                traceback.print_exc()
+                reply_to_line(reply_token, "ขออภัยครับ ระบบประมวลผลของ AI ขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้ง")
 
-    for event in events:
-        threading.Thread(target=process_line_event, args=(event,), daemon=True).start()
+        except Exception as outer_e:
+            print(f"❌ [LINE] Fatal Event Error: {outer_e}", flush=True)
+
+    for ev in events:
+        threading.Thread(target=process_line_event, args=(ev,), daemon=True).start()
 
     return "OK", 200
 
