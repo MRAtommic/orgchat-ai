@@ -45,6 +45,8 @@ import ai_providers
 import notification_db
 from fpdf import FPDF
 from pywebpush import webpush, WebPushException
+from reconciliation_service import ReconciliationService
+import pandas as pd
 
 try:
     from google.oauth2 import id_token
@@ -1511,6 +1513,50 @@ def export_pdf():
 
 @app.route("/api/files/download/<filename>")
 def download_file(filename):
+    return send_from_directory(rag_engine.UPLOAD_DIR, filename, as_attachment=True)
+
+
+@app.route("/api/reconciliation/process", methods=["POST"])
+@login_required
+def process_reconciliation():
+    if session.get("role") != "admin":
+        return jsonify({"ok": False, "error": "Only admins can perform reconciliation"}), 403
+    
+    mp_files = request.files.getlist('marketplace')
+    ship_files = request.files.getlist('shipnity')
+    peak_files = request.files.getlist('peak')
+    
+    if not mp_files or not ship_files or not peak_files:
+        return jsonify({"ok": False, "error": "กรุณาอัปโหลดไฟล์ให้ครบทุกหมวดหมู่ (Marketplace, Shipnity, PEAK)"}), 400
+        
+    try:
+        df_result = ReconciliationService.process_files(mp_files, ship_files, peak_files)
+        
+        # Convert NaN to None for JSON
+        df_clean = df_result.where(pd.notnull(df_result), None)
+        
+        summary = {
+            "total": len(df_clean),
+            "issues": int(df_clean[df_clean['issue'] != '✅ ปกติ'].shape[0]) if not df_clean.empty else 0,
+            "data": df_clean.to_dict(orient='records') if not df_clean.empty else []
+        }
+        
+        report_id = uuid.uuid4().hex[:8]
+        report_path = rag_engine.UPLOAD_DIR / f"recon_report_{report_id}.xlsx"
+        df_result.to_excel(report_path, index=False)
+        
+        summary["report_url"] = f"/api/reconciliation/download/{report_id}"
+        
+        return jsonify({"ok": True, "summary": summary})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+@app.route("/api/reconciliation/download/<report_id>")
+@login_required
+def download_recon_report(report_id):
+    filename = f"recon_report_{report_id}.xlsx"
     return send_from_directory(rag_engine.UPLOAD_DIR, filename, as_attachment=True)
 
 # --- Calendar Schedules ---

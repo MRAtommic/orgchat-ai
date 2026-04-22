@@ -715,6 +715,7 @@ function toggleAdminFeatures(show) {
     changeKeyBtn,
     $('nav-admin'),
     $('nav-admin-mobile'),
+    $('nav-reconciliation'),
     $('auditLogSection')
   ];
 
@@ -13239,4 +13240,115 @@ function openImageViewer(url) {
     // Re-init icons for the close button inside modal
     if (typeof initIcons === 'function') initIcons();
   }
+}
+
+// ─── Reconciliation Logic ───────────────────
+let reconReportUrl = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+    const mpInput = $('reconMPFiles');
+    const shipInput = $('reconShipFiles');
+    const peakInput = $('reconPeakFiles');
+    
+    if (mpInput) mpInput.onchange = (e) => { $('reconMPList').textContent = `${e.target.files.length} ไฟล์ที่เลือก`; };
+    if (shipInput) shipInput.onchange = (e) => { $('reconShipList').textContent = `${e.target.files.length} ไฟล์ที่เลือก`; };
+    if (peakInput) peakInput.onchange = (e) => { $('reconPeakList').textContent = `${e.target.files.length} ไฟล์ที่เลือก`; };
+
+    const startBtn = $('startReconBtn');
+    if (startBtn) startBtn.onclick = runReconciliation;
+
+    const downloadBtn = $('downloadReconReportBtn');
+    if (downloadBtn) downloadBtn.onclick = () => {
+        if (reconReportUrl) window.open(reconReportUrl, '_blank');
+    };
+});
+
+async function runReconciliation() {
+    const mpFiles = $('reconMPFiles').files;
+    const shipFiles = $('reconShipFiles').files;
+    const peakFiles = $('reconPeakFiles').files;
+
+    if (!mpFiles.length || !shipFiles.length || !peakFiles.length) {
+        toast('กรุณาอัปโหลดไฟล์ให้ครบทั้ง 3 หมวดหมู่', 'error');
+        return;
+    }
+
+    const btn = $('startReconBtn');
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> กำลังประมวลผล...`;
+    initIcons();
+
+    const formData = new FormData();
+    for (let f of mpFiles) formData.append('marketplace', f);
+    for (let f of shipFiles) formData.append('shipnity', f);
+    for (let f of peakFiles) formData.append('peak', f);
+
+    try {
+        const res = await fetch('/api/reconciliation/process', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await res.json();
+
+        if (data.ok) {
+            renderReconResults(data.summary);
+            toast('ประมวลผลการกระทบยอดสำเร็จ', 'success');
+            $('reconLastRun').textContent = 'ล่าสุดเมื่อ: ' + new Date().toLocaleString('th-TH');
+        } else {
+            toast(data.error || 'เกิดข้อผิดพลาดในการประมวลผล', 'error');
+        }
+    } catch (e) {
+        console.error(e);
+        toast('การเชื่อมต่อล้มเหลว', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+        initIcons();
+    }
+}
+
+function renderReconResults(summary) {
+    const { total, issues, data, report_url } = summary;
+    reconReportUrl = report_url;
+
+    $('reconStatTotal').textContent = total.toLocaleString();
+    $('reconStatNormal').textContent = (total - issues).toLocaleString();
+    $('reconStatIssues').textContent = issues.toLocaleString();
+
+    $('reconSummary').classList.remove('hidden');
+    $('reconResultsArea').classList.remove('hidden');
+
+    const body = $('reconResultsBody');
+    body.innerHTML = '';
+
+    data.forEach(row => {
+        const tr = document.createElement('tr');
+        const isIssue = row.issue && row.issue !== '✅ ปกติ';
+        tr.className = isIssue ? 'bg-rose-50/50 dark:bg-rose-900/5' : '';
+        tr.setAttribute('data-is-issue', isIssue);
+
+        tr.innerHTML = `
+            <td class="p-4 font-mono">${row.order_id || '-'}</td>
+            <td class="p-4">${row.platform || '-'}</td>
+            <td class="p-4">${row.shipnity_id || '-'}</td>
+            <td class="p-4">${row.peak_invoice_id || '-'}</td>
+            <td class="p-4">
+                <span class="px-2 py-0.5 rounded-full ${row.status_peak === 'ยกเลิก' ? 'bg-rose-100 text-rose-600' : 'bg-emerald-100 text-emerald-600'}">
+                    ${row.status_peak || '-'}
+                </span>
+            </td>
+            <td class="p-4 font-bold ${isIssue ? 'text-rose-600' : 'text-emerald-600'}">${row.issue}</td>
+        `;
+        body.appendChild(tr);
+    });
+
+    $('filterReconAll').onclick = () => {
+        [...body.children].forEach(row => row.classList.remove('hidden'));
+    };
+    $('filterReconIssues').onclick = () => {
+        [...body.children].forEach(row => {
+            row.classList.toggle('hidden', row.getAttribute('data-is-issue') === 'false');
+        });
+    };
 }
