@@ -199,6 +199,33 @@ def init_db():
         )
     """)
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS leave_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            line_user_id TEXT,
+            username TEXT,
+            leave_type TEXT,
+            start_date TEXT,
+            end_date TEXT,
+            reason TEXT,
+            file_link TEXT,
+            status TEXT DEFAULT 'pending',
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS expense_claims (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            line_user_id TEXT,
+            username TEXT,
+            vendor TEXT,
+            amount REAL,
+            expense_date TEXT,
+            file_link TEXT,
+            status TEXT DEFAULT 'pending',
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS room_members (
             room_id INTEGER NOT NULL,
             username TEXT NOT NULL,
@@ -524,8 +551,118 @@ def init_db():
         ]
         cursor.executemany("INSERT INTO lunch_places (name, type, location) VALUES (?,?,?)", places)
     
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS drive_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            filename TEXT NOT NULL,
+            category TEXT,
+            amount REAL,
+            doc_date TEXT,
+            summary TEXT,
+            file_link TEXT,
+            user_id TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_drive_logs_created_at ON drive_logs(created_at)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_drive_logs_filename ON drive_logs(filename)")
+
     conn.commit()
     conn.close()
+
+
+def add_drive_log(filename, category=None, amount=None, doc_date=None, summary=None, file_link=None, user_id=None):
+    """Log a file upload/analysis event to the database."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO drive_logs (filename, category, amount, doc_date, summary, file_link, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (filename, category, amount, doc_date, summary, file_link, user_id))
+        log_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return log_id
+    except Exception as e:
+        print(f"❌ Error adding drive log: {e}")
+        return None
+
+def get_drive_logs(limit=50, offset=0, user_id=None):
+    """Retrieve recent drive logs."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        query = "SELECT * FROM drive_logs"
+        params = []
+        if user_id:
+            query += " WHERE user_id = ?"
+            params.append(user_id)
+        query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+        
+        cursor.execute(query, params)
+        columns = [col[0] for col in cursor.description]
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(zip(columns, row)) for row in rows]
+    except Exception as e:
+        print(f"❌ Error fetching drive logs: {e}")
+        return []
+
+def search_drive_logs(search_query, limit=20):
+    """Search drive logs by filename or summary."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        query = """
+            SELECT * FROM drive_logs 
+            WHERE filename LIKE ? OR summary LIKE ? OR category LIKE ?
+            ORDER BY created_at DESC LIMIT ?
+        """
+        like_query = f"%{search_query}%"
+        cursor.execute(query, (like_query, like_query, like_query, limit))
+        columns = [col[0] for col in cursor.description]
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(zip(columns, row)) for row in rows]
+    except Exception as e:
+        print(f"❌ Error searching drive logs: {e}")
+        return []
+
+def get_drive_stats():
+    """Get statistics for the dashboard."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Total files
+        cursor.execute("SELECT COUNT(*) FROM drive_logs")
+        total_files = cursor.fetchone()[0]
+        
+        # Total amount (if available)
+        cursor.execute("SELECT SUM(amount) FROM drive_logs WHERE amount IS NOT NULL")
+        total_amount = cursor.fetchone()[0] or 0
+        
+        # Files by category
+        cursor.execute("SELECT category, COUNT(*) as count FROM drive_logs GROUP BY category")
+        categories = dict(cursor.fetchall())
+        
+        # Recent activity (last 24h)
+        cursor.execute("SELECT COUNT(*) FROM drive_logs WHERE created_at > datetime('now', '-1 day')")
+        recent_count = cursor.fetchone()[0]
+        
+        conn.close()
+        return {
+            "total_files": total_files,
+            "total_amount": total_amount,
+            "categories": categories,
+            "recent_count": recent_count
+        }
+    except Exception as e:
+        print(f"❌ Error fetching drive stats: {e}")
+        return {}
+
 
 
 # --- WebSocket Status Management Functions ---
@@ -3066,3 +3203,65 @@ def add_lunch_place(name, type_str="", location="", added_by="Admin"):
     cursor.execute("INSERT INTO lunch_places (name, type, location, added_by) VALUES (?,?,?,?)", (name, type_str, location, added_by))
     conn.commit()
     conn.close()
+
+# --- New Features: Leave and Expense ---
+
+def add_leave_request(line_user_id, username, leave_type, start_date, end_date, reason):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO leave_requests (line_user_id, username, leave_type, start_date, end_date, reason)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (line_user_id, username, leave_type, start_date, end_date, reason))
+    req_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return req_id
+
+def update_leave_request_file(req_id, file_link):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE leave_requests SET file_link = ? WHERE id = ?", (file_link, req_id))
+    conn.commit()
+    conn.close()
+
+def get_recent_leave_request(line_user_id):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM leave_requests WHERE line_user_id = ? ORDER BY id DESC LIMIT 1", (line_user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def add_expense_claim(line_user_id, username, vendor, amount, expense_date, file_link):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO expense_claims (line_user_id, username, vendor, amount, expense_date, file_link)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (line_user_id, username, vendor, amount, expense_date, file_link))
+    claim_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return claim_id
+
+def get_line_config():
+    """Returns LINE integration configuration from app_settings."""
+    from database import get_app_setting
+    return {
+        "channel_access_token": get_app_setting("LINE_CHANNEL_ACCESS_TOKEN", ""),
+        "channel_secret": get_app_setting("LINE_CHANNEL_SECRET", ""),
+        "webhook_url": get_app_setting("LINE_WEBHOOK_URL", "")
+    }
+
+def search_drive_logs(query, limit=5):
+    """Search for logs related to Google Drive activities."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    q = f"%{query}%"
+    cursor.execute("SELECT * FROM drive_logs WHERE filename LIKE ? OR summary LIKE ? ORDER BY created_at DESC LIMIT ?", (q, q, limit))
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows

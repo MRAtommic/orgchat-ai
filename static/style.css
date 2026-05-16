@@ -156,6 +156,9 @@ body {
 
 /* Mobile-Specific Layout Utilities */
 @media (max-width: 1024px) {
+  .mobile-header {
+    display: flex !important;
+  }
   #navSidebar {
     position: fixed;
     top: 0;
@@ -194,10 +197,7 @@ body {
     opacity: 1;
   }
 
-  /* Mobile Grid Adjustments */
-  #fileList {
-    grid-template-columns: 1fr !important;
-  }
+  /* Mobile Grid Adjustments - Removed to allow Tailwind responsive classes to work */
 
   .view {
     padding-bottom: 80px;
@@ -205,7 +205,74 @@ body {
     min-height: 0 !important;
     max-height: 100%;
     overscroll-behavior-y: contain;
-    /* Prevent iOS rubber-banding outside chat */
+    width: 100%;
+    position: relative;
+  }
+}
+
+/* 🚀 Unified Messenger Fixes */
+#unifiedChatArea {
+  display: flex !important;
+  height: 100% !important;
+  width: 100% !important;
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  background: white;
+}
+
+.dark #unifiedChatArea {
+  background: #0f172a;
+}
+
+#chatSidebar {
+  width: 360px !important;
+  flex-shrink: 0 !important;
+  border-right: 1px solid rgba(0,0,0,0.05);
+  display: flex;
+  flex-direction: column;
+}
+
+.dark #chatSidebar {
+  border-right-color: rgba(255,255,255,0.05);
+}
+
+#chatMainArea {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  min-width: 0 !important;
+  background: #f8fafc;
+}
+
+.dark #chatMainArea {
+  background: #020617;
+}
+
+/* Fix for overlapping modals */
+.fixed.inset-0.z-\[10000\] {
+  backdrop-filter: blur(20px) !important;
+}
+
+/* ── Chat Bubble Layout Fix ── */
+.message-bubble-container {
+  max-width: 85% !important;
+}
+
+@media (max-width: 640px) {
+  #chatSidebar {
+    width: 100% !important;
+    position: absolute;
+    inset: 0;
+    z-index: 50;
+  }
+  
+  #chatSidebar.hidden-mobile {
+    display: none !important;
+  }
+  
+  #chatMainArea {
+    width: 100% !important;
   }
 }
 
@@ -283,12 +350,12 @@ body {
 
 /* Mobile Touch & Navigation */
 .mobile-header {
-  display: none;
+  display: none !important;
 }
 
 @media (max-width: 1024px) {
   .mobile-header {
-    display: flex;
+    display: flex !important;
     height: 60px;
     background: rgba(255, 255, 255, 0.8) !important;
     backdrop-filter: blur(12px);
@@ -297,8 +364,9 @@ body {
     padding: 0 1rem;
     position: sticky;
     top: 0;
-    z-index: 80;
+    z-index: 50;
   }
+}
 
   .dark .mobile-header {
     background: rgba(15, 23, 42, 0.8) !important;

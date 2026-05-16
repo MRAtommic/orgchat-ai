@@ -41,7 +41,11 @@ const state = {
   sidebarSearch: '',
   analyzedWaveforms: new Map(),
   onlineUsers: [],      // List of usernames
-  serverOffset: 0       // ms offset (server - client)
+  serverOffset: 0,      // ms offset (server - client)
+  drive: {
+    currentFolderId: 'root',
+    history: [] // [{id, name}]
+  }
 };
 
 // ─── Socket.IO Global ──────────────────────────
@@ -716,6 +720,7 @@ function toggleAdminFeatures(show) {
     $('nav-admin'),
     $('nav-admin-mobile'),
     $('nav-reconciliation'),
+    $('nav-line-manager'),
     $('auditLogSection')
   ];
 
@@ -996,14 +1001,73 @@ function renderLeaderboard(topPosters) {
 }
 
 async function loadAdminSettings() {
+  const form = $('adminSettingsForm');
+  if (!form) return;
+
   try {
     const data = await apiFetch('/api/admin/settings');
     if (data && data.ok) {
       state.appSettings = data.settings;
+      // Fill all inputs in the form
+      const inputs = form.querySelectorAll('input[name]');
+      inputs.forEach(input => {
+        const key = input.name;
+        if (state.appSettings[key] !== undefined) {
+          input.value = state.appSettings[key];
+        }
+      });
+      // Handle special checkboxes if any (legacy or new)
       const chk = $('settingAllowUserEdit');
       if (chk) chk.checked = state.appSettings.allow_user_edit === '1';
     }
-  } catch (e) { }
+  } catch (e) {
+    console.error('Failed to load settings:', e);
+  }
+}
+
+async function saveAdminSettings(event) {
+  if (event) event.preventDefault();
+  const form = $('adminSettingsForm');
+  if (!form) return;
+
+  const btn = (event && event.submitter) || form.querySelector('button[type="submit"]');
+  const originalText = btn ? btn.innerHTML : null;
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> กำลังบันทึก...`;
+    initIcons();
+  }
+
+  try {
+    const formData = new FormData(form);
+    const settings = {};
+    formData.forEach((value, key) => {
+      settings[key] = value;
+    });
+
+    const res = await apiFetch('/api/admin/settings', {
+      method: 'POST',
+      body: JSON.stringify(settings)
+    });
+
+    if (res.ok) {
+      toast('บันทึกการตั้งค่าเรียบร้อยแล้ว', 'success');
+      // Update local state
+      Object.assign(state.appSettings, settings);
+    } else {
+      toast(res.error || 'เกิดข้อผิดพลาดในการบันทึก', 'error');
+    }
+  } catch (e) {
+    console.error('Save settings error:', e);
+    toast('ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้', 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = originalText;
+      initIcons();
+    }
+  }
 }
 
 async function saveAdminSetting(key, value) {
@@ -1015,15 +1079,14 @@ async function saveAdminSetting(key, value) {
     if (res.ok) {
       state.appSettings[key] = value;
       toast('บันทึกการตั้งค่าแล้ว', 'success');
-      // Reload files to reflect changes in UI
-      loadFiles();
+      if (typeof loadFiles === 'function') loadFiles();
     }
   } catch (e) {
     toast('บันทึกการตั้งค่าล้มเหลว', 'error');
   }
 }
 
-// Global listener for settings toggle (defined in index.html)
+// Global listener for settings toggle (legacy support if needed)
 document.addEventListener('DOMContentLoaded', () => {
   const toggle = $('settingAllowUserEdit');
   if (toggle) {
@@ -1031,7 +1094,209 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+
+// ─── Quotation System Logic ─────────────────
+let quotationItems = [];
+
+function renderQuotationItems() {
+  const container = $('qtItemsContainer');
+  const tbody = $('prevItemsBody');
+  if (!container || !tbody) return;
+  
+  container.innerHTML = '';
+  tbody.innerHTML = '';
+  
+  let subtotal = 0;
+  
+  quotationItems.forEach((item, index) => {
+    const amount = item.qty * item.price;
+    subtotal += amount;
+    
+    // Admin Form
+    container.innerHTML += `
+      <div class="flex items-center gap-2 p-3 bg-surface-50 dark:bg-surface-800 rounded-xl border border-surface-100 dark:border-surface-700">
+        <div class="flex-1 space-y-2">
+          <input type="text" class="input-field text-xs py-1" placeholder="รายการสินค้า" value="${item.desc}" onchange="updateQtItem(${index}, 'desc', this.value)">
+          <div class="flex gap-2">
+            <input type="number" class="input-field text-xs py-1 w-20" placeholder="จำนวน" value="${item.qty}" onchange="updateQtItem(${index}, 'qty', this.value)">
+            <input type="number" class="input-field text-xs py-1 flex-1" placeholder="ราคา/หน่วย" value="${item.price}" onchange="updateQtItem(${index}, 'price', this.value)">
+          </div>
+        </div>
+        <button onclick="removeQtItem(${index})" class="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
+          <i data-lucide="trash-2" class="w-4 h-4"></i>
+        </button>
+      </div>
+    `;
+    
+    // Preview Table
+    tbody.innerHTML += `
+      <tr class="border-b border-surface-100 last:border-0">
+        <td class="py-2 px-3 text-center">${index + 1}</td>
+        <td class="py-2 px-3">${item.desc || '-'}</td>
+        <td class="py-2 px-3 text-right">${Number(item.qty).toLocaleString()}</td>
+        <td class="py-2 px-3 text-right">${Number(item.price).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+        <td class="py-2 px-3 text-right font-bold">${amount.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+      </tr>
+    `;
+  });
+  
+  if (quotationItems.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" class="py-4 text-center text-surface-400 italic">ไม่มีรายการสินค้า</td></tr>`;
+  }
+  
+  initIcons();
+  
+  // Update Totals
+  const discount = parseFloat($('qtDiscount')?.value || 0);
+  const afterDiscount = subtotal - discount;
+  const vat = afterDiscount * 0.07;
+  const grandTotal = afterDiscount + vat;
+  
+  if ($('prevSubTotal')) $('prevSubTotal').innerText = subtotal.toLocaleString(undefined, {minimumFractionDigits: 2});
+  if ($('prevDiscount')) $('prevDiscount').innerText = discount.toLocaleString(undefined, {minimumFractionDigits: 2});
+  if ($('prevAfterDiscount')) $('prevAfterDiscount').innerText = afterDiscount.toLocaleString(undefined, {minimumFractionDigits: 2});
+  if ($('prevVat')) $('prevVat').innerText = vat.toLocaleString(undefined, {minimumFractionDigits: 2});
+  if ($('prevGrandTotal')) $('prevGrandTotal').innerText = grandTotal.toLocaleString(undefined, {minimumFractionDigits: 2});
+}
+
+function addQtItem() {
+  quotationItems.push({ desc: '', qty: 1, price: 0 });
+  renderQuotationItems();
+}
+
+function removeQtItem(index) {
+  quotationItems.splice(index, 1);
+  renderQuotationItems();
+}
+
+function updateQtItem(index, field, value) {
+  quotationItems[index][field] = field === 'desc' ? value : parseFloat(value) || 0;
+  renderQuotationItems();
+}
+
+function updateQuotationPreview() {
+  const fields = [
+    { id: 'qtCustomerName', prev: 'prevCustName' },
+    { id: 'qtCustomerAddress', prev: 'prevCustAddress' },
+    { id: 'qtCustomerTaxId', prev: 'prevCustTaxId' },
+    { id: 'qtCustomerContact', prev: 'prevCustContact' },
+    { id: 'qtNo', prev: 'prevQtNo' },
+    { id: 'qtDate', prev: 'prevQtDate' },
+    { id: 'sellerName', prev: 'prevSellerName' }
+  ];
+  
+  fields.forEach(f => {
+    const el = $(f.id);
+    const prev = $(f.prev);
+    if (el && prev) {
+      prev.innerText = el.value || (f.id.includes('qtNo') ? 'QT-000' : '-');
+    }
+  });
+
+  // Special handling for Seller Info (multiple fields to one <p>)
+  const sAddr = $('sellerAddress')?.value || '';
+  const sTax = $('sellerTaxId')?.value || '';
+  const sPhone = $('sellerPhone')?.value || '';
+  const prevSInfo = $('prevSellerInfo');
+  if (prevSInfo) {
+    prevSInfo.innerHTML = `${sAddr}<br>เลขประจำตัวผู้เสียภาษี: ${sTax}<br>โทร: ${sPhone}`;
+  }
+
+  renderQuotationItems();
+}
+
+async function generateAndSaveQuotation() {
+  const btn = $('generatePdfBtn');
+  if (!btn) return;
+  
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> กำลังสร้าง...`;
+  initIcons();
+  
+  try {
+    const element = $('quotationPreview');
+    const opt = {
+      margin:       0,
+      filename:     `${$('qtNo').value || 'Quotation'}.pdf`,
+      image:        { type: 'jpeg', quality: 0.98 },
+      html2canvas:  { scale: 2, useCORS: true },
+      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+    
+    // Generate PDF Blob
+    const pdfBlob = await html2pdf().set(opt).from(element).output('blob');
+    
+    // Prepare Data
+    const discount = parseFloat($('qtDiscount')?.value || 0);
+    const subtotal = quotationItems.reduce((sum, item) => sum + (item.qty * item.price), 0);
+    const qtData = {
+      quotation_no: $('qtNo')?.value,
+      customer_name: $('qtCustomerName')?.value,
+      customer_contact: $('qtCustomerContact')?.value,
+      subtotal: subtotal,
+      total_discount: discount,
+      grand_total: (subtotal - discount) * 1.07
+    };
+    
+    const formData = new FormData();
+    formData.append('quotation_pdf', pdfBlob, opt.filename);
+    formData.append('quotation_data', JSON.stringify(qtData));
+    
+    // Upload to Server
+    const response = await fetch('/api/quotation/create', {
+      method: 'POST',
+      body: formData
+    });
+    
+    const result = await response.json();
+    if (result.ok) {
+      toast('สร้างใบเสนอราคาและบันทึกเรียบร้อย!', 'success');
+      // Download locally as well for the user
+      html2pdf().set(opt).from(element).save();
+    } else {
+      toast(result.error || 'เกิดข้อผิดพลาดในการบันทึก', 'error');
+    }
+    
+  } catch (err) {
+    console.error(err);
+    toast('เกิดข้อผิดพลาดในการสร้าง PDF', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
+    initIcons();
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Bind Quotation events
+  const qtInputs = [
+    'qtNo', 'qtDate', 'qtCustomerName', 'qtCustomerAddress', 'qtCustomerTaxId', 'qtCustomerContact', 'qtDiscount',
+    'sellerName', 'sellerAddress', 'sellerTaxId', 'sellerPhone'
+  ];
+  qtInputs.forEach(id => {
+    const el = $(id);
+    if (el) el.addEventListener('input', updateQuotationPreview);
+  });
+  
+  if ($('addQtItemBtn')) $('addQtItemBtn').addEventListener('click', addQtItem);
+  if ($('generatePdfBtn')) $('generatePdfBtn').addEventListener('click', generateAndSaveQuotation);
+  
+  // Add initial item
+  if (quotationItems.length === 0) addQtItem();
+  
+  // Set default date
+  if ($('qtDate')) {
+    const today = new Date().toISOString().split('T')[0];
+    $('qtDate').value = today;
+  }
+  
+  // Update initial preview
+  updateQuotationPreview();
+});
+
 // ─── Smart Dashboard Logic ─────────────────
+
 async function loadDashboard() {
   const summaryEl = $('dashAISummary');
   const greetingEl = $('dashGreeting');
@@ -1047,6 +1312,10 @@ async function loadDashboard() {
   try {
     const data = await apiFetch('/api/dashboard/data');
     if (data.ok) {
+      // Refresh Weather & System Status
+      if (typeof fetchWeather === 'function') fetchWeather();
+      if (typeof updateSystemStatus === 'function') updateSystemStatus('Live');
+
       if (greetingEl) {
           const hour = new Date().getHours();
           let msg = "สวัสดีตอนเช้าครับ";
@@ -1139,6 +1408,48 @@ async function loadDashboard() {
                </div>
              </div>
            `).join('');
+        }
+      }
+
+      // --- Drive Insights Populating ---
+      if ($('dashStatDriveFiles')) $('dashStatDriveFiles').textContent = data.stats.drive_files || 0;
+      if ($('dashStatTotalAmount')) $('dashStatTotalAmount').textContent = '฿' + new Intl.NumberFormat().format(data.stats.total_amount || 0);
+      const catContainer = $('dashDriveCatContainer');
+      if (catContainer && data.drive_categories) {
+        const cats = Object.entries(data.drive_categories);
+        if (cats.length > 0) {
+          catContainer.innerHTML = cats.map(([name, count]) => `
+            <div class="flex items-center gap-1.5 px-2 py-1 bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800 rounded-lg">
+              <span class="text-[9px] font-black text-brand-600 uppercase">${name}</span>
+              <span class="text-[9px] font-bold text-surface-400">(${count})</span>
+            </div>
+          `).join('');
+        }
+      }
+
+      const logContainer = $('dashRecentDriveLogs');
+      if (logContainer && data.recent_drive_logs) {
+        if (data.recent_drive_logs.length === 0) {
+          logContainer.innerHTML = '<div class="text-[10px] text-surface-400 p-2 text-center">ยังไม่มีข้อมูลการจัดเก็บ</div>';
+        } else {
+          logContainer.innerHTML = data.recent_drive_logs.map(log => `
+            <div class="flex items-center gap-3 p-3 bg-white dark:bg-surface-900 rounded-2xl border border-surface-100 dark:border-surface-800 hover:shadow-md transition-all group cursor-pointer" onclick="window.open('${log.file_link}', '_blank')">
+              <div class="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-900/20 text-amber-600 flex items-center justify-center group-hover:bg-amber-600 group-hover:text-white transition-all">
+                <i data-lucide="zap" class="w-5 h-5"></i>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="text-xs font-bold truncate text-surface-700 dark:text-surface-200">${log.filename}</div>
+                <div class="flex items-center gap-2 mt-0.5">
+                   <span class="text-[9px] font-black text-brand-600 uppercase bg-brand-50 dark:bg-brand-900/40 px-1 rounded">${log.category}</span>
+                   ${log.amount ? `<span class="text-[9px] font-black text-rose-600">฿${new Intl.NumberFormat().format(log.amount)}</span>` : ''}
+                   <span class="text-[8px] text-surface-400 font-bold">${formatRelativeTime(log.created_at)}</span>
+                </div>
+              </div>
+              <div class="text-surface-300 group-hover:text-brand-600">
+                <i data-lucide="external-link" class="w-4 h-4"></i>
+              </div>
+            </div>
+          `).join('');
         }
       }
 
@@ -1265,6 +1576,7 @@ function showWeatherDetail() {
   // If no weather data yet, fetch it first then show
   if (!state.weather) {
     modal.classList.remove('hidden');
+    modal.classList.add('flex', 'items-center', 'justify-center');
     if (hourlyList) hourlyList.innerHTML = `
       <div class="flex flex-col items-center justify-center py-10 gap-4 text-surface-400">
         <div class="w-10 h-10 border-4 border-brand-100 border-t-brand-600 rounded-full animate-spin"></div>
@@ -1288,9 +1600,7 @@ function showWeatherDetail() {
     const nowHour = new Date().getHours();
     
     // Create horizontal scrollable hourly forecast
-    hourlyList.style.display = 'flex';
-    hourlyList.style.overflowX = 'auto';
-    hourlyList.classList.add('no-scrollbar', 'gap-4', 'pb-4');
+    hourlyList.classList.add('flex', 'overflow-x-auto', 'no-scrollbar', 'gap-4', 'pb-4');
     
     hourlyList.innerHTML = hourly.time.slice(nowHour, nowHour + 24).map((time, i) => {
       const idx = nowHour + i;
@@ -1352,16 +1662,22 @@ function showWeatherDetail() {
   }
 
   modal.classList.remove('hidden');
+  modal.classList.add('flex', 'items-center', 'justify-center');
   lucide.createIcons();
 }
 
 
 // ─── View Management ────────────────────────
 function switchView(viewId) {
+  console.log("🚀 Switching view to:", viewId);
   state.currentView = viewId;
-  navItems.forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.view === viewId);
-  });
+  
+  // Highlight active menu item
+  if (navItems) {
+    navItems.forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.view === viewId);
+    });
+  }
 
   document.querySelectorAll('.view').forEach(sec => {
     sec.classList.toggle('hidden', sec.id !== `view-${viewId}`);
@@ -1396,6 +1712,7 @@ function switchView(viewId) {
   if (viewId === 'wiki') { loadWikiPages(); renderWikiContent(); }
   if (viewId === 'admin') initAdminPanel();
   if (viewId === 'kb') loadFiles();
+  if (viewId === 'drive') loadDriveContents(state.drive.currentFolderId);
   if (viewId === 'summary') renderSummary();
   if (viewId === 'whiteboard') initWhiteboard();
   if (viewId === 'leave') loadLeaveData();
@@ -1611,6 +1928,11 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     };
   }
+
+  const refreshDriveBtn = $('refreshDriveBtn');
+  if (refreshDriveBtn) {
+    refreshDriveBtn.onclick = () => loadDriveContents(state.drive.currentFolderId);
+  }
 });
 
 function toggleSidebar(force) {
@@ -1708,12 +2030,21 @@ if (themeToggle) {
   });
 
   // AI Productivity Listeners
-  if (aiGenKanbanBtn) aiGenKanbanBtn.onclick = () => aiGenKanbanModal.classList.remove('hidden');
-  if (closeAiGenModal) closeAiGenModal.onclick = () => aiGenKanbanModal.classList.add('hidden');
+  if (aiGenKanbanBtn) aiGenKanbanBtn.onclick = () => {
+    aiGenKanbanModal.classList.remove('hidden');
+    aiGenKanbanModal.classList.add('flex', 'items-center', 'justify-center');
+  };
+  if (closeAiGenModal) closeAiGenModal.onclick = () => {
+    aiGenKanbanModal.classList.add('hidden');
+    aiGenKanbanModal.classList.remove('flex', 'items-center', 'justify-center');
+  };
   if (confirmAiGenBtn) confirmAiGenBtn.onclick = handleAiGenKanban;
 
   if (bulkCompareBtn) bulkCompareBtn.onclick = handleBulkCompare;
-  if (closeAiCompareModal) closeAiCompareModal.onclick = () => aiCompareModal.classList.add('hidden');
+  if (closeAiCompareModal) closeAiCompareModal.onclick = () => {
+    aiCompareModal.classList.add('hidden');
+    aiCompareModal.classList.remove('flex', 'items-center', 'justify-center');
+  };
 
   // Theme Designer Listeners
   if (customAccentInput) {
@@ -1859,8 +2190,14 @@ async function loadHistory(isBackground = false) {
 }
 
 // ─── API Key Modal ────────────────────────────
-function showApiModal() { apiModal.classList.remove('hidden'); }
-function hideApiModal() { apiModal.classList.add('hidden'); }
+function showApiModal() { 
+  apiModal.classList.remove('hidden'); 
+  apiModal.classList.add('flex', 'items-center', 'justify-center');
+}
+function hideApiModal() { 
+  apiModal.classList.add('hidden'); 
+  apiModal.classList.remove('flex', 'items-center', 'justify-center');
+}
 
 apiKeyToggle.addEventListener('click', () => {
   const type = apiKeyInput.type === 'password' ? 'text' : 'password';
@@ -2301,7 +2638,10 @@ function closePdfViewer() {
   const modal = $('pdfViewerModal');
   const frame = $('pdfFrame');
   const csvTarget = $('csvTableTarget');
-  if (modal) modal.classList.add('hidden');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex', 'items-center', 'justify-center');
+  }
   if (frame) frame.src = '';
   if (csvTarget) csvTarget.innerHTML = '';
 }
@@ -2424,7 +2764,11 @@ async function openKBCategorySettings(id) {
   // 3. Render the selectable list
   renderCatUserList();
   
-  $('kbCategorySettingsModal').classList.remove('hidden');
+  const m = $('kbCategorySettingsModal');
+  if (m) {
+    m.classList.remove('hidden');
+    m.classList.add('flex', 'items-center', 'justify-center');
+  }
   initIcons();
 }
 
@@ -2498,7 +2842,11 @@ async function saveCatSettings() {
     
     if (res.ok) {
       toast('บันทึกการตั้งค่าแล้ว', 'success');
-      $('kbCategorySettingsModal').classList.add('hidden');
+      const m = $('kbCategorySettingsModal');
+      if (m) {
+        m.classList.add('hidden');
+        m.classList.remove('flex', 'items-center', 'justify-center');
+      }
       loadCategories(); // Refresh icons and state
     } else {
       toast(res.error || 'บันทึกไม่สำเร็จ', 'error');
@@ -2679,10 +3027,12 @@ function updateBulkBar() {
   const count = $('selectedCount');
   if (!bar) return;
   if (cbs.length > 0) {
-    bar.style.display = 'flex';
+    bar.classList.remove('hidden');
+    bar.classList.add('flex');
     if (count) count.textContent = `${cbs.length} รายการ`;
   } else {
-    bar.style.display = 'none';
+    bar.classList.add('hidden');
+    bar.classList.remove('flex');
   }
 }
 
@@ -2896,7 +3246,7 @@ function appendMessage(role, html, sources = [], scroll = true, msgId = null) {
 
   const icon = isUser ? 'user' : 'bot';
   const avatarClass = isUser ? 'bg-surface-800' : 'bg-brand-600';
-  const name = isUser ? 'USER' : 'ORG AI';
+  const name = isUser ? 'USER' : 'น้องพั้น (Nong Punch)';
   const bubbleClass = isUser
     ? 'bubble-me bg-brand-600 text-white rounded-2xl rounded-tr-none'
     : 'bubble-them bg-surface-100 dark:bg-surface-800 text-surface-900 dark:text-surface-100 rounded-2xl rounded-tl-none border border-surface-200 dark:border-surface-700';
@@ -3122,7 +3472,7 @@ function showTyping() {
       <i data-lucide="bot" class="w-4 h-4"></i>
     </div>
     <div class="flex flex-col gap-1.5 items-start">
-      <span class="text-[9px] font-bold text-surface-400 tracking-widest uppercase">ORG AI</span>
+      <span class="text-[9px] font-bold text-surface-400 tracking-widest uppercase">น้องพั้น (Nong Punch)</span>
       <div class="typing-indicator">
         <div class="dot"></div>
         <div class="dot"></div>
@@ -4236,6 +4586,7 @@ function editPost(pid) {
 
 closeEditPostModal.onclick = () => {
   editPostModal.classList.add('hidden');
+  editPostModal.classList.remove('flex', 'items-center', 'justify-center');
   currentEditingPostId = null;
 };
 
@@ -4260,6 +4611,7 @@ saveEditPostBtn.onclick = async () => {
 
     toast('แก้ไขโพสต์สำเร็จ', 'success');
     editPostModal.classList.add('hidden');
+    editPostModal.classList.remove('flex', 'items-center', 'justify-center');
     loadPosts();
   } catch (e) {
     toast('แก้ไขไม่สำเร็จ: ' + e.message, 'error');
@@ -4528,7 +4880,7 @@ function showReactionPicker(pid) {
   if (_pickerTimers[pid]) { clearTimeout(_pickerTimers[pid]); delete _pickerTimers[pid]; }
   const el = document.getElementById(`rpicker-${pid}`);
   if (!el) return;
-  el.style.display = 'block';
+  el.classList.remove('hidden');
   // Trigger animation
   requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'scale(1) translateY(0)'; });
 }
@@ -4539,7 +4891,7 @@ function hideReactionPickerDelayed(pid) {
     if (el) {
       el.style.opacity = '0';
       el.style.transform = 'scale(0.85) translateY(4px)';
-      setTimeout(() => { if (el) el.style.display = 'none'; }, 160);
+      setTimeout(() => { if (el) el.classList.add('hidden'); }, 160);
     }
     delete _pickerTimers[pid];
   }, 150); // 150ms grace period - enough to move mouse to picker
@@ -4864,6 +5216,7 @@ async function openCsvEditor(fileId) {
     renderCsvEditorRows(res.data);
 
     csvEditorModal.classList.remove('hidden');
+    csvEditorModal.classList.add('flex', 'items-center', 'justify-center');
     initIcons();
   } catch (e) {
     toast('Error loading CSV: ' + e.message, 'error');
@@ -4944,6 +5297,7 @@ saveCsvBtn.onclick = async () => {
 
     toast('บันทึกและอัปเดตข้อมูลสำเร็จ!', 'success');
     csvEditorModal.classList.add('hidden');
+    csvEditorModal.classList.remove('flex', 'items-center', 'justify-center');
     loadFiles();
     loadStatus();
   } catch (e) {
@@ -5450,6 +5804,7 @@ function openAddModal(dateStr = null) {
   }
 
   scheduleModal.classList.remove('hidden');
+  scheduleModal.classList.add('flex', 'items-center', 'justify-center');
   initIcons();
   loadScheduleVisibilityData();
   scheduleTitleInput.focus();
@@ -5721,7 +6076,10 @@ if (archivePastSchedulesBtn) {
 
 
 
-closeScheduleModal.onclick = () => scheduleModal.classList.add('hidden');
+closeScheduleModal.onclick = () => {
+  scheduleModal.classList.add('hidden');
+  scheduleModal.classList.remove('flex', 'items-center', 'justify-center');
+};
 
 saveScheduleBtn.onclick = async () => {
   const title = scheduleTitleInput.value.trim();
@@ -6461,6 +6819,7 @@ async function openTxtEditor(fileId) {
 
     txtEditorContent.value = res.content;
     txtEditorModal.classList.remove('hidden');
+    txtEditorModal.classList.add('flex', 'items-center', 'justify-center');
     initIcons();
   } catch (e) {
     toast('Error loading text: ' + e.message, 'error');
@@ -6483,6 +6842,7 @@ saveTxtBtn.onclick = async () => {
 
     toast('บันทึกและอัปเดตข้อมูลสำเร็จ!', 'success');
     txtEditorModal.classList.add('hidden');
+    txtEditorModal.classList.remove('flex', 'items-center', 'justify-center');
     loadFiles();
     loadStatus();
   } catch (e) {
@@ -6682,7 +7042,10 @@ window.initGoogleSignIn = function () {
     { theme: 'outline', size: 'large', width: container.parentElement.offsetWidth || 300, shape: 'pill' }
   );
 
-  if (separator) separator.style.display = 'flex';
+  if (separator) {
+    separator.classList.remove('hidden');
+    separator.classList.add('flex');
+  }
 };
 
 // Check if google is already loaded (in case script async loaded before app.js)
@@ -7558,6 +7921,7 @@ function openLightbox(url) {
   img.src = url;
   downloadBtn.href = url;
   lightbox.classList.remove('hidden');
+  lightbox.classList.add('flex', 'items-center', 'justify-center');
   document.body.style.overflow = 'hidden';
   initIcons();
 }
@@ -7566,6 +7930,7 @@ function closeLightbox() {
   const lightbox = $('imageLightbox');
   if (!lightbox) return;
   lightbox.classList.add('hidden');
+  lightbox.classList.remove('flex', 'items-center', 'justify-center');
   document.body.style.overflow = '';
 }
 
@@ -7663,6 +8028,7 @@ async function sendUnifiedMessage() {
 // ─── Group Creation Logic ────────────────────
 async function openCreateGroup() {
   createGroupModal.classList.remove('hidden');
+  createGroupModal.classList.add('flex', 'items-center', 'justify-center');
   memberSelectList.innerHTML = '<div class="text-center p-4 opacity-50 text-xs">กำลังโหลดรายชื่อ...</div>';
 
   try {
@@ -7705,6 +8071,7 @@ async function handleCreateGroup() {
     if (data.ok) {
       toast('สร้างกลุ่มสำเร็จ!', 'success');
       createGroupModal.classList.add('hidden');
+      createGroupModal.classList.remove('flex', 'items-center', 'justify-center');
       newGroupName.value = '';
       loadChatList();
       switchChat('room', data.room_id, name);
@@ -7724,6 +8091,7 @@ async function openAddMemberModal() {
   if (!state.currentChat || state.currentChat.type !== 'room') return;
   addMemberSelectList.innerHTML = '<div class="text-center py-4 opacity-50 text-xs">กำลังโหลดรายชื่อ...</div>';
   addMemberModal.classList.remove('hidden');
+  addMemberModal.classList.add('flex', 'items-center', 'justify-center');
 
   try {
     const data = await apiFetch('/api/chat/users');
@@ -7769,6 +8137,7 @@ async function handleAddMembers() {
     if (data.ok) {
       toast('เพิ่มสมาชิกเรียบร้อย!', 'success');
       addMemberModal.classList.add('hidden');
+      addMemberModal.classList.remove('flex', 'items-center', 'justify-center');
       document.querySelectorAll('input[name="newMember"]').forEach(i => i.checked = false);
     } else {
       toast(data.error, 'error');
@@ -7787,6 +8156,7 @@ let allUsersForDm = [];
 
 async function openStartDm() {
   startDmModal.classList.remove('hidden');
+  startDmModal.classList.add('flex', 'items-center', 'justify-center');
   dmUserSelectList.innerHTML = '<div class="text-center p-4 opacity-50 text-xs text-bold uppercase tracking-widest">กำลังโหลดรายชื่อ...</div>';
   searchDmUser.value = '';
 
@@ -7825,6 +8195,7 @@ function renderDmUserList(users) {
 
 function startPrivateChat(username, displayName) {
   startDmModal.classList.add('hidden');
+  startDmModal.classList.remove('flex', 'items-center', 'justify-center');
   switchChat('dm', username, displayName);
 }
 
@@ -7941,6 +8312,7 @@ if (closeGroupChat) {
   closeGroupChat.onclick = () => {
     state.groupChat.isOpen = false;
     groupChatModal.classList.add('hidden');
+    groupChatModal.classList.remove('flex', 'items-center', 'justify-center');
     // Also clear currentChat to allow notifications if we are not in that route
     if (state.currentView !== 'dm' && state.currentView !== 'ai-chat') {
       state.currentChat = { type: null, id: null, name: null };
@@ -8021,12 +8393,21 @@ if (groupChatMessages) {
 
 if (openCreateGroupModal) openCreateGroupModal.onclick = openCreateGroup;
 if (confirmCreateGroup) confirmCreateGroup.onclick = handleCreateGroup;
-if (cancelCreateGroup) cancelCreateGroup.onclick = () => createGroupModal.classList.add('hidden');
+if (cancelCreateGroup) cancelCreateGroup.onclick = () => {
+  createGroupModal.classList.add('hidden');
+  createGroupModal.classList.remove('flex', 'items-center', 'justify-center');
+};
 if (openStartDmModal) openStartDmModal.onclick = openStartDm;
 if (addMemberBtn) addMemberBtn.onclick = openAddMemberModal;
-if (cancelAddMember) cancelAddMember.onclick = () => addMemberModal.classList.add('hidden');
+if (cancelAddMember) cancelAddMember.onclick = () => {
+  addMemberModal.classList.add('hidden');
+  addMemberModal.classList.remove('flex', 'items-center', 'justify-center');
+};
 if (confirmAddMember) confirmAddMember.onclick = handleAddMembers;
-if (closeStartDmModal) closeStartDmModal.onclick = () => startDmModal.classList.add('hidden');
+if (closeStartDmModal) closeStartDmModal.onclick = () => {
+  startDmModal.classList.add('hidden');
+  startDmModal.classList.remove('flex', 'items-center', 'justify-center');
+};
 if (closeGroupChatMobile) closeGroupChatMobile.onclick = closeMobileChat;
 if (editGroupBtn) editGroupBtn.onclick = openEditGroupModal;
 
@@ -8078,6 +8459,7 @@ async function openRoomMembersPanel() {
   if (!panel || !list) return;
 
   panel.classList.remove('hidden');
+  panel.classList.add('flex', 'items-center', 'justify-center');
   list.innerHTML = '<div class="text-center py-6 text-surface-400 text-xs animate-pulse">กำลังโหลดสมาชิก...</div>';
   initIcons();
 
@@ -8117,7 +8499,11 @@ async function openRoomMembersPanel() {
 }
 
 function closeRoomMembersPanel() {
-  $('roomMembersPanel')?.classList.add('hidden');
+  const panel = $('roomMembersPanel');
+  if (panel) {
+    panel.classList.add('hidden');
+    panel.classList.remove('flex', 'items-center', 'justify-center');
+  }
 }
 
 async function removeMemberFromRoom(roomId, username, rowEl) {
@@ -8147,7 +8533,10 @@ if (chatHeaderAvatar) {
     }
   };
 }
-if (cancelEditGroup) cancelEditGroup.onclick = () => editGroupModal.classList.add('hidden');
+if (cancelEditGroup) cancelEditGroup.onclick = () => {
+  editGroupModal.classList.add('hidden');
+  editGroupModal.classList.remove('flex', 'items-center', 'justify-center');
+};
 if (confirmEditGroup) confirmEditGroup.onclick = handleEditGroup;
 
 if (groupAvatarUpload) {
@@ -8211,6 +8600,7 @@ function openEditGroupModal() {
     initIcons();
   }
   editGroupModal.classList.remove('hidden');
+  editGroupModal.classList.add('flex', 'items-center', 'justify-center');
 }
 
 async function handleEditGroup() {
@@ -8238,6 +8628,7 @@ async function handleEditGroup() {
     if (data.ok) {
       toast('อัปเดตข้อมูลกลุ่มสำเร็จ', 'success');
       editGroupModal.classList.add('hidden');
+      editGroupModal.classList.remove('flex', 'items-center', 'justify-center');
       loadChatList(); // Refresh sidebar to see new name/avatar
       // Update current chat state
       state.currentChat.name = name;
@@ -8632,7 +9023,8 @@ function initAdminChatPanel() {
     const panel = document.createElement('div');
     panel.id = 'adminChatModal';
     // Floating panel pinned to bottom-right, NOT full-screen overlay
-    panel.style.cssText = 'position:fixed;bottom:80px;right:16px;z-index:9999;width:420px;max-width:calc(100vw - 32px);max-height:80vh;display:none;flex-direction:column;box-shadow:0 25px 60px rgba(0,0,0,0.35);border-radius:16px;overflow:hidden;border:1px solid rgba(0,0,0,0.1);';
+    panel.classList.add('hidden', 'flex-col');
+    panel.style.cssText = 'position:fixed;bottom:80px;right:16px;z-index:9999;width:420px;max-width:calc(100vw - 32px);max-height:80vh;box-shadow:0 25px 60px rgba(0,0,0,0.35);border-radius:16px;overflow:hidden;border:1px solid rgba(0,0,0,0.1);';
     panel.innerHTML = `
       <div style="background:#dc2626;color:white;" class="flex items-center justify-between p-3">
         <div class="flex items-center gap-2">
@@ -8673,7 +9065,8 @@ function initAdminChatPanel() {
 function openAdminChatPanel() {
   const modal = document.getElementById('adminChatModal');
   if (!modal) return;
-  modal.style.display = 'flex';
+  modal.classList.remove('hidden');
+  modal.classList.add('flex', 'items-center', 'justify-center');
   adminChatSetTab('ai');
   initIcons();
 }
@@ -8681,7 +9074,8 @@ function openAdminChatPanel() {
 function closeAdminChatPanel() {
   const modal = document.getElementById('adminChatModal');
   if (!modal) return;
-  modal.style.display = 'none';
+  modal.classList.add('hidden');
+  modal.classList.remove('flex', 'items-center', 'justify-center');
 }
 
 function adminChatSetTab(tab) {
@@ -9032,13 +9426,13 @@ function openEditUserModal(username) {
   }
 
   $('editUserModal').classList.remove('hidden');
-  $('editUserModal').style.display = 'flex';
+  $('editUserModal').classList.add('flex', 'items-center', 'justify-center');
 }
 
 function closeEditUserModal() {
   currentEditingUsername = null;
   $('editUserModal').classList.add('hidden');
-  $('editUserModal').style.display = 'none';
+  $('editUserModal').classList.remove('flex', 'items-center', 'justify-center');
 }
 
 async function submitEditUser() {
@@ -9111,12 +9505,12 @@ function openCreateUserModal() {
   $('createUserRole').value = 'user';
   if ($('createDeptInput')) $('createDeptInput').value = '';
   $('createUserModal').classList.remove('hidden');
-  $('createUserModal').style.display = 'flex';
+  $('createUserModal').classList.add('flex', 'items-center', 'justify-center');
 }
 
 function closeCreateUserModal() {
   $('createUserModal').classList.add('hidden');
-  $('createUserModal').style.display = 'none';
+  $('createUserModal').classList.remove('flex', 'items-center', 'justify-center');
 }
 
 async function submitCreateUser() {
@@ -9716,7 +10110,7 @@ async function renderLinkPreview(url, messageId) {
 
       container.innerHTML = `
         <a href="${data.url}" target="_blank" class="link-preview-card block w-full group/preview animate-in fade-in duration-300">
-          ${data.image ? `<div class="w-full h-36 overflow-hidden bg-surface-100 dark:bg-surface-900 border-b border-surface-100 dark:border-surface-700/30"><img src="${data.image}" class="w-full h-full object-cover transition-transform duration-700 group-hover/preview:scale-110" onerror="this.parentElement.style.display='none'"></div>` : ''}
+          ${data.image ? `<div class="w-full h-36 overflow-hidden bg-surface-100 dark:bg-surface-900 border-b border-surface-100 dark:border-surface-700/30"><img src="${data.image}" class="w-full h-full object-cover transition-transform duration-700 group-hover/preview:scale-110" onerror="this.parentElement.classList.add('hidden')"></div>` : ''}
           <div class="link-preview-meta">
             <h4 class="text-[12px] font-bold text-surface-900 dark:text-white line-clamp-2 leading-snug mb-1">${data.title || "Link Preview"}</h4>
             <div class="flex items-center gap-1 opacity-50">
@@ -9945,6 +10339,7 @@ async function handleBulkCompare() {
 
   toast('AI กำลังเปรียบเทียบเอกสาร...', 'info');
   aiCompareModal.classList.remove('hidden');
+  aiCompareModal.classList.add('flex', 'items-center', 'justify-center');
   aiCompareResult.innerHTML = '<div class="flex flex-col items-center py-12"><div class="animate-spin h-10 w-10 border-4 border-purple-600 border-t-transparent rounded-full mb-4"></div><p class="text-xs font-bold">กำลังวิเคราะห์ความเหมือนและต่าง...</p></div>';
 
   try {
@@ -10227,7 +10622,7 @@ async function renderLinkPreview(url, messageId) {
       if (!container) return;
       container.innerHTML = `
         <a href="${data.url}" target="_blank" class="link-preview-card block max-w-[250px] group/preview animate-in fade-in duration-300">
-          ${data.image ? `<div class="w-full h-32 overflow-hidden bg-surface-100 dark:bg-surface-900 border-b border-surface-100 dark:border-surface-700/30"><img src="${data.image}" class="w-full h-full object-cover transition-transform duration-700 group-hover/preview:scale-110" onerror="this.parentElement.style.display='none'"></div>` : ''}
+          ${data.image ? `<div class="w-full h-32 overflow-hidden bg-surface-100 dark:bg-surface-900 border-b border-surface-100 dark:border-surface-700/30"><img src="${data.image}" class="w-full h-full object-cover transition-transform duration-700 group-hover/preview:scale-110" onerror="this.parentElement.classList.add('hidden')"></div>` : ''}
           <div class="link-preview-meta">
             <h4 class="text-[12px] font-bold text-surface-900 dark:text-white line-clamp-2 leading-snug mb-1">${data.title || "Link Preview"}</h4>
             <div class="flex items-center gap-1 opacity-50">
@@ -10801,7 +11196,7 @@ function filterKanbanUsers(query) {
   const q = query.toLowerCase();
   document.querySelectorAll('.user-select-item').forEach(el => {
     const show = el.dataset.username.includes(q) || el.dataset.display.includes(q);
-    el.style.display = show ? 'flex' : 'none';
+    el.classList.toggle('hidden', !show);
   });
 }
 
@@ -12793,8 +13188,8 @@ function openQRScanner() {
   const modal = $('qrScannerModal');
   if (!modal) return;
 
-  modal.style.display = 'flex';
   modal.classList.remove('hidden');
+  modal.classList.add('flex', 'items-center', 'justify-center');
   lucide.createIcons();
 
   // Initialize scanner
@@ -12817,8 +13212,8 @@ function openQRScanner() {
         }).catch(console.error);
 
         // Close modal
-        modal.style.display = 'none';
         modal.classList.add('hidden');
+        modal.classList.remove('flex', 'items-center', 'justify-center');
 
         // Navigate to the scanned URL (should be /qr-login/TOKEN)
         if (decodedText.includes('/qr-login/')) {
@@ -12832,8 +13227,8 @@ function openQRScanner() {
       }
     ).catch((err) => {
       console.error("Camera Error:", err);
-      modal.style.display = 'none';
       modal.classList.add('hidden');
+      modal.classList.remove('flex', 'items-center', 'justify-center');
       toast('ไม่สามารถเปิดกล้องได้ กรุณาอนุญาตการใช้กล้องในเบราว์เซอร์', 'error');
     });
   } catch (e) {
@@ -12850,8 +13245,8 @@ function closeQRScanner() {
     }).catch(console.error);
   }
   if (modal) {
-    modal.style.display = 'none';
     modal.classList.add('hidden');
+    modal.classList.remove('flex', 'items-center', 'justify-center');
   }
 }
 
@@ -13155,81 +13550,7 @@ function renderLeaveComments(comments) {
     }
 })();
 
-/** 🍱 Lunch Randomizer Logic ───────────────────────────────── */
-async function pickRandomLunch() {
-  const resultDiv = $('randomLunchResult');
-  const nameEl = $('lunchName');
-  const descEl = $('lunchDesc');
-  const btn = event.currentTarget;
 
-  btn.disabled = true;
-  btn.innerHTML = '<i class="animate-spin w-4 h-4"></i> กำลังสุ่ม...';
-  
-  try {
-    const data = await apiFetch('/api/lunch/random');
-    if (data) {
-      nameEl.textContent = data.name;
-      descEl.textContent = `${data.type || 'ทั่วไป'} · ${data.location || 'ไม่ระบุพิกัด'}`;
-      resultDiv.classList.remove('hidden');
-      toast('ได้ร้านแล้ว! ไปกินกันเลย 😋', 'success');
-      confetti(); // If available, or just skip
-    }
-  } catch (e) {
-    toast('สุ่มไม่สำเร็จ ลองอีกครั้งครับ', 'error');
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = '<i data-lucide="sparkles" class="w-4 h-4"></i> สุ่มเลย!';
-    initIcons();
-  }
-}
-
-async function openLunchList() {
-  const modal = $('lunchModal');
-  const list = $('lunchListContainer');
-  modal.classList.remove('hidden');
-  list.innerHTML = '<div class="text-center py-4 text-xs animate-pulse">กำลังโหลด...</div>';
-  
-  try {
-    const places = await apiFetch('/api/lunch/all');
-    list.innerHTML = places.map(p => `
-      <div class="flex items-center justify-between p-3 bg-surface-50 dark:bg-surface-800 rounded-xl group/item">
-        <div class="flex items-center gap-2">
-          <i data-lucide="map-pin" class="w-3 h-3 text-rose-500"></i>
-          <span class="text-xs font-bold text-surface-700 dark:text-surface-200">${p.name}</span>
-        </div>
-        <span class="text-[9px] font-black text-rose-600 bg-rose-50 dark:bg-rose-900/30 px-1.5 py-0.5 rounded uppercase">${p.type || 'ทั่วไป'}</span>
-      </div>
-    `).join('') || '<div class="text-center py-4 text-[10px] text-surface-400">ยังไม่มีร้านในระบบ เพิ่มได้ด้านบนนะ</div>';
-    initIcons();
-  } catch (e) {
-    list.innerHTML = '<div class="text-center py-4 text-xs text-red-500">โหลดไม่สำเร็จ</div>';
-  }
-}
-
-function closeLunchModal() {
-  $('lunchModal').classList.add('hidden');
-}
-
-async function saveLunchPlace() {
-  const input = $('newLunchName');
-  const name = input.value.trim();
-  if (!name) return;
-
-  try {
-    const res = await apiFetch('/api/lunch/add', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, type: 'ร้านใหม่', location: 'ใกล้เคียง' })
-    });
-    if (res.ok) {
-      toast('เพิ่มร้านเรียบร้อย!', 'success');
-      input.value = '';
-      openLunchList();
-    }
-  } catch (e) {
-    toast('บันทึกไม่สำเร็จ', 'error');
-  }
-}
 
 function openImageViewer(url) {
   const modal = document.getElementById('imageViewerModal');
@@ -13237,6 +13558,7 @@ function openImageViewer(url) {
   if (modal && img) {
     img.src = url;
     modal.classList.remove('hidden');
+    modal.classList.add('flex', 'items-center', 'justify-center');
     // Re-init icons for the close button inside modal
     if (typeof initIcons === 'function') initIcons();
   }
@@ -13244,111 +13566,917 @@ function openImageViewer(url) {
 
 // ─── Reconciliation Logic ───────────────────
 let reconReportUrl = null;
+let _reconFilteredData = [];
 
 document.addEventListener('DOMContentLoaded', () => {
+    // ─── Authentication Logic ───────────────────
+    const loginBtn = $('loginBtn');
+    const loginPass = $('loginPassword');
+    if (loginBtn) loginBtn.onclick = initAuth;
+    if (loginPass) {
+        loginPass.onkeypress = (e) => {
+            if (e.key === 'Enter') initAuth();
+        };
+    }
+
     const mpInput = $('reconMPFiles');
     const shipInput = $('reconShipFiles');
     const peakInput = $('reconPeakFiles');
-    
     if (mpInput) mpInput.onchange = (e) => { $('reconMPList').textContent = `${e.target.files.length} ไฟล์ที่เลือก`; };
     if (shipInput) shipInput.onchange = (e) => { $('reconShipList').textContent = `${e.target.files.length} ไฟล์ที่เลือก`; };
     if (peakInput) peakInput.onchange = (e) => { $('reconPeakList').textContent = `${e.target.files.length} ไฟล์ที่เลือก`; };
-
     const startBtn = $('startReconBtn');
     if (startBtn) startBtn.onclick = runReconciliation;
-
     const downloadBtn = $('downloadReconReportBtn');
-    if (downloadBtn) downloadBtn.onclick = () => {
-        if (reconReportUrl) window.open(reconReportUrl, '_blank');
-    };
+    if (downloadBtn) downloadBtn.onclick = () => { if (reconReportUrl) window.open(reconReportUrl, '_blank'); };
+    const resetBtn = $('resetReconBtn');
+    if (resetBtn) resetBtn.onclick = resetReconciliation;
+    const filteredBtn = $('downloadFilteredBtn');
+    if (filteredBtn) filteredBtn.onclick = downloadFilteredRecon;
 });
+
+async function initAuth() {
+    const userEl = $('loginUsername');
+    const passEl = $('loginPassword');
+    const btn = $('loginBtn');
+    const errorEl = $('loginError');
+    const errorMsg = $('loginErrorMsg');
+
+    if (!userEl || !passEl || !btn) return;
+
+    const username = userEl.value.trim();
+    const password = passEl.value.trim();
+
+    if (!username || !password) {
+        toast('กรุณากรอกชื่อผู้ใช้งานและรหัสผ่าน', 'error');
+        if (errorEl) {
+            errorEl.classList.remove('hidden');
+            errorMsg.textContent = 'กรุณากรอกข้อมูลให้ครบถ้วน';
+        }
+        return;
+    }
+
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<i data-lucide="loader-2" class="w-5 h-5 animate-spin inline-block mr-2"></i> กำลังตรวจสอบ...`;
+    if (errorEl) errorEl.classList.add('hidden');
+
+    try {
+        const data = await apiFetch('/api/login', {
+            method: 'POST',
+            body: JSON.stringify({ username, password })
+        });
+
+        if (data.ok) {
+            state.user = data.user;
+            state.username = (typeof data.user === 'object') ? data.user.username : data.user;
+            
+            toast(`ยินดีต้อนรับคุณ ${state.username}`, 'success');
+            
+            // Initialize application content
+            await initAppContent();
+        } else {
+            const msg = data.error || 'ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง';
+            toast(msg, 'error');
+            if (errorEl) {
+                errorEl.classList.remove('hidden');
+                errorMsg.textContent = msg;
+            }
+        }
+    } catch (e) {
+        console.error('Login error:', e);
+        toast('การเชื่อมต่อล้มเหลว กรุณาลองใหม่อีกครั้ง', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+        lucide.createIcons();
+    }
+}
+
+async function initAppContent() {
+    // 1. Hide the login overlay
+    const overlay = $('loginOverlay');
+    if (overlay) {
+        overlay.classList.add('hidden');
+        overlay.classList.remove('flex', 'items-center', 'justify-center');
+    }
+    
+    // 2. Sequential load of dashboard services
+    try {
+        await loadStatus(); // FIX: Set state.isAdmin and toggle features
+        await loadNotifications();
+        await loadChatList();
+        await loadUnreadCounts();
+        await loadDashboard();
+        
+        // 3. Final UI cleanup
+        initIcons();
+        console.log('Dashboard initialized successfully.');
+    } catch (e) {
+        console.error('Failed to initialize dashboard content:', e);
+    }
+}
 
 async function runReconciliation() {
     const mpFiles = $('reconMPFiles').files;
     const shipFiles = $('reconShipFiles').files;
     const peakFiles = $('reconPeakFiles').files;
-
-    if (!mpFiles.length || !shipFiles.length || !peakFiles.length) {
-        toast('กรุณาอัปโหลดไฟล์ให้ครบทั้ง 3 หมวดหมู่', 'error');
-        return;
-    }
-
+    if (!mpFiles.length || !shipFiles.length || !peakFiles.length) { toast('กรุณาอัปโหลดไฟล์ให้ครบทั้ง 3 หมวดหมู่', 'error'); return; }
     const btn = $('startReconBtn');
     const originalText = btn.innerHTML;
     btn.disabled = true;
     btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> กำลังประมวลผล...`;
     initIcons();
-
     const formData = new FormData();
     for (let f of mpFiles) formData.append('marketplace', f);
     for (let f of shipFiles) formData.append('shipnity', f);
     for (let f of peakFiles) formData.append('peak', f);
-
     try {
-        const res = await fetch('/api/reconciliation/process', {
-            method: 'POST',
-            body: formData
-        });
+        const res = await fetch('/api/reconciliation/process', { method: 'POST', body: formData });
         const data = await res.json();
-
         if (data.ok) {
             renderReconResults(data.summary);
             toast('ประมวลผลการกระทบยอดสำเร็จ', 'success');
             $('reconLastRun').textContent = 'ล่าสุดเมื่อ: ' + new Date().toLocaleString('th-TH');
-        } else {
-            toast(data.error || 'เกิดข้อผิดพลาดในการประมวลผล', 'error');
-        }
-    } catch (e) {
-        console.error(e);
-        toast('การเชื่อมต่อล้มเหลว', 'error');
-    } finally {
-        btn.disabled = false;
-        btn.innerHTML = originalText;
-        initIcons();
-    }
+            const rb = $('resetReconBtn'); if (rb) rb.classList.remove('hidden');
+        } else { toast(data.error || 'เกิดข้อผิดพลาด', 'error'); }
+    } catch (e) { console.error(e); toast('การเชื่อมต่อล้มเหลว', 'error'); }
+    finally { btn.disabled = false; btn.innerHTML = originalText; initIcons(); }
+}
+
+function resetReconciliation() {
+    window._reconData = null; _reconFilteredData = []; reconReportUrl = null;
+    $('reconSummary')?.classList.add('hidden');
+    $('reconResultsArea')?.classList.add('hidden');
+    $('resetReconBtn')?.classList.add('hidden');
+    ['reconMPFiles','reconShipFiles','reconPeakFiles'].forEach(id => { const el = $(id); if (el) el.value = ''; });
+    ['reconMPList','reconShipList','reconPeakList'].forEach(id => { const el = $(id); if (el) el.textContent = ''; });
+    const s = $('reconSearchInput'); if (s) s.value = '';
+    $('reconLastRun').textContent = 'ยังไม่มีการประมวลผล';
+    toast('ล้างข้อมูลเรียบร้อย', 'success');
 }
 
 function renderReconResults(summary) {
-    const { total, issues, data, report_url } = summary;
+    const { total, issues, data, report_url, financial } = summary;
     reconReportUrl = report_url;
-
+    window._reconData = data;
     $('reconStatTotal').textContent = total.toLocaleString();
     $('reconStatNormal').textContent = (total - issues).toLocaleString();
     $('reconStatIssues').textContent = issues.toLocaleString();
-
+    const cEl = $('reconStatCancelled'); if (cEl) cEl.textContent = (financial?.mp_cancelled || 0).toLocaleString();
+    const fmt = (v) => '฿' + (v || 0).toLocaleString('th-TH', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+    const ss = $('reconStatShipSales'); if (ss) ss.textContent = fmt(financial?.total_shipnity_sales);
+    const pa = $('reconStatPeakAmount'); if (pa) pa.textContent = fmt(financial?.total_peak_amount);
+    const pt = $('reconStatPeakTax'); if (pt) pt.textContent = fmt(financial?.total_peak_tax);
+    const dEl = $('reconStatDiff');
+    if (dEl) { const d = financial?.amount_diff || 0; dEl.textContent = (d >= 0 ? '+' : '') + fmt(d); }
     $('reconSummary').classList.remove('hidden');
     $('reconResultsArea').classList.remove('hidden');
+    updateReconBadges(data);
+    renderReconTable(data);
+    const si = $('reconSearchInput'); if (si) si.oninput = () => applyReconFilters();
+    document.querySelectorAll('.recon-filter-btn').forEach(btn => {
+        btn.onclick = () => {
+            document.querySelectorAll('.recon-filter-btn').forEach(b => b.classList.remove('ring-2', 'ring-offset-1', 'ring-indigo-500'));
+            btn.classList.add('ring-2', 'ring-offset-1', 'ring-indigo-500');
+            applyReconFilters();
+        };
+    });
+    const pf = $('reconPlatformFilter'); if (pf) pf.onchange = () => applyReconFilters();
+    const bf = $('reconBrandFilter'); if (bf) bf.onchange = () => applyReconFilters();
+    if (typeof initIcons === 'function') initIcons();
+}
 
-    const body = $('reconResultsBody');
+function applyReconFilters() {
+    const data = window._reconData || [];
+    const search = ($('reconSearchInput')?.value || '').toLowerCase().trim();
+    const activeBtn = document.querySelector('.recon-filter-btn.ring-2');
+    const filterType = activeBtn?.getAttribute('data-recon-filter') || 'all';
+    const platform = $('reconPlatformFilter')?.value || 'all';
+    const brand = $('reconBrandFilter')?.value || 'all';
+    const filtered = data.filter(row => {
+        if (search) {
+            const s = [row.mp_order_id, row.shipnity_id, row.peak_invoice_id, row.platform, row.status_mp, row.issue, row.brand].map(v => (v || '').toLowerCase()).join(' ');
+            if (!s.includes(search)) return false;
+        }
+        if (platform !== 'all' && (row.platform || '') !== platform) return false;
+        if (brand !== 'all' && (row.brand || '') !== brand) return false;
+        const isIssue = row.issue && row.issue !== '✅ ปกติ';
+        const isCancelled = ['ยกเลิกแล้ว', 'canceled', 'cancelled', 'returned'].includes((row.status_mp || '').toLowerCase());
+        switch (filterType) {
+            case 'issues': return isIssue;
+            case 'normal': return !isIssue;
+            case 'cancelled': return isCancelled;
+            case 'no-shipnity': return (row.issue || '').includes('Shipnity');
+            case 'no-peak': return (row.issue || '').includes('PEAK');
+            case 'amount-mismatch': return (row.issue || '').includes('💰');
+            default: return true;
+        }
+    });
+    _reconFilteredData = filtered;
+    renderReconTable(filtered);
+    $('reconFilterCount').textContent = `แสดง ${filtered.length} / ${data.length} รายการ`;
+}
+
+function renderReconTable(data) {
+    const body = $('reconResultsBody'); if (!body) return;
     body.innerHTML = '';
-
+    _reconFilteredData = data;
+    if (data.length === 0) { body.innerHTML = `<tr><td colspan="9" class="p-8 text-center text-surface-400 text-xs">ไม่พบรายการที่ตรงกับเงื่อนไข</td></tr>`; return; }
     data.forEach(row => {
         const tr = document.createElement('tr');
         const isIssue = row.issue && row.issue !== '✅ ปกติ';
-        tr.className = isIssue ? 'bg-rose-50/50 dark:bg-rose-900/5' : '';
-        tr.setAttribute('data-is-issue', isIssue);
-
+        tr.className = isIssue ? 'bg-rose-50/50 dark:bg-rose-900/5 hover:bg-rose-100/50 transition-colors' : 'hover:bg-surface-50 dark:hover:bg-surface-800/50 transition-colors';
+        const aS = parseFloat(row.amount_shipnity) || 0;
+        const aP = parseFloat(row.amount_peak) || 0;
+        const mismatch = aS > 0 && aP > 0 && Math.abs(aS - aP) > 5;
         tr.innerHTML = `
-            <td class="p-4 font-mono">${row.order_id || '-'}</td>
-            <td class="p-4">${row.platform || '-'}</td>
-            <td class="p-4">${row.shipnity_id || '-'}</td>
-            <td class="p-4">${row.peak_invoice_id || '-'}</td>
-            <td class="p-4">
-                <span class="px-2 py-0.5 rounded-full ${row.status_peak === 'ยกเลิก' ? 'bg-rose-100 text-rose-600' : 'bg-emerald-100 text-emerald-600'}">
-                    ${row.status_peak || '-'}
-                </span>
-            </td>
-            <td class="p-4 font-bold ${isIssue ? 'text-rose-600' : 'text-emerald-600'}">${row.issue}</td>
+            <td class="p-3 font-mono text-[10px]">${row.mp_order_id || '-'}</td>
+            <td class="p-3"><span class="px-2 py-0.5 rounded-full text-[9px] font-black ${row.platform === 'Shopee' ? 'bg-orange-100 text-orange-700' : row.platform === 'Lazada' ? 'bg-blue-100 text-blue-700' : 'bg-surface-100 text-surface-500'}">${row.platform || '-'}</span></td>
+            <td class="p-3"><span class="px-2 py-0.5 rounded-full text-[9px] font-black ${row.brand === 'DUIT' ? 'bg-pink-100 text-pink-700' : row.brand === 'Thumb Toe' ? 'bg-teal-100 text-teal-700' : row.brand === 'Bytuneller' ? 'bg-cyan-100 text-cyan-700' : 'bg-surface-100 text-surface-400'}">${row.brand || '-'}</span></td>
+            <td class="p-3 font-mono text-[10px]">${row.shipnity_id || '-'}</td>
+            <td class="p-3 font-mono text-[10px]">${row.peak_invoice_id || '-'}</td>
+            <td class="p-3"><span class="px-2 py-0.5 rounded-full text-[9px] font-black ${['ยกเลิกแล้ว','canceled','cancelled','returned'].includes((row.status_mp||'').toLowerCase()) ? 'bg-rose-100 text-rose-600' : ['สำเร็จแล้ว','confirmed'].includes((row.status_mp||'').toLowerCase()) ? 'bg-emerald-100 text-emerald-600' : 'bg-surface-100 text-surface-500'}">${row.status_mp || '-'}</span></td>
+            <td class="p-3 text-[10px] text-right font-mono ${mismatch ? 'text-amber-600 font-bold' : ''}">${aS ? aS.toLocaleString() : '-'}</td>
+            <td class="p-3 text-[10px] text-right font-mono ${mismatch ? 'text-amber-600 font-bold' : ''}">${aP ? aP.toLocaleString() : '-'}</td>
+            <td class="p-3 text-[10px] font-bold ${isIssue ? 'text-rose-600' : 'text-emerald-600'}">${row.issue || '-'}</td>
         `;
         body.appendChild(tr);
     });
-
-    $('filterReconAll').onclick = () => {
-        [...body.children].forEach(row => row.classList.remove('hidden'));
-    };
-    $('filterReconIssues').onclick = () => {
-        [...body.children].forEach(row => {
-            row.classList.toggle('hidden', row.getAttribute('data-is-issue') === 'false');
-        });
-    };
+    $('reconFilterCount').textContent = `แสดง ${data.length} / ${(window._reconData || []).length} รายการ`;
 }
+
+function updateReconBadges(data) {
+    const c = { 'all': data.length, 'issues': 0, 'normal': 0, 'cancelled': 0, 'no-shipnity': 0, 'no-peak': 0, 'amount-mismatch': 0 };
+    data.forEach(row => {
+        const isIssue = row.issue && row.issue !== '✅ ปกติ';
+        if (isIssue) c['issues']++; else c['normal']++;
+        if (['ยกเลิกแล้ว','canceled','cancelled','returned'].includes((row.status_mp||'').toLowerCase())) c['cancelled']++;
+        if ((row.issue||'').includes('Shipnity')) c['no-shipnity']++;
+        if ((row.issue||'').includes('PEAK')) c['no-peak']++;
+        if ((row.issue||'').includes('💰')) c['amount-mismatch']++;
+    });
+    const labels = { 'all': 'ทั้งหมด', 'issues': 'เฉพาะปัญหา', 'normal': 'ปกติ', 'cancelled': 'ยกเลิกแล้ว', 'no-shipnity': 'ไม่พบใน Shipnity', 'no-peak': 'ไม่มีใน PEAK', 'amount-mismatch': 'ยอดไม่ตรง' };
+    document.querySelectorAll('.recon-filter-btn').forEach(btn => {
+        const k = btn.getAttribute('data-recon-filter');
+        if (k && labels[k] !== undefined) btn.textContent = `${labels[k]} (${c[k]})`;
+    });
+}
+
+async function downloadFilteredRecon() {
+    if (!_reconFilteredData || !_reconFilteredData.length) { toast('ไม่มีข้อมูลสำหรับดาวน์โหลด', 'error'); return; }
+    try {
+        const res = await fetch('/api/reconciliation/download-filtered', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rows: _reconFilteredData }) });
+        if (!res.ok) { toast('ดาวน์โหลดล้มเหลว', 'error'); return; }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = 'reconciliation_filtered.xlsx'; a.click();
+        URL.revokeObjectURL(url);
+        toast('ดาวน์โหลดสำเร็จ', 'success');
+    } catch (e) { console.error(e); toast('เกิดข้อผิดพลาด', 'error'); }
+}
+
+// ─── Google Drive Explorer ────────────────────
+async function loadDriveContents(folderId = 'root') {
+  const grid = $('driveGrid');
+  const loading = $('driveLoading');
+  const empty = $('driveEmptyState');
+  const breadcrumbs = $('driveBreadcrumbs');
+
+  if (!grid || !loading || !empty) return;
+
+  grid.innerHTML = '';
+  loading.classList.remove('hidden');
+  empty.classList.add('hidden');
+
+  try {
+    const data = await apiFetch(`/api/drive/contents?folder_id=${folderId}`);
+    if (data.ok) {
+      state.drive.currentFolderId = folderId;
+      
+      // Update history for breadcrumbs
+      if (folderId === 'root') {
+        state.drive.history = [{ id: 'root', name: data.folder_name || 'My Drive' }];
+      } else if (data.folder_name) {
+        // If the folder is already in history, trim history to it
+        const idx = state.drive.history.findIndex(h => h.id === folderId);
+        if (idx !== -1) {
+          state.drive.history = state.drive.history.slice(0, idx + 1);
+        } else {
+          state.drive.history.push({ id: folderId, name: data.folder_name });
+        }
+      }
+
+      renderDriveContents(data.items);
+      updateDriveBreadcrumbs();
+      
+      // Update Back Button State
+      const backBtn = $('driveBackBtn');
+      if (backBtn) {
+        backBtn.disabled = state.drive.history.length <= 1;
+      }
+    } else {
+      toast('ไม่สามารถโหลดข้อมูล Google Drive ได้', 'error');
+    }
+  } catch (e) {
+    console.error('Drive Load Error:', e);
+    toast('เกิดข้อผิดพลาดในการเชื่อมต่อ Google Drive', 'error');
+  } finally {
+    loading.classList.add('hidden');
+  }
+}
+
+async function renameDriveFile(fileId, currentName) {
+  const newName = prompt('เปลี่ยนชื่อไฟล์:', currentName);
+  if (!newName || newName === currentName) return;
+  
+  try {
+    const data = await apiFetch('/api/drive/rename', {
+      method: 'POST',
+      body: JSON.stringify({ file_id: fileId, new_name: newName })
+    });
+    if (data.ok) {
+      toast('เปลี่ยนชื่อไฟล์สำเร็จ', 'success');
+      loadDriveContents(state.drive.currentFolderId);
+    } else {
+      toast(data.error || 'เปลี่ยนชื่อล้มเหลว', 'error');
+    }
+  } catch (e) {
+    toast('เกิดข้อผิดพลาดในการเปลี่ยนชื่อ', 'error');
+  }
+}
+
+async function deleteDriveFile(fileId, name) {
+  if (!confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบ "${name}"?`)) return;
+  
+  try {
+    const data = await apiFetch('/api/drive/delete', {
+      method: 'POST',
+      body: JSON.stringify({ file_id: fileId })
+    });
+    if (data.ok) {
+      toast('ย้ายไฟล์ไปถังขยะเรียบร้อย', 'success');
+      loadDriveContents(state.drive.currentFolderId);
+    } else {
+      toast(data.error || 'ลบไฟล์ล้มเหลว', 'error');
+    }
+  } catch (e) {
+    toast('เกิดข้อผิดพลาดในการลบไฟล์', 'error');
+  }
+}
+
+function renderDriveContents(items) {
+  const grid = $('driveGrid');
+  const empty = $('driveEmptyState');
+
+  if (!items || items.length === 0) {
+    empty.classList.remove('hidden');
+    return;
+  }
+
+  const itemsHtml = items.map((item, idx) => {
+    const isFolder = item.mimeType === 'application/vnd.google-apps.folder';
+    const isImage = item.mimeType.startsWith('image/');
+    const previewUrl = (isImage && item.thumbnailLink) ? item.thumbnailLink.replace('=s220', '=s400') : null;
+    const onClick = isFolder ? `navigateToDriveFolder('${item.id}', '${item.name.replace(/'/g, "\\'")}')` : `window.open('${item.webViewLink}', '_blank')`;
+    
+    // Administrative controls (gated)
+    let adminControls = '';
+    if (state.isAdmin) {
+      adminControls = `
+        <div class="flex items-center gap-1 mt-2 pt-2 border-t border-surface-100 dark:border-surface-800">
+          <button onclick="event.stopPropagation(); renameDriveFile('${item.id}', '${item.name.replace(/'/g, "\\'")}')" 
+                  class="flex-1 p-1.5 bg-surface-50 dark:bg-surface-800 hover:bg-brand-50 dark:hover:bg-brand-900/30 text-surface-400 hover:text-brand-600 rounded-lg transition-all flex items-center justify-center gap-1 group/btn">
+            <i data-lucide="edit-3" class="w-3 h-3"></i>
+            <span class="text-[8px] font-black uppercase">Rename</span>
+          </button>
+          <button onclick="event.stopPropagation(); deleteDriveFile('${item.id}', '${item.name.replace(/'/g, "\\'")}')" 
+                  class="p-1.5 bg-surface-50 dark:bg-surface-800 hover:bg-rose-50 dark:hover:bg-rose-900/30 text-surface-400 hover:text-rose-600 rounded-lg transition-all flex items-center justify-center group/btn">
+            <i data-lucide="trash-2" class="w-3 h-3"></i>
+          </button>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="group relative bg-white dark:bg-surface-900 rounded-2xl border border-surface-100 dark:border-surface-800 p-4 hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer overflow-hidden animate-in fade-in zoom-in-95 duration-300" 
+           style="animation-delay: ${idx * 30}ms"
+           onclick="${onClick}">
+        <div class="aspect-square rounded-xl bg-surface-50 dark:bg-surface-800 flex items-center justify-center mb-3 group-hover:bg-brand-50 dark:group-hover:bg-brand-900/20 transition-colors overflow-hidden">
+          ${isFolder ? 
+            `<i data-lucide="folder" class="w-12 h-12 text-amber-500 fill-amber-500/20"></i>` : 
+            (previewUrl ? 
+              `<img src="${previewUrl}" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110">` :
+              `<img src="${item.iconLink}" class="w-10 h-10 object-contain opacity-80 group-hover:opacity-100 transition-opacity">`
+            )
+          }
+        </div>
+        <div class="space-y-1">
+          <p class="text-[11px] font-bold text-surface-900 dark:text-surface-100 truncate pr-2" title="${item.name}">${item.name}</p>
+          <p class="text-[9px] text-surface-400 font-bold uppercase tracking-tighter truncate">${isFolder ? 'Folder' : item.mimeType.split('/').pop().toUpperCase()}</p>
+        </div>
+        <div class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <i data-lucide="${isFolder ? 'chevron-right' : 'external-link'}" class="w-3.5 h-3.5 text-surface-400"></i>
+        </div>
+        ${adminControls}
+      </div>
+    `;
+  }).join('');
+
+  // Add ".." Parent folder if not at root
+  let upHtml = '';
+  if (state.drive.history.length > 1) {
+    const parent = state.drive.history[state.drive.history.length - 2];
+    upHtml = `
+      <div class="group relative bg-surface-100/50 dark:bg-surface-800/50 rounded-2xl border-2 border-dashed border-surface-200 dark:border-surface-700 p-4 hover:bg-white dark:hover:bg-surface-900 hover:border-solid hover:border-brand-500 transition-all cursor-pointer overflow-hidden animate-in fade-in zoom-in-95 duration-300" 
+           onclick="goBackDriveFolder()">
+        <div class="aspect-square rounded-xl bg-white dark:bg-surface-900 flex items-center justify-center mb-3 group-hover:bg-brand-50 dark:group-hover:bg-brand-900/20 transition-colors shadow-sm">
+          <i data-lucide="corner-left-up" class="w-10 h-10 text-brand-600"></i>
+        </div>
+        <div class="space-y-1 text-center">
+          <p class="text-[11px] font-black text-brand-600 tracking-tighter">..</p>
+          <p class="text-[9px] text-surface-400 font-bold uppercase tracking-tighter">Go Up</p>
+        </div>
+      </div>
+    `;
+  }
+
+  grid.innerHTML = upHtml + itemsHtml;
+
+  lucide.createIcons();
+}
+
+function navigateToDriveFolder(id, name) {
+  loadDriveContents(id);
+}
+
+function updateDriveBreadcrumbs() {
+  const container = $('driveBreadcrumbs');
+  if (!container) return;
+
+  container.innerHTML = state.drive.history.map((h, i) => `
+    <div class="flex items-center gap-2">
+      ${i > 0 ? `<i data-lucide="chevron-right" class="w-3 h-3 text-surface-300"></i>` : ''}
+      <button onclick="navigateToDriveFolder('${h.id}')" class="hover:text-brand-600 transition-colors ${i === state.drive.history.length - 1 ? 'text-surface-900 dark:text-white' : ''}">
+        ${h.name}
+      </button>
+    </div>
+  `).join('');
+
+  lucide.createIcons();
+}
+
+function goBackDriveFolder() {
+  if (state.drive.history.length > 1) {
+    const prev = state.drive.history[state.drive.history.length - 2];
+    loadDriveContents(prev.id);
+  }
+}
+
+window.goBackDriveFolder = goBackDriveFolder;
+
+// ─── Smart Dashboard Utilities [NEW] ────────────────
+
+function updateSystemStatus(text = 'Live', type = 'success') {
+  const dashBadge = $('dashSystemStatus');
+  const dashText = $('dashSystemStatusText');
+  const sidebarBadge = $('statusBadge');
+  
+  const colors = {
+    success: { bg: 'bg-emerald-50 dark:bg-emerald-900/20', text: 'text-emerald-600', dot: 'bg-emerald-500', border: 'border-emerald-100 dark:border-emerald-800' },
+    warning: { bg: 'bg-amber-50 dark:bg-amber-900/20', text: 'text-amber-600', dot: 'bg-amber-500', border: 'border-amber-100 dark:border-amber-800' },
+    error: { bg: 'bg-red-50 dark:bg-red-900/20', text: 'text-red-600', dot: 'bg-red-500', border: 'border-red-100 dark:border-red-800' }
+  };
+  
+  const c = colors[type] || colors.success;
+  
+  if (dashBadge && dashText) {
+    dashBadge.className = `hidden md:flex items-center gap-2 px-3 py-1.5 ${c.bg} ${c.text} rounded-full border ${c.border}`;
+    const dot = dashBadge.querySelector('.rounded-full');
+    if (dot) dot.className = `w-2 h-2 ${c.dot} rounded-full animate-pulse`;
+    dashText.textContent = `System ${text}`;
+  }
+  
+  if (sidebarBadge) {
+     sidebarBadge.className = `flex items-center gap-1.5 px-2 py-0.5 rounded ${c.bg} ${c.text} text-[10px] font-bold border ${c.border}`;
+     const dot = sidebarBadge.querySelector('.rounded-full');
+     if (dot) dot.className = `w-1 h-1 rounded-full ${c.dot}`;
+     if (sidebarBadge.lastChild) sidebarBadge.lastChild.textContent = ` ${text === 'Live' ? 'พร้อมทำงาน' : text}`;
+  }
+}
+
+// Weather Intelligence
+async function fetchWeather() {
+  try {
+    const lat = 13.7563; // Bangkok
+    const lon = 100.5018;
+    const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,uv_index&hourly=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=Asia%2FBangkok&forecast_days=7`);
+    const data = await res.json();
+    
+    if (data && data.current) {
+      const temp = Math.round(data.current.temperature_2m);
+      const feels = Math.round(data.current.apparent_temperature);
+      const humidity = data.current.relative_humidity_2m;
+      const rain = data.current.precipitation;
+      const uv = data.current.uv_index;
+      const code = data.current.weather_code;
+      
+      // Update Dashboard Card
+      if ($('currentTemp')) $('currentTemp').textContent = `${temp}°C`;
+      if ($('dashFeelsLike')) $('dashFeelsLike').textContent = `${feels}°C`;
+      if ($('dashHumidity')) $('dashHumidity').textContent = `${humidity}%`;
+      if ($('dashUV')) $('dashUV').textContent = uv.toFixed(1);
+      if ($('rainChance')) $('rainChance').innerHTML = `<i data-lucide="droplets" class="w-3 h-3"></i> ฝน ${rain}mm`;
+      
+      const condition = getWeatherCondition(code);
+      if ($('weatherCondition')) $('weatherCondition').textContent = condition;
+      
+      const now = new Date();
+      if ($('weatherLastUpdate')) $('weatherLastUpdate').textContent = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+      
+      // Store globally for detail modal
+      window._weatherData = data;
+      
+      lucide.createIcons();
+    }
+  } catch (err) {
+    console.error('Weather fetch error:', err);
+  }
+}
+
+function getWeatherCondition(code) {
+  const map = {
+    0: 'ท้องฟ้าแจ่มใส', 1: 'เมฆบางส่วน', 2: 'เมฆเป็นส่วนมาก', 3: 'เมฆครึ้ม',
+    45: 'หมอกลง', 48: 'หมอกน้ำค้างแข็ง',
+    51: 'ฝนปรอยๆ เบาๆ', 53: 'ฝนปรอยๆ ปานกลาง', 55: 'ฝนปรอยๆ หนาแน่น',
+    61: 'ฝนตกเล็กน้อย', 63: 'ฝนตกปานกลาง', 65: 'ฝนตกหนัก',
+    80: 'ฝนโปรยปรายเล็กน้อย', 81: 'ฝนโปรยปรายรุนแรง',
+    95: 'พายุฝนฟ้าคะนอง'
+  };
+  return map[code] || 'อากาศแปรปรวน';
+}
+
+function showWeatherDetail() {
+  const modal = $('weatherDetailModal');
+  if (!modal || !window._weatherData) return;
+  
+  const d = window._weatherData;
+  modal.classList.remove('hidden');
+  modal.classList.add('flex', 'items-center', 'justify-center');
+  
+  // Update Header & Stats
+  if ($('detailFeelsLike')) $('detailFeelsLike').textContent = `${Math.round(d.current.apparent_temperature)}°C`;
+  if ($('detailHumidity')) $('detailHumidity').textContent = `${d.current.relative_humidity_2m}%`;
+  if ($('detailUV')) $('detailUV').textContent = d.current.uv_index.toFixed(1);
+  if ($('detailPM25')) $('detailPM25').textContent = '12'; // Mock or external API
+  
+  // Hourly Forecast
+  const hourlyList = $('hourlyForecastList');
+  if (hourlyList) {
+    const hours = d.hourly.time.slice(0, 24);
+    hourlyList.innerHTML = hours.map((h, i) => {
+       const date = new Date(h);
+       const hour = date.getHours();
+       const temp = Math.round(d.hourly.temperature_2m[i]);
+       const code = d.hourly.weather_code[i];
+       const active = hour === new Date().getHours() ? 'ring-2 ring-brand-500 bg-brand-50 dark:bg-brand-900/20' : 'bg-white dark:bg-surface-900';
+       
+       return `
+         <div class="flex flex-col items-center gap-2 p-4 ${active} rounded-3xl min-w-[90px] border border-surface-100 dark:border-surface-800 shadow-sm">
+            <span class="text-[10px] font-black text-surface-400">${hour}:00</span>
+            <div class="text-brand-600 my-1"><i data-lucide="${getWeatherIcon(code)}" class="w-6 h-6"></i></div>
+            <span class="text-sm font-black text-surface-900 dark:text-white">${temp}°C</span>
+         </div>
+       `;
+    }).join('');
+  }
+  
+  // Daily Forecast
+  const dailyList = $('dailyForecastList');
+  if (dailyList) {
+    dailyList.innerHTML = d.daily.time.map((t, i) => {
+       const date = new Date(t);
+       const dayName = date.toLocaleDateString('th-TH', { weekday: 'long' });
+       const max = Math.round(d.daily.temperature_2m_max[i]);
+       const min = Math.round(d.daily.temperature_2m_min[i]);
+       const code = d.daily.weather_code[i];
+       
+       return `
+         <div class="flex items-center justify-between py-4 group">
+            <div class="flex items-center gap-4">
+               <div class="w-10 h-10 bg-surface-50 dark:bg-surface-800 rounded-xl flex items-center justify-center text-brand-600 group-hover:scale-110 transition-transform">
+                  <i data-lucide="${getWeatherIcon(code)}" class="w-5 h-5"></i>
+               </div>
+               <div class="flex flex-col">
+                  <span class="text-sm font-bold text-surface-900 dark:text-white">${dayName}</span>
+                  <span class="text-[10px] text-surface-400 font-medium">${getWeatherCondition(code)}</span>
+               </div>
+            </div>
+            <div class="flex items-center gap-4">
+               <span class="text-sm font-black text-surface-900 dark:text-white">${max}°</span>
+               <span class="text-sm font-bold text-surface-400">${min}°</span>
+            </div>
+         </div>
+       `;
+    }).join('');
+  }
+  
+  lucide.createIcons();
+}
+
+function getWeatherIcon(code) {
+  if (code === 0) return 'sun';
+  if (code <= 3) return 'cloud-sun';
+  if (code <= 48) return 'cloud';
+  if (code <= 65) return 'cloud-rain';
+  if (code <= 82) return 'cloud-drizzle';
+  return 'cloud-lightning';
+}
+
+// Lunch Randomizer Logic
+async function openLunchModal() {
+  const modal = $('lunchModal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    modal.classList.add('flex', 'items-center', 'justify-center');
+    loadLunchPlaces();
+  }
+}
+
+async function loadLunchPlaces() {
+  try {
+    const data = await apiFetch('/api/lunch/all');
+    if (data.ok) {
+       state.lunchPlaces = data.places;
+       renderLunchList();
+    }
+  } catch(e) {
+    console.error('loadLunchPlaces error:', e);
+  }
+}
+
+function renderLunchList() {
+  const container = $('lunchPlaceList');
+  if (!container || !state.lunchPlaces) return;
+  
+  container.innerHTML = state.lunchPlaces.map(p => `
+    <div class="flex items-center justify-between p-3 bg-white dark:bg-surface-900 rounded-xl border border-surface-100 dark:border-surface-800 group">
+       <div class="flex items-center gap-3">
+          <div class="w-8 h-8 bg-surface-50 dark:bg-surface-800 rounded-lg flex items-center justify-center text-orange-600">
+             <i data-lucide="utensils" class="w-4 h-4"></i>
+          </div>
+          <div>
+             <div class="text-xs font-bold text-surface-900 dark:text-white">${p.name}</div>
+             <div class="text-[9px] text-surface-400 uppercase tracking-widest">${p.type || 'ทั่วไป'}</div>
+          </div>
+       </div>
+       <button onclick="deleteLunchPlace(${p.id})" class="p-2 text-surface-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
+          <i data-lucide="trash-2" class="w-4 h-4"></i>
+       </button>
+    </div>
+  `).join('');
+  
+  lucide.createIcons();
+}
+
+async function rollLunch() {
+  const dashOverlay = $('dashLunchRollingOverlay');
+  const dashResult = $('dashLunchResultArea');
+  const modalOverlay = $('modalLunchRollingOverlay');
+  const modalResult = $('modalLunchResultArea');
+  
+  if (dashOverlay) dashOverlay.classList.remove('hidden');
+  if (dashResult) dashResult.classList.add('opacity-50', 'blur-sm');
+  if (modalOverlay) modalOverlay.classList.remove('hidden');
+  if (modalResult) modalResult.classList.add('opacity-50', 'blur-sm');
+  
+  try {
+    const data = await apiFetch('/api/lunch/random');
+    setTimeout(() => {
+      if (dashOverlay) dashOverlay.classList.add('hidden');
+      if (dashResult) dashResult.classList.remove('opacity-50', 'blur-sm');
+      if (modalOverlay) modalOverlay.classList.add('hidden');
+      if (modalResult) modalResult.classList.remove('opacity-50', 'blur-sm');
+      
+      if (data.ok && data.place) {
+        // Update Dashboard Elements
+        if ($('dashLunchPlaceName')) $('dashLunchPlaceName').textContent = data.place.name;
+        if ($('dashLunchPlaceType')) $('dashLunchPlaceType').textContent = data.place.type || 'ร้านอาหารยอดฮิต';
+        if ($('dashLunchPlaceLocation')) $('dashLunchPlaceLocation').innerHTML = `<i data-lucide="map-pin" class="w-3 h-3"></i> ${data.place.location || 'รอบออฟฟิศ'}`;
+        if ($('dashLunchQuickPreview')) {
+           $('dashLunchQuickPreview').innerHTML = `
+             <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+             <span class="text-[10px] font-black text-brand-600">แนะนำ: ${data.place.name}</span>
+           `;
+        }
+
+        // Update Modal Elements
+        if ($('modalLunchPlaceName')) $('modalLunchPlaceName').textContent = data.place.name;
+        if ($('modalLunchPlaceType')) $('modalLunchPlaceType').textContent = data.place.type || 'ร้านอาหารยอดฮิต';
+        if ($('modalLunchPlaceLocation')) $('modalLunchPlaceLocation').innerHTML = `<i data-lucide="map-pin" class="w-3 h-3"></i> ${data.place.location || 'รอบออฟฟิศ'}`;
+        
+        toast(`สุ่มได้ร้าน: ${data.place.name}`, 'success');
+        lucide.createIcons();
+      }
+    }, 1500); // Animation duration
+  } catch (e) {
+    if (dashOverlay) dashOverlay.classList.add('hidden');
+    if (modalOverlay) modalOverlay.classList.add('hidden');
+    toast('สุ่มไม่ได้ครับ กรุณาลองใหม่', 'error');
+  }
+}
+
+function toggleLunchManager() {
+  const mgr = $('lunchManager');
+  if (mgr) mgr.classList.toggle('hidden');
+}
+
+async function addLunchPlacePrompt() {
+  const name = prompt('กรุณาใส่ชื่อร้านอาหาร:');
+  if (!name) return;
+  const type = prompt('ประเภทอาหาร (เช่น ตามสั่ง, ก๋วยเตี๋ยว):', 'อาหารทั่วไป');
+  
+  try {
+    const res = await apiFetch('/api/lunch/add', {
+      method: 'POST',
+      body: JSON.stringify({ name, type })
+    });
+    if (res.ok) {
+      toast('เพิ่มร้านอาหารเรียบร้อยแล้ว', 'success');
+      loadLunchPlaces();
+    }
+  } catch (e) {
+    toast('เพิ่มร้านอาหารไม่สำเร็จครับ', 'error');
+  }
+}
+
+async function deleteLunchPlace(id) {
+  if (!confirm('คุณต้องการลบร้านนี้ใช่หรือไม่?')) return;
+  try {
+    const res = await apiFetch(`/api/lunch/delete/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      toast('ลบร้านอาหารเรียบร้อยแล้ว', 'info');
+      loadLunchPlaces();
+    }
+  } catch (e) {
+    toast('ลบไม่สำเร็จครับ (ต้องการสิทธิ์ Admin)', 'error');
+  }
+}
+
+// --- LINE Broadcast Logic ---
+async function sendLineBroadcast(msgId = 'lineBroadcastMsg', btnId = 'lineBroadcastBtn') {
+  const btn = $(btnId);
+  const msgInput = $(msgId);
+  
+  if (!msgInput || !btn) {
+    // Fail silently if elements not found, but log for debug
+    console.warn(`[LINE Broadcast] UI Elements not found: msg=${msgId}, btn=${btnId}`);
+    return;
+  }
+  
+  const text = msgInput.value.trim();
+  if (!text) {
+    toast('กรุณาพิมพ์ข้อความที่ต้องการบรอดแคสต์ค่ะพี่', 'error');
+    return;
+  }
+  
+  if (!confirm('ยืนยันการส่งบรอดแคสต์ข้อความนี้ไปยังผู้ติดตามทุกคนคะ?')) return;
+  
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> กำลังส่ง...`;
+  if (window.lucide) lucide.createIcons();
+  
+  try {
+    const res = await apiFetch('/api/admin/line/broadcast', {
+      method: 'POST',
+      body: JSON.stringify({ text })
+    });
+    
+    const data = await res.json();
+    if (res.ok && data.success !== false) {
+      toast(data.message || 'น้องพั้นส่งบรอดแคสต์ให้เรียบร้อยแล้วค่ะ!', 'success');
+      msgInput.value = ''; // clear
+    } else {
+      toast(data.error || 'ส่งบรอดแคสต์ไม่สำเร็จนะคะพี่ ลองเช็ค Token อีกทีค่ะ', 'error');
+    }
+  } catch (err) {
+    toast('เกิดข้อผิดพลาดทางเทคนิคนะคะพี่ น้องพั้นขออภัยค่ะ', 'error');
+    console.error(err);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
+    if (window.lucide) lucide.createIcons();
+  }
+}
+
+// --- LINE OA Settings Logic ---
+async function openLineSettings() {
+    const modal = $('lineSettingsModal');
+    if (!modal) return;
+    
+    try {
+        const data = await apiFetch('/api/admin/line/settings');
+        if (data && data.ok) {
+            $('lineSettingsToken').value = data.config.channel_access_token || '';
+            $('lineSettingsSecret').value = data.config.channel_secret || '';
+            $('lineSettingsGreeting').value = data.config.greeting_message || '';
+            $('lineSettingsAIEnabled').checked = data.config.ai_auto_responder_enabled || false;
+        }
+    } catch (err) {
+        console.error('Failed to fetch LINE settings:', err);
+    }
+    
+    modal.classList.remove('hidden');
+    if (window.lucide) lucide.createIcons();
+}
+
+async function saveLineSettings() {
+    const btn = event.target;
+    const originalText = btn.textContent;
+    
+    const payload = {
+        channel_access_token: $('lineSettingsToken').value.trim(),
+        channel_secret: $('lineSettingsSecret').value.trim(),
+        greeting_message: $('lineSettingsGreeting').value.trim(),
+        ai_auto_responder_enabled: $('lineSettingsAIEnabled').checked
+    };
+    
+    btn.disabled = true;
+    btn.textContent = 'กำลังบันทึก...';
+    
+    try {
+        const data = await apiFetch('/api/admin/line/settings', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+        if (data && data.ok) {
+            toast(data.message, 'success');
+            $('lineSettingsModal').classList.add('hidden');
+        } else {
+            toast(data.error || 'บันทึกไม่สำเร็จค่ะ', 'error');
+        }
+    } catch (err) {
+        toast('เกิดข้อผิดพลาดในการเชื่อมต่อค่ะ', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+    }
+}
+
+async function refreshBroadcastHistory() {
+    const list = $('broadcastHistoryList');
+    if (!list) return;
+    
+    try {
+        const data = await apiFetch('/api/admin/line/broadcast-history');
+        if (data && data.ok) {
+            list.innerHTML = data.history.map(item => `
+                <tr class="text-xs text-surface-600 dark:text-surface-300">
+                    <td class="py-3 pr-4">${new Date(item.timestamp).toLocaleString('th-TH', {hour12:false, month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'})}</td>
+                    <td class="py-3 pr-4 truncate max-w-[150px]">${item.message}</td>
+                    <td class="py-3">
+                        <span class="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${item.status === 'Success' ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'}">
+                            ${item.status}
+                        </span>
+                    </td>
+                </tr>
+            `).join('');
+            if (!data.history.length) {
+                list.innerHTML = '<tr><td colspan="3" class="py-8 text-center text-surface-400 text-[10px]">ยังไม่มีประวัติการส่งค่ะ</td></tr>';
+            }
+        }
+    } catch (err) {
+        console.error('Failed to fetch history:', err);
+    }
+}
+
+// Global Event Listener for Broadcast Buttons
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('#lineBroadcastBtn, #lineManagerBroadcastBtn');
+  if (btn) {
+    e.preventDefault();
+    if (btn.id === 'lineManagerBroadcastBtn') {
+      sendLineBroadcast('lineManagerBroadcastMsg', 'lineManagerBroadcastBtn');
+      setTimeout(refreshBroadcastHistory, 2000); // Auto-refresh after broadcast
+    } else {
+      sendLineBroadcast('lineBroadcastMsg', 'lineBroadcastBtn');
+    }
+  }
+});
+
+// --- Window Exports ---
+window.sendLineBroadcast = sendLineBroadcast;
+window.openLineSettings = openLineSettings;
+window.saveLineSettings = saveLineSettings;
+window.refreshBroadcastHistory = refreshBroadcastHistory;
+
+// --- Window Exports ---
+window.rollLunch = rollLunch;
+window.openLunchModal = openLunchModal;
+window.toggleLunchManager = toggleLunchManager;
+window.addLunchPlacePrompt = addLunchPlacePrompt;
+window.deleteLunchPlace = deleteLunchPlace;
+window.showWeatherDetail = showWeatherDetail;
+window.fetchWeather = fetchWeather;
+window.updateSystemStatus = updateSystemStatus;

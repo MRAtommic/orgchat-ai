@@ -31,6 +31,6 @@ echo.
 start /b timeout /t 2 /nobreak >nul && start http://localhost:5000
 
 :: Start Flask
-python app.py
+python app_server.py
 
 pause

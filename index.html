@@ -45,6 +45,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <script src="https://accounts.google.com/gsi/client"
     onload="if(typeof initGoogleSignIn === 'function') initGoogleSignIn()" async defer></script>
   <script>
@@ -110,6 +111,13 @@
             <i data-lucide="arrow-right"
               class="w-4 h-4 inline-block ml-1 group-hover:translate-x-1 transition-transform"></i>
           </button>
+
+          <div class="pt-4 flex flex-col items-center gap-3">
+            <p class="text-[10px] font-black uppercase tracking-widest text-surface-400">หรือใช้งานผ่าน LINE</p>
+            <a href="https://lin.ee/QyNj4dZ" class="transition-transform hover:scale-105 active:scale-95">
+              <img src="https://scdn.line-apps.com/n/line_add_friends/btn/th.png" alt="เพิ่มเพื่อน" height="36" border="0">
+            </a>
+          </div>
 
           <div class="relative flex items-center py-2" id="googleSignInSeparator" style="display: none;">
             <div class="flex-grow border-t border-surface-200 dark:border-surface-700"></div>
@@ -290,6 +298,9 @@
         <button class="nav-item w-full" data-view="kb" id="nav-kb">
           <i data-lucide="folder-open" class="w-4 h-4"></i> <span>คลังข้อมูล</span>
         </button>
+        <button class="nav-item w-full" data-view="drive" id="nav-drive">
+          <i data-lucide="cloud" class="w-4 h-4"></i> <span>Google Drive</span>
+        </button>
         <button class="nav-item w-full" data-view="calendar" id="nav-calendar">
           <i data-lucide="calendar" class="w-4 h-4"></i> <span>ปฏิทินกิจกรรม</span>
         </button>
@@ -307,6 +318,9 @@
         </button>
         <button class="nav-item w-full" data-view="kanban" id="nav-kanban">
           <i data-lucide="layout-dashboard" class="w-4 h-4"></i> <span>Kanban Board</span>
+        </button>
+        <button class="nav-item w-full" data-view="quotation" id="nav-quotation">
+          <i data-lucide="file-signature" class="w-4 h-4"></i> <span>ใบเสนอราคา</span>
         </button>
         <button class="nav-item w-full" data-view="wiki" id="nav-wiki">
           <i data-lucide="book-open" class="w-4 h-4"></i> <span>Internal Wiki</span>
@@ -472,6 +486,64 @@
                 class="btn-primary px-8 py-3 rounded-2xl text-sm shadow-xl shadow-brand-600/20">เริ่มต้นใช้งานแชท</button>
               <button onclick="showView('kb')"
                 class="bg-surface-100 dark:bg-surface-800 hover:bg-surface-200 dark:hover:bg-surface-700 px-8 py-3 rounded-2xl text-sm font-bold transition-all">จัดการคลังข้อมูล</button>
+            </div>
+            
+            <div class="pt-8 border-t border-surface-100 dark:border-surface-800/50 mt-8 animate-in fade-in slide-in-from-bottom-2 duration-1000 delay-500">
+              <p class="text-[10px] font-black text-surface-400 uppercase tracking-widest mb-4">เชื่อมต่อกับ LINE BOT</p>
+              <a href="https://lin.ee/QyNj4dZ" class="inline-block transition-transform hover:scale-105 active:scale-95 shadow-xl shadow-green-500/10 rounded-lg">
+                <img src="https://scdn.line-apps.com/n/line_add_friends/btn/th.png" alt="เพิ่มเพื่อน" height="40" border="0">
+              </a>
+            </div>
+          </div>
+        </section>
+
+        <!-- Google Drive Explorer View -->
+        <section id="view-drive" class="view hidden flex-1 flex flex-col animate-in fade-in duration-500 h-full overflow-hidden">
+          <header class="h-14 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between px-6 bg-white dark:bg-surface-900 sticky top-0 z-10 w-full shrink-0">
+            <div class="flex items-center gap-2">
+              <div class="w-8 h-8 bg-blue-50 dark:bg-blue-900/30 text-blue-600 rounded-lg flex items-center justify-center">
+                <i data-lucide="cloud" class="w-4 h-4"></i>
+              </div>
+              <div>
+                <h2 class="font-bold text-sm leading-tight">Google Drive Explorer</h2>
+                <p class="text-[9px] text-surface-400 font-bold uppercase tracking-widest">Enterprise Storage</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <button id="refreshDriveBtn" class="p-2 text-surface-400 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 rounded-lg transition-all" title="รีเฟรช">
+                <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+              </button>
+            </div>
+          </header>
+          <div class="flex-1 overflow-y-auto bg-surface-50 dark:bg-surface-950/30 p-4 md:p-8 custom-scrollbar">
+            <!-- Breadcrumbs & Navigation -->
+            <div class="mb-6 flex items-center gap-3 overflow-x-auto no-scrollbar">
+              <button id="driveBackBtn" onclick="goBackDriveFolder()" class="flex-shrink-0 h-10 w-10 flex items-center justify-center bg-white dark:bg-surface-900 border border-surface-100 dark:border-surface-800 rounded-xl shadow-sm text-surface-400 hover:text-brand-600 hover:border-brand-100 transition-all disabled:opacity-30 disabled:cursor-not-allowed" title="ย้อนกลับ">
+                <i data-lucide="arrow-left" class="w-4 h-4"></i>
+              </button>
+              <nav id="driveBreadcrumbs" class="flex items-center gap-2 text-xs font-bold text-surface-400 uppercase tracking-wider whitespace-nowrap bg-white dark:bg-surface-900 px-4 py-2.5 rounded-xl border border-surface-100 dark:border-surface-800 shadow-sm inline-flex">
+                <!-- Breadcrumbs injected here -->
+              </nav>
+            </div>
+            
+            <div id="driveLoading" class="flex flex-col items-center justify-center py-20 animate-pulse">
+              <div class="w-12 h-12 border-4 border-brand-600/10 border-t-brand-600 rounded-full animate-spin mb-4"></div>
+              <p class="text-[10px] font-black uppercase tracking-widest text-surface-400">กำลังเตรียมข้อมูลไดรฟ์...</p>
+            </div>
+
+            <div id="driveEmptyState" class="hidden flex flex-col items-center justify-center py-20 text-center space-y-4">
+               <div class="w-20 h-20 bg-surface-100 dark:bg-surface-800 rounded-full flex items-center justify-center text-surface-300">
+                  <i data-lucide="folder-open" class="w-10 h-10"></i>
+               </div>
+               <div>
+                  <h3 class="font-bold text-surface-900 dark:text-white">ไม่พบไฟล์ในโฟลเดอร์นี้</h3>
+                  <p class="text-sm text-surface-500">โฟลเดอร์นี้ยังไม่มีไฟล์หรือโฟลเดอร์ย่อย</p>
+               </div>
+            </div>
+            
+            <!-- Content Grid -->
+            <div id="driveGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-4 md:gap-6">
+              <!-- Items will be injected here -->
             </div>
           </div>
         </section>
@@ -1516,38 +1588,82 @@
             <div
               class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-2xl overflow-hidden shadow-sm mb-6">
               <div
-                class="px-6 py-4 border-b border-surface-100 dark:border-surface-800 bg-surface-50 dark:bg-surface-800/50 flex items-center gap-3">
-                <div
-                  class="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-500 to-brand-600 flex items-center justify-center text-white shadow-md">
-                  <i data-lucide="settings-2" class="w-5 h-5"></i>
+                class="px-6 py-4 border-b border-surface-100 dark:border-surface-800 bg-surface-50 dark:bg-surface-800/50 flex items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                  <div
+                    class="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-500 to-brand-600 flex items-center justify-center text-white shadow-md">
+                    <i data-lucide="settings-2" class="w-5 h-5"></i>
+                  </div>
+                  <div>
+                    <h3 class="font-bold text-base">ตั้งค่าระบบ (.env)</h3>
+                    <p class="text-[11px] font-semibold text-surface-500 uppercase tracking-wider">Environment Variables
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h3 class="font-bold text-base">ตั้งค่าระบบ</h3>
-                  <p class="text-[11px] font-semibold text-surface-500 uppercase tracking-wider">System Configuration
-                  </p>
-                </div>
+                <button onclick="loadAdminSettings()" class="text-surface-400 hover:text-brand-600 transition-colors">
+                    <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                </button>
               </div>
-              <div class="p-6 hidden">
-                <div
-                  class="flex items-center justify-between p-4 bg-surface-50 dark:bg-surface-800/50 rounded-xl border border-surface-100 dark:border-surface-700">
-                  <div class="flex items-center gap-4">
-                    <div
-                      class="w-10 h-10 rounded-full bg-brand-100 dark:bg-brand-900/40 text-brand-600 dark:text-brand-400 flex items-center justify-center">
-                      <i data-lucide="edit-3" class="w-5 h-5"></i>
-                    </div>
-                    <div>
-                      <h4 class="text-sm font-bold">อนุญาตให้ผู้ใช้ทั่วไปแก้ไขไฟล์ได้</h4>
-                      <p class="text-[11px] text-surface-500 font-medium">หากเปิดใช้งาน
-                        ผู้ใช้ทุกคนจะสามารถอัปโหลด แก้ไข และลบไฟล์ในคลังข้อมูลได้</p>
+              <div class="p-6">
+                <form id="adminSettingsForm" onsubmit="saveAdminSettings(event)" class="space-y-6">
+                  <!-- AI Providers -->
+                  <div class="space-y-4">
+                    <h4 class="text-xs font-black text-surface-400 uppercase tracking-widest flex items-center gap-2">
+                        <i data-lucide="cpu" class="w-3 h-3"></i> AI Providers
+                    </h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div class="space-y-1">
+                        <label class="text-[10px] font-bold text-surface-500 ml-1">GEMINI_API_KEY</label>
+                        <input type="password" name="GEMINI_API_KEY" placeholder="AIzaSy..." class="w-full px-4 py-2.5 bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 outline-none transition-all">
+                      </div>
+                      <div class="space-y-1">
+                        <label class="text-[10px] font-bold text-surface-500 ml-1">GROQ_API_KEY</label>
+                        <input type="password" name="GROQ_API_KEY" placeholder="gsk_..." class="w-full px-4 py-2.5 bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 outline-none transition-all">
+                      </div>
                     </div>
                   </div>
-                  <label class="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" id="settingAllowUserEdit" class="sr-only peer">
-                    <div
-                      class="w-11 h-6 bg-surface-200 peer-focus:outline-none rounded-full peer dark:bg-surface-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600">
+
+                  <!-- LINE Bot -->
+                  <div class="space-y-4 pt-4 border-t border-surface-100 dark:border-surface-800">
+                    <h4 class="text-xs font-black text-surface-400 uppercase tracking-widest flex items-center gap-2">
+                        <i data-lucide="message-circle" class="w-3 h-3"></i> LINE Bot Configuration
+                    </h4>
+                    <div class="space-y-3">
+                      <div class="space-y-1">
+                        <label class="text-[10px] font-bold text-surface-500 ml-1">CHANNEL_ACCESS_TOKEN</label>
+                        <input type="password" name="LINE_CHANNEL_ACCESS_TOKEN" class="w-full px-4 py-2.5 bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 outline-none transition-all">
+                      </div>
+                      <div class="space-y-1">
+                        <label class="text-[10px] font-bold text-surface-500 ml-1">CHANNEL_SECRET</label>
+                        <input type="password" name="LINE_CHANNEL_SECRET" class="w-full px-4 py-2.5 bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 outline-none transition-all">
+                      </div>
                     </div>
-                  </label>
-                </div>
+                  </div>
+
+                  <!-- Google Services -->
+                  <div class="space-y-4 pt-4 border-t border-surface-100 dark:border-surface-800">
+                    <h4 class="text-xs font-black text-surface-400 uppercase tracking-widest flex items-center gap-2">
+                        <i data-lucide="cloud" class="w-3 h-3"></i> Google Drive & Sheets
+                    </h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div class="space-y-1">
+                        <label class="text-[10px] font-bold text-surface-500 ml-1">PARENT_FOLDER_ID</label>
+                        <input type="text" name="GOOGLE_DRIVE_PARENT_ID" placeholder="1CxDsh..." class="w-full px-4 py-2.5 bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 outline-none transition-all">
+                      </div>
+                      <div class="space-y-1">
+                        <label class="text-[10px] font-bold text-surface-500 ml-1">SPREADSHEET_ID</label>
+                        <input type="text" name="SPREADSHEET_ID" class="w-full px-4 py-2.5 bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 outline-none transition-all">
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="pt-4">
+                    <button type="submit" class="w-full py-3 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl shadow-lg shadow-brand-500/20 transition-all flex items-center justify-center gap-2">
+                        <i data-lucide="save" class="w-4 h-4"></i> บันทึกการตั้งค่า
+                    </button>
+                    <p class="mt-3 text-center text-[10px] text-surface-400 italic">* การเปลี่ยนค่า API Key จะมีผลทันทีหลังจากบันทึก</p>
+                  </div>
+                </form>
               </div>
             </div>
 
@@ -3054,6 +3170,152 @@
   </div>
 
 
+
+  <!-- Quotation View -->
+  <section id="view-quotation" class="view hidden flex-1 flex flex-col items-center overflow-hidden animate-in fade-in duration-300 bg-surface-50 dark:bg-surface-950">
+    <header class="h-14 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between px-6 bg-white dark:bg-surface-900 w-full shrink-0">
+      <h2 class="font-semibold text-sm flex items-center gap-2">
+        <i data-lucide="file-signature" class="w-4 h-4 text-brand-600"></i> สร้างใบเสนอราคา
+      </h2>
+      <div class="flex items-center gap-2">
+        <button id="generatePdfBtn" class="btn-primary text-xs py-1.5 px-3 flex items-center gap-1.5">
+          <i data-lucide="file-down" class="w-3.5 h-3.5"></i> สร้าง PDF & บันทึก
+        </button>
+      </div>
+    </header>
+    
+    <div class="flex-1 w-full flex flex-col md:flex-row overflow-hidden">
+      <!-- Input Form Sidebar -->
+      <div class="w-full md:w-[400px] border-r border-surface-200 dark:border-surface-800 bg-white dark:bg-surface-900 overflow-y-auto p-6 space-y-6">
+        <div class="space-y-4">
+          <h3 class="text-xs font-black uppercase tracking-widest text-surface-400 border-b border-surface-100 dark:border-surface-800 pb-2">ข้อมูลเอกสาร</h3>
+          <div class="grid grid-cols-2 gap-4">
+            <div class="space-y-1">
+              <label class="text-[10px] font-bold text-surface-500">เลขที่เอกสาร</label>
+              <input type="text" id="qtNo" class="input-field text-sm py-2" placeholder="QT-202605001" value="QT-202605001">
+            </div>
+            <div class="space-y-1">
+              <label class="text-[10px] font-bold text-surface-500">วันที่</label>
+              <input type="date" id="qtDate" class="input-field text-sm py-2">
+            </div>
+          </div>
+          <h3 class="text-xs font-black uppercase tracking-widest text-surface-400 border-b border-surface-100 dark:border-surface-800 pb-2 pt-2">ข้อมูลลูกค้า</h3>
+          <div class="space-y-3">
+            <input type="text" id="qtCustomerName" class="input-field text-sm py-2" placeholder="ชื่อบริษัทลูกค้า">
+            <textarea id="qtCustomerAddress" class="input-field text-sm py-2 h-20 resize-none" placeholder="ที่อยู่ลูกค้า"></textarea>
+            <input type="text" id="qtCustomerTaxId" class="input-field text-sm py-2" placeholder="เลขประจำตัวผู้เสียภาษี">
+            <input type="text" id="qtCustomerContact" class="input-field text-sm py-2" placeholder="ชื่อผู้ติดต่อ">
+          </div>
+
+          <h3 class="text-xs font-black uppercase tracking-widest text-surface-400 border-b border-surface-100 dark:border-surface-800 pb-2 pt-2 flex justify-between items-center">
+            รายการสินค้า
+            <button id="addQtItemBtn" class="text-brand-600 hover:text-brand-700 p-1"><i data-lucide="plus" class="w-4 h-4"></i></button>
+          </h3>
+          <div id="qtItemsContainer" class="space-y-3">
+            <!-- Items added here -->
+          </div>
+          
+          <div class="border-t border-surface-200 dark:border-surface-800 pt-4 space-y-2">
+            <div class="flex justify-between items-center">
+              <label class="text-[10px] font-bold text-surface-500">ส่วนลด (บาท)</label>
+              <input type="number" id="qtDiscount" class="input-field text-sm py-1 w-24 text-right" value="0">
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Live Preview Area -->
+      <div class="flex-1 bg-surface-100 dark:bg-surface-950 overflow-y-auto p-4 md:p-8 flex justify-center items-start">
+        <!-- A4 Paper styling -->
+        <div id="quotationPreview" class="bg-white w-[210mm] min-h-[297mm] shadow-xl relative text-black" style="padding: 20mm;">
+          <!-- Simple header -->
+          <div class="flex justify-between items-start mb-8 border-b-2 border-brand-600 pb-4">
+            <div>
+              <h1 class="text-3xl font-black text-brand-700 tracking-tight">ใบเสนอราคา</h1>
+              <h2 class="text-xl font-bold text-surface-400 tracking-widest mt-1">QUOTATION</h2>
+            </div>
+            <div class="text-right">
+              <h3 class="font-bold text-lg">บริษัท ออร์กแชท จำกัด</h3>
+              <p class="text-xs text-surface-600 mt-1">123 ตึกสาทรแสควร์ กรุงเทพมหานคร 10500<br>เลขประจำตัวผู้เสียภาษี: 0105566000000<br>โทร: 02-123-4567</p>
+            </div>
+          </div>
+          
+          <div class="flex justify-between mb-8">
+            <div class="w-1/2 pr-4">
+              <p class="text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1">เสนอให้ (Customer)</p>
+              <p class="font-bold text-sm" id="prevCustName">ชื่อบริษัทลูกค้า</p>
+              <p class="text-xs text-surface-600 mt-1 whitespace-pre-wrap" id="prevCustAddress">ที่อยู่ลูกค้า</p>
+              <p class="text-xs text-surface-600 mt-1">เลขประจำตัวผู้เสียภาษี: <span id="prevCustTaxId">-</span></p>
+              <p class="text-xs text-surface-600 mt-1">ผู้ติดต่อ: <span id="prevCustContact">-</span></p>
+            </div>
+            <div class="w-1/3 bg-surface-50 p-4 rounded-xl border border-surface-200">
+              <div class="flex justify-between mb-2">
+                <span class="text-xs text-surface-500 font-bold">เลขที่ (No.)</span>
+                <span class="text-xs font-black" id="prevQtNo">QT-202605001</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-xs text-surface-500 font-bold">วันที่ (Date)</span>
+                <span class="text-xs font-black" id="prevQtDate">-</span>
+              </div>
+            </div>
+          </div>
+          
+          <table class="w-full mb-8 text-sm">
+            <thead>
+              <tr class="bg-brand-600 text-white">
+                <th class="py-2 px-3 text-left w-12 rounded-tl-lg">ลำดับ</th>
+                <th class="py-2 px-3 text-left">รายการสินค้า (Description)</th>
+                <th class="py-2 px-3 text-right w-20">จำนวน</th>
+                <th class="py-2 px-3 text-right w-28">ราคาต่อหน่วย</th>
+                <th class="py-2 px-3 text-right w-32 rounded-tr-lg">จำนวนเงิน</th>
+              </tr>
+            </thead>
+            <tbody id="prevItemsBody">
+              <!-- Rendered via JS -->
+            </tbody>
+          </table>
+          
+          <div class="flex justify-end mb-8">
+            <div class="w-1/2">
+              <div class="flex justify-between py-2 border-b border-surface-100">
+                <span class="text-xs font-bold text-surface-500">รวมเป็นเงิน (Sub Total)</span>
+                <span class="text-sm font-bold" id="prevSubTotal">0.00</span>
+              </div>
+              <div class="flex justify-between py-2 border-b border-surface-100 text-red-500">
+                <span class="text-xs font-bold">หักส่วนลด (Discount)</span>
+                <span class="text-sm font-bold" id="prevDiscount">0.00</span>
+              </div>
+              <div class="flex justify-between py-2 border-b border-surface-100">
+                <span class="text-xs font-bold text-surface-500">จำนวนเงินหลังหักส่วนลด</span>
+                <span class="text-sm font-bold" id="prevAfterDiscount">0.00</span>
+              </div>
+              <div class="flex justify-between py-2 border-b border-surface-100">
+                <span class="text-xs font-bold text-surface-500">ภาษีมูลค่าเพิ่ม (VAT 7%)</span>
+                <span class="text-sm font-bold" id="prevVat">0.00</span>
+              </div>
+              <div class="flex justify-between py-3 bg-brand-50 border-t-2 border-brand-600 px-3 rounded-b-xl">
+                <span class="text-sm font-black text-brand-800">จำนวนเงินสุทธิ (Grand Total)</span>
+                <span class="text-lg font-black text-brand-800" id="prevGrandTotal">0.00</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="absolute bottom-[20mm] left-[20mm] right-[20mm] flex justify-between mt-12 pt-8 border-t border-surface-200">
+            <div class="text-center w-1/3">
+              <div class="border-b border-surface-300 h-8 mb-2"></div>
+              <p class="text-[10px] font-bold text-surface-500">ผู้ตกลงสั่งซื้อ / Customer</p>
+              <p class="text-[10px] text-surface-400 mt-1">วันที่ / Date: ........................</p>
+            </div>
+            <div class="text-center w-1/3">
+              <div class="border-b border-surface-300 h-8 mb-2"></div>
+              <p class="text-[10px] font-bold text-surface-500">ผู้อนุมัติ / Authorized Signature</p>
+              <p class="text-[10px] text-surface-400 mt-1">วันที่ / Date: ........................</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
 
   <style>
     /* Kanban */

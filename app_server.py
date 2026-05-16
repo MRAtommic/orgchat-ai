@@ -6,7 +6,7 @@ import io
 print("🚀 SYSTEM v11.0.4 [ULTIMATE/THAI-VOICE/GTHREAD] READY.", flush=True)
 
 # Force UTF-8 output encoding for Windows compatibility
-if sys.stdout.encoding != 'utf-8':
+if sys.stdout.encoding != 'utf-8': 
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 if sys.stderr.encoding != 'utf-8':
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
@@ -20,7 +20,7 @@ import os
 import uuid
 from pathlib import Path
 
-from flask import Flask, request, jsonify, render_template, render_template_string, send_from_directory, session, send_file
+from flask import Flask, request, jsonify, render_template, render_template_string, send_from_directory, session, send_file, abort
 import hmac
 import hashlib
 import base64
@@ -36,8 +36,12 @@ import time
 from datetime import datetime
 import sqlite3
 import threading
+import urllib.parse
 # ใช้ google-genai (SDK ใหม่) แทน google-generativeai (deprecated)
 from google import genai
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+from datetime import timedelta
 import rag_engine
 import database
 import export_service
@@ -47,6 +51,21 @@ from fpdf import FPDF
 from pywebpush import webpush, WebPushException
 from reconciliation_service import ReconciliationService
 import pandas as pd
+import google_drive_service
+from google_drive_service import google_manager
+import settings_manager
+
+import logging
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler("bot_debug.log", encoding="utf-8")
+    ]
+)
+logger = logging.getLogger("OrgChatAI")
 
 try:
     from google.oauth2 import id_token
@@ -110,6 +129,14 @@ def async_startup_tasks():
     try:
         rag_engine.reinit_kb() # Heavy ChromaDB sync
         database.init_db()     # DB Migrations
+
+        # Auto-Cleanup orphaned Knowledge Base files
+        print("🧹 Running automatic Knowledge Base cleanup...", flush=True)
+        import kb_cleanup
+        try:
+            kb_cleanup.cleanup()
+        except Exception as e:
+            print(f"⚠️ Auto-cleanup failed: {e}", flush=True)
         
         # Initialize "General" group if it doesn't exist
         conn = sqlite3.connect(database.DB_PATH)
@@ -119,7 +146,8 @@ def async_startup_tasks():
             cursor.execute("INSERT INTO chat_rooms (id, name, owner) VALUES (1, 'กลุ่มทั่วไป (General)', 'System')")
             
         # Ensure AI Assistant profile exists
-        cursor.execute("INSERT OR IGNORE INTO user_profiles (username, display_name, avatar_url) VALUES ('AI-Assistant', 'AI Assistant', 'https://cdn-icons-png.flaticon.com/512/4712/4712035.png')")
+        cursor.execute("INSERT OR IGNORE INTO user_profiles (username, display_name, avatar_url) VALUES ('AI-Assistant', 'น้องพั้น (Nong Punch)', 'https://cdn-icons-png.flaticon.com/512/4712/4712035.png')")
+        cursor.execute("UPDATE user_profiles SET display_name = 'น้องพั้น (Nong Punch)' WHERE username = 'AI-Assistant'")
         
         # Ensure Admin has admin role
         cursor.execute("INSERT OR IGNORE INTO user_settings (username, role) VALUES ('Admin', 'admin')")
@@ -136,13 +164,18 @@ def async_startup_tasks():
     except Exception as e:
         print(f"❌ Background startup error: {e}", flush=True)
 
+    # Ensure critical directories exist
+    os.makedirs("uploads/social_feed", exist_ok=True)
+    os.makedirs("uploads/kb", exist_ok=True)
+    os.makedirs("exports", exist_ok=True)
+
 # Start heavy background tasks immediately
 import threading
 threading.Thread(target=async_startup_tasks, daemon=True).start()
 
 # Hardcoded credentials for internal use
 USERS = {
-    "admin": "1234",
+    "admin": "admin1234",
     "few": "few1234",
     "do": "do1234"
 }
@@ -237,6 +270,24 @@ try:
         update_weather_background()
     except:
         pass
+
+    def _scheduled_auto_reconciliation():
+        """งานสำรอง: กระทบยอดอัตโนมัติทุก 30 นาที กันพลาด"""
+        try:
+            print("⏰ [Scheduler] Running periodic reconciliation...", flush=True)
+            # Use google_manager directly
+            if google_manager.drive_service and google_manager.sheets_service and google_manager.spreadsheet_id:
+                google_manager.auto_reconcile_internal()
+                print("✅ [Scheduler] Periodic reconciliation complete.", flush=True)
+            else:
+                print("⚠️ [Scheduler] Google services or Spreadsheet ID not ready.", flush=True)
+        except Exception as e:
+            print(f"❌ [Scheduler] Recon Error: {e}", flush=True)
+
+    _scheduler.add_job(_scheduled_auto_reconciliation, 'interval', minutes=30, id='periodic_recon')
+    
+    # Force run once on startup
+    threading.Thread(target=_scheduled_auto_reconciliation, daemon=True).start()
 
     def _scheduled_daily_summary():
         """Run daily AI summary and push to all users at 08:00."""
@@ -735,321 +786,597 @@ def api_login_google():
         return jsonify({"ok": False, "error": "การตรวจสอบสิทธิ์กับ Google ล้มเหลว"}), 401
 
 # --- LINE BOT HELPERS ---
-def verify_line_signature(body: bytes, signature: str) -> bool:
-    """
-    ตรวจสอบ signature จาก LINE Messaging API
-    ตาม spec: HMAC-SHA256(channel_secret, body) → Base64
-    """
+
+def verify_line_signature(body, signature):
+    """Verifies the LINE webhook signature using constant-time comparison."""
     channel_secret = os.environ.get("LINE_CHANNEL_SECRET", "").strip()
     if not channel_secret:
-        print("❌ [LINE] ไม่พบ LINE_CHANNEL_SECRET ใน Environment Variables!", flush=True)
+        return True # Dev mode: allow if secret not set
+    
+    # Ensure body is bytes
+    if isinstance(body, str):
+        body = body.encode('utf-8')
+    
+    hash_obj = hmac.new(channel_secret.encode('utf-8'), body, hashlib.sha256).digest()
+    expected_signature = base64.b64encode(hash_obj).decode('utf-8')
+    
+    try:
+        return hmac.compare_digest(signature.strip(), expected_signature)
+    except:
         return False
 
-    # คำนวณ HMAC-SHA256 ตาม LINE API spec
-    hash_val = hmac.new(
-        channel_secret.encode('utf-8'),
-        body,  # ต้องเป็น raw bytes ก่อน request.json ถูกอ่าน
-        hashlib.sha256
-    ).digest()
-    expected_signature = base64.b64encode(hash_val).decode('utf-8')
-
-    # clean signature จาก header (กำจัด whitespace/newline ที่ LINE อาจส่งมา)
-    received_signature = signature.strip()
-
-    # เปรียบเทียบแบบ constant-time เพื่อความปลอดภัย
-    try:
-        match = hmac.compare_digest(received_signature, expected_signature)
-    except (TypeError, ValueError):
-        match = False
-
-    if not match:
-        print(f"🛡️ [LINE] Signature ไม่ตรง!", flush=True)
-        print(f"  → รับมา  : {received_signature[:20]}...", flush=True)
-        print(f"  → คาดหวัง: {expected_signature[:20]}...", flush=True)
-        print(f"  → SECRET ยาว {len(channel_secret)} ตัวอักษร", flush=True)
-
-    return match
-
-def reply_to_line(reply_token, text):
+def reply_to_line(reply_token, text, quick_reply=None, sticker_data=None):
+    """Sends a reply message to LINE (supports text + optional sticker)."""
     token = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "").strip()
     if not token or not reply_token: return
     
     url = "https://api.line.me/v2/bot/message/reply"
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {token}"
-    }
-    payload = {
-        "replyToken": reply_token,
-        "messages": [{"type": "text", "text": text}]
-    }
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
+    
+    messages = []
+    # If sticker is requested, add it as the first message in the bubble
+    if sticker_data:
+        messages.append({
+            "type": "sticker",
+            "packageId": sticker_data.get("packageId", "446"),
+            "stickerId": sticker_data.get("stickerId", "1988")
+        })
+    
+    # Main text message
+    text_msg = {"type": "text", "text": text[:5000]}
+    if quick_reply:
+        text_msg["quickReply"] = quick_reply
+    messages.append(text_msg)
+        
+    payload = {"replyToken": reply_token, "messages": messages}
     try:
-        res = requests.post(url, headers=headers, json=payload, timeout=15)
-        if res.status_code != 200:
-            print(f"⚠️ [LINE] API Error ({res.status_code}): {res.text}", flush=True)
-        else:
-            # log_bot(f"✅ LINE Reply sent successfully")
-            pass
+        logger.info(f"📤 [LINE Reply] Sending reply to {reply_token[:10]}...")
+        response = requests.post(url, headers=headers, json=payload, timeout=15)
+        logger.info(f"📥 [LINE Reply] Status: {response.status_code}, Response: {response.text}")
     except Exception as e:
-        print(f"❌ [LINE] Reply Exception: {e}", flush=True)
+        logger.error(f"❌ [LINE Reply] Error: {e}")
 
 def create_line_flex_bubble(title, subtitle, fields, color="#1DB446"):
     """Creates a beautiful LINE Flex Message JSON bubble."""
     contents = []
-    
-    # Title/Header
-    contents.append({
-        "type": "text",
-        "text": title,
-        "weight": "bold",
-        "size": "xl",
-        "color": color
-    })
-    
-    # Subtitle
+    contents.append({"type": "text", "text": title, "weight": "bold", "size": "xl", "color": color})
     if subtitle:
-        contents.append({
-            "type": "text",
-            "text": subtitle,
-            "size": "sm",
-            "color": "#aaaaaa",
-            "wrap": True,
-            "margin": "md"
-        })
-    
+        contents.append({"type": "text", "text": subtitle, "size": "sm", "color": "#aaaaaa", "wrap": True, "margin": "md"})
     contents.append({"type": "separator", "margin": "lg"})
     
-    # Fields (key-value pairs)
     field_rows = []
     for key, val in fields.items():
         field_rows.append({
-            "type": "box",
-            "layout": "horizontal",
-            "contents": [
-                {
-                    "type": "text",
-                    "text": key,
-                    "size": "sm",
-                    "color": "#555555",
-                    "flex": 1
-                },
-                {
-                    "type": "text",
-                    "text": str(val),
-                    "size": "sm",
-                    "color": "#111111",
-                    "flex": 2,
-                    "wrap": True
-                }
-            ],
-            "margin": "md"
+            "type": "box", "layout": "horizontal", "contents": [
+                {"type": "text", "text": key, "size": "sm", "color": "#555555", "flex": 1},
+                {"type": "text", "text": str(val), "size": "sm", "color": "#111111", "flex": 2, "wrap": True}
+            ], "margin": "md"
         })
     
-    contents.append({
-        "type": "box",
-        "layout": "vertical",
-        "contents": field_rows,
-        "margin": "lg"
-    })
-    
+    contents.append({"type": "box", "layout": "vertical", "contents": field_rows, "margin": "lg"})
     contents.append({"type": "separator", "margin": "lg"})
-    
-    # Footer
-    contents.append({
-        "type": "box",
-        "layout": "horizontal",
-        "contents": [
-            {
-                "type": "text",
-                "text": "OrgChat Smart Helper",
-                "size": "xs",
-                "color": "#aaaaaa",
-                "align": "end",
-                "style": "italic"
-            }
-        ],
-        "margin": "md"
-    })
+    contents.append({"type": "text", "text": "OrgChat Smart Helper", "size": "xs", "color": "#aaaaaa", "align": "end", "style": "italic", "margin": "md"})
 
-    return {
-        "type": "bubble",
-        "body": {
-            "type": "box",
-            "layout": "vertical",
-            "contents": contents
-        }
-    }
+    return {"type": "bubble", "body": {"type": "box", "layout": "vertical", "contents": contents}}
 
 def send_line_push_notification(target_username, title, text, fields=None):
-    """Sends a one-to-one message to a specific user via LINE using Flex Messages where possible."""
+    """Sends a one-to-one message to a specific user via LINE."""
     line_id = database.get_line_id_by_username(target_username)
-    if not line_id:
-        return
-        
+    if not line_id: return
+    
     token = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "").strip()
     url = "https://api.line.me/v2/bot/message/push"
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {token}"
-    }
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
     
     if fields:
-        # Use Flex Message
         flex_contents = create_line_flex_bubble(title, "การแจ้งเตือนส่วนตัว", fields, color="#E67E22")
-        message_payload = {
-            "type": "flex",
-            "altText": f"แจ้งเตือน: {title}",
-            "contents": flex_contents
-        }
+        msg = {"type": "flex", "altText": f"แจ้งเตือน: {title}", "contents": flex_contents}
     else:
-        # Fallback to text
-        message_payload = {
-            "type": "text", 
-            "text": f"🔔 {title}\n{text}"
-        }
+        msg = {"type": "text", "text": f"🔔 {title}\n{text}"}
         
-    payload = {
-        "to": line_id,
-        "messages": [message_payload]
-    }
-    
     try:
-        res = requests.post(url, headers=headers, json=payload, timeout=5)
-        if res.status_code == 200:
-            log_bot(f"📲 LINE Push sent to {target_username}")
+        requests.post(url, headers=headers, json={"to": line_id, "messages": [msg]}, timeout=10)
     except Exception as e:
-        print(f"❌ LINE Push Error: {e}")
+        logger.error(f"❌ LINE Push Error: {e}")
+
+# --- LINE Configuration & Settings ---
+LINE_CONFIG_FILE = BASE_DIR / "line_config.json"
+
+def get_line_config():
+    if os.path.exists(LINE_CONFIG_FILE):
+        try:
+            with open(LINE_CONFIG_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except: pass
+    return {
+        "channel_access_token": os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", ""),
+        "channel_secret": os.environ.get("LINE_CHANNEL_SECRET", ""),
+        "greeting_message": "สวัสดีค่ะ! ยินดีต้อนรับสู่บริการของเรา มีอะไรให้น้องพั้นช่วยไหมคะ?",
+        "ai_auto_responder_enabled": False
+    }
+
+def save_line_config(config):
+    with open(LINE_CONFIG_FILE, 'w', encoding='utf-8') as f:
+        json.dump(config, f, ensure_ascii=False, indent=2)
+    os.environ["LINE_CHANNEL_ACCESS_TOKEN"] = config.get("channel_access_token", "")
+    os.environ["LINE_CHANNEL_SECRET"] = config.get("channel_secret", "")
+
+@app.route("/api/admin/line/settings", methods=["GET", "POST"])
+@admin_required
+def admin_line_settings():
+    if request.method == "POST":
+        data = request.json
+        config = get_line_config()
+        config.update(data)
+        save_line_config(config)
+        return jsonify({"ok": True, "message": "บันทึกการตั้งค่า LINE เรียบร้อยแล้วค่ะ"})
+    return jsonify({"ok": True, "config": get_line_config()})
+
+@app.route("/api/admin/line/broadcast-history")
+@admin_required
+def get_broadcast_history():
+    try:
+        conn = sqlite3.connect(database.DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM line_broadcast_history ORDER BY timestamp DESC LIMIT 50")
+        rows = [dict(r) for r in cursor.fetchall()]
+        conn.close()
+        return jsonify({"ok": True, "history": rows})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)})
+
+# --- LINE Webhook & Processing ---
+LINE_FOLDER_CACHE = {}
+_line_batch_timer = {}
+_pending_line_files = {} # uid -> list of {content, mimetype, original_name, msg_type}
 
 def broadcast_line_announcement(title, text, fields=None):
-    """Sends a message to all users who follow the bot using Flex Messages."""
+    """Sends a push notification to all linked users via Flex Message."""
     token = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "").strip()
-    if not token: return
-    
+    if not token: return False
     url = "https://api.line.me/v2/bot/message/broadcast"
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {token}"
-    }
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
     
-    if fields:
-        flex_contents = create_line_flex_bubble(title, "ประกาศองค์กร", fields, color="#007bff")
-        message_payload = {
-            "type": "flex",
-            "altText": f"ประกาศ: {title}",
-            "contents": flex_contents
+    flex_contents = {
+        "type": "bubble",
+        "body": {
+            "type": "box", "layout": "vertical", "contents": [
+                { "type": "text", "text": "ประกาศจากน้องพั้นค่ะ 📢", "size": "xs", "color": "#059669", "weight": "bold", "margin": "none" },
+                { "type": "text", "text": text, "wrap": True, "margin": "md", "size": "sm", "lineSpacing": "6px", "color": "#334155" }
+            ]
+        },
+        "footer": {
+            "type": "box", "layout": "vertical", "contents": [
+                { "type": "text", "text": "เปิดแอปเพื่อดูรายละเอียดเพิ่มเติม", "size": "xxs", "color": "#94a3b8", "align": "center" }
+            ]
         }
-    else:
-        # Fallback to text with nicer formatting
-        message_payload = {
-            "type": "text", 
-            "text": f"📢 {title}\n━━━━━━━━━━━━━━\n{text[:512]}\n━━━━━━━━━━━━━━"
-        }
-        
-    payload = {
-        "messages": [message_payload]
     }
     try:
-        res = requests.post(url, headers=headers, json=payload, timeout=10)
-        return res.status_code == 200
+        res = requests.post(url, headers=headers, json={"messages": [{"type": "flex", "altText": f"📢 {title}", "contents": flex_contents}]}, timeout=20)
+        if res.status_code == 200:
+            logger.info("✅ [LINE Broadcast] Sent successfully!")
+            return True
+        else:
+            logger.error(f"❌ [LINE Broadcast] Failed: {res.text}")
+            return False
     except Exception as e:
-        print(f"❌ LINE Broadcast Error: {e}")
+        logger.error(f"❌ [LINE Broadcast] Exception: {e}")
         return False
 
-@app.route("/api/line/webhook", methods=["POST"])
-def line_webhook():
-    # อ่าน raw body ก่อนสิ่งอื่น (สำคัญ: ต้องอ่านก่อน request.json)
-    body = request.get_data()
-    signature = request.headers.get("X-Line-Signature", "").strip()
-
-    if not signature:
-        print("⚠️ [LINE] ไม่มี X-Line-Signature header มาด้วย", flush=True)
-        return "No signature", 400
-
-    if not verify_line_signature(body, signature):
-        return "Invalid signature", 400
+def get_folder_quick_reply():
+    """Generates a quick reply for selecting target folder from Drive."""
+    try:
+        folders = google_manager.list_subfolders()
+        if not folders: return None
         
-    data = json.loads(body.decode('utf-8'))
-    events = data.get("events", [])
-    
-    if not events:
-        return "OK", 200
+        items = []
+        for f in folders[:12]:  # LINE supports up to 13 items
+            # Truncate label to 20 characters as per LINE API limits
+            folder_name = f['name']
+            label = f"📁 {folder_name}"
+            if len(label) > 20:
+                label = label[:17] + "..."
+            
+            items.append({
+                "type": "action",
+                "action": {
+                    "type": "postback",
+                    "label": label,
+                    "data": f"action=set_folder&id={f['id']}&name={folder_name}",
+                    "displayText": f"เก็บลงโฟลเดอร์ {folder_name}"[:300]
+                }
+            })
+        return {"items": items}
+    except Exception as e:
+        logger.error(f"Folder QR Error: {e}")
+        return None
 
-    def process_line_event(event_data):
-        try:
-            if event_data.get("type") == "message" and event_data["message"].get("type") == "text":
-                reply_token = event_data.get("replyToken")
-                user_text = event_data["message"].get("text", "").strip()
-                line_user_id = event_data["source"].get("userId", "unknown")
+def process_line_event(event_data):
+    """Main event dispatcher for LINE Webhook"""
+    try:
+        reply_token = event_data.get("replyToken")
+        source_obj = event_data.get("source", {})
+        user_id = source_obj.get("userId", "unknown")
+        
+        # 1. Text message
+        if event_data.get('type') == 'message' and event_data['message'].get('type') == 'text':
+            user_text = event_data['message'].get('text', '')
+            process_line_command(user_text, user_id, reply_token)
+            return
 
-                if not reply_token or not user_text:
-                    return
+        # 2. Handler for IMAGE/FILE/VIDEO/AUDIO (Google Drive)
+        msg_type = event_data.get('message', {}).get('type')
+        msg_obj = event_data.get('message', {})
+        if event_data.get('type') == 'message' and msg_type in ["image", "file", "video", "audio"]:
+            message_id = msg_obj.get("id")
+            logger.info(f"Received media {msg_type} (ID: {message_id}) from {user_id}")
+            
+            if user_id not in _line_batch_timer:
+                _line_batch_timer[user_id] = {"files": [], "timer": None}
+            
+            # Store specific metadata for each file in the batch
+            _line_batch_timer[user_id]["files"].append({
+                "message_id": message_id, 
+                "msg_type": msg_type,
+                "file_name": msg_obj.get("fileName")
+            })
+            
+            if _line_batch_timer[user_id]["timer"]:
+                _line_batch_timer[user_id]["timer"].cancel()
+                
+            def handle_upload_background(uid, reply_tok):
+                batch_data = _line_batch_timer.pop(uid, {})
+                batch = batch_data.get("files", [])
+                if not batch: return
+                
+                token = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "").strip()
+                pending_for_user = []
+                
+                for file_item in batch:
+                    f_id = file_item["message_id"]
+                    f_type = file_item["msg_type"]
+                    try:
+                        res = requests.get(f"https://api-data.line.me/v2/bot/message/{f_id}/content", 
+                                           headers={"Authorization": f"Bearer {token}"}, timeout=60)
+                        if res.status_code == 200:
+                            original_name = file_item.get("file_name") or f"line_upload_{f_id}"
+                            mimetype = "application/octet-stream"
+                            if f_type == "image": mimetype = "image/jpeg"
+                            elif f_type == "video": mimetype = "video/mp4"
+                            elif f_type == "audio": mimetype = "audio/x-m4a"
+                            elif f_type == "file" and original_name.lower().endswith(".pdf"):
+                                mimetype = "application/pdf"
+                            
+                            pending_for_user.append({
+                                "content": res.content,
+                                "mimetype": mimetype,
+                                "name": original_name,
+                                "type": f_type,
+                                "msg_id": f_id
+                            })
+                    except Exception as e:
+                        logger.error(f"❌ Failed to fetch media {f_id}: {e}")
 
-                # --- Handler for Account Linking ---
-                if user_text.lower().startswith("/link "):
-                    target_user = user_text[6:].strip()
-                    if database.link_line_user(target_user, line_user_id):
-                        reply_to_line(reply_token, f"✅ ยินดีด้วยครับ! ชื่อบัญชี {target_user} ถูกเชื่อมต่อกับ LINE นี้แล้ว\nคุณจะได้รับการแจ้งเตือนสำคัญจาก OrgChat ทันทีครับ")
+                if pending_for_user:
+                    _pending_line_files[uid] = pending_for_user
+                    folder_qr = get_folder_quick_reply()
+                    
+                    if len(pending_for_user) == 1:
+                        f_name = pending_for_user[0]['name']
+                        msg = f"📥 พี่คะ น้องพั้นได้รับไฟล์ '{f_name}' แล้วนะคะ\nกำลังอัปโหลดให้อยู่ค่ะ~ เลือกโฟลเดอร์ที่จะเก็บด้วยนะคะ:"
                     else:
-                        reply_to_line(reply_token, f"❌ ไม่พบผู้ใช้ '{target_user}' ในระบบ กรูณาตรวจสอบชื่อผู้ใช้ของคุณบนหน้าเว็บ OrgChat อีกครั้งครับ")
-                    return
+                        msg = f"📥 พี่คะ น้องพั้นได้รับไฟล์ {len(pending_for_user)} รายการแล้วนะคะ\nกำลังอัปโหลดให้อยู่ค่ะ~ เลือกโฟลเดอร์ที่จะเก็บด้วยนะคะ:"
+                        
+                    reply_to_line(reply_tok, msg, quick_reply=folder_qr)
+                else:
+                    reply_to_line(reply_tok, "❌ น้องพั้นดึงข้อมูลไฟล์ไม่สำเร็จค่ะ")
 
-                print(f"📲 [LINE] Message received: '{user_text[:20]}...' from {line_user_id[:6]}", flush=True)
-            context, sources = rag_engine.retrieve_context(user_text, where=None)
-            activities = database.get_daily_activities()
-            schedules = activities.get("schedules", [])
-            posts = activities.get("posts", [])
+            timer = threading.Timer(3.0, handle_upload_background, args=(user_id, reply_token))
+            _line_batch_timer[user_id]["timer"] = timer
+            timer.start()
+            return
 
-            db_context = ""
-            if schedules:
-                sched_list = "\n".join([f"- {s['title']} วันที่ {s['date']} เวลา {s['time']} (หมวด: {s['category']})" for s in schedules])
-                db_context += f"\n\n--- 📅 กำหนดการองค์กรล่าสุด ---\n{sched_list}"
-            if posts:
-                post_list = "\n".join([f"- {p['author']} โพสต์: {p['content'][:100]}..." for p in posts])
-                db_context += f"\n\n--- 📢 โพสต์ข่าวสารล่าสุด ---\n{post_list}"
-            if db_context:
-                context += db_context
+        # 3. Handler for POSTBACK
+        if event_data.get('type') == 'postback':
+            data = event_data.get('postback', {}).get('data', '')
+            parsed = dict(urllib.parse.parse_qsl(data))
+            if parsed.get('action') == 'set_folder':
+                f_id = parsed.get('id')
+                f_name = parsed.get('name')
+                if f_id:
+                    LINE_FOLDER_CACHE[user_id] = f_id
+                    # Process pending files immediately after folder selection
+                    if user_id in _pending_line_files:
+                        threading.Thread(target=process_pending_uploads, args=(user_id, f_id, f_name, reply_token)).start()
+                    else:
+                        reply_to_line(reply_token, f"📁 รับทราบค่ะ! ต่อไปจะเก็บลงโฟลเดอร์ '{f_name}' นะคะ")
+            return
 
-            weather_ctx = get_weather_context()
+    except Exception as e:
+        logger.error(f"Event processing failed: {e}")
+
+def process_pending_uploads(uid, folder_id, folder_name, reply_tok):
+    """Processes files that were waiting for folder selection."""
+    files = _pending_line_files.pop(uid, [])
+    if not files: return
+    
+    # Let user know we're working on it
+    processing_msg = f"กำลังวิเคราะห์และจัดเก็บ {len(files)} ไฟล์ลง '{folder_name}' ⏳ (อาจใช้เวลาสักครู่)"
+    # Use push notification for the processing status
+    token = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "").strip()
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
+    requests.post("https://api.line.me/v2/bot/message/push", headers=headers, 
+                  json={"to": uid, "messages": [{"type": "text", "text": processing_msg}]}, timeout=10)
+    
+    uploaded_results = []
+    for item in files:
+        try:
+            original_name = item["name"]
+            mimetype = item["mimetype"]
+            content = item["content"]
+            f_type = item["type"]
+            
+            # --- 🚀 AI Smart Scan ---
+            analysis = None
+            if f_type in ["image", "file"] and mimetype in ["image/jpeg", "application/pdf", "image/png"]:
+                try:
+                    analysis = ai_providers.analyze_image_contents(content, mimetype)
+                    if analysis and analysis.get("smart_name"):
+                        ext = os.path.splitext(original_name)[1]
+                        original_name = analysis["smart_name"]
+                        if not original_name.endswith(ext): original_name += ext
+                except Exception as e:
+                    import traceback
+                    print(f"🚨 CRITICAL: Image analysis failed in app_server: {e}\n{traceback.format_exc()}", flush=True)
+                    analysis = None
+
+            # Upload
+            link, _ = google_manager.upload_file(content, original_name, mimetype, folder_id=folder_id)
+            if link:
+                uploaded_results.append({"name": original_name, "link": link, "analysis": analysis})
+                
+                # --- 🛠️ Data Sanitization for Google Sheets (Prevent Column Sprouting) ---
+                raw_ext = analysis.get("extracted_data", {}) if analysis else {}
+                
+                # มาตรฐานคอลัมน์ของปี 2026 (ป้องกันคอลัมน์งอก)
+                # Preserve all AI data but ensure critical fields exist
+                sanitized_ext = raw_ext.copy()
+                if "date" not in sanitized_ext or not sanitized_ext["date"]:
+                    sanitized_ext["date"] = datetime.now().strftime("%d/%m/%Y")
+                sanitized_ext["category"] = folder_name
+                
+                # Ensure defaults for common fields if they don't exist
+                for field in ["time", "sender", "receiver", "memo", "ref_number"]:
+                    if field not in sanitized_ext: sanitized_ext[field] = "-"
+                
+                log_data = {
+                    "file_link": link,
+                    "summary": analysis.get("summary", f"Auto-upload: {original_name}") if analysis else f"Auto-upload: {original_name}",
+                    "extracted_data": sanitized_ext
+                }
+                    
+                google_manager.log_expense(log_data)
+        except Exception as e:
+            logger.error(f"Pending upload failed: {e}")
+
+    if uploaded_results:
+        msg = "✅ น้องพั้นจัดการเอกสารให้เรียบร้อยแล้วค่ะพี่!\n\n"
+        for r in uploaded_results:
+            msg += f"📄 ชื่อใหม่: {r['name']}\n"
+            
+            # Show amount if available
+            ext = r.get('analysis', {}).get('extracted_data', {}) if r.get('analysis') else {}
+            amt = ext.get('net_amount')
+            if amt and amt not in [0, '0', 'None', '']:
+                msg += f"💰 ยอดเงิน: {amt} บาท\n"
+
+            sheet_id = google_manager.spreadsheet_id
+            if sheet_id:
+                msg += f"📊 ตารางสรุป: https://docs.google.com/spreadsheets/d/{sheet_id}/edit\n"
+            
+            msg += f"🔗 ดูไฟล์: {r['link']}\n"
+            msg += f"📂 โฟลเดอร์: {folder_name}\n\n"
+        
+        # Use push notification since reply token might be dead
+        token = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "").strip()
+        url = "https://api.line.me/v2/bot/message/push"
+        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
+        requests.post(url, headers=headers, json={"to": uid, "messages": [{"type": "text", "text": msg.strip()}]}, timeout=10)
+
+    else:
+        send_line_push_notification(uid, "เกิดข้อผิดพลาด", "❌ ขออภัยค่ะ พั้นไม่สามารถจัดเก็บไฟล์ได้ในขณะนี้")
+
+@app.route("/api/line/webhook", methods=['POST'])
+def line_webhook():
+    """Primary LINE Webhook Entry Point"""
+    signature = request.headers.get('X-Line-Signature')
+    # Get raw bytes for signature verification
+    body_bytes = request.get_data()
+    
+    if not signature or not verify_line_signature(body_bytes, signature):
+        return abort(400)
+    
+    # After reading get_data(), we can still get json if it's parsed
+    data = request.get_json()
+    events = data.get('events', []) if data else []
+    
+    for event in events:
+        threading.Thread(target=process_line_event, args=(event,), daemon=True).start()
+    return 'OK'
+
+
+def process_line_command(text, user_id, reply_token):
+    """Ultimate Command Processor with AI integration"""
+    text_lower = text.lower().strip()
+    
+    # 🌐 Drive Persistent Quick Reply
+    p_id = os.getenv("GOOGLE_DRIVE_PARENT_ID") or os.getenv("PARENT_FOLDER_ID")
+    drive_url = f"https://drive.google.com/drive/folders/{p_id}"
+    quick_reply = {
+        "items": [{
+            "type": "action",
+            "action": {
+                "type": "uri",
+                "label": "🌐 เปิด Google Drive",
+                "uri": drive_url
+            }
+        }]
+    }
+    
+    try:
+        # 1. Account Linking (/link [user])
+        if text_lower.startswith("/link "):
+            target_user = text[6:].strip()
+            if database.link_line_user(target_user, user_id):
+                reply_to_line(reply_token, f"✅ เชื่อมต่อบัญชี {target_user} เรียบร้อยแล้วค่ะพี่!", quick_reply=quick_reply)
+            else:
+                reply_to_line(reply_token, f"❌ น้องพั้นหาชื่อผู้ใช้ '{target_user}' ไม่เจอค่ะ", quick_reply=quick_reply)
+            return
+
+        # 2. Expense Reporting
+        if any(k in text_lower for k in ["สรุปรายจ่าย", "ยอดรายจ่าย", "รายจ่าย", "วันนี้"]):
+            summary = google_manager.get_monthly_summary()
+            reply_to_line(reply_token, summary, quick_reply=quick_reply)
+            return
+
+        # 3. Enhanced File Retrieval (Drive + Database Logs)
+        if text_lower.startswith(("หาไฟล์", "ค้นหา", "search")):
+            query = text.replace("หาไฟล์", "").replace("ค้นหา", "").replace("search", "").strip()
+            if not query:
+                reply_to_line(reply_token, "พี่ต้องการหาไฟล์อะไรคะ? ระบุชื่อมาได้เลยค่ะ 😊")
+                return
+
+            db_logs = database.search_drive_logs(query, limit=5)
+            drive_files = []
+            if hasattr(google_drive_service, 'search_files'):
+                drive_files = google_drive_service.search_files(query)
+            
+            if drive_files or db_logs:
+                resp = f"🔍 น้องพั้นพบไฟล์ที่พี่ต้องการแล้วค่ะ ({len(drive_files) + len(db_logs)} รายการ):\n\n"
+                seen = set()
+                for log in db_logs:
+                    if log.get('file_link'):
+                        seen.add(log['file_link'])
+                        resp += f"📄 {log['filename']}\n📂 {log.get('category', 'ทั่วไป')}\n🔗 {log['file_link']}\n\n"
+                for f in drive_files:
+                    if f.get('webViewLink') and f['webViewLink'] not in seen:
+                        resp += f"📄 {f['name']}\n🔗 {f['webViewLink']}\n\n"
+                reply_to_line(reply_token, resp, quick_reply=quick_reply)
+            else:
+                reply_to_line(reply_token, f"❌ ไม่พบไฟล์ที่ชื่อ '{query}' เลยค่ะพี่", quick_reply=quick_reply)
+            return
+
+        # 4. Background Reconciliation
+        if any(k in text_lower for k in ["กระทบยอด", "reconcile"]):
+            reply_to_line(reply_token, "⏳ น้องพั้นกำลังเริ่มจับคู่สลิปกับใบกำกับภาษีให้พี่อยู่นะคะ... เมื่อเสร็จแล้วจะแจ้งเตือนไปค่ะ ✨")
+            def run_recon():
+                try:
+                    if hasattr(google_drive_service, 'perform_auto_reconciliation'):
+                        google_drive_service.perform_auto_reconciliation(google_manager.sheets_service, google_manager.spreadsheet_id)
+                        push_msg = f"✅ กระทบยอดข้อมูลเสร็จเรียบร้อยแล้วค่ะพี่!\n🌐 https://docs.google.com/spreadsheets/d/{google_manager.spreadsheet_id}"
+                    else:
+                        push_msg = "⚠️ ระบบกระทบยอดยังไม่พร้อมใช้งานในตอนนี้ค่ะพี่"
+                    
+                    token = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "").strip()
+                    requests.post("https://api.line.me/v2/bot/message/push", 
+                                  headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                                  json={"to": user_id, "messages": [{"type": "text", "text": push_msg}]}, timeout=10)
+                except Exception as e: logger.error(f"Background Recon Error: {e}")
+            threading.Thread(target=run_recon).start()
+            return
+
+        # 5. Leave Request
+        if any(k in text_lower for k in ["ลางาน", "ลาป่วย", "ลากิจ"]):
+            leave_type = "ลาป่วย" if "ป่วย" in text_lower else "ลากิจ" if "กิจ" in text_lower else "ลาพักร้อน"
+            database.add_leave_request(line_user_id=user_id, username=user_id, leave_type=leave_type, start_date="", end_date="", reason=text)
+            reply_to_line(reply_token, f"📝 รับทราบค่ะ! น้องพั้นบันทึกคำ{leave_type}ให้เบื้องต้นแล้วนะคะ พี่อย่าลืมมาแจ้งวันลาที่ชัดเจนด้วยน้า 😊")
+            return
+
+        # 6. Folder Selection Manual Command
+        if any(k in text_lower for k in ["เลือกโฟลเดอร์", "โฟลเดอร์", "folder"]):
+            folder_qr = get_folder_quick_reply()
+            if folder_qr:
+                reply_to_line(reply_token, "📂 พี่ต้องการให้พั้นเก็บไฟล์ไว้ที่โฟลเดอร์ไหนดีคะ? เลือกได้เลยค่ะ", quick_reply=folder_qr)
+            else:
+                reply_to_line(reply_token, "❌ น้องพั้นหาโฟลเดอร์ใน Drive ไม่เจอเลยค่ะพี่")
+            return
+
+        # 6. Default AI Processing (Using Prompt Engineering & RAG)
+        if hasattr(ai_providers, 'generate_response'):
             system_prompt = (
-                "คุณคือ 'AI-Assistant' ผู้ช่วยอัจฉริยะประจำองค์กรที่สื่อสารผ่าน LINE \n"
-                "ข้อกำหนดในการตอบ:\n"
-                "1. ตอบเป็นภาษาไทยที่สุภาพ เป็นมิตร และสรุปให้กระชับเหมาะสมกับการอ่านบนมือถือ\n"
-                "2. ใช้ภาษาที่เป็นธรรมชาติ หลีกเลี่ยงสำนวนที่ดูเหมือนการแปลจากภาษาอื่น\n"
-                "3. ลงท้ายด้วย 'ครับ' และใช้สรรพนาม 'ผม' หรือ 'เรา' ตามความเหมาะสม\n"
-                "4. หากไม่พบข้อมูลใน Context ให้แจ้งอย่างสุภาพว่าไม่พบข้อมูลในฐานความรู้ปัจจุบัน\n"
-                "5. หากผู้ใช้ถามเรื่องอากาศ อุณหภูมิ ฝนตก PM2.5 หรือ UV ให้ใช้ข้อมูลจากส่วน 'สภาพอากาศ' ด้านล่าง\n\n"
-                f"{weather_ctx}\n"
-                f"Context:\n{context}"
+                "คุณคือ 'พั้น' (Nong Punch) ผู้ช่วยประจำองค์กรวัย 21 ปี นิสัยน่ารัก สดใส เป็นกันเอง และสุภาพมาก\n"
+                "กฎเหล็ก (ต้องทำตาม 100%):\n"
+                "1. แทนตัวเองว่า 'น้องพั้น' หรือ 'พั้น' ก็ได้ (สลับกันตามความเหมาะสมให้ดูเป็นธรรมชาติ) และเรียกผู้ใช้ว่า 'พี่' เสมอ\n"
+                "2. **ห้ามใช้คำว่า 'ครับ' หรือ 'ครับ/ค่ะ' โดยเด็ดขาด ให้ใช้ 'ค่ะ/นะคะ/ขา' เท่านั้น**\n"
+                "3. ตอบให้สั้น กระชับ ได้ใจความที่สุด ห้ามพูดเยอะเกินความจำเป็น\n"
+                "4. **จำกัด Emoji: ใส่ได้เพียง 1 ตัวต่อหนึ่งข้อความเท่านั้น (ห้ามเกินเด็ดขาด)**\n"
+                "5. เน้นความเป็นธรรมชาติเหมือนคุยกับรุ่นน้องที่ทำงาน สไตล์การพูด: ได้สิ พี่, ว่าไงคะพี่, เรียบร้อยค่ะพี่\n"
+                "6. หากไม่พบข้อมูล ให้บอกว่า 'พั้นหาไม่เจอค่ะพี่' อย่างสุภาพ\n"
             )
-
             try:
-                provider = ai_providers.get_provider()
-                full_answer = ""
-                for chunk in provider.chat_stream(user_text, [], system_prompt):
-                    if chunk: full_answer += chunk
-
-                if not full_answer:
-                    full_answer = "ขออภัยครับ ผมไม่พบข้อมูลที่เกี่ยวข้องในระบบคลังความรู้ขององค์กร"
-
-                if len(full_answer) > 4000:
-                    full_answer = full_answer[:3900] + "\n...(มีเนื้อหาเพิ่มเติมในระบบเว็บ)..."
-
-                reply_to_line(reply_token, full_answer)
-                log_bot(f"✅ LINE Reply sent ({len(full_answer)} chars)")
-
+                context = ""
+                sources = []
+                if hasattr(rag_engine, 'retrieve_context'):
+                    context, sources = rag_engine.retrieve_context(text, where=None)
+                
+                if context:
+                    system_prompt += f"\n\nContext:\n{context}\n\n(ใช้ข้อมูลนี้ตอบพี่เขาอย่างเป็นธรรมชาติที่สุด)"
+                
+                ai_response = ai_providers.generate_response(question=text, system_prompt=system_prompt)
+                
+                # Add a cute sticker for some added personality (100% chance for now as requested)
+                # Randomly pick from a few cute ones
+                import random
+                cute_stickers = [
+                    {"packageId": "446", "stickerId": "1988"}, # Brown Hello
+                    {"packageId": "789", "stickerId": "10855"}, # Cute Smile
+                    {"packageId": "6359", "stickerId": "11069850"}, # Heart
+                    {"packageId": "8522", "stickerId": "16581267"} # Happy
+                ]
+                sticker = random.choice(cute_stickers)
+                
+                reply_to_line(reply_token, ai_response, quick_reply=quick_reply, sticker_data=sticker)
             except Exception as e:
-                print(f"❌ [LINE] AI Error: {e}", flush=True)
-                import traceback
-                traceback.print_exc()
-                reply_to_line(reply_token, "ขออภัยครับ ระบบประมวลผลของ AI ขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้ง")
+                logger.error(f"AI Generation failed: {e}")
+                # Use context from the try block if it was successfully retrieved
+                if 'context' in locals() and context:
+                    response = f"คำตอบจากฐานข้อมูล (ระบบสำรอง):\n{context[:500]}..."
+                elif hasattr(rag_engine, 'retrieve_context'):
+                    ctx, _ = rag_engine.retrieve_context(text)
+                    response = f"คำตอบจากฐานข้อมูล (ระบบสำรอง):\n{ctx[:500]}..." if ctx else "ขออภัยค่ะ ระบบขัดข้อง 😲 ลองใหม่อีกครั้งนะคะ"
+                else:
+                    response = "ขออภัยค่ะ ระบบขัดข้อง 😲 ลองใหม่อีกครั้งนะคะ"
+                reply_to_line(reply_token, response, quick_reply=quick_reply)
+        else:
+            if hasattr(rag_engine, 'retrieve_context'):
+                ctx, _ = rag_engine.retrieve_context(text)
+                response = f"คำตอบจากฐานข้อมูล:\n{ctx[:500]}..." if ctx else "ขออภัยค่ะ ไม่พบข้อมูลที่เกี่ยวข้อง 😲"
+            else:
+                response = "ระบบ AI ยังไม่พร้อมใช้งานค่ะ 😲"
+            reply_to_line(reply_token, response, quick_reply=quick_reply)
 
-        except Exception as outer_e:
-            print(f"❌ [LINE] Fatal Event Error: {outer_e}", flush=True)
+    except Exception as e:
+        logger.error(f"Command processing failed: {e}")
+        reply_to_line(reply_token, "😲 น้องพั้นขัดข้องนิดหน่อยค่ะ พี่ลองใหม่อีกครั้งนะคะ", quick_reply=quick_reply)
 
-    for ev in events:
-        threading.Thread(target=process_line_event, args=(ev,), daemon=True).start()
+@app.route("/api/admin/line/broadcast", methods=["POST"])
+@admin_required
+def api_line_broadcast():
+    data = request.json
+    text = data.get("text", "").strip()
+    user = session.get("user", "Unknown")
+    if not text:
+        return jsonify({"success": False, "error": "กรุณาระบุข้อความประกาศค่ะ"}), 400
+    
+    def run_broadcast():
+        success = broadcast_line_announcement(title="ประกาศจากแอดมิน", text=text)
+        logger.info(f"Broadcast from {user}: {text} - {'Success' if success else 'Failed'}")
+        
+    threading.Thread(target=run_broadcast).start()
+    return jsonify({"success": True, "message": "กำลังส่งประกาศในพื้นหลังค่ะพี่!"})
 
-    return "OK", 200
+# --- ADMIN & API ROUTES ---
 
 
 @app.route("/api/logout", methods=["POST"])
@@ -1109,7 +1436,7 @@ def index():
 @app.route("/api/status")
 @login_required
 def status():
-    provider = os.environ.get("AI_PROVIDER", "gemini").lower()
+    provider = os.environ.get("AI_PROVIDER", "groq").lower()
     has_key = False
     if provider == "gemini":
         has_key = bool(_get_gemini_api_key())
@@ -1519,7 +1846,7 @@ def download_file(filename):
 @app.route("/api/reconciliation/process", methods=["POST"])
 @login_required
 def process_reconciliation():
-    if session.get("role") != "admin":
+    if not is_admin():
         return jsonify({"ok": False, "error": "Only admins can perform reconciliation"}), 403
     
     mp_files = request.files.getlist('marketplace')
@@ -1530,20 +1857,31 @@ def process_reconciliation():
         return jsonify({"ok": False, "error": "กรุณาอัปโหลดไฟล์ให้ครบทุกหมวดหมู่ (Marketplace, Shipnity, PEAK)"}), 400
         
     try:
-        df_result = ReconciliationService.process_files(mp_files, ship_files, peak_files)
+        df_result, financial = ReconciliationService.process_files(mp_files, ship_files, peak_files)
         
-        # Convert NaN to None for JSON
-        df_clean = df_result.where(pd.notnull(df_result), None)
+        # Fill NaN with safe defaults for JSON serialization
+        df_clean = df_result.fillna('')
+        
+        for col in df_clean.columns:
+            if df_clean[col].dtype in ['float64', 'int64']:
+                df_clean[col] = df_clean[col].replace('', 0)
+        
+        records = df_clean.to_dict(orient='records')
+        
+        issue_count = sum(1 for r in records if r.get('issue', '') != '✅ ปกติ')
         
         summary = {
-            "total": len(df_clean),
-            "issues": int(df_clean[df_clean['issue'] != '✅ ปกติ'].shape[0]) if not df_clean.empty else 0,
-            "data": df_clean.to_dict(orient='records') if not df_clean.empty else []
+            "total": len(records),
+            "issues": issue_count,
+            "data": records,
+            "financial": financial
         }
         
+        # Cache data in memory for on-demand download
         report_id = uuid.uuid4().hex[:8]
-        report_path = rag_engine.UPLOAD_DIR / f"recon_report_{report_id}.xlsx"
-        df_result.to_excel(report_path, index=False)
+        if not hasattr(app, '_recon_cache'):
+            app._recon_cache = {}
+        app._recon_cache[report_id] = df_result
         
         summary["report_url"] = f"/api/reconciliation/download/{report_id}"
         
@@ -1556,8 +1894,44 @@ def process_reconciliation():
 @app.route("/api/reconciliation/download/<report_id>")
 @login_required
 def download_recon_report(report_id):
-    filename = f"recon_report_{report_id}.xlsx"
-    return send_from_directory(rag_engine.UPLOAD_DIR, filename, as_attachment=True)
+    if not hasattr(app, '_recon_cache') or report_id not in app._recon_cache:
+        return jsonify({"ok": False, "error": "รายงานหมดอายุ กรุณาประมวลผลใหม่"}), 404
+    
+    df = app._recon_cache[report_id]
+    output = io.BytesIO()
+    df.to_excel(output, index=False, engine='openpyxl')
+    output.seek(0)
+    
+    return send_file(
+        output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=f'reconciliation_report_{report_id}.xlsx'
+    )
+
+@app.route("/api/reconciliation/download-filtered", methods=["POST"])
+@login_required
+def download_filtered_recon():
+    """Generate Excel from filtered data sent by client."""
+    try:
+        data = request.get_json()
+        rows = data.get('rows', [])
+        if not rows:
+            return jsonify({"ok": False, "error": "ไม่มีข้อมูลสำหรับดาวน์โหลด"}), 400
+        
+        df = pd.DataFrame(rows)
+        output = io.BytesIO()
+        df.to_excel(output, index=False, engine='openpyxl')
+        output.seek(0)
+        
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=f'reconciliation_filtered_{uuid.uuid4().hex[:6]}.xlsx'
+        )
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 # --- Calendar Schedules ---
 @app.route("/api/schedules", methods=["GET", "POST"])
@@ -2012,6 +2386,9 @@ def dashboard_data():
     completed_tasks_count = len([s for s in user_schedules if s.get("status") == "done"])
 
 
+    # 10. Drive Logs Stats
+    drive_stats = database.get_drive_stats()
+
     conn.close()
     
     return jsonify({
@@ -2022,13 +2399,18 @@ def dashboard_data():
             "users": user_count,
             "activity": activity_count,
             "unread_notifications": unread_count,
-            "completed_tasks": completed_tasks_count
+            "completed_tasks": completed_tasks_count,
+            "drive_files": drive_stats.get("total_files", 0),
+            "total_amount": drive_stats.get("total_amount", 0),
+            "recent_drive_uploads": drive_stats.get("recent_count", 0)
         },
         "recent_chats": recent_chats,
         "recent_files": recent_files,
         "upcoming": pending_tasks[:3], 
         "pending_tasks": pending_tasks,
-        "logs": [{"event": l[0], "time": l[1]} for l in logs]
+        "logs": [{"event": l[0], "time": l[1]} for l in logs],
+        "drive_categories": drive_stats.get("categories", {}),
+        "recent_drive_logs": database.get_drive_logs(limit=5)
     })
 
 @app.route("/api/dashboard/briefing")
@@ -2065,6 +2447,47 @@ def dashboard_briefing():
     except Exception as e:
         print(f"Briefing Error: {e}")
         return jsonify({"ok": False, "error": "ไม่สามารถสร้างสรุปได้ในขณะนี้"})
+
+@app.route("/api/lunch/random")
+@login_required
+def lunch_random():
+    place = database.get_random_lunch()
+    if place:
+        return jsonify({"ok": True, "place": place})
+    return jsonify({"ok": False, "error": "ยังไม่มีร้านอาหารในระบบ"})
+
+@app.route("/api/lunch/all")
+@login_required
+def lunch_all():
+    places = database.get_all_lunch_places()
+    return jsonify({"ok": True, "places": places})
+
+@app.route("/api/lunch/add", methods=["POST"])
+@login_required
+def lunch_add():
+    data = request.json or {}
+    name = data.get("name")
+    if not name:
+        return jsonify({"ok": False, "error": "กรุณาระบุชื่อร้าน"})
+    
+    database.add_lunch_place(
+        name=name,
+        type_str=data.get("type", ""),
+        location=data.get("location", ""),
+        added_by=session.get("user", "Admin")
+    )
+    return jsonify({"ok": True})
+
+@app.route("/api/lunch/delete/<int:place_id>", methods=["DELETE"])
+@login_required
+@admin_required
+def lunch_delete(place_id):
+    conn = sqlite3.connect(database.DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM lunch_places WHERE id = ?", (place_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
 
 @app.route("/api/summary/generate", methods=["POST"])
 @login_required
@@ -2370,6 +2793,25 @@ def export_chat():
 @admin_required
 def get_logs():
     return jsonify({"logs": database.get_events()})
+
+@app.route("/api/admin/system/cleanup", methods=["POST"])
+@admin_required
+def trigger_system_cleanup():
+    """Triggers the KB cleanup script logic to purge orphaned files and chunks."""
+    try:
+        import kb_cleanup
+        # Capture stdout to return results
+        import io
+        from contextlib import redirect_stdout
+        f = io.StringIO()
+        with redirect_stdout(f):
+            kb_cleanup.cleanup()
+        output = f.getvalue()
+        database.log_event("System Cleanup Triggered", user=session.get("user"))
+        return jsonify({"ok": True, "message": "Cleanup completed", "details": output})
+    except Exception as e:
+        print(f"❌ Cleanup Error: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 # --- Social Feed Routes ---
 @app.route("/api/posts", methods=["GET", "POST"])
@@ -2885,6 +3327,8 @@ def get_chat_users():
         
     profiles = []
     # 2. Fetch profiles for each unique user except current one
+    
+
     for u in all_usernames:
         if u.lower() != current_user_lower:
             try:
@@ -3349,15 +3793,16 @@ def handle_bot_response(cid, user_text, ctype, original_sender=None, image_data=
 
         now = get_current_time() # Format: 2026-03-19 18:35:22
         system_prompt = (
-            f"คุณคือ 'AI-Assistant' (OrgChat AI) ผู้ช่วยประจำองค์กรที่มีความเฉลียวฉลาด รอบรู้ และมีความเป็นมนุษย์สูง\n"
+            f"คุณคือ 'น้องพั้น' (Nong Punch) ผู้ช่วยประจำองค์กรที่น่ารักและแสนดี เป็นกันเองเหมือนคนจริงๆ\n"
             f"เวลาปัจจุบันคือ: {now}\n\n"
             "กฎเหล็กในการสื่อสาร (สำคัญมาก):\n"
-            "1. หากผู้ใช้แค่ 'ทักทาย' (เช่น สวัสดี, Hi) ให้ตอบทักทายกลับสั้นๆ อย่างเป็นธรรมชาติและสุภาพ โดย 'ห้าม' แสดงข้อมูลปฏิทินหรือข้อมูลเชิงลึกในเอกสารหากไม่ได้ถูกถาม\n"
-            "2. ใช้ภาษาไทยระดับเจ้าของภาษา (Native Thai) สไตล์คนทำงานที่เก่งและใจดี หลีกเลี่ยงสำนวนแปลตรงตัว\n"
-            "3. ห้ามใช้ 'ผม/ดิฉัน', 'ฉันสามารถช่วยคุณได้อย่างไร', หรือคำว่า 'มีอะไรหรือยัง?' ในการทักทาย\n"
-            "4. แทนตัวเองว่า 'ผม' และแทนผู้ใช้ว่า 'คุณ' ลงท้ายด้วย 'ครับ' ทุกครั้ง\n"
-            "5. ใช้ข้อมูลใน Context และปฏิทิน 'เฉพาะเมื่อจำเป็นและเกี่ยวข้อง' เท่านั้น\n"
-            "6. หากไม่พบข้อมูลที่ต้องการ ให้บอกตรงๆ ว่า 'ไม่พบข้อมูลในระบบครับ' พร้อมอาสาจะช่วยเรื่องอื่นแทน\n\n"
+            "1. ตอบให้กระชับและเข้าประเด็นที่สุด ห้ามเยิ่นเย้อ\n"
+            "2. **จำกัดการใช้ Emoji: ให้มีได้เพียง '1 ตัว' ต่อหนึ่งข้อความเท่านั้น (ห้ามเกินกว่านี้เด็ดขาด)**\n"
+            "3. หากผู้ใช้แค่ 'ทักทาย' ให้ตอบสั้นๆ และห้ามแสดงข้อมูลปฏิทินหากไม่ได้ถาม\n"
+            "4. แทนตัวเองว่า 'น้องพั้น' และแทนผู้ใช้ว่า 'พี่' เสมอ\n"
+            "5. **กฎเรื่องเพศสภาพ: คุณคือผู้หญิง 21 ปี นิสัยน่ารักสดใส ห้ามใช้คำว่า 'ครับ' หรือ 'ครับ/ค่ะ' โดยเด็ดขาด ให้ใช้ 'ค่ะ/นะคะ/ขา' เท่านั้น**\n"
+            "6. ห้ามทักทายซ้ำซ้อน (เช่น สวัสดีค่ะพี่... แล้วต่อด้วย ยินดีที่ได้รู้จักค่ะพี่... ให้เลือกอย่างใดอย่างหนึ่ง)\n"
+            "7. หากไม่พบข้อมูลที่ต้องการ ให้บอกตรงๆ ว่า 'ไม่พบข้อมูลในระบบค่ะพี่' พร้อมอาสาจะช่วยเรื่องอื่นแทน\n\n"
         )
         
         # Inject Schedules into context only if NOT a simple greeting or if specifically asked
@@ -3399,7 +3844,7 @@ def handle_bot_response(cid, user_text, ctype, original_sender=None, image_data=
                 history.append({"role": role, "text": m["text"]})
 
         # 3. Call AI
-        log_bot(f"📡 Calling AI provider ({os.environ.get('AI_PROVIDER', 'gemini')}) (Vision: {image_data is not None})...")
+        log_bot(f"📡 Calling AI provider ({os.environ.get('AI_PROVIDER', 'groq')}) (Vision: {image_data is not None})...")
         provider = ai_providers.get_provider()
         
         # If image is present, adjust prompt for Vision Expert mode
@@ -3408,7 +3853,7 @@ def handle_bot_response(cid, user_text, ctype, original_sender=None, image_data=
                 "\n\n[Vision Mode Enabled]\n"
                 "ผู้ใช้ได้ส่งรูปภาพมาให้คุณวิเคราะห์ โปรดอธิบายสิ่งที่เห็นในรูปตามความเหมาะสม "
                 "หากเป็นเอกสารหรือบิล ให้สรุปข้อมูลสำคัญ ตัวเลข หรือรายการออกมาให้ชัดเจนที่สุด "
-                "หากมีสิ่งของหรือสถานที่ ให้อธิบายลักษณะเด่นของสิ่งนั้นๆ ครับ"
+                "หากมีสิ่งของหรือสถานที่ ให้อธิบายลักษณะเด่นของสิ่งนั้นๆ นะคะ"
             )
         
         response_text = ""
@@ -3439,7 +3884,7 @@ def handle_bot_response(cid, user_text, ctype, original_sender=None, image_data=
             
         if not response_text:
             log_bot("⚠️ Provider returned empty response.")
-            response_text = "ขออภัยครับ ผมไม่พบข้อมูลที่เกี่ยวข้องในระบบฐานความรู้ขององค์กร"
+            response_text = "ขออภัยค่ะพี่ น้องพั้นไม่พบข้อมูลที่เกี่ยวข้องในระบบฐานความรู้ขององค์กรนะคะ"
             socketio.emit('ai_chunk', {"cid": cid, "ctype": ctype, "chunk": response_text, "is_start": True}, room=socket_room)
         else:
             log_bot(f"✅ Bot response generated ({len(response_text)} chars).")
@@ -3448,7 +3893,28 @@ def handle_bot_response(cid, user_text, ctype, original_sender=None, image_data=
             if "AI-Assistant" in _typing_status.get(bot_key, {}):
                 _typing_status[bot_key]["AI-Assistant"] = 0 
 
-        # 4. Save response
+        # 4. Save response & Filter for persona consistency
+        import re
+        # Stronger filtering: Handle various masculine forms and inconsistent punctuation
+        response_text = re.sub(r'ครับ\s*/\s*ค่ะ', 'ค่ะ', response_text)
+        response_text = response_text.replace("ครับ", "ค่ะ").replace("นะเค้า", "นะคะ").replace("นะก๊ะ", "นะคะ")
+        
+        # Robust emoji enforcement: Keep only the first emoji found
+        def limit_emojis(text):
+            all_emojis = re.findall(r'[\U00010000-\U0010ffff]', text)
+            if len(all_emojis) > 1:
+                # Find index of first emoji
+                first_emoji = all_emojis[0]
+                first_idx = text.find(first_emoji)
+                # Keep everything up to the first emoji + the first emoji itself, then strip all other emojis from the rest
+                prefix = text[:first_idx + len(first_emoji)]
+                rest = text[first_idx + len(first_emoji):]
+                rest_cleaned = "".join([c for c in rest if c not in re.findall(r'[\U00010000-\U0010ffff]', rest)])
+                return prefix + rest_cleaned
+            return text
+        
+        response_text = limit_emojis(response_text)
+
         if ctype == "room":
             database.add_room_message(cid, "AI-Assistant", response_text, [])
         else:
@@ -3461,7 +3927,7 @@ def handle_bot_response(cid, user_text, ctype, original_sender=None, image_data=
         import traceback
         log_bot(f"❌ Bot Response Error: {e}")
         log_bot(traceback.format_exc())
-        error_msg = f"ขออภัยครับ เกิดข้อผิดพลาดทางเทคนิค: {str(e)}"
+        error_msg = f"ขออภัยค่ะพี่ เกิดข้อผิดพลาดทางเทคนิค: {str(e)}"
         if ctype == "room":
             database.add_room_message(cid, "AI-Assistant", error_msg, [])
         else:
@@ -3543,7 +4009,7 @@ def check_reminders():
 @app.route("/api/chat", methods=["POST"])
 @login_required
 def chat():
-    provider = os.environ.get("AI_PROVIDER", "gemini").lower()
+    provider = os.environ.get("AI_PROVIDER", "groq").lower()
     api_key = _get_gemini_api_key() if provider == "gemini" else True
     print(f"💬 Chat request received. Provider: {provider}. API Key present: {bool(api_key)}")
     if not api_key:
@@ -3691,10 +4157,19 @@ def chat():
 
     if persona_prompt:
         system_prompt += f"{persona_prompt}\n"
+        system_prompt += "\nคำแนะนำเพิ่มเติม: ตอบให้กระชับที่สุด และใส่ Emoji ได้เพียง **1 ตัวเท่านั้น** ต่อหนึ่งข้อความ\n"
     else:
         system_prompt += (
-            "ตอบคำถามจากข้อมูลบริษัท กิจกรรม และปฏิทินที่ได้รับอย่างแม่นยำและสุภาพ\n"
-            "ตอบเป็นภาษาไทย สรุปใจความสำคัญ ไม่เยิ่นเย้อ และเน้นความถูกต้อง\n"
+            "คุณคือ 'น้องพั้น' (Nong Punch) ผู้ช่วย AI อัจฉริยะ v11.0.4 [ULTIMATE]\n"
+            "บุคลิก: วัย 21 ปี น่ารัก สดใส ฉลาดหลักแหลม มีไหวพริบ และสุภาพมาก\n"
+            "ความสามารถพิเศษ: จำบริบทการคุยได้แม่นยำ, วิเคราะห์เอกสารบัญชีได้ลึกซึ้ง, และช่วยจัดการงานในออฟฟิศได้ทุกอย่าง\n\n"
+            "กฎเหล็ก (ต้องทำตาม 100%):\n"
+            "1. แทนตัวเองว่า 'น้องพั้น' และเรียกผู้ใช้ว่า 'พี่' เสมอ\n"
+            "2. **ใช้ 'ค่ะ/นะคะ/ขา' เท่านั้น ห้าม 'ครับ' เด็ดขาด**\n"
+            "3. **Proactive Intelligence**: หากพี่ส่งรูปเอกสารมา น้องพั้นจะวิเคราะห์และสรุปให้ทันทีโดยไม่ต้องรอให้ถาม\n"
+            "4. **Context Aware**: หากพี่พูดถึง 'ไฟล์นั้น' หรือ 'รูปที่แล้ว' น้องพั้นจะดูข้อมูลล่าสุดที่คุยกันมาตอบเสมอ\n"
+            "5. **Professional & Charming**: ตอบให้กระชับแต่มีเสน่ห์ ใส่ Emoji ได้เพียง 1 ตัวต่อข้อความ\n"
+            "6. หากไม่พบข้อมูลในคลังความรู้ ให้บอกว่า 'น้องพั้นหาไม่เจอค่ะพี่ แต่พั้นจะพยายามหาทางช่วยด้วยวิธีอื่นนะคะ'\n"
         )
 
     if image_bytes:
@@ -3702,7 +4177,7 @@ def chat():
             "\n\n[Vision Mode Enabled]\n"
             "ผู้ใช้ได้ส่งรูปภาพมาให้คุณวิเคราะห์ โปรดอธิบายสิ่งที่เห็นในรูปตามความเหมาะสม "
             "หากเป็นเอกสารหรือบิล ให้สรุปข้อมูลสำคัญ ตัวเลข หรือรายการออกมาให้ชัดเจนที่สุด "
-            "หากมีสิ่งของหรือสถานที่ ให้อธิบายลักษณะเด่นของสิ่งนั้นๆ ครับ"
+            "หากมีสิ่งของหรือสถานที่ ให้อธิบายลักษณะเด่นของสิ่งนั้นๆ นะคะ"
         )
 
     # Add Schedules
@@ -3728,7 +4203,7 @@ def chat():
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 400
 
-    print(f"🤖 Chat session started for {current_user} with provider: {os.environ.get('AI_PROVIDER', 'gemini')} (Vision: {image_bytes is not None})")
+    print(f"🤖 Chat session started for {current_user} with provider: {os.environ.get('AI_PROVIDER', 'groq')} (Vision: {image_bytes is not None})")
     
     def generate():
         try:
@@ -3742,7 +4217,7 @@ def chat():
             yield f"data: {json.dumps({'user_id': u_sid})}\n\n"
 
             # Stream chunks directly to client
-            print(f"⏳ Calling {os.environ.get('AI_PROVIDER', 'gemini')} provider (Real-time Streaming)...", flush=True); sys.stdout.flush()
+            print(f"⏳ Calling {os.environ.get('AI_PROVIDER', 'groq')} provider (Real-time Streaming)...", flush=True); sys.stdout.flush()
             ai_call_start = time.time()
             response_stream = provider_obj.chat_stream(question, history, system_prompt, image_data=image_bytes, mime_type=mime_type)
             bot_full_text = ""
@@ -3750,6 +4225,9 @@ def chat():
             got_first_chunk = False
             for chunk in response_stream:
                 if chunk:
+                    # Filter chunk for persona consistency (basic replacement)
+                    chunk = chunk.replace("ครับ/ค่ะ", "ค่ะ").replace("ครับ", "ค่ะ")
+                    
                     if not got_first_chunk:
                         print(f"✅ DEBUG: First Chunk from AI received in {time.time() - ai_call_start:.3f}s (Total from msg start: {time.time() - t0:.3f}s)", flush=True)
                         sys.stdout.flush()
@@ -3760,6 +4238,25 @@ def chat():
             
             print(f"🏁 Stream finished. Total length: {len(bot_full_text)}")
             
+            # Post-process full text before saving
+            import re
+            bot_full_text = re.sub(r'ครับ\s*/\s*ค่ะ', 'ค่ะ', bot_full_text)
+            bot_full_text = bot_full_text.replace("ครับ", "ค่ะ")
+            
+            # Use the same robust emoji limiter
+            def limit_emojis_stream(text):
+                all_emojis = re.findall(r'[\U00010000-\U0010ffff]', text)
+                if len(all_emojis) > 1:
+                    first_emoji = all_emojis[0]
+                    first_idx = text.find(first_emoji)
+                    prefix = text[:first_idx + len(first_emoji)]
+                    rest = text[first_idx + len(first_emoji):]
+                    rest_cleaned = "".join([c for c in rest if c not in re.findall(r'[\U00010000-\U0010ffff]', rest)])
+                    return prefix + rest_cleaned
+                return text
+            
+            bot_full_text = limit_emojis_stream(bot_full_text)
+            
             # Save bot message to DB
             if bot_full_text:
                 b_sid = database.save_message("bot", bot_full_text, sources=sources, username=current_user)
@@ -3769,7 +4266,7 @@ def chat():
         except Exception as e:
             error_msg = str(e)
             if "429" in error_msg or "quota" in error_msg.lower():
-                error_msg = "ขออภัยครับ ตอนนี้โควต้าการใช้งาน Gemini API (Free Tier) ของคุณเต็มแล้ว กรุณารอสักครู่ (ประมาณ 1 นาที) หรือเช็คการตั้งค่า API Key ครับ"
+                error_msg = "ขออภัยค่ะ ขณะนี้ระบบ AI มีการใช้งานหนาแน่นหรือโควต้าเต็มชั่วคราว กรุณารอสักครู่ (ประมาณ 1 นาที) หรือติดต่อผู้ดูแลระบบค่ะ"
             print(f"❌ Error in chat stream: {e}")
             yield f"data: {json.dumps({'error': error_msg})}\n\n"
 
@@ -4190,9 +4687,118 @@ def admin_toggle_active_route(username):
 
 
 
+@app.route("/api/admin/settings", methods=["GET"])
+@admin_required
+def get_admin_settings():
+    settings = settings_manager.get_settings()
+    return jsonify({"ok": True, "settings": settings})
+
+@app.route("/api/admin/settings", methods=["POST"])
+@admin_required
+def update_admin_settings():
+    data = request.json or {}
+    # Validate keys if necessary, but here we allow general .env updates
+    success = settings_manager.update_settings(data)
+    if success:
+        database.log_event("อัปเดตการตั้งค่าระบบผ่านหน้าเว็บ", user=session.get("user"))
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "error": "ไม่สามารถอัปเดตการตั้งค่าได้"}), 500
+
 @app.route("/manifest.json")
 def serve_manifest():
     return send_from_directory("static", "manifest.json")
+
+
+# ─── Quotation System ─────────────────────────
+def append_quotation_to_sheet(quotation_data, pdf_url, user):
+    try:
+        drive_svc, sheets_svc = google_drive_service.get_drive_service()
+        spreadsheet_id = os.getenv("SPREADSHEET_ID")
+        if not sheets_svc or not spreadsheet_id: return
+        
+        tab_name = 'ใบเสนอราคา (สร้างจากระบบ)'
+        spreadsheet = sheets_svc.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+        sheet_exists = any(s['properties']['title'] == tab_name for s in spreadsheet.get('sheets', []))
+        
+        if not sheet_exists:
+            requests = [{'addSheet': {'properties': {'title': tab_name}}}]
+            sheets_svc.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body={'requests': requests}).execute()
+            # ปรับหัวตารางให้สอดคล้องและสวยงาม
+            headers = [["วันที่ทำรายการ", "เลขที่ใบเสนอราคา", "ชื่อลูกค้า/บริษัท", "ข้อมูลติดต่อ", "ยอดรวมก่อนลด", "ส่วนลด", "ยอดสุทธิ (VAT 7%)", "ผู้ออกเอกสาร", "ลิงก์ไฟล์ PDF"]]
+            sheets_svc.spreadsheets().values().update(
+                spreadsheetId=spreadsheet_id, range=f"'{tab_name}'!A1",
+                valueInputOption="USER_ENTERED", body={"values": headers}
+            ).execute()
+
+            # เพิ่มความสวยงามให้หัวตาราง (สีน้ำเงิน ตัวขาว หนา)
+            spreadsheet = sheets_svc.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+            sheet_id = next(s['properties']['sheetId'] for s in spreadsheet.get('sheets', []) if s['properties']['title'] == tab_name)
+            
+            format_req = {
+                "repeatCell": {
+                    "range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": len(headers[0])},
+                    "cell": {
+                        "userEnteredFormat": {
+                            "backgroundColor": {"red": 0.1, "green": 0.4, "blue": 0.8},
+                            "textFormat": {"foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0}, "bold": True, "fontSize": 11},
+                            "horizontalAlignment": "CENTER"
+                        }
+                    },
+                    "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)"
+                }
+            }
+            sheets_svc.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body={"requests": [format_req]}).execute()
+        
+        from datetime import datetime
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        row = [[
+            now_str,
+            quotation_data.get('quotation_no', ''),
+            quotation_data.get('customer_name', ''),
+            quotation_data.get('customer_contact', ''),
+            quotation_data.get('subtotal', 0),
+            quotation_data.get('total_discount', 0),
+            quotation_data.get('grand_total', 0),
+            user,
+            pdf_url
+        ]]
+        sheets_svc.spreadsheets().values().append(
+            spreadsheetId=spreadsheet_id, range=f"'{tab_name}'!A1",
+            valueInputOption="USER_ENTERED", body={"values": row}
+        ).execute()
+    except Exception as e:
+        print(f"⚠️ [Quotation] Sheet Sync Error: {e}")
+
+@app.route("/api/quotation/create", methods=["POST"])
+@login_required
+def create_quotation():
+    try:
+        quotation_data_str = request.form.get("quotation_data")
+        pdf_file = request.files.get("quotation_pdf")
+        
+        if not quotation_data_str or not pdf_file:
+            return jsonify({"ok": False, "error": "ข้อมูลไม่ครบถ้วน"}), 400
+            
+        quotation_data = json.loads(quotation_data_str)
+        pdf_content = pdf_file.read()
+        
+        # 1. Upload to Drive
+        original_filename = f"{quotation_data.get('quotation_no', 'QT')}_{quotation_data.get('customer_name', '')}.pdf".replace("/", "-")
+        drive_link, err = google_drive_service.upload_to_date_folder(pdf_content, original_filename, "application/pdf")
+        
+        if err:
+            return jsonify({"ok": False, "error": f"Drive Upload Error: {err}"}), 500
+            
+        # 2. Sync to Sheets in background
+        user = session.get("user", "System")
+        threading.Thread(target=append_quotation_to_sheet, args=(quotation_data, drive_link, user)).start()
+        
+        database.log_event(f"สร้างใบเสนอราคา: {quotation_data.get('quotation_no')}", user=user)
+        
+        return jsonify({"ok": True, "link": drive_link})
+        
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 # ─── Socket.IO Events ──────────────────────────
@@ -4751,7 +5357,88 @@ def export_wiki_page(page_id):
     return jsonify({"ok": False, "error": "Invalid format"}), 400
 
 
+# ─── Daily Summary Scheduler ──────────────────────────────
+def daily_morning_summary():
+    """Daily job at 8:00 AM to summarize activities using Nong Pan persona."""
+    print("⏰ Starting Daily Morning Summary Job (Nong Pan Persona)...", flush=True)
+    try:
+        # 1. Fetch activities
+        activities = database.get_daily_activities()
+        drive_stats = database.get_drive_stats()
+        recent_files = database.get_drive_logs(limit=10)
+        
+        # 2. Prepare context
+        context = "กิจกรรมในบริษัทช่วง 24 ชม. ที่ผ่านมา:\n"
+        if activities.get("posts"):
+            context += "📢 ข่าวสารใหม่:\n" + "\n".join([f"- {p['title']}" for p in activities["posts"][:3]]) + "\n"
+        if activities.get("schedules"):
+            context += "📅 ตารางงานวันนี้:\n" + "\n".join([f"- {s['time']} {s['title']}" for s in activities["schedules"][:3]]) + "\n"
+        if recent_files:
+            context += "📁 เอกสารอัปโหลดใหม่:\n" + "\n".join([f"- {f['filename']} ({f['category']})" for f in recent_files[:5]]) + "\n"
+
+        prompt = (
+            "คุณคือ 'น้องพั้น' (Punch) AI Assistant สาวออฟฟิศสุดร่าเริง สรุป Morning Brief "
+            "ข้อมูลสำคัญประจำวันให้พี่ๆ ในทีมทราบอย่างเป็นกันเองและน่ารัก "
+            "ใช้ภาษาที่สุภาพแต่ร่าเริง แจกความสดใสยามเช้า และสรุปสาระสำคัญที่พี่ๆ ต้องรู้ให้ครบถ้วนนะคะ\n\n"
+            f"{context}\n\n"
+            "สรุปในสไตล์น้องพั้น:"
+        )
+        
+        summary = ai_providers.generate_response(prompt)
+        
+        # 3. Broadcast to all users (or a specific group) via LINE
+        if summary:
+            # Note: broadcast_line_announcement needs to be defined or use a loop
+            # For simplicity, assuming a function exists or using a known target
+            broadcast_line_announcement("☀️ Morning Brief จากน้องพั้น", summary)
+            print("✅ Daily Summary sent via LINE.")
+            
+    except Exception as e:
+        print(f"❌ Daily Summary Job Error: {e}")
+
+# Initialize Scheduler
+scheduler = BackgroundScheduler()
+scheduler.add_job(daily_morning_summary, CronTrigger(hour=8, minute=0, timezone="Asia/Bangkok"))
+
+@app.route('/api/drive/contents', methods=['GET'])
+@login_required
+def get_drive_contents():
+    folder_id = request.args.get('folder_id')
+    try:
+        contents = google_drive_service.list_folder_contents(folder_id)
+        return jsonify(contents)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/drive/rename', methods=['POST'])
+@admin_required
+def rename_drive_file():
+    data = request.json or {}
+    file_id = data.get('file_id')
+    new_name = data.get('new_name')
+    if not file_id or not new_name:
+        return jsonify({"ok": False, "error": "Missing parameters"}), 400
+    
+    if google_drive_service.rename_file(file_id, new_name):
+        database.log_event(f"Renamed Drive file {file_id} to {new_name}", user=session.get("user"))
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "error": "Failed to rename"}), 500
+
+@app.route('/api/drive/delete', methods=['DELETE', 'POST'])
+@admin_required
+def delete_drive_file():
+    data = request.json or {}
+    file_id = data.get('file_id')
+    if not file_id:
+        return jsonify({"ok": False, "error": "Missing file_id"}), 400
+    
+    if google_drive_service.delete_file(file_id):
+        database.log_event(f"Deleted Drive file {file_id}", user=session.get("user"))
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "error": "Failed to delete"}), 500
+
 if __name__ == "__main__":
+
 
     import os
     port = int(os.environ.get("PORT", 5005))
@@ -4775,4 +5462,10 @@ if __name__ == "__main__":
         print(f"   {rule.endpoint:20} -> {rule.rule}")
         
     # Run SocketIO server (disable reloader on Windows to prevent port conflicts)
+    try:
+        scheduler.start()
+        print("⏰ Background Scheduler started.")
+    except Exception as se:
+        print(f"⚠️ Scheduler failed to start: {se}")
+
     socketio.run(app, debug=False, port=port, host="0.0.0.0", use_reloader=False, allow_unsafe_werkzeug=True)

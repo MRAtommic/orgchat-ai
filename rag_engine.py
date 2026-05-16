@@ -859,14 +859,16 @@ def retrieve_context(question: str, where: dict = None) -> tuple[str, list[dict]
                 print(f"⚠️ Filename match error: {fe}")
         
         # If it's a very short question or casual greeting, skip expensive RAG
-        if not question or len(question) < 4:
-            print("ℹ️ Fast Path: Skipping RAG for short/casual query.", flush=True)
+        # Added: Better detection for Thai number gibberish or pure noise
+        clean_q = re.sub(r'[0-9๐-๙\s\W]', '', question)
+        if not question or len(question) < 5 or (len(clean_q) < 2 and len(question) < 15):
+            print(f"ℹ️ Fast Path: Skipping RAG for noisy/short query: '{question}'", flush=True)
             return "", []
         
         # 2. Standard Hybrid Query (Semantic + Keyword)
         results = _kb.hybrid_query(question, where=where)
-        # Filter by score (keep only >= 0.35)
-        results = [r for r in results if r.get("score", 0) >= 0.35]
+        # Filter by score (keep only >= 0.42) - Increased from 0.35 to reduce noise
+        results = [r for r in results if r.get("score", 0) >= 0.42]
         
         # Merge results, prioritize filename chunks
         seen_texts = set()
@@ -997,6 +999,10 @@ def sync_uploads():
 def search_kb(question: str, n_results: int = 5, where: dict = None) -> list[dict]:
     """Perform a raw search in the knowledge base with optional permissions filter."""
     return _kb.hybrid_query(question, n_results=n_results, where=where)
+
+def query(question: str, n_results: int = 4, where: dict = None) -> list[dict]:
+    """Alias for search_kb to maintain compatibility."""
+    return search_kb(question, n_results=n_results, where=where)
 
 def get_all_chunks(where: dict = None, limit: int = 20) -> list[dict]:
     """Fetch raw chunks from the knowledge base without semantic search."""
