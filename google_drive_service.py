@@ -15,6 +15,7 @@ import difflib
 from datetime import datetime
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
+from googleapiclient.errors import HttpError
 from google.oauth2 import service_account
 from dotenv import load_dotenv
 
@@ -287,9 +288,21 @@ class GoogleWorkspaceManager:
                     self.sheets_service.spreadsheets().get(spreadsheetId=self.spreadsheet_id).execute()
                     valid = True
                 else:
-                    logger.warning(f"⚠️ Spreadsheet {self.spreadsheet_id} is in TRASH.")
+                    logger.warning(f"⚠️ Spreadsheet {self.spreadsheet_id} is in TRASH. Creating new one...")
+            except HttpError as he:
+                if he.resp.status == 404:
+                    logger.warning(f"⚠️ Spreadsheet ID {self.spreadsheet_id} not found on Google Drive (404). Creating a new one...")
+                elif he.resp.status in [403, 401]:
+                    logger.error(f"❌ Permission denied or unauthorized to access spreadsheet {self.spreadsheet_id} (HTTP {he.resp.status}). Keeping current ID.")
+                    valid = True
+                else:
+                    logger.warning(f"⚠️ Google Sheets API returned HTTP {he.resp.status} during check: {he}. Keeping current ID.")
+                    valid = True
             except Exception as e:
-                logger.warning(f"⚠️ Spreadsheet ID {self.spreadsheet_id} is invalid: {e}")
+                # Resilient: Network timeouts, transient errors, socket issues.
+                # NEVER create a new spreadsheet for transient network issues!
+                logger.warning(f"⚠️ Transient network/timeout error checking spreadsheet {self.spreadsheet_id}: {e}. Keeping current ID.")
+                valid = True
         
         if not valid:
             self._create_new_spreadsheet()
