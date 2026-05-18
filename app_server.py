@@ -1229,7 +1229,7 @@ def create_duplicate_warning_flex_bubble(sheet_name, row_num, ref_number, net_am
                             "weight": "bold",
                             "size": "sm",
                             "flex": 4,
-                            "align": "right",
+                            "align": "end",
                             "wrap": True
                         }
                     ]
@@ -1256,7 +1256,7 @@ def create_duplicate_warning_flex_bubble(sheet_name, row_num, ref_number, net_am
                             "weight": "bold",
                             "size": "sm",
                             "flex": 4,
-                            "align": "right"
+                            "align": "end"
                         }
                     ]
                 },
@@ -1282,7 +1282,7 @@ def create_duplicate_warning_flex_bubble(sheet_name, row_num, ref_number, net_am
                             "weight": "bold",
                             "size": "sm",
                             "flex": 4,
-                            "align": "right"
+                            "align": "end"
                         }
                     ]
                 },
