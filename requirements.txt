@@ -1,8 +1,7 @@
 flask==3.0.3
 flask-cors==4.0.1
 google-genai>=0.8.0
-# eventlet, gevent, greenlet removed to use standard Gthread/Threading model
-chromadb>=0.6.0
+chromadb>=0.5.0
 python-docx==1.1.2
 openpyxl==3.1.5
 PyMuPDF==1.24.9
@@ -10,8 +9,8 @@ pytesseract==0.3.13
 Pillow==10.4.0
 python-dotenv==1.0.1
 werkzeug==3.0.3
-fastembed>=0.7.0
-numpy>=2.1.0
+fastembed>=0.3.0
+numpy>=1.22.4,<2.0.0
 requests
 fpdf2
 gunicorn>=23.0.0
@@ -19,11 +18,9 @@ pywebpush==1.14.0
 bcrypt>=4.0.0
 APScheduler>=3.10.0
 flask-socketio==5.3.6
-# gevent moved up
 beautifulsoup4==4.12.3
 google-auth==2.29.0
-# eventlet ถูกลบออกแล้ว — ใช้ gevent แทนตาม Procfile
-pandas>=2.2.0
+pandas>=2.0.0,<2.1.0
 google-api-python-client>=2.128.0
 google-auth-httplib2>=0.2.0
 google-auth-oauthlib>=1.2.0
