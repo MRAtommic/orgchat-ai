@@ -312,6 +312,16 @@ def init_db():
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS pending_edits (
+            line_user_id TEXT PRIMARY KEY,
+            sheet_name TEXT,
+            row_index INTEGER,
+            data_json TEXT,
+            state TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
     # Default settings
     cursor.execute("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('allow_user_edit', '0')")
 
@@ -1767,13 +1777,23 @@ def remove_room_member(room_id, username):
     return True, "ok"
 
 def link_line_user(username, line_user_id):
-    """Link a LINE user ID to an OrgChat username."""
+    """Link a LINE user ID to an OrgChat username. Creates profile if missing."""
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        # Remove any existing link for this LINE user ID first to ensure 1-to-1 mapping
+        
+        # 1. Check if user profile exists
+        cursor.execute("SELECT 1 FROM user_profiles WHERE username = ? COLLATE NOCASE", (username,))
+        exists = cursor.fetchone()
+        
+        if not exists:
+            # Create a basic profile if it doesn't exist
+            cursor.execute("INSERT INTO user_profiles (username, display_name) VALUES (?, ?)", (username, username.capitalize()))
+            
+        # 2. Remove any existing link for this LINE user ID (ensure 1-to-1)
         cursor.execute("UPDATE user_profiles SET line_user_id = NULL WHERE line_user_id = ?", (line_user_id,))
-        # Set new link
+        
+        # 3. Set new link
         cursor.execute("UPDATE user_profiles SET line_user_id = ? WHERE username = ? COLLATE NOCASE", (line_user_id, username))
         count = cursor.rowcount
         conn.commit()
@@ -1795,6 +1815,64 @@ def get_line_id_by_username(username):
     except Exception as e:
         print(f"Error getting LINE ID for {username}: {e}")
         return None
+
+def get_username_by_line_id(line_user_id):
+    """Get the OrgChat username for a specific LINE user ID."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT username FROM user_profiles WHERE line_user_id = ?", (line_user_id,))
+        row = cursor.fetchone()
+        conn.close()
+        return row[0] if row else None
+    except Exception as e:
+        print(f"Error getting username for LINE ID {line_user_id}: {e}")
+        return None
+
+def set_pending_edit(line_user_id, sheet_name, row_index, data=None, state=None):
+    """Store the last record added by a user for potential editing."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        data_json = json.dumps(data) if data else "{}"
+        cursor.execute("""
+            INSERT OR REPLACE INTO pending_edits (line_user_id, sheet_name, row_index, data_json, state, timestamp)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """, (line_user_id, sheet_name, row_index, data_json, state))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"Error setting pending edit: {e}")
+        return False
+
+def get_pending_edit(line_user_id):
+    """Retrieve the last record info for a user."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT sheet_name, row_index, data_json, state FROM pending_edits WHERE line_user_id = ?", (line_user_id,))
+        row = cursor.fetchone()
+        conn.close()
+        if row:
+            return {"sheet_name": row[0], "row_index": row[1], "data": json.loads(row[2]), "state": row[3]}
+        return None
+    except Exception as e:
+        print(f"Error getting pending edit: {e}")
+        return None
+
+def update_pending_edit_state(line_user_id, state):
+    """Update the state of a pending edit interaction."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("UPDATE pending_edits SET state = ? WHERE line_user_id = ?", (state, line_user_id))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"Error updating pending edit state: {e}")
+        return False
 
 def update_group_profile(room_id, name=None, avatar_url=None):
     """Updates group profile name and/or avatar."""

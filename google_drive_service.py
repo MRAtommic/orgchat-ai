@@ -11,6 +11,7 @@ import io
 import time
 import threading
 import logging
+import difflib
 from datetime import datetime
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
@@ -24,12 +25,24 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 def normalize_thai_name(name):
-    """Cleans up Thai business names for better matching."""
+    """Cleans up Thai business names for better matching, stripping special characters."""
     if not name or name == '-': return ""
-    name = str(name).replace('บจก.', '').replace('บริษัท', '').replace('จำกัด', '').replace('(มหาชน)', '')
-    name = name.replace('CO.,LTD.', '').replace('CO., LTD.', '').replace('LTD.', '').replace('CORP.', '')
-    name = name.replace(' ', '').replace('.', '').replace(',', '').strip()
-    return name.upper()
+    name = str(name).upper()
+    # Remove common business prefixes/suffixes
+    for word in ['บจก.', 'บริษัท', 'จำกัด', ' (มหาชน)', '(มหาชน)', 'CO.,LTD.', 'CO., LTD.', 'LTD.', 'CORP.', 'หจก.', 'ห้างหุ้นส่วนจำกัด']:
+        name = name.replace(word, '')
+    
+    # Remove special characters often found in statements (++, *, -, etc.)
+    name = re.sub(r'[^\u0E01-\u0E5B\w]', '', name)
+    return name.strip()
+
+def get_name_similarity(name1, name2):
+    """Returns a similarity score between 0 and 1 for two names."""
+    n1 = normalize_thai_name(name1)
+    n2 = normalize_thai_name(name2)
+    if not n1 or not n2: return 0.0
+    if n1 in n2 or n2 in n1: return 1.0
+    return difflib.SequenceMatcher(None, n1, n2).ratio()
 
 class GoogleWorkspaceManager:
     """
@@ -64,6 +77,163 @@ class GoogleWorkspaceManager:
         self._validate_or_create_spreadsheet()
         self._initialized = True
 
+    def _load_sheet_schema(self):
+        """Loads sheet schema configuration from json or returns built-in fallback."""
+        import json
+        config_path = os.path.join(os.path.dirname(__file__), 'config', 'sheet_schema.json')
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception as e:
+                logger.error(f"Failed to load sheet schema registry JSON: {e}")
+        
+        # Resilient fallback matching config/sheet_schema.json
+        return {
+            "category_map": {
+                "Slip": "สลิปโอนเงิน",
+                "Transfer": "สลิปโอนเงิน",
+                "Receipt": "ใบเสร็จ/ใบกำกับภาษี",
+                "Invoice": "ใบเสร็จ/ใบกำกับภาษี",
+                "Voucher": "ใบเสร็จ/ใบกำกับภาษี",
+                "ใบเสร็จ_ใบกำกับ": "ใบเสร็จ/ใบกำกับภาษี",
+                "ใบเสร็จรับเงิน - ใบกำกับภาษี": "ใบเสร็จ/ใบกำกับภาษี",
+                "Statement": "สเตตเมนต์",
+                "statement": "สเตตเมนต์",
+                "ID_Card": "บัตรประชาชน",
+                "slip": "สลิปโอนเงิน",
+                "Uploads": "สลิปโอนเงิน"
+            },
+            "schemas": {
+                "บัตรประชาชน": {
+                    "headers": ["เวลาที่บันทึก", "หมวดหมู่", "วันที่บันทึก", "เวลาที่บันทึก", "AI Model", "เลขบัตรประชาชน", "ชื่อ (ไทย)", "นามสกุล (ไทย)", "ชื่อ (อังกฤษ)", "นามสกุล (อังกฤษ)", "วันเกิด", "เพศ", "ที่อยู่", "วันหมดอายุ", "Laser ID", "ลิงก์ไฟล์", "AI ถูก/ผิด"],
+                    "columns": [
+                        {"source": "current_datetime"},
+                        {"source": "const:ID_Card"},
+                        {"source": "current_date"},
+                        {"source": "current_time"},
+                        {"source": "ai_model"},
+                        {"source": "ai_keys:id_number,tax_id", "cleaner": "id"},
+                        {"source": "id_card_first_name_th"},
+                        {"source": "id_card_last_name_th"},
+                        {"source": "ai_keys:first_name_en,name_en"},
+                        {"source": "ai_keys:last_name_en,surname_en"},
+                        {"source": "ai_keys:birth_date,birthday,dob"},
+                        {"source": "ai_keys:gender,sex"},
+                        {"source": "ai_keys:address"},
+                        {"source": "ai_keys:expiry_date,expired_date,expiry"},
+                        {"source": "ai_keys:laser_id,laser,ref_number"},
+                        {"source": "file_link"},
+                        {"source": "const:-"}
+                    ]
+                },
+                "สเตตเมนต์": {
+                    "headers": ["เวลาที่บันทึก", "วันที่เอกสาร", "เวลา/วันที่มีผล", "รายการ", "รายละเอียด", "ถอน/เงินออก", "ฝาก/เงินเข้า", "ค่าธรรมเนียม", "ยอดคงเหลือ", "ช่องทาง", "เลขที่อ้างอิง", "คู่ค้า/ผู้โอน", "ลิงก์ไฟล์"],
+                    "columns": [
+                        {"source": "current_datetime"},
+                        {"source": "statement_date"},
+                        {"source": "statement_time"},
+                        {"source": "ai_keys:memo,description,รายการ"},
+                        {"source": "ai_keys:details,info,รายละเอียด"},
+                        {"source": "ai_keys:withdrawal,ถอน,out", "cleaner": "float"},
+                        {"source": "ai_keys:deposit,ฝาก,in", "cleaner": "float"},
+                        {"source": "ai_keys:fee,ค่าธรรมเนียม", "cleaner": "float"},
+                        {"source": "ai_keys:balance,ยอดคงเหลือ", "cleaner": "float"},
+                        {"source": "statement_channel"},
+                        {"source": "ai_keys:ref,ref_number,เลขที่อ้างอิง", "cleaner": "id"},
+                        {"source": "ai_keys:counterparty,sender,receiver,คู่ค้า"},
+                        {"source": "file_link"}
+                    ]
+                },
+                "ใบเสร็จ/ใบกำกับภาษี": {
+                    "headers": ["เวลาที่บันทึก", "หมวดหมู่", "วันที่ในเอกสาร", "ผู้ส่ง/ร้านค้า", "รหัสสาขา", "เลขผู้เสียภาษี", "ที่อยู่คู่ค้า", "ผู้รับ", "ช่องทางการติดต่อ", "จำนวนเงินสุทธิ", "ยอดก่อนภาษี", "ส่วนลด", "VAT", "WHT", "ประเภท WHT", "เลขที่อ้างอิง", "สรุปจาก AI", "ลิงก์ไฟล์", "AI ถูก/ผิด"],
+                    "columns": [
+                        {"source": "current_datetime"},
+                        {"source": "const:ใบเสร็จ/ใบกำกับภาษี"},
+                        {"source": "ai_keys:date"},
+                        {"source": "sender_name_fallback"},
+                        {"source": "ai_keys:branch"},
+                        {"source": "ai_keys:tax_id", "cleaner": "id"},
+                        {"source": "ai_keys:address"},
+                        {"source": "receiver_name_fallback"},
+                        {"source": "ai_keys:contact,phone,email"},
+                        {"source": "ai_keys:net_amount", "cleaner": "float"},
+                        {"source": "ai_keys:gross_amount", "cleaner": "float"},
+                        {"source": "ai_keys:discount_amount", "cleaner": "float"},
+                        {"source": "ai_keys:vat_amount", "cleaner": "float"},
+                        {"source": "ai_keys:wht_amount", "cleaner": "float"},
+                        {"source": "ai_keys:wht_type,wht_category,wht_rate,wht_percent"},
+                        {"source": "ai_keys:ref_number"},
+                        {"source": "summary"},
+                        {"source": "file_link"},
+                        {"source": "const:-"}
+                    ]
+                },
+                "สลิปโอนเงิน": {
+                    "headers": ["เวลาที่บันทึก", "หมวดหมู่", "วันที่ในเอกสาร", "เวลาในเอกสาร", "ผู้ส่ง/ร้านค้า", "เลขผู้เสียภาษี", "ผู้รับ", "ช่องทางการติดต่อ", "จำนวนเงินสุทธิ", "ยอดก่อนภาษี", "WHT", "เลขที่อ้างอิง", "ธนาคารต้นทาง", "ธนาคารปลายทาง", "บันทึกช่วยจำ", "สรุปจาก AI", "ลิงก์ไฟล์", "AI ถูก/ผิด"],
+                    "columns": [
+                        {"source": "current_datetime"},
+                        {"source": "const:สลิปโอนเงิน"},
+                        {"source": "ai_keys:date"},
+                        {"source": "ai_keys:time"},
+                        {"source": "sender_name_fallback"},
+                        {"source": "ai_keys:tax_id", "cleaner": "id"},
+                        {"source": "receiver_name_fallback"},
+                        {"source": "ai_keys:contact,phone"},
+                        {"source": "ai_keys:net_amount", "cleaner": "float"},
+                        {"source": "ai_keys:gross_amount", "cleaner": "float"},
+                        {"source": "ai_keys:wht_amount", "cleaner": "float"},
+                        {"source": "ai_keys:ref_number"},
+                        {"source": "ai_keys:sender_bank,bank_from"},
+                        {"source": "ai_keys:receiver_bank,bank_to"},
+                        {"source": "ai_keys:memo"},
+                        {"source": "summary"},
+                        {"source": "file_link"},
+                        {"source": "const:-"}
+                    ]
+                },
+                "ใบเสนอราคา": {
+                    "headers": ["เวลาที่บันทึก", "วันที่เอกสาร", "ผู้เสนอราคา", "ลูกค้า", "ยอดเงินสุทธิ", "สถานะ", "ลิงก์ไฟล์", "AI ถูก/ผิด"],
+                    "columns": [
+                        {"source": "current_datetime"},
+                        {"source": "ai_keys:date"},
+                        {"source": "sender_name_fallback"},
+                        {"source": "receiver_name_fallback"},
+                        {"source": "ai_keys:net_amount", "cleaner": "float"},
+                        {"source": "const:รออนุมัติ"},
+                        {"source": "file_link"},
+                        {"source": "const:-"}
+                    ]
+                },
+                "default": {
+                    "headers": ["เวลาที่บันทึก", "หมวดหมู่", "วันที่ในเอกสาร", "สรุปข้อมูล", "ลิงก์ไฟล์", "AI ถูก/ผิด"],
+                    "columns": [
+                        {"source": "current_datetime"},
+                        {"source": "sheet_name"},
+                        {"source": "ai_keys:date"},
+                        {"source": "summary"},
+                        {"source": "file_link"},
+                        {"source": "const:-"}
+                    ]
+                }
+            }
+        }
+
+
+    def get_date_header_name(self, sheet_name):
+        """Dynamically look up the date column header from the schema registry."""
+        try:
+            registry = self._load_sheet_schema()
+            schemas = registry.get("schemas", {})
+            schema_config = schemas.get(sheet_name, schemas.get("default", {}))
+            for col in schema_config.get("columns", []):
+                src = col.get("source", "")
+                if src in ["ai_keys:date", "current_date", "statement_date"] or "date" in src:
+                    return col.get("header", "วันที่ในเอกสาร")
+            return "วันที่ในเอกสาร"
+        except Exception:
+            return "วันที่ในเอกสาร"
+
     def _initialize_services(self):
         """Initializes Google API clients."""
         try:
@@ -78,12 +248,25 @@ class GoogleWorkspaceManager:
                 logger.info("Using token.json (OAuth2 User) for Drive services.")
 
             if not creds or not creds.valid:
-                if os.path.exists(self.credentials_path):
+                g_env = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
+                if g_env:
+                    try:
+                        import json
+                        info = json.loads(g_env)
+                        creds = service_account.Credentials.from_service_account_info(
+                            info, scopes=self.scopes
+                        )
+                        logger.info("Using GOOGLE_SERVICE_ACCOUNT_JSON from environment variable for Drive/Sheets.")
+                    except Exception as e:
+                        logger.error(f"Failed to load credentials from environment variable: {e}")
+
+                if (not creds or not creds.valid) and os.path.exists(self.credentials_path):
                     creds = service_account.Credentials.from_service_account_file(
                         self.credentials_path, scopes=self.scopes
                     )
-                    logger.info("Using service-account.json for Drive services.")
-                else:
+                    logger.info("Using service-account.json file for Drive services.")
+                
+                if not creds or not creds.valid:
                     logger.error("No valid credentials found.")
                     return
 
@@ -355,9 +538,12 @@ class GoogleWorkspaceManager:
                         amount_match = False
                         wht_correct = False
                     
-                    name_match = (normalize_thai_name(s_receiver) in normalize_thai_name(i_vendor) or \
-                                  normalize_thai_name(i_vendor) in normalize_thai_name(s_receiver)) \
-                                  if s_receiver != '-' and i_vendor != '-' else False
+                    # Name Matching with Fuzzy Logic
+                    s_norm = normalize_thai_name(s_receiver)
+                    i_norm = normalize_thai_name(i_vendor)
+                    
+                    similarity = get_name_similarity(s_receiver, i_vendor)
+                    name_match = (similarity > 0.7) if s_receiver != '-' and i_vendor != '-' else False
                     
                     date_match = (abs((s_date - i_date).days) <= 7) if s_date and i_date else False
 
@@ -375,7 +561,29 @@ class GoogleWorkspaceManager:
                 
                 if not found:
                     s_date_display = p.get('date', '-')
-                    matches.append([dt.now().strftime("%d/%m/%Y %H:%M"), f"⚠️ รอใบกำกับ ({p['source']})", s_date_display, s_amount, s_receiver, s_link, "-", "ยังไม่พบใบกำกับภาษีที่ยอดตรงกัน"])
+                    s_rec_upper = s_receiver.upper()
+                    if "ฮาร์ทวอมมิ" in s_rec_upper or "HEARTWARMING" in s_rec_upper:
+                        matches.append([
+                            dt.now().strftime("%d/%m/%Y %H:%M"),
+                            "🔄 โอนย้ายระหว่างบัญชี",
+                            s_date_display,
+                            s_amount,
+                            s_receiver,
+                            s_link,
+                            "-",
+                            "โอนย้ายระหว่างบัญชีภายใน บจก. ฮาร์ทวอมมิ่ง (ไม่ต้องมีใบกำกับ)"
+                        ])
+                    else:
+                        matches.append([
+                            dt.now().strftime("%d/%m/%Y %H:%M"),
+                            f"⚠️ รอใบกำกับ ({p['source']})",
+                            s_date_display,
+                            s_amount,
+                            s_receiver,
+                            s_link,
+                            "-",
+                            "ยังไม่พบใบกำกับภาษีที่ยอดตรงกัน"
+                        ])
 
             for inv_idx, inv in enumerate(invoices):
                 if inv_idx not in matched_inv_indices:
@@ -426,6 +634,7 @@ class GoogleWorkspaceManager:
                 ["📊 สถานะการกระทบยอด (Matching)", "", "", ""],
                 ["สถานะ", "จำนวนรายการ", "", ""],
                 ["จับคู่สำเร็จ", "=COUNTIF('สรุปกระทบยอด'!B:B, \"*สำเร็จ*\")", "", ""],
+                ["โอนย้ายระหว่างบัญชี", "=COUNTIF('สรุปกระทบยอด'!B:B, \"*โอนย้าย*\")", "", ""],
                 ["รอใบกำกับ/รอชำระ", "=COUNTIF('สรุปกระทบยอด'!B:B, \"*รอ*\")", "", ""]
             ]
             self.sheets_service.spreadsheets().values().update(spreadsheetId=self.spreadsheet_id, range=f"'{sheet_name}'!A1", valueInputOption="USER_ENTERED", body={"values": dashboard_data}).execute()
@@ -480,204 +689,215 @@ class GoogleWorkspaceManager:
                         if v is not None and str(v).strip() != '-': return v
                 return default
 
-            # Logic to extract sender/receiver with broader fallbacks
-            s_name = get_val(['sender', 'from', 'vendor', 'vendor_name', 'seller', 'company_name'])
-            r_name = get_val(['receiver', 'to', 'payee', 'buyer', 'customer', 'customer_name'])
-
-            category_map = {
-                "Slip": "สลิปโอนเงิน",
-                "Transfer": "สลิปโอนเงิน",
-                "Receipt": "ใบเสร็จ/ใบกำกับภาษี",
-                "Invoice": "ใบเสร็จ/ใบกำกับภาษี",
-                "Voucher": "ใบเสร็จ/ใบกำกับภาษี",
-                "ใบเสร็จ_ใบกำกับ": "ใบเสร็จ/ใบกำกับภาษี",
-                "ใบเสร็จรับเงิน - ใบกำกับภาษี": "ใบเสร็จ/ใบกำกับภาษี",
-                "Statement": "สเตตเมนต์",
-                "statement": "สเตตเมนต์",
-                "ID_Card": "บัตรประชาชน",
-                "slip": "สลิปโอนเงิน",
-                "Uploads": "สลิปโอนเงิน"
-            }
+            # Load Schema Registry
+            registry = self._load_sheet_schema()
+            category_map = registry.get("category_map", {})
             sheet_name = category_map.get(raw_category, raw_category).strip()
+
+            # --- 🛡️ Duplicate Slip Detection by Ref Number ---
+            ref_val = get_val(['ref', 'ref_number', 'เลขที่อ้างอิง', 'transaction_id'])
+            if ref_val and str(ref_val).strip() != '-':
+                cleaned_ref = str(ref_val).replace('-', '').replace(' ', '').replace("'", "").strip()
+                if cleaned_ref and len(cleaned_ref) >= 6:
+                    try:
+                        res_val = self.sheets_service.spreadsheets().values().get(
+                            spreadsheetId=self.spreadsheet_id, 
+                            range=f"'{sheet_name}'!A1:Z1000"
+                        ).execute()
+                        existing_rows = res_val.get('values', [])
+                        
+                        for r_idx, row_data in enumerate(existing_rows):
+                            if r_idx == 0: continue # Skip header
+                            for cell_val in row_data:
+                                if cell_val:
+                                    cleaned_cell = str(cell_val).replace('-', '').replace(' ', '').replace("'", "").strip()
+                                    if cleaned_cell == cleaned_ref:
+                                        logger.warning(f"⚠️ Duplicate slip detected! Ref: {ref_val} at row {r_idx + 1}")
+                                        return {
+                                            "ok": False, 
+                                            "error": "duplicate", 
+                                            "sheet": sheet_name, 
+                                            "row": r_idx + 1, 
+                                            "ref_number": ref_val,
+                                            "data": row_data
+                                        }
+                    except Exception as e:
+                        logger.error(f"Failed to check duplicate: {e}")
+            
+            # Retrieve schema config for this sheet
+            schemas = registry.get("schemas", {})
+            schema_config = schemas.get(sheet_name, schemas.get("default", {}))
+            
+            headers = schema_config.get("headers", [])
+            columns_def = schema_config.get("columns", [])
             
             def clean_val(v):
                 if v is None or v == '-': return 0.0
                 try: return float(str(v).replace(',', '').strip())
                 except: return 0.0
+                
             def clean_id(v):
                 if v is None: return '-'
                 s = str(v).replace('-', '').replace(' ', '').strip()
                 if not s or s == '-': return '-'
-                # Prefix ANY long numeric string with ' to avoid scientific notation
                 if s.isdigit() and len(s) >= 10:
                     return f"'{s}"
                 return s
 
-            if sheet_name == "บัตรประชาชน":
-                headers = ["เวลาที่บันทึก", "หมวดหมู่", "วันที่บันทึก", "เวลาที่บันทึก", "AI Model", "เลขบัตรประชาชน", "ชื่อ (ไทย)", "นามสกุล (ไทย)", "ชื่อ (อังกฤษ)", "นามสกุล (อังกฤษ)", "วันเกิด", "เพศ", "ที่อยู่", "วันหมดอายุ", "Laser ID", "ลิงก์ไฟล์", "AI ถูก/ผิด"]
+            # Custom Value Extractor based on source string
+            def extract_field_value(col_def, context_ext=None, context_data=None):
+                if context_ext is None: context_ext = ext
+                if context_data is None: context_data = data
                 
-                # Robust name extraction for ID Card
-                full_name_th = get_val(['first_name_th', 'sender', 'name'])
-                f_name_th = get_val('first_name_th')
-                l_name_th = get_val('last_name_th')
+                src = col_def.get("source", "")
+                cleaner = col_def.get("cleaner", "")
                 
-                # Ultimate fallback: If name is still missing, try to get it from smart_name
-                if full_name_th == '-' or full_name_th == '':
-                    s_name_part = data.get('smart_name', '')
-                    if 'ID_Card_' in s_name_part:
-                        # Extract name from "ID_Card_YYYY-MM-DD_Name_Surname.jpg"
-                        try:
-                            name_part = s_name_part.split('_', 3)[-1].replace('.jpg', '').replace('.png', '').replace('_', ' ')
-                            if name_part:
-                                full_name_th = name_part
-                        except: pass
+                # Built-in fallback helper inside extract_field_value
+                def local_get_val(keys, default='-'):
+                    if isinstance(keys, str): keys = [keys]
+                    for k in keys:
+                        v = context_ext.get(k)
+                        if v is not None and str(v).strip() != '-': return v
+                        
+                    if any(k in keys for k in ['sender', 'from']):
+                        for k in ['sender_name', 'from_name', 'vendor', 'name']:
+                            v = context_ext.get(k)
+                            if v is not None and str(v).strip() != '-': return v
+                    if any(k in keys for k in ['receiver', 'to']):
+                        for k in ['receiver_name', 'to_name', 'customer', 'payee']:
+                            v = context_ext.get(k)
+                            if v is not None and str(v).strip() != '-': return v
+                    if any(k in keys for k in ['address', 'ที่อยู่']):
+                        for k in ['sender_address', 'vendor_address', 'address_of_sender', 'address', 'receiver_address', 'full_address']:
+                            v = context_ext.get(k)
+                            if v is not None and str(v).strip() != '-': return v
+                    if any(k in keys for k in ['branch', 'สาขา']):
+                        for k in ['sender_branch', 'receiver_branch', 'branch_code', 'branch']:
+                            v = context_ext.get(k)
+                            if v is not None and str(v).strip() != '-': return v
+                    if any(k in keys for k in ['withdrawal', 'deposit', 'balance', 'fee']):
+                        for k in keys:
+                            v = context_ext.get(k)
+                            if v is not None and str(v).strip() != '-': return v
+                    if any(k in keys for k in ['sender_bank', 'bank_from']):
+                        for k in ['sender_bank', 'bank_from', 'from_bank', 'bank_sender', 'sender_bank_name']:
+                            v = context_ext.get(k)
+                            if v is not None and str(v).strip() != '-': return v
+                    if any(k in keys for k in ['receiver_bank', 'bank_to']):
+                        for k in ['receiver_bank', 'bank_to', 'to_bank', 'bank_receiver', 'receiver_bank_name']:
+                            v = context_ext.get(k)
+                            if v is not None and str(v).strip() != '-': return v
+                    return default
 
-                if f_name_th == '-' and full_name_th != '-':
-                    # Split if we only got a full name
-                    parts = full_name_th.split(' ', 2)
-                    if len(parts) >= 2:
-                        f_name_th = parts[0] if parts[0] not in ['นาย', 'นาง', 'น.ส.'] else f"{parts[0]} {parts[1]}"
-                        l_name_th = parts[-1]
-                    else:
-                        f_name_th = full_name_th
-
-                rows = [[
-                    datetime.now().strftime("%d/%m/%Y %H:%M"), 
-                    "ID_Card", 
-                    datetime.now().strftime("%d/%m/%Y"), 
-                    datetime.now().strftime("%H:%M"), 
-                    data.get('ai_model', '-'), 
-                    clean_id(get_val(['id_number', 'tax_id'])), 
-                    f_name_th, 
-                    l_name_th, 
-                    get_val(['first_name_en', 'name_en']), 
-                    get_val(['last_name_en', 'surname_en']), 
-                    get_val(['birth_date', 'birthday', 'dob']), 
-                    get_val(['gender', 'sex']), 
-                    get_val('address'), 
-                    get_val(['expiry_date', 'expired_date', 'expiry']), 
-                    get_val(['laser_id', 'laser', 'ref_number']), # AI sometimes puts laser in ref_number
-                    data.get('file_link', '-'), 
-                    "-"
-                ]]
-            elif sheet_name == "สเตตเมนต์":
-                headers = ["เวลาที่บันทึก", "วันที่เอกสาร", "เวลา/วันที่มีผล", "รายการ", "รายละเอียด", "ถอน/เงินออก", "ฝาก/เงินเข้า", "ค่าธรรมเนียม", "ยอดคงเหลือ", "ช่องทาง", "เลขที่อ้างอิง", "คู่ค้า/ผู้โอน", "ลิงก์ไฟล์"]
+                val = "-"
+                if src == "current_datetime":
+                    val = datetime.now().strftime("%d/%m/%Y %H:%M")
+                elif src == "current_date":
+                    val = datetime.now().strftime("%d/%m/%Y")
+                elif src == "current_time":
+                    val = datetime.now().strftime("%H:%M")
+                elif src == "ai_model":
+                    val = context_data.get('ai_model', '-')
+                elif src == "file_link":
+                    val = context_data.get('file_link', '-')
+                elif src == "summary":
+                    val = context_data.get('summary', '-')
+                elif src == "sheet_name":
+                    val = sheet_name
+                elif src.startswith("const:"):
+                    val = src.replace("const:", "")
+                elif src.startswith("ai_keys:"):
+                    keys_list = src.replace("ai_keys:", "").split(",")
+                    val = local_get_val(keys_list)
+                elif src == "sender_name_fallback":
+                    val = local_get_val(['sender', 'from', 'vendor', 'vendor_name', 'seller', 'company_name'])
+                elif src == "receiver_name_fallback":
+                    val = local_get_val(['receiver', 'to', 'payee', 'buyer', 'customer', 'customer_name'])
                 
-                # Check if AI returned multiple transactions
+                # Special cases for ID card split
+                elif src == "id_card_first_name_th":
+                    full_name_th = local_get_val(['first_name_th', 'sender', 'name'])
+                    f_name_th = local_get_val('first_name_th')
+                    
+                    if full_name_th == '-' or full_name_th == '':
+                        s_name_part = context_data.get('smart_name', '')
+                        if 'ID_Card_' in s_name_part:
+                            try:
+                                name_part = s_name_part.split('_', 3)[-1].replace('.jpg', '').replace('.png', '').replace('_', ' ')
+                                if name_part:
+                                    full_name_th = name_part
+                            except: pass
+
+                    if f_name_th == '-' and full_name_th != '-':
+                        parts = full_name_th.split(' ', 2)
+                        if len(parts) >= 2:
+                            f_name_th = parts[0] if parts[0] not in ['นาย', 'นาง', 'น.ส.'] else f"{parts[0]} {parts[1]}"
+                        else:
+                            f_name_th = full_name_th
+                    val = f_name_th
+                elif src == "id_card_last_name_th":
+                    full_name_th = local_get_val(['first_name_th', 'sender', 'name'])
+                    l_name_th = local_get_val('last_name_th')
+                    
+                    if full_name_th == '-' or full_name_th == '':
+                        s_name_part = context_data.get('smart_name', '')
+                        if 'ID_Card_' in s_name_part:
+                            try:
+                                name_part = s_name_part.split('_', 3)[-1].replace('.jpg', '').replace('.png', '').replace('_', ' ')
+                                if name_part:
+                                    full_name_th = name_part
+                            except: pass
+
+                    if l_name_th == '-' and full_name_th != '-':
+                        parts = full_name_th.split(' ', 2)
+                        if len(parts) >= 2:
+                            l_name_th = parts[-1]
+                    val = l_name_th
+                
+                # Special cases for Statement Transaction looping
+                elif src == "statement_date":
+                    val = context_ext.get('date', local_get_val('date'))
+                    # Split if combined with space
+                    if ' ' in str(val):
+                        val = str(val).split(' ', 1)[0]
+                elif src == "statement_time":
+                    val = context_ext.get('time', local_get_val('time'))
+                    raw_date = context_ext.get('date', local_get_val('date'))
+                    if ' ' in str(raw_date) and str(val) == '-':
+                        parts = str(raw_date).split(' ', 1)
+                        if len(parts) > 1:
+                            val = parts[1]
+                elif src == "statement_channel":
+                    val = context_ext.get('channel', context_ext.get('source', local_get_val(['channel', 'source'])))
+
+                # Apply data cleaners
+                if cleaner == "float":
+                    val = clean_val(val)
+                elif cleaner == "id":
+                    val = clean_id(val)
+                    
+                return val
+
+            # Populate row(s) dynamically
+            if sheet_name == "สเตตเมนต์":
                 transactions = ext.get('transactions', [])
                 if transactions and isinstance(transactions, list):
                     rows = []
                     for t in transactions:
-                        # Internal helper for transaction fields
-                        def get_t_val(keys, default='-'):
-                            if isinstance(keys, str): keys = [keys]
-                            for k in keys:
-                                v = t.get(k)
-                                if v is not None and str(v).strip() != '-': return v
-                            return default
-                        
-                        # Smart Date/Time split if combined
-                        raw_date = get_t_val('date', get_val('date'))
-                        raw_time = get_t_val('time', get_val('time'))
-                        if ' ' in raw_date and raw_time == '-':
-                            parts = raw_date.split(' ', 1)
-                            raw_date = parts[0]
-                            raw_time = parts[1]
-                        
-                        rows.append([
-                            datetime.now().strftime("%d/%m/%Y %H:%M"),
-                            raw_date,
-                            raw_time,
-                            get_t_val(['memo', 'description', 'รายการ']),
-                            get_t_val(['details', 'info', 'รายละเอียด']),
-                            clean_val(get_t_val(['withdrawal', 'ถอน', 'out'])),
-                            clean_val(get_t_val(['deposit', 'ฝาก', 'in'])),
-                            clean_val(get_t_val(['fee', 'ค่าธรรมเนียม'])),
-                            clean_val(get_t_val(['balance', 'ยอดคงเหลือ'])),
-                            get_t_val(['channel', 'source', 'ช่องทาง'], get_val(['channel', 'source'])),
-                            clean_id(get_t_val(['ref', 'ref_number', 'เลขที่อ้างอิง'])),
-                            get_t_val(['counterparty', 'sender', 'receiver', 'คู่ค้า']),
-                            data.get('file_link', '-')
-                        ])
+                        row_vals = []
+                        for col in columns_def:
+                            row_vals.append(extract_field_value(col, context_ext=t))
+                        rows.append(row_vals)
                 else:
-                    # Fallback to single row if no transaction list found
-                    rows = [[
-                        datetime.now().strftime("%d/%m/%Y %H:%M"),
-                        get_val('date'),
-                        get_val('time'),
-                        get_val(['memo', 'description']),
-                        get_val(['details', 'info']),
-                        clean_val(get_val('withdrawal', 0)),
-                        clean_val(get_val('deposit', 0)),
-                        clean_val(get_val('fee', 0)),
-                        clean_val(get_val('balance', 0)),
-                        get_val(['channel', 'source']),
-                        get_val('ref_number'),
-                        s_name if s_name != '-' else get_val('receiver'),
-                        data.get('file_link', '-')
-                    ]]
-            elif sheet_name == "ใบเสร็จ/ใบกำกับภาษี":
-                headers = ["เวลาที่บันทึก", "หมวดหมู่", "วันที่ในเอกสาร", "ผู้ส่ง/ร้านค้า", "รหัสสาขา", "เลขผู้เสียภาษี", "ที่อยู่คู่ค้า", "ผู้รับ", "ช่องทางการติดต่อ", "จำนวนเงินสุทธิ", "ยอดก่อนภาษี", "ส่วนลด", "VAT", "WHT", "ประเภท WHT", "เลขที่อ้างอิง", "สรุปจาก AI", "ลิงก์ไฟล์", "AI ถูก/ผิด"]
-                wht_val = clean_val(get_val('wht_amount'))
-                rows = [[
-                    datetime.now().strftime("%d/%m/%Y %H:%M"), 
-                    "ใบเสร็จ/ใบกำกับภาษี", 
-                    get_val('date'), 
-                    s_name, 
-                    get_val('branch'), 
-                    clean_id(get_val('tax_id')), 
-                    get_val('address'), 
-                    r_name, 
-                    get_val(['contact', 'phone', 'email']), 
-                    clean_val(get_val('net_amount')), 
-                    clean_val(get_val('gross_amount')), 
-                    clean_val(get_val('discount_amount')), 
-                    clean_val(get_val('vat_amount')), 
-                    wht_val, 
-                    get_val(['wht_type', 'wht_category', 'wht_rate', 'wht_percent']), 
-                    get_val('ref_number'), 
-                    data.get('summary', '-'), 
-                    data.get('file_link', '-'), 
-                    "-"
-                ]]
-            elif sheet_name == "สลิปโอนเงิน":
-                headers = ["เวลาที่บันทึก", "หมวดหมู่", "วันที่ในเอกสาร", "เวลาในเอกสาร", "ผู้ส่ง/ร้านค้า", "เลขผู้เสียภาษี", "ผู้รับ", "ช่องทางการติดต่อ", "จำนวนเงินสุทธิ", "ยอดก่อนภาษี", "WHT", "เลขที่อ้างอิง", "ธนาคารต้นทาง", "ธนาคารปลายทาง", "บันทึกช่วยจำ", "สรุปจาก AI", "ลิงก์ไฟล์", "AI ถูก/ผิด"]
-                wht_val = clean_val(get_val('wht_amount'))
-                rows = [[
-                    datetime.now().strftime("%d/%m/%Y %H:%M"), 
-                    "สลิปโอนเงิน", 
-                    get_val('date'), 
-                    get_val('time'), 
-                    s_name, 
-                    clean_id(get_val('tax_id')), 
-                    r_name, 
-                    get_val(['contact', 'phone']), 
-                    clean_val(get_val('net_amount')), 
-                    clean_val(get_val('gross_amount')), 
-                    wht_val, 
-                    get_val('ref_number'), 
-                    get_val(['sender_bank', 'bank_from']), 
-                    get_val(['receiver_bank', 'bank_to']), 
-                    get_val('memo'), 
-                    data.get('summary', '-'), 
-                    data.get('file_link', '-'), 
-                    "-"
-                ]]
-            elif sheet_name == "ใบเสนอราคา":
-                headers = ["เวลาที่บันทึก", "วันที่เอกสาร", "ผู้เสนอราคา", "ลูกค้า", "ยอดเงินสุทธิ", "สถานะ", "ลิงก์ไฟล์", "AI ถูก/ผิด"]
-                rows = [[
-                    datetime.now().strftime("%d/%m/%Y %H:%M"),
-                    get_val('date'),
-                    s_name,
-                    r_name,
-                    clean_val(get_val('net_amount')),
-                    "รออนุมัติ",
-                    data.get('file_link', '-'),
-                    "-"
-                ]]
+                    row_vals = []
+                    for col in columns_def:
+                        row_vals.append(extract_field_value(col))
+                    rows = [row_vals]
             else:
-                headers = ["เวลาที่บันทึก", "หมวดหมู่", "วันที่ในเอกสาร", "สรุปข้อมูล", "ลิงก์ไฟล์", "AI ถูก/ผิด"]
-                rows = [[datetime.now().strftime("%d/%m/%Y %H:%M"), sheet_name, get_val('date'), data.get('summary', '-'), data.get('file_link', '-'), "-"]]
+                row_vals = []
+                for col in columns_def:
+                    row_vals.append(extract_field_value(col))
+                rows = [row_vals]
 
             # Check if sheet exists and update headers if they don't match our strict format
             try:
@@ -697,13 +917,31 @@ class GoogleWorkspaceManager:
             # Append the data
             try:
                 logger.info(f"📝 Appending row to {sheet_name} (Length: {len(rows[0])}): {rows[0][:10]}...")
-                self.sheets_service.spreadsheets().values().append(spreadsheetId=self.spreadsheet_id, range=f"'{sheet_name}'!A2", valueInputOption="USER_ENTERED", body={"values": rows}).execute()
+                result = self.sheets_service.spreadsheets().values().append(
+                    spreadsheetId=self.spreadsheet_id, 
+                    range=f"'{sheet_name}'!A2", 
+                    valueInputOption="USER_ENTERED", 
+                    body={"values": rows}
+                ).execute()
+                
+                # Extract row index from updatedRange (e.g., "'Sheet1'!A5:S5")
+                updated_range = result.get('updates', {}).get('updatedRange', '')
+                row_idx = 1
+                if '!' in updated_range:
+                    range_part = updated_range.split('!')[1]
+                    # Extract the first number found in the range string
+                    match = re.search(r'\d+', range_part)
+                    if match:
+                        row_idx = int(match.group())
+                
+                # --- Trigger Reconciliation ---
+                self.auto_reconcile_internal()
+                
+                return {"ok": True, "sheet": sheet_name, "row": row_idx, "data": rows[0]}
+
             except Exception as e:
                 logger.error(f"❌ Error logging to sheet: {e}")
-                return False
-
-            # --- Trigger Reconciliation ---
-            self.auto_reconcile_internal()
+                return {"ok": False, "error": str(e)}
 
             # --- Automatic Cleanup: Delete "Sheet1" or "ชีต1" if it's empty and not the only sheet ---
             try:
@@ -721,12 +959,398 @@ class GoogleWorkspaceManager:
             except: pass
         except Exception as e:
             logger.error(f"Logging error: {e}")
+            return {"ok": False, "error": str(e)}
+
+    def update_expense(self, sheet_name, row_index, column_name, new_value):
+        """Updates a specific cell in the spreadsheet based on header name."""
+        if not self.sheets_service or not self.spreadsheet_id: return False, "Service not initialized"
+        try:
+            # 1. Get headers to find column index
+            res = self.sheets_service.spreadsheets().values().get(
+                spreadsheetId=self.spreadsheet_id, range=f"'{sheet_name}'!A1:Z1"
+            ).execute()
+            headers = res.get('values', [[]])[0]
+            
+            try:
+                col_idx = -1
+                for i, h in enumerate(headers):
+                    if column_name.lower() in h.lower():
+                        col_idx = i
+                        break
+                
+                if col_idx == -1:
+                    return False, f"Column '{column_name}' not found"
+                
+                # Convert 0-indexed col to Excel column (A, B, C...)
+                col_letter = chr(65 + col_idx) if col_idx < 26 else f"A{chr(65 + (col_idx - 26))}"
+                cell_range = f"'{sheet_name}'!{col_letter}{row_index}"
+                
+                self.sheets_service.spreadsheets().values().update(
+                    spreadsheetId=self.spreadsheet_id,
+                    range=cell_range,
+                    valueInputOption="USER_ENTERED",
+                    body={"values": [[new_value]]}
+                ).execute()
+                
+                # Re-run reconciliation after update
+                self.auto_reconcile_internal()
+                return True, None
+            except ValueError:
+                return False, f"Header matching failed"
+        except Exception as e:
+            logger.error(f"Update error: {e}")
+            return False, str(e)
+
+    def move_row_between_sheets(self, from_sheet, row_index, to_sheet):
+        """Moves a specific row from one sheet to another, adjusting headers appropriately and deleting from source."""
+        if not self.sheets_service or not self.spreadsheet_id:
+            return False, "Google Sheets service not initialized"
+            
+        try:
+            # 1. Get source row values
+            source_res = self.sheets_service.spreadsheets().values().get(
+                spreadsheetId=self.spreadsheet_id, range=f"'{from_sheet}'!A{row_index}:Z{row_index}"
+            ).execute()
+            source_vals = source_res.get('values', [])
+            if not source_vals:
+                return False, f"Row {row_index} in sheet '{from_sheet}' is empty or not found"
+            row_data = source_vals[0]
+            
+            # Get source headers
+            source_headers_res = self.sheets_service.spreadsheets().values().get(
+                spreadsheetId=self.spreadsheet_id, range=f"'{from_sheet}'!A1:Z1"
+            ).execute()
+            source_headers = source_headers_res.get('values', [[]])[0]
+            
+            # Map source data into a dictionary {header: value}
+            row_dict = {}
+            for i, val in enumerate(row_data):
+                if i < len(source_headers):
+                    row_dict[source_headers[i]] = val
+            
+            # 2. Get target headers to align the values correctly
+            target_headers_res = self.sheets_service.spreadsheets().values().get(
+                spreadsheetId=self.spreadsheet_id, range=f"'{to_sheet}'!A1:Z1"
+            ).execute()
+            target_headers = target_headers_res.get('values', [[]])[0]
+            
+            # If target sheet has no headers, just append the raw row
+            if not target_headers:
+                target_headers = source_headers
+                # Write headers to target sheet first
+                self.sheets_service.spreadsheets().values().update(
+                    spreadsheetId=self.spreadsheet_id,
+                    range=f"'{to_sheet}'!A1",
+                    valueInputOption="USER_ENTERED",
+                    body={"values": [target_headers]}
+                ).execute()
+            
+            # Align values with target headers
+            new_row_values = []
+            for h in target_headers:
+                matching_val = ""
+                for k, v in row_dict.items():
+                    if k.strip().lower() == h.strip().lower():
+                        matching_val = v
+                        break
+                new_row_values.append(matching_val)
+                
+            # If the category (หมวดหมู่) column exists in target, set it to the target sheet name or keep existing
+            cat_idx = next((i for i, h in enumerate(target_headers) if "หมวดหมู่" in h), -1)
+            if cat_idx != -1:
+                new_row_values[cat_idx] = to_sheet
+                
+            # Append new row to target sheet
+            self.sheets_service.spreadsheets().values().append(
+                spreadsheetId=self.spreadsheet_id,
+                range=f"'{to_sheet}'!A1",
+                valueInputOption="USER_ENTERED",
+                insertDataOption="INSERT_ROWS",
+                body={"values": [new_row_values]}
+            ).execute()
+            
+            # Get target sheetId and from_sheet sheetId for row deletion
+            spreadsheet = self.sheets_service.spreadsheets().get(spreadsheetId=self.spreadsheet_id).execute()
+            from_sheet_id = None
+            for s in spreadsheet.get('sheets', []):
+                if s['properties']['title'] == from_sheet:
+                    from_sheet_id = s['properties']['sheetId']
+                    break
+                    
+            if from_sheet_id is not None:
+                # Delete row from source sheet using batchUpdate
+                delete_req = {
+                    "requests": [
+                        {
+                            "deleteDimension": {
+                                "range": {
+                                    "sheetId": from_sheet_id,
+                                    "dimension": "ROWS",
+                                    "startIndex": row_index - 1,
+                                    "endIndex": row_index
+                                }
+                            }
+                        }
+                    ]
+                }
+                self.sheets_service.spreadsheets().batchUpdate(
+                    spreadsheetId=self.spreadsheet_id, body=delete_req
+                ).execute()
+                
+            # Re-run reconciliation
+            self.auto_reconcile_internal()
+            return True, None
+            
+        except Exception as e:
+            logger.error(f"Error moving row from {from_sheet} to {to_sheet}: {e}")
+            return False, str(e)
 
     def get_monthly_summary(self):
-        return "ฟังก์ชันสรุปกำลังปรับปรุงให้รองรับหลาย Sheet ครับ"
+        """Fetches real spreadsheet data and generates a stunning monthly expense summary Flex Message."""
+        if not self.sheets_service or not self.spreadsheet_id:
+            return "❌ ระบบ Google Sheets ยังไม่ได้เชื่อมต่อหรือยังไม่ได้ลงทะเบียนค่ะ"
+            
+        try:
+            # Get list of sheets
+            spreadsheet = self.sheets_service.spreadsheets().get(spreadsheetId=self.spreadsheet_id).execute()
+            sheet_titles = [s['properties']['title'] for s in spreadsheet.get('sheets', [])]
+            
+            total_expense = 0.0
+            total_count = 0
+            categories_breakdown = {}
+            
+            # We will parse สลิปโอนเงิน
+            if "สลิปโอนเงิน" in sheet_titles:
+                res_slip = self.sheets_service.spreadsheets().values().get(
+                    spreadsheetId=self.spreadsheet_id, range="'สลิปโอนเงิน'!A1:Z"
+                ).execute()
+                vals = res_slip.get('values', [])
+                if vals and len(vals) > 1:
+                    header_row = vals[0]
+                    data_rows = vals[1:]
+                    
+                    # Dynamic column mapping
+                    idx_amt = next((i for i, h in enumerate(header_row) if "จำนวนเงินสุทธิ" in h or "สุทธิ" in h), 8)
+                    idx_cat = next((i for i, h in enumerate(header_row) if "หมวดหมู่" in h), 1)
+                    
+                    for row in data_rows:
+                        if len(row) <= max(idx_amt, idx_cat): continue
+                        try:
+                            amt_str = str(row[idx_amt]).replace(',', '').strip()
+                            if amt_str and amt_str != '-':
+                                amt = float(amt_str)
+                                total_expense += amt
+                                total_count += 1
+                                
+                                cat = str(row[idx_cat]).strip() or "ทั่วไป"
+                                categories_breakdown[cat] = categories_breakdown.get(cat, 0.0) + amt
+                        except:
+                            pass
+            
+            # We will also parse ใบเสร็จ/ใบกำกับภาษี if it exists
+            if "ใบเสร็จ/ใบกำกับภาษี" in sheet_titles:
+                res_tax = self.sheets_service.spreadsheets().values().get(
+                    spreadsheetId=self.spreadsheet_id, range="'ใบเสร็จ/ใบกำกับภาษี'!A1:Z"
+                ).execute()
+                vals = res_tax.get('values', [])
+                if vals and len(vals) > 1:
+                    header_row = vals[0]
+                    data_rows = vals[1:]
+                    
+                    idx_amt = next((i for i, h in enumerate(header_row) if "จำนวนเงินสุทธิ" in h or "สุทธิ" in h), 8)
+                    idx_cat = next((i for i, h in enumerate(header_row) if "หมวดหมู่" in h), 1)
+                    
+                    for row in data_rows:
+                        if len(row) <= max(idx_amt, idx_cat): continue
+                        try:
+                            amt_str = str(row[idx_amt]).replace(',', '').strip()
+                            if amt_str and amt_str != '-':
+                                amt = float(amt_str)
+                                total_expense += amt
+                                total_count += 1
+                                
+                                cat = str(row[idx_cat]).strip() or "ใบเสร็จรับเงิน"
+                                categories_breakdown[cat] = categories_breakdown.get(cat, 0.0) + amt
+                        except:
+                            pass
+
+            # If no data found at all
+            if total_count == 0:
+                return "📊 ไม่พบข้อมูลรายการใช้จ่ายที่บันทึกไว้ใน Google Sheets ในขณะนี้ค่ะ ลองบันทึกข้อมูลก่อนนะคะ 😊"
+
+            # Format amounts cleanly
+            total_expense_str = f"{total_expense:,.2f}"
+            if total_expense_str.endswith(".00"):
+                total_expense_str = total_expense_str[:-3]
+                
+            avg_expense = total_expense / total_count
+            avg_expense_str = f"{avg_expense:,.2f}"
+            if avg_expense_str.endswith(".00"):
+                avg_expense_str = avg_expense_str[:-3]
+
+            # Construct beautiful custom Flex Message
+            contents_list = []
+            
+            # Categories breakdown list
+            for cat, amt in categories_breakdown.items():
+                amt_formatted = f"{amt:,.2f}"
+                if amt_formatted.endswith(".00"):
+                    amt_formatted = amt_formatted[:-3]
+                
+                contents_list.append({
+                    "type": "box",
+                    "layout": "horizontal",
+                    "margin": "md",
+                    "contents": [
+                        {
+                            "type": "text",
+                            "text": f"📁 {cat}",
+                            "size": "sm",
+                            "color": "#333333",
+                            "flex": 5
+                        },
+                        {
+                            "type": "text",
+                            "text": f"{amt_formatted} THB",
+                            "size": "sm",
+                            "weight": "bold",
+                            "color": "#111111",
+                            "align": "end",
+                            "flex": 5
+                        }
+                    ]
+                })
+
+            sheet_url = f"https://docs.google.com/spreadsheets/d/{self.spreadsheet_id}/edit"
+            
+            flex_bubble = {
+                "type": "bubble",
+                "size": "mega",
+                "header": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "backgroundColor": "#17A2B8",
+                    "paddingAll": "16px",
+                    "contents": [
+                        {
+                            "type": "text",
+                            "text": "📊 รายงานสรุปรายจ่ายทั้งหมด",
+                            "weight": "bold",
+                            "color": "#FFFFFF",
+                            "size": "md"
+                        }
+                    ]
+                },
+                "body": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "paddingAll": "20px",
+                    "spacing": "md",
+                    "contents": [
+                        {
+                            "type": "box",
+                            "layout": "horizontal",
+                            "contents": [
+                                {
+                                    "type": "text",
+                                    "text": "ยอดรวมรายจ่าย",
+                                    "color": "#666666",
+                                    "size": "sm",
+                                    "flex": 4,
+                                    "align": "start"
+                                },
+                                {
+                                    "type": "text",
+                                    "text": f"{total_expense_str} THB",
+                                    "weight": "bold",
+                                    "size": "xl",
+                                    "color": "#17A2B8",
+                                    "flex": 6,
+                                    "align": "end"
+                                }
+                            ]
+                        },
+                        {
+                            "type": "separator",
+                            "margin": "lg"
+                        },
+                        {
+                            "type": "box",
+                            "layout": "vertical",
+                            "margin": "lg",
+                            "spacing": "sm",
+                            "contents": [
+                                {
+                                    "type": "text",
+                                    "text": "📂 แยกตามประเภทบัญชี/หมวดหมู่",
+                                    "weight": "bold",
+                                    "size": "sm",
+                                    "color": "#17A2B8"
+                                }
+                            ] + contents_list
+                        },
+                        {
+                            "type": "separator",
+                            "margin": "lg"
+                        },
+                        {
+                            "type": "box",
+                            "layout": "vertical",
+                            "margin": "lg",
+                            "spacing": "xs",
+                            "contents": [
+                                {
+                                    "type": "box",
+                                    "layout": "horizontal",
+                                    "contents": [
+                                        {"type": "text", "text": "จำนวนรายการทั้งหมด", "color": "#888888", "size": "xs", "flex": 6},
+                                        {"type": "text", "text": f"{total_count} รายการ", "color": "#333333", "weight": "bold", "size": "xs", "flex": 4, "align": "end"}
+                                    ]
+                                },
+                                {
+                                    "type": "box",
+                                    "layout": "horizontal",
+                                    "contents": [
+                                        {"type": "text", "text": "ยอดเฉลี่ยต่อรายการ", "color": "#888888", "size": "xs", "flex": 6},
+                                        {"type": "text", "text": f"{avg_expense_str} THB", "color": "#333333", "weight": "bold", "size": "xs", "flex": 4, "align": "end"}
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                },
+                "footer": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "paddingAll": "10px",
+                    "contents": [
+                        {
+                            "type": "button",
+                            "style": "primary",
+                            "color": "#17A2B8",
+                            "action": {
+                                "type": "uri",
+                                "label": "📊 เปิดดูรายละเอียดใน Google Sheets",
+                                "uri": sheet_url
+                            }
+                        }
+                    ]
+                }
+            }
+            
+            return {
+                "type": "flex",
+                "altText": "📊 รายงานสรุปยอดรายจ่ายของพี่ค่ะ",
+                "contents": flex_bubble
+            }
+            
+        except Exception as e:
+            logger.error(f"Error compiling monthly summary: {e}")
+            return f"❌ เกิดข้อผิดพลาดในการดึงข้อมูลรายจ่าย: {e}"
 
 google_manager = GoogleWorkspaceManager()
 
 def rename_file(file_id, new_name): return google_manager.rename_file(file_id, new_name)
 def delete_file(file_id): return google_manager.delete_file(file_id)
 def list_folder_contents(folder_id=None): return google_manager.list_subfolders(folder_id)
+def move_row_between_sheets(from_sheet, row_index, to_sheet): return google_manager.move_row_between_sheets(from_sheet, row_index, to_sheet)

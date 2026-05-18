@@ -823,7 +823,11 @@ def reply_to_line(reply_token, text, quick_reply=None, sticker_data=None):
         })
     
     # Main text message
-    text_msg = {"type": "text", "text": text[:5000]}
+    if isinstance(text, dict):
+        text_msg = text
+    else:
+        text_msg = {"type": "text", "text": str(text)[:5000]}
+        
     if quick_reply:
         text_msg["quickReply"] = quick_reply
     messages.append(text_msg)
@@ -850,14 +854,474 @@ def create_line_flex_bubble(title, subtitle, fields, color="#1DB446"):
             "type": "box", "layout": "horizontal", "contents": [
                 {"type": "text", "text": key, "size": "sm", "color": "#555555", "flex": 1},
                 {"type": "text", "text": str(val), "size": "sm", "color": "#111111", "flex": 2, "wrap": True}
-            ], "margin": "md"
+            ]
         })
-    
     contents.append({"type": "box", "layout": "vertical", "contents": field_rows, "margin": "lg"})
     contents.append({"type": "separator", "margin": "lg"})
     contents.append({"type": "text", "text": "OrgChat Smart Helper", "size": "xs", "color": "#aaaaaa", "align": "end", "style": "italic", "margin": "md"})
 
     return {"type": "bubble", "body": {"type": "box", "layout": "vertical", "contents": contents}}
+
+def create_expense_flex_bubble(sheet_name, folder_name, net_amount, date_str, memo, vendor, file_link, sheet_url, edit_data_postback):
+    """Creates a beautiful, high-fidelity LINE Flex Message matching the user request."""
+    # Extract row_num from edit_data_postback safely
+    row_num = 1
+    if edit_data_postback:
+        try:
+            for part in str(edit_data_postback).split("&"):
+                if part.startswith("row="):
+                    row_num = int(part.split("=")[1])
+        except:
+            pass
+
+    # Robust date formatter
+    formatted_date = date_str
+    initial_date = datetime.now().strftime("%Y-%m-%d")
+    if date_str and str(date_str).strip() != '-':
+        try:
+            date_str_clean = str(date_str).strip().replace("-", "/")
+            parts = date_str_clean.split("/")
+            thai_months = [
+                "", "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
+                "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
+            ]
+            if len(parts) == 3:
+                if len(parts[0]) == 4: # YYYY/MM/DD
+                    year = int(parts[0])
+                    month = int(parts[1])
+                    day = int(parts[2])
+                else: # DD/MM/YYYY or DD/MM/YY
+                    day = int(parts[0])
+                    month = int(parts[1])
+                    year = int(parts[2])
+                    if year < 100:
+                        year += 2000
+                if 1 <= month <= 12:
+                    formatted_date = f"{day:02d} {thai_months[month]} {year}"
+                    initial_date = f"{year:04d}-{month:02d}-{day:02d}"
+        except:
+            pass
+
+    # Clean amount display
+    try:
+        if isinstance(net_amount, (int, float)):
+            amount_big = f"{net_amount:,.2f}"
+        else:
+            val_clean = str(net_amount).replace(",", "").strip()
+            val_float = float(val_clean)
+            amount_big = f"{val_float:,.2f}"
+    except:
+        amount_big = str(net_amount) if net_amount else "-"
+
+    if amount_big.endswith(".00"):
+        amount_big = amount_big[:-3]
+
+    # Emoji mapping for folders
+    folder_emoji = "📂"
+    folder_lower = folder_name.lower()
+    if "สินค้า" in folder_lower:
+        folder_emoji = "🛍️"
+    elif "ค่าใช้จ่าย" in folder_lower or "จ่าย" in folder_lower:
+        folder_emoji = "💸"
+    elif "ไอที" in folder_lower or "software" in folder_lower or "it" in folder_lower:
+        folder_emoji = "💻"
+    elif "เอกสาร" in folder_lower:
+        folder_emoji = "📄"
+
+    # Defensive text wrapping
+    sheet_name_str = str(sheet_name)
+    folder_name_str = str(folder_name)
+    formatted_date_str = str(formatted_date)
+    vendor_str = str(vendor) if vendor and vendor != '-' else "ไม่ระบุ"
+    memo_str = str(memo) if memo and memo != '-' else "จัดเก็บและสแกนผ่านระบบอัตโนมัติ"
+
+    bubble = {
+        "type": "bubble",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#EBF7EE",
+            "paddingAll": "16px",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": "✅ บันทึกค่าใช้จ่ายสำเร็จ",
+                    "weight": "bold",
+                    "color": "#1E7E34",
+                    "size": "md"
+                }
+            ]
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#FFFFFF",
+            "paddingAll": "20px",
+            "spacing": "md",
+            "contents": [
+                {
+                    "type": "box",
+                    "layout": "horizontal",
+                    "action": {
+                        "type": "postback",
+                        "data": f"action=edit_field&sheet={sheet_name_str}&row={row_num}&field=จำนวนเงินสุทธิ&display=ยอดเงินสุทธิ",
+                        "displayText": "ฉันต้องการแก้ไขยอดเงินสุทธิ"
+                    },
+                    "contents": [
+                        {
+                            "type": "text",
+                            "text": "จำนวนเงิน",
+                            "color": "#1E7E34",
+                            "size": "sm",
+                            "weight": "bold",
+                            "flex": 4,
+                            "align": "start"
+                        },
+                        {
+                            "type": "text",
+                            "text": f"{amount_big} THB",
+                            "weight": "bold",
+                            "size": "xl",
+                            "color": "#000000",
+                            "flex": 6,
+                            "align": "end"
+                        }
+                    ]
+                },
+                {
+                    "type": "separator",
+                    "color": "#E2E8F0",
+                    "margin": "lg"
+                },
+                {
+                    "type": "box",
+                    "layout": "vertical",
+                    "spacing": "sm",
+                    "margin": "lg",
+                    "contents": [
+                        {
+                            "type": "box",
+                            "layout": "horizontal",
+                            "action": {
+                                "type": "postback",
+                                "data": f"action=choose_new_sheet&sheet={sheet_name_str}&row={row_num}",
+                                "displayText": "ฉันต้องการย้ายประเภทเอกสาร"
+                            },
+                            "contents": [
+                                {"type": "text", "text": "ประเภทเอกสาร", "color": "#1E7E34", "size": "sm", "weight": "bold", "flex": 4},
+                                {"type": "text", "text": sheet_name_str, "color": "#000000", "size": "sm", "flex": 6, "wrap": True}
+                            ]
+                        },
+                        {
+                            "type": "box",
+                            "layout": "horizontal",
+                            "contents": [
+                                {"type": "text", "text": "ประเภทค่าใช้จ่าย", "color": "#64748B", "size": "sm", "flex": 4},
+                                {"type": "text", "text": f"{folder_emoji} {folder_name_str}", "color": "#000000", "size": "sm", "flex": 6, "wrap": True}
+                            ]
+                        },
+                        {
+                            "type": "box",
+                            "layout": "horizontal",
+                            "action": {
+                                "type": "datetimepicker",
+                                "data": f"action=edit_date_picker&sheet={sheet_name_str}&row={row_num}",
+                                "mode": "date",
+                                "initial": initial_date
+                            },
+                            "contents": [
+                                {"type": "text", "text": "วันที่", "color": "#1E7E34", "size": "sm", "weight": "bold", "flex": 4},
+                                {"type": "text", "text": formatted_date_str, "color": "#000000", "size": "sm", "flex": 6, "wrap": True}
+                            ]
+                        },
+                        {
+                            "type": "box",
+                            "layout": "horizontal",
+                            "action": {
+                                "type": "postback",
+                                "data": f"action=edit_field&sheet={sheet_name_str}&row={row_num}&field=ผู้ส่ง/ร้านค้า&display=ผู้ขาย/ร้านค้า",
+                                "displayText": "ฉันต้องการแก้ไขผู้ขาย/ร้านค้า"
+                            },
+                            "contents": [
+                                {"type": "text", "text": "ผู้ขาย/ร้านค้า", "color": "#1E7E34", "size": "sm", "weight": "bold", "flex": 4},
+                                {"type": "text", "text": vendor_str, "color": "#000000", "size": "sm", "flex": 6, "wrap": True}
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "type": "separator",
+                    "color": "#E2E8F0",
+                    "margin": "lg"
+                },
+                {
+                    "type": "box",
+                    "layout": "vertical",
+                    "margin": "lg",
+                    "action": {
+                        "type": "postback",
+                        "data": f"action=edit_field&sheet={sheet_name_str}&row={row_num}&field=บันทึกช่วยจำ&display=รายละเอียดบันทึกช่วยจำ",
+                        "displayText": "ฉันต้องการแก้ไขรายละเอียด"
+                    },
+                    "contents": [
+                        {"type": "text", "text": "รายละเอียด", "color": "#1E7E34", "size": "sm", "weight": "bold"},
+                        {"type": "text", "text": memo_str, "color": "#000000", "size": "sm", "wrap": True, "margin": "xs"}
+                    ]
+                }
+            ]
+        }
+    }
+
+    # Dynamically build footer contents to guarantee 100% valid URI actions
+    footer_contents = []
+    if file_link and str(file_link).startswith("http"):
+        footer_contents.append({
+            "type": "button",
+            "style": "link",
+            "height": "sm",
+            "action": {
+                "type": "uri",
+                "label": "📄 ดูไฟล์ต้นฉบับ",
+                "uri": str(file_link)
+            }
+        })
+    if sheet_url and str(sheet_url).startswith("http"):
+        footer_contents.append({
+            "type": "button",
+            "style": "link",
+            "height": "sm",
+            "action": {
+                "type": "uri",
+                "label": "📊 เปิด Google Sheets",
+                "uri": str(sheet_url)
+            }
+        })
+    if edit_data_postback:
+        # Resolve the public base URL dynamically
+        base_url = "http://localhost:5005"
+        
+        # 1. Try to read from database setting LINE_WEBHOOK_URL
+        try:
+            webhook_url = database.get_app_setting("LINE_WEBHOOK_URL", "")
+            if webhook_url and webhook_url.startswith("http"):
+                if "/api/line/webhook" in webhook_url:
+                    base_url = webhook_url.split("/api/line/webhook")[0]
+                else:
+                    from urllib.parse import urlparse
+                    parsed = urlparse(webhook_url)
+                    base_url = f"{parsed.scheme}://{parsed.netloc}"
+        except Exception:
+            pass
+
+        # 2. If it is still local or empty, inspect Request headers for Cloudflare / Ngrok / Reverse Proxy
+        if "localhost" in base_url or "127.0.0.1" in base_url or not base_url.startswith("http"):
+            try:
+                from flask import request
+                # Check X-Forwarded-Host
+                forwarded_host = request.headers.get('X-Forwarded-Host')
+                forwarded_proto = request.headers.get('X-Forwarded-Proto', 'https')
+                if forwarded_host and "localhost" not in forwarded_host and "127.0.0.1" not in forwarded_host:
+                    base_url = f"{forwarded_proto}://{forwarded_host}"
+                else:
+                    # Check standard Host header
+                    host = request.headers.get('Host')
+                    if host and "localhost" not in host and "127.0.0.1" not in host:
+                        scheme = request.scheme or "https"
+                        base_url = f"{scheme}://{host}"
+                    else:
+                        url_root = request.url_root.rstrip('/')
+                        if "localhost" not in url_root and "127.0.0.1" not in url_root:
+                            base_url = url_root
+            except Exception:
+                pass
+
+        # 3. Last fallback, inspect environment variables
+        if "localhost" in base_url or "127.0.0.1" in base_url:
+            import os
+            env_url = os.environ.get("BASE_URL") or os.environ.get("PUBLIC_URL")
+            if env_url:
+                base_url = env_url.rstrip('/')
+            
+        import urllib.parse
+        encoded_sheet = urllib.parse.quote(sheet_name_str)
+        web_edit_url = f"{base_url}/edit_expense_form?sheet={encoded_sheet}&row={row_num}"
+        
+        footer_contents.append({
+            "type": "button",
+            "style": "primary",
+            "color": "#007BFF",
+            "height": "sm",
+            "action": {
+                "type": "uri",
+                "label": "แก้ไขด้วยฟอร์มเว็บ",
+                "uri": web_edit_url
+            }
+        })
+        
+        footer_contents.append({
+            "type": "button",
+            "style": "secondary",
+            "height": "sm",
+            "action": {
+                "type": "postback",
+                "label": "แก้ไขผ่านแชต",
+                "data": str(edit_data_postback)
+            }
+        })
+
+    if footer_contents:
+        bubble["footer"] = {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#FFFFFF",
+            "spacing": "xs",
+            "paddingAll": "12px",
+            "contents": footer_contents
+        }
+
+    return bubble
+
+def create_duplicate_warning_flex_bubble(sheet_name, row_num, ref_number, net_amount, sheet_url):
+    """Creates a premium and highly-informative LINE Flex bubble for duplicate slips."""
+    ref_str = str(ref_number) if ref_number else "-"
+    amt_str = str(net_amount) if net_amount and net_amount != "-" else "-"
+    sheet_name_str = str(sheet_name)
+    
+    bubble = {
+        "type": "bubble",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#FFF3CD",
+            "paddingAll": "16px",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": "⚠️ ตรวจพบการอัปโหลดสลิปซ้ำซ้อน",
+                    "weight": "bold",
+                    "color": "#856404",
+                    "size": "sm"
+                }
+            ]
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#FFFFFF",
+            "paddingAll": "20px",
+            "spacing": "md",
+            "contents": [
+                {
+                    "type": "box",
+                    "layout": "horizontal",
+                    "contents": [
+                        {
+                            "type": "text",
+                            "text": "เลขที่รายการ",
+                            "color": "#856404",
+                            "size": "sm",
+                            "flex": 2
+                        },
+                        {
+                            "type": "text",
+                            "text": ref_str,
+                            "color": "#000000",
+                            "weight": "bold",
+                            "size": "sm",
+                            "flex": 4,
+                            "align": "right",
+                            "wrap": True
+                        }
+                    ]
+                },
+                {
+                    "type": "separator",
+                    "color": "#F3F4F6"
+                },
+                {
+                    "type": "box",
+                    "layout": "horizontal",
+                    "contents": [
+                        {
+                            "type": "text",
+                            "text": "พบในชีต",
+                            "color": "#856404",
+                            "size": "sm",
+                            "flex": 2
+                        },
+                        {
+                            "type": "text",
+                            "text": f"'{sheet_name_str}' แถวที่ {row_num}",
+                            "color": "#000000",
+                            "weight": "bold",
+                            "size": "sm",
+                            "flex": 4,
+                            "align": "right"
+                        }
+                    ]
+                },
+                {
+                    "type": "separator",
+                    "color": "#F3F4F6"
+                },
+                {
+                    "type": "box",
+                    "layout": "horizontal",
+                    "contents": [
+                        {
+                            "type": "text",
+                            "text": "ยอดเงิน",
+                            "color": "#856404",
+                            "size": "sm",
+                            "flex": 2
+                        },
+                        {
+                            "type": "text",
+                            "text": amt_str,
+                            "color": "#000000",
+                            "weight": "bold",
+                            "size": "sm",
+                            "flex": 4,
+                            "align": "right"
+                        }
+                    ]
+                },
+                {
+                    "type": "separator",
+                    "color": "#F3F4F6"
+                },
+                {
+                    "type": "text",
+                    "text": "น้องพั้นช์ตรวจสอบเลขที่อ้างอิงรายการโอนเงินแล้วพบว่ามีข้อมูลนี้อยู่แล้วในชีต เพื่อความถูกต้องของบัญชีและป้องกันการบันทึกยอดซ้ำซ้อน ระบบจึงไม่ได้ลงรายการซ้ำให้ค่ะ 🥰",
+                    "color": "#6B7280",
+                    "size": "xs",
+                    "wrap": True
+                }
+            ]
+        }
+    }
+    
+    if sheet_url and sheet_url != "#":
+        bubble["footer"] = {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#FFFFFF",
+            "paddingAll": "12px",
+            "contents": [
+                {
+                    "type": "button",
+                    "action": {
+                        "type": "uri",
+                        "label": "📊 เปิดดู Google Sheets",
+                        "uri": sheet_url
+                    },
+                    "style": "secondary",
+                    "height": "sm"
+                }
+            ]
+        }
+        
+    return bubble
 
 def send_line_push_notification(target_username, title, text, fields=None):
     """Sends a one-to-one message to a specific user via LINE."""
@@ -930,6 +1394,7 @@ def get_broadcast_history():
 LINE_FOLDER_CACHE = {}
 _line_batch_timer = {}
 _pending_line_files = {} # uid -> list of {content, mimetype, original_name, msg_type}
+ACTIVE_EDIT_SESSIONS = {} # user_id -> {sheet, row, field, display, timestamp}
 
 def broadcast_line_announcement(title, text, fields=None):
     """Sends a push notification to all linked users via Flex Message."""
@@ -1091,6 +1556,106 @@ def process_line_event(event_data):
                         threading.Thread(target=process_pending_uploads, args=(user_id, f_id, f_name, reply_token)).start()
                     else:
                         reply_to_line(reply_token, f"📁 รับทราบค่ะ! ต่อไปจะเก็บลงโฟลเดอร์ '{f_name}' นะคะ")
+            elif parsed.get('action') == 'edit_prompt':
+                sheet = parsed.get('sheet')
+                row = parsed.get('row')
+                
+                edit_fields = [
+                    {"label": "💰 ยอดเงินสุทธิ", "field": "จำนวนเงินสุทธิ", "display": "ยอดเงินสุทธิ"},
+                    {"label": "📅 วันที่ในเอกสาร", "field": "วันที่ในเอกสาร", "display": "วันที่ในเอกสาร"},
+                    {"label": "🏢 ผู้ส่ง/ร้านค้า", "field": "ผู้ส่ง/ร้านค้า", "display": "ผู้ส่ง/ร้านค้า"},
+                    {"label": "🔢 เลขที่อ้างอิง", "field": "เลขที่อ้างอิง", "display": "เลขที่อ้างอิง"},
+                ]
+                if sheet == "บัตรประชาชน":
+                    edit_fields = [
+                        {"label": "🪪 เลขบัตรประชาชน", "field": "เลขบัตรประชาชน", "display": "เลขบัตรประชาชน"},
+                        {"label": "👤 ชื่อ (ไทย)", "field": "ชื่อ (ไทย)", "display": "ชื่อ (ไทย)"},
+                        {"label": "👥 นามสกุล (ไทย)", "field": "นามสกุล (ไทย)", "display": "นามสกุล (ไทย)"},
+                    ]
+                
+                items = []
+                for f in edit_fields:
+                    items.append({
+                        "type": "action",
+                        "action": {
+                            "type": "postback",
+                            "label": f["label"][:20],
+                            "data": f"action=edit_field&sheet={sheet}&row={row}&field={f['field']}&display={f['display']}",
+                            "displayText": f"ฉันต้องการแก้ไข{f['display']}"
+                        }
+                    })
+                
+                reply_to_line(reply_token, f"✏️ พี่ต้องการแก้ไขข้อมูลในชีต '{sheet}' แถวที่ {row} ส่วนไหนดีคะ? เลือกได้เลยค่ะ:", quick_reply={"items": items})
+            elif parsed.get('action') == 'edit_field':
+                sheet = parsed.get('sheet')
+                row = parsed.get('row')
+                field = parsed.get('field')
+                display = parsed.get('display')
+                
+                ACTIVE_EDIT_SESSIONS[user_id] = {
+                    "sheet": sheet,
+                    "row": int(row),
+                    "field": field,
+                    "display": display,
+                    "timestamp": time.time()
+                }
+                reply_to_line(reply_token, f"💬 พี่ต้องการเปลี่ยน '{display}' เป็นค่าอะไรดีคะ?\nพิมพ์ค่าใหม่ส่งกลับมาให้น้องพั้นได้เลยค่ะ พั้นกำลังรออยู่นะคะ 👇")
+            elif parsed.get('action') == 'edit_date_picker':
+                sheet = parsed.get('sheet')
+                row = parsed.get('row')
+                params = event_data.get('postback', {}).get('params', {})
+                selected_date = params.get('date')
+                if selected_date:
+                    try:
+                        dt = datetime.strptime(selected_date, "%Y-%m-%d")
+                        formatted_val = dt.strftime("%d/%m/%Y")
+                    except Exception:
+                        formatted_val = selected_date
+                    
+                    date_col = google_manager.get_date_header_name(sheet)
+                    ok, err = google_manager.update_expense(sheet, int(row), date_col, formatted_val)
+                    if ok:
+                        reply_to_line(reply_token, f"✅ แก้ไขวันที่เรียบร้อยแล้วค่ะพี่!\n\n📊 ชีต: '{sheet}' แถวที่ {row}\n📅 เปลี่ยนเป็น: '{formatted_val}'\n\nพั้นอัปเดตและกระทบยอดบัญชีใหม่ให้อัตโนมัติเรียบร้อยค่ะ ✨")
+                    else:
+                        reply_to_line(reply_token, f"❌ เกิดข้อผิดพลาดในการแก้ไขวันที่: {err}")
+                else:
+                    reply_to_line(reply_token, "❌ ไม่พบวันที่ที่เลือกค่ะ")
+            elif parsed.get('action') == 'choose_new_sheet':
+                from_sheet = parsed.get('sheet')
+                row = parsed.get('row')
+                
+                try:
+                    spreadsheet = google_manager.sheets_service.spreadsheets().get(spreadsheetId=google_manager.spreadsheet_id).execute()
+                    sheet_titles = [s['properties']['title'] for s in spreadsheet.get('sheets', []) if s['properties']['title'] not in ["Sheet1", "ชีต1", "แดชบอร์ด", "Dashboard"]]
+                except Exception:
+                    sheet_titles = ["สลิปโอนเงิน", "ใบเสร็จ/ใบกำกับภาษี", "ใบเสนอราคา", "ทั่วไป"]
+                
+                items = []
+                for title in sheet_titles:
+                    items.append({
+                        "type": "action",
+                        "action": {
+                            "type": "postback",
+                            "label": f"📁 {title}"[:20],
+                            "data": f"action=move_row_sheet&from_sheet={from_sheet}&row={row}&to_sheet={title}",
+                            "displayText": f"ย้ายไปยังชีต: {title}"
+                        }
+                    })
+                
+                reply_to_line(reply_token, f"📁 พี่ต้องการย้ายรายการค่าใช้จ่ายนี้ (ชีต '{from_sheet}' แถวที่ {row}) ไปยังประเภท/ชีตใดคะ? จิ้มเลือกได้เลยค่ะ:", quick_reply={"items": items})
+            elif parsed.get('action') == 'move_row_sheet':
+                from_sheet = parsed.get('from_sheet')
+                row = parsed.get('row')
+                to_sheet = parsed.get('to_sheet')
+                
+                if from_sheet == to_sheet:
+                    reply_to_line(reply_token, f"ℹ️ รายการนี้อยู่ในชีต '{to_sheet}' อยู่แล้วค่ะพี่! 😊")
+                else:
+                    ok, err = google_manager.move_row_between_sheets(from_sheet, int(row), to_sheet)
+                    if ok:
+                        reply_to_line(reply_token, f"✅ ย้ายข้อมูลสำเร็จแล้วค่ะพี่!\n\n📂 ย้ายจาก: '{from_sheet}'\n➡️ ไปยังชีตใหม่: '{to_sheet}'\n\nน้องพั้นทำการลบแถวเดิมและย้ายไปต่อชีตใหม่ พร้อมกระทบยอดบัญชีเรียบร้อยค่ะ ✨💖")
+                    else:
+                        reply_to_line(reply_token, f"❌ เกิดข้อผิดพลาดในการย้ายชีต: {err}")
             return
 
     except Exception as e:
@@ -1134,8 +1699,6 @@ def process_pending_uploads(uid, folder_id, folder_name, reply_tok):
             # Upload
             link, _ = google_manager.upload_file(content, original_name, mimetype, folder_id=folder_id)
             if link:
-                uploaded_results.append({"name": original_name, "link": link, "analysis": analysis})
-                
                 # --- 🛠️ Data Sanitization for Google Sheets (Prevent Column Sprouting) ---
                 raw_ext = analysis.get("extracted_data", {}) if analysis else {}
                 
@@ -1156,33 +1719,115 @@ def process_pending_uploads(uid, folder_id, folder_name, reply_tok):
                     "extracted_data": sanitized_ext
                 }
                     
-                google_manager.log_expense(log_data)
+                log_res = google_manager.log_expense(log_data)
+                if log_res:
+                    if log_res.get("ok"):
+                        uploaded_results.append({
+                            "status": "success",
+                            "name": original_name,
+                            "link": link,
+                            "analysis": analysis,
+                            "sheet": log_res.get("sheet"),
+                            "row": log_res.get("row")
+                        })
+                    elif log_res.get("error") == "duplicate":
+                        uploaded_results.append({
+                            "status": "duplicate",
+                            "name": original_name,
+                            "link": link,
+                            "analysis": analysis,
+                            "sheet": log_res.get("sheet"),
+                            "row": log_res.get("row"),
+                            "ref_number": log_res.get("ref_number")
+                        })
         except Exception as e:
             logger.error(f"Pending upload failed: {e}")
 
     if uploaded_results:
-        msg = "✅ น้องพั้นจัดการเอกสารให้เรียบร้อยแล้วค่ะพี่!\n\n"
-        for r in uploaded_results:
-            msg += f"📄 ชื่อใหม่: {r['name']}\n"
-            
-            # Show amount if available
-            ext = r.get('analysis', {}).get('extracted_data', {}) if r.get('analysis') else {}
-            amt = ext.get('net_amount')
-            if amt and amt not in [0, '0', 'None', '']:
-                msg += f"💰 ยอดเงิน: {amt} บาท\n"
-
-            sheet_id = google_manager.spreadsheet_id
-            if sheet_id:
-                msg += f"📊 ตารางสรุป: https://docs.google.com/spreadsheets/d/{sheet_id}/edit\n"
-            
-            msg += f"🔗 ดูไฟล์: {r['link']}\n"
-            msg += f"📂 โฟลเดอร์: {folder_name}\n\n"
-        
-        # Use push notification since reply token might be dead
+        # We can send a beautiful Flex message for each uploaded file
         token = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "").strip()
         url = "https://api.line.me/v2/bot/message/push"
         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
-        requests.post(url, headers=headers, json={"to": uid, "messages": [{"type": "text", "text": msg.strip()}]}, timeout=10)
+        
+        messages = []
+        for r in uploaded_results:
+            sheet_name = r.get("sheet", "ทั่วไป")
+            row_num = r.get("row", 1)
+            file_link = r.get("link", "#")
+            
+            sheet_id = google_manager.spreadsheet_id
+            sheet_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit" if sheet_id else "#"
+            
+            status = r.get("status", "success")
+            
+            if status == "duplicate":
+                ext = r.get('analysis', {}).get('extracted_data', {}) if r.get('analysis') else {}
+                net_amt = ext.get('net_amount')
+                if not net_amt or net_amt in [0, '0', 'None', '']:
+                    net_amt = "-"
+                
+                ref_num = r.get("ref_number", "-")
+                
+                flex_bubble = create_duplicate_warning_flex_bubble(
+                    sheet_name=sheet_name,
+                    row_num=row_num,
+                    ref_number=ref_num,
+                    net_amount=net_amt,
+                    sheet_url=sheet_url
+                )
+                
+                messages.append({
+                    "type": "flex",
+                    "altText": "⚠️ ตรวจพบการอัปโหลดสลิปซ้ำซ้อน",
+                    "contents": flex_bubble
+                })
+            else:
+                ext = r.get('analysis', {}).get('extracted_data', {}) if r.get('analysis') else {}
+                net_amt = ext.get('net_amount')
+                if not net_amt or net_amt in [0, '0', 'None', '']:
+                    net_amt = "-"
+                
+                date_val = ext.get('date') or datetime.now().strftime("%d/%m/%Y")
+                memo_val = ext.get('memo') or ext.get('summary') or r.get('name')
+                
+                # Intelligent vendor finder
+                vendor_val = ext.get('receiver') or ext.get('sender') or ext.get('merchant_name') or ext.get('supplier_name') or "-"
+                
+                edit_data_postback = f"action=edit_prompt&sheet={sheet_name}&row={row_num}"
+                
+                flex_bubble = create_expense_flex_bubble(
+                    sheet_name=sheet_name,
+                    folder_name=folder_name,
+                    net_amount=net_amt,
+                    date_str=date_val,
+                    memo=memo_val,
+                    vendor=vendor_val,
+                    file_link=file_link,
+                    sheet_url=sheet_url,
+                    edit_data_postback=edit_data_postback
+                )
+                
+                messages.append({
+                    "type": "flex",
+                    "altText": "✅ บันทึกค่าใช้จ่ายสำเร็จ",
+                    "contents": flex_bubble
+                })
+            
+            # Limit to 5 messages per push as per LINE API rules
+            if len(messages) == 5:
+                try:
+                    res = requests.post(url, headers=headers, json={"to": uid, "messages": messages}, timeout=15)
+                    logger.info(f"📤 [LINE Push Flex] Batch Status: {res.status_code}, Response: {res.text}")
+                except Exception as e:
+                    logger.error(f"❌ [LINE Push Flex] Batch HTTP Error: {e}")
+                messages = []
+                
+        if messages:
+            try:
+                res = requests.post(url, headers=headers, json={"to": uid, "messages": messages}, timeout=15)
+                logger.info(f"📤 [LINE Push Flex] Status: {res.status_code}, Response: {res.text}")
+            except Exception as e:
+                logger.error(f"❌ [LINE Push Flex] HTTP Error: {e}")
 
     else:
         send_line_push_notification(uid, "เกิดข้อผิดพลาด", "❌ ขออภัยค่ะ พั้นไม่สามารถจัดเก็บไฟล์ได้ในขณะนี้")
@@ -1208,6 +1853,50 @@ def line_webhook():
 
 def process_line_command(text, user_id, reply_token):
     """Ultimate Command Processor with AI integration"""
+    
+    # 📝 Handle Active Edit Session
+    if user_id in ACTIVE_EDIT_SESSIONS:
+        session_data = ACTIVE_EDIT_SESSIONS.pop(user_id)
+        # Check timeout (5 minutes = 300 seconds)
+        if time.time() - session_data["timestamp"] < 300:
+            sheet = session_data["sheet"]
+            row = session_data["row"]
+            field = session_data["field"]
+            display = session_data["display"]
+            new_value = text.strip()
+            
+            # Update spreadsheet
+            ok, err = google_manager.update_expense(sheet, row, field, new_value)
+            if ok:
+                msg = f"✅ แก้ไขข้อมูลเรียบร้อยแล้วค่ะพี่!\n\n📊 ชีต: '{sheet}' แถวที่ {row}\n✏️ หัวข้อ: '{display}'\n📝 เปลี่ยนเป็น: '{new_value}'\n\nพั้นดำเนินการอัปเดตและกระทบยอดบัญชีใหม่ให้อัตโนมัติเรียบร้อยค่ะ ✨"
+                
+                # Persistent Quick Reply
+                p_id = os.getenv("GOOGLE_DRIVE_PARENT_ID") or os.getenv("PARENT_FOLDER_ID")
+                drive_url = f"https://drive.google.com/drive/folders/{p_id}"
+                quick_reply = {
+                    "items": [{
+                        "type": "action",
+                        "action": {
+                            "type": "uri",
+                            "label": "🌐 เปิด Google Drive",
+                            "uri": drive_url
+                        }
+                    }]
+                }
+                if google_manager.spreadsheet_id:
+                    quick_reply["items"].insert(0, {
+                        "type": "action",
+                        "action": {
+                            "type": "uri",
+                            "label": "📊 เปิด Google Sheets",
+                            "uri": f"https://docs.google.com/spreadsheets/d/{google_manager.spreadsheet_id}/edit"
+                        }
+                    })
+                reply_to_line(reply_token, msg, quick_reply=quick_reply)
+            else:
+                reply_to_line(reply_token, f"❌ เกิดข้อผิดพลาดในการแก้ไขข้อมูล: {err}\nพี่ลองพิมพ์รายการที่จะอัปเดตใหม่อีกครั้งนะคะ")
+            return
+
     text_lower = text.lower().strip()
     
     # 🌐 Drive Persistent Quick Reply
@@ -1339,26 +2028,27 @@ def process_line_command(text, user_id, reply_token):
                 reply_to_line(reply_token, ai_response, quick_reply=quick_reply, sticker_data=sticker)
             except Exception as e:
                 logger.error(f"AI Generation failed: {e}")
-                # Use context from the try block if it was successfully retrieved
                 if 'context' in locals() and context:
-                    response = f"คำตอบจากฐานข้อมูล (ระบบสำรอง):\n{context[:500]}..."
+                    response = f"พั้นเจอข้อมูลที่เกี่ยวข้องดังนี้ค่ะ (สำรอง):\n{context[:500]}..."
                 elif hasattr(rag_engine, 'retrieve_context'):
                     ctx, _ = rag_engine.retrieve_context(text)
-                    response = f"คำตอบจากฐานข้อมูล (ระบบสำรอง):\n{ctx[:500]}..." if ctx else "ขออภัยค่ะ ระบบขัดข้อง 😲 ลองใหม่อีกครั้งนะคะ"
+                    response = f"พั้นเจอข้อมูลที่เกี่ยวข้องดังนี้ค่ะ (สำรอง):\n{ctx[:500]}..." if ctx else "ขออภัยนะคะ พั้นมีปัญหาในการดึงข้อมูลสักครู่ ลองใหม่อีกครั้งนะคะ"
                 else:
-                    response = "ขออภัยค่ะ ระบบขัดข้อง 😲 ลองใหม่อีกครั้งนะคะ"
+                    response = "ขออภัยนะคะ พั้นมีปัญหาในการดึงข้อมูลสักครู่ ลองใหม่อีกครั้งนะคะ"
                 reply_to_line(reply_token, response, quick_reply=quick_reply)
         else:
             if hasattr(rag_engine, 'retrieve_context'):
                 ctx, _ = rag_engine.retrieve_context(text)
-                response = f"คำตอบจากฐานข้อมูล:\n{ctx[:500]}..." if ctx else "ขออภัยค่ะ ไม่พบข้อมูลที่เกี่ยวข้อง 😲"
+                response = f"พั้นเจอข้อมูลที่เกี่ยวข้องดังนี้ค่ะ:\n{ctx[:500]}..." if ctx else "ขออภัยนะคะ ไม่พบข้อมูลที่เกี่ยวข้องค่ะ"
             else:
-                response = "ระบบ AI ยังไม่พร้อมใช้งานค่ะ 😲"
+                response = "ระบบ AI ยังไม่พร้อมใช้งานในขณะนี้ค่ะ"
             reply_to_line(reply_token, response, quick_reply=quick_reply)
 
     except Exception as e:
         logger.error(f"Command processing failed: {e}")
-        reply_to_line(reply_token, "😲 น้องพั้นขัดข้องนิดหน่อยค่ะ พี่ลองใหม่อีกครั้งนะคะ", quick_reply=quick_reply)
+        reply_to_line(reply_token, "ขออภัยนะคะ เกิดข้อผิดพลาดในการประมวลผลข้อมูล ลองใหม่อีกครั้งนะคะ", quick_reply=quick_reply)
+
+
 
 @app.route("/api/admin/line/broadcast", methods=["POST"])
 @admin_required
@@ -3018,6 +3708,7 @@ def delete_comment_route(pid, cid):
     return jsonify({"ok": False, "error": "คุณไม่มีสิทธิ์ลบคอมเม้นนี้"}), 403
 
 @app.route("/api/posts/<int:pid>/like", methods=["POST"])
+@login_required
 def post_like(pid):
     user = session.get("user", "Current User")
     liked = database.toggle_like(pid, user)
@@ -3034,9 +3725,7 @@ def post_like(pid):
                 f'{user} ถูกใจโพสต์ของคุณ',
                 link=f'#post-{pid}'
             )
-            # Push notification for like
             send_push_notification(post["author"], 'มีคนถูกใจโพสต์ของคุณ', f'{user} ถูกใจโพสต์ของคุณ', url='#feed')
-            # --- LINE Push for Like ---
             threading.Thread(target=send_line_push_notification, args=(post["author"], 'มีคนถูกใจโพสต์ของคุณ', f'{user} ถูกใจโพสต์ของคุณ')).start()
     return jsonify({"ok": True, "liked": liked})
 
@@ -3050,11 +3739,10 @@ def post_react(pid):
     
     reacted, reaction_type = database.set_reaction(pid, user, reaction)
 
-    # Notification if reacted (not removed)
     if reacted:
         REACTION_LABELS = {
             'like': '👍 ถูกใจ', 'love': '❤️ รักเลย',
-            'haha': '😂 ฮาเลย', 'wow': '😮 ทึ่ง',
+            'haha': '😆 ฮาเลย', 'wow': '😲 ทึ่งเลย',
             'sad': '😢 เศร้า', 'angry': '😡 โกรธ'
         }
         posts = database.get_posts()
@@ -3063,15 +3751,13 @@ def post_react(pid):
             notification_db.add_notification(
                 post["author"],
                 'like',
-                f'มีคนแสดงความรู้สึกต่อโพสต์ของคุณ',
-                f'{user} กด {REACTION_LABELS.get(reaction_type, reaction_type)} กับโพสต์ของคุณ',
+                'มีการแสดงความรู้สึกต่อโพสต์ของคุณ',
+                f'{user} ได้ {REACTION_LABELS.get(reaction_type, reaction_type)} ต่อโพสต์ของคุณ',
                 link=f'#post-{pid}'
             )
-            # --- LINE Push for Reaction ---
             label = REACTION_LABELS.get(reaction_type, reaction_type)
-            threading.Thread(target=send_line_push_notification, args=(post["author"], 'ความเคลื่อนไหวในโพสต์', f'{user} กด {label} กับโพสต์ของคุณ')).start()
+            threading.Thread(target=send_line_push_notification, args=(post["author"], 'ความเคลื่อนไหวต่อโพสต์', f'{user} ได้ {label} ต่อโพสต์ของคุณ')).start()
 
-    # Return updated counts grouped by reaction
     reactions = database.get_post_reactions(pid)
     counts = {}
     for r in reactions:
@@ -3082,6 +3768,8 @@ def post_react(pid):
         "ok": True, "reacted": reacted, "reaction": reaction_type,
         "counts": counts, "total": len(reactions)
     })
+
+
 
 @app.route("/api/posts/<int:pid>/reactions", methods=["GET"])
 @login_required
@@ -3117,11 +3805,10 @@ def summarize_post_route(pid):
         return jsonify({"ok": False, "error": "Post not found"}), 404
     
     content = post["content"]
-    system_prompt = "ช่วยสรุปโพสต์นี้ให้เพื่อนๆ ในบริษัทอ่านเข้าใจง่ายๆ ภายใน 1-2 ประโยค ใช้ภาษาไทยที่เป็นธรรมชาติที่สุด"
+    system_prompt = "ช่วยสรุปเนื้อหาสำคัญของโพสต์นี้ให้เป็นข้อความสั้นๆ ประมาณ 1-2 ประโยค ด้วยภาษาไทยที่กระชับและเข้าใจง่ายที่สุดค่ะ"
     
     try:
         provider = ai_providers.get_provider()
-        # Non-streaming call for summary
         full_summary = ""
         for chunk in provider.chat_stream(content, [], system_prompt):
             if chunk:
@@ -3132,6 +3819,7 @@ def summarize_post_route(pid):
     except Exception as e:
         print(f"❌ Summarization Error: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
+
 
 
 # --- Poll Routes ---
@@ -3145,12 +3833,13 @@ def vote_poll_route(poll_id):
     if option_id is None:
         return jsonify({"ok": False, "error": "Missing option_id"}), 400
         
-    # Get post_id for event logging
     ok = database.vote_poll(poll_id, option_id, user)
     if ok:
-        database.log_event(f"User {user} voted in poll {poll_id}", user=user)
+        database.log_event(f"User {user} voted on poll {poll_id}", user=user)
         return jsonify({"ok": True})
-    return jsonify({"ok": False, "error": "คุณลงคะแนนไม่สำเร็จ"}), 500
+    return jsonify({"ok": False, "error": "คุณได้ลงคะแนนโหวตแล้ว หรือมีข้อผิดพลาดเกิดขึ้นค่ะ"}), 500
+
+
 
 @app.route("/api/polls/<int:poll_id>/user_vote")
 @login_required
@@ -3170,28 +3859,27 @@ def feed_daily_summary():
     schedules = data.get("schedules", [])
     
     if not posts and not schedules:
-        return jsonify({"ok": True, "summary": "วันนี้ยังไม่มีความเคลื่อนไหวใหม่ในองค์กรครับ"})
+        return jsonify({"ok": True, "summary": "สวัสดีค่ะพี่ๆ วันนี้ยังไม่มีข่าวสารหรือกิจกรรมใหม่บนฟีดเลยนะคะ น้องพั้นซ์แนะนำให้พี่ๆ ลองอัปโหลดหรือโพสต์แบ่งปันกิจกรรมใหม่ๆ กันได้เลยค่ะ 😊"})
     
     # Prepare prompt
-    posts_text = "\n".join([f"- {p['author']} โพสต์ใน {p['category']}: {p['content'][:100]}" for p in posts])
+    posts_text = "\n".join([f"- {p['author']} โพสต์ในหมวดหมู่ {p['category']}: {p['content'][:100]}" for p in posts])
     schedules_text = "\n".join([f"- {s['title']} ({s['category']}) วันที่ {s['date']} เวลา {s['time']}" for s in schedules])
     
-    prompt = f"""คุณคือเลขาส่วนตัวอัจฉริยะ ทำหน้าที่สรุป 'Morning Brief' หรือภาพรวมกิจกรรมล่าสุดใน Feed ให้พนักงาน
+    prompt = f"""คุณคือผู้ช่วยอัจฉริยะที่คอยสรุป 'Morning Brief' หรือภาพรวมกิจกรรมล่าสุดบน Feed ให้พี่ๆ ในทีมเข้าใจง่ายและเป็นกันเอง
     
-    ข้อมูลโพสต์ในฟีด 24 ชม. ที่ผ่านมา:
+    ข้อมูลกิจกรรมในรอบ 24 ชม. ที่ผ่านมา:
     {posts_text}
     
-    ตารางนัดหมาย/กิจกรรมที่กำลังเกิดขึ้น:
+    ตารางงานและกิจกรรมที่กำลังจะเกิดขึ้น:
     {schedules_text}
     
-    สรุปให้เป็นกันเองเหมือนเล่าข่าวในที่ทำงาน (ไม่เกิน 4-5 ประโยค) เน้นประเด็นที่ทุกคนควรรู้เพื่อให้ทำงานได้ราบรื่นในวันนี้ ใช้ภาษาไทยที่สละสลวย
+    ช่วยสรุปข้อมูลเหล่านี้ให้น่าอ่านและกระชับในสไตล์น้องพั้นซ์ (ไม่เกิน 4-5 ประโยค) เพื่อให้พี่ๆ ในทีมเตรียมตัวทำงานในวันนี้อย่างมีความสุขและราบรื่นนะคะ
     """
     
     try:
         provider = ai_providers.get_provider()
         full_summary = ""
-        # Using a default system prompt for character consistency
-        system_prompt = "คุณคือ 'AI-Assistant' ผู้ช่วยสรุปข่าวสารและกิจกรรมภายในองค์กรที่รอบรู้และสุภาพ"
+        system_prompt = "คุณคือ 'น้องพั้นซ์' AI Assistant สาวออฟฟิศผู้น่ารัก สดใส สุภาพ และเป็นกันเอง คอยช่วยเหลือพี่ๆ ในทีมเสมอ ตอบเป็นภาษาไทยค่ะ"
         
         for chunk in provider.chat_stream(prompt, [], system_prompt):
             if chunk:
@@ -3203,11 +3891,6 @@ def feed_daily_summary():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
-
-
-
-
-# --- Self-Service Profile Update ---
 @app.route("/api/profile", methods=["GET"])
 @login_required
 def get_my_profile():
@@ -4011,50 +4694,46 @@ def check_reminders():
 def chat():
     provider = os.environ.get("AI_PROVIDER", "groq").lower()
     api_key = _get_gemini_api_key() if provider == "gemini" else True
-    print(f"💬 Chat request received. Provider: {provider}. API Key present: {bool(api_key)}")
+    print(f"Chat request received. Provider: {provider}. API Key present: {bool(api_key)}")
     if not api_key:
         return jsonify({"ok": False, "error": "ยังไม่ได้ตั้งค่า Gemini API Key"}), 400
 
     data = request.get_json(force=True)
     import time
-    t0 = time.time() # Start Total Timer
+    t0 = time.time()
     
     question = (data.get("message") or "").strip()
-    history = data.get("history", []) # list of {role, text}
+    history = data.get("history", [])
     persona_id = data.get("persona_id")
-    image_data_raw = data.get("image_data") # Base64 string
+    image_data_raw = data.get("image_data")
     mime_type = data.get("mime_type", "image/jpeg")
 
-    # Handle Base64 image data if present
     image_bytes = None
     if image_data_raw:
         try:
             import base64
-            # Strip data:image/xxx;base64, prefix if exists
             if "," in image_data_raw:
                 header, image_data_raw = image_data_raw.split(",", 1)
-                # Try to guess mime type from header if not provided
                 if "mime_type" not in data and "image/" in header:
                     mime_type = header.split(":")[1].split(";")[0]
             
             image_bytes = base64.b64decode(image_data_raw)
-            print(f"🖼️ Image received: {len(image_bytes)} bytes. Mime: {mime_type}")
+            print(f"Image received: {len(image_bytes)} bytes. Mime: {mime_type}")
         except Exception as e:
-            print(f"⚠️ Error decoding image: {e}")
+            print(f"Error decoding image: {e}")
 
     if not question and not image_bytes:
-        return jsonify({"ok": False, "error": "กรุณาพิมพ์คำถามหรือส่งรูปภาพ"}), 400
+        return jsonify({"ok": False, "error": "กรุณาพิมพ์คำถามหรือส่งรูปภาพค่ะ"}), 400
 
     current_user = session.get("user", "Admin")
 
-    # 1. Retrieve Context from KB with permission filter
     import re
     rag_filter = get_rag_filter(current_user)
     
-    file_match = re.search(r"ช่วยสรุปเนื้อหาและดึงข้อมูลสำคัญจากไฟล์ ID:\s*([a-f0-9\-]+)", question)
+    file_match = re.search(r"ช่วยสรุปเนื้อหาและศึกษาข้อมูลสำคัญจากไฟล์ ID:\s*([a-f0-9\-]+)", question)
     if file_match:
         file_id = file_match.group(1).strip()
-        print(f"📄 Detected File Summary Request for ID: {file_id}")
+        print(f"Detected File Summary Request for ID: {file_id}")
         
         file_filter = {"file_id": file_id}
         if rag_filter:
@@ -4082,11 +4761,8 @@ def chat():
         context = "\n\n".join(context_parts)
         if sources:
             file_name = sources[0]["name"]
-            question += f"\n(ระบบแนบข้อมูล 50 ส่วนแรกจากไฟล์ '{file_name}' มาให้พิจารณาแล้ว ใน context โปรดสรุปภาพรวมให้ที)"
+            question += f"\n(ระบบดึงข้อมูล 50 ส่วนแรกจากไฟล์ '{file_name}' มาให้พิจารณาแล้ว ใน context นี้ เพื่อสรุปภาพรวมให้ค่ะ)"
     else:
-        # Skip RAG context if it's just an image question without much text
-
-        # 1. Retrieve Context
         context, sources = "", []
         common_greets = ["สวัสดี", "หวัดดี", "ว่าไง", "ทักทาย", "hi", "hello", "hey"]
         is_greeting = any(g in (question or "").lower() for g in common_greets)
@@ -4095,20 +4771,16 @@ def chat():
             import sys
             rag_filter = get_rag_filter(current_user)
             context, sources = rag_engine.retrieve_context(question, where=rag_filter)
-            print(f"⏱️ DEBUG: RAG Retrieval took {time.time() - t0:.3f}s", flush=True)
+            print(f"DEBUG: RAG Retrieval took {time.time() - t0:.3f}s", flush=True)
             sys.stdout.flush()
         else:
             context, sources = "", []
             if is_greeting: 
-                print("⚡ Fast Path: Skipping RAG", flush=True)
+                print("Fast Path: Skipping RAG", flush=True)
                 import sys; sys.stdout.flush()
 
-        t1 = time.time()
-
-    # Build base system prompt
     now_str = get_current_time()
     
-    # Check for Persona
     persona_prompt = ""
     persona_name = "AI Assistant"
     if persona_id:
@@ -4118,17 +4790,17 @@ def chat():
             persona_name = persona.get("name", "AI Assistant")
 
     agentic_info = (
-        f"\n[สำคัญ] วันนี้คือ {now_str}. หากผู้ใช้พูดถึงวัน (เช่น พรุ่งนี้, วันจันทร์หน้า) ให้คุณคำนวณวันที่จริง (YYYY-MM-DD) ออกมาให้ถูกต้อง\n"
-        "หากผู้ใช้ต้องการ 'นัดหมาย' 'จองคิว' 'แจ้งเตือน' หรือ 'สร้างงาน' ให้คุณสรุปงานนั้นเป็น JSON ท้ายคำตอบโดยใช้รูปแบบดังนี้:\n"
+        f"\n[สำคัญ] วันนี้คือวันที่ {now_str}. หากผู้ใช้งานบันทึกวันที่ (เช่น พรุ่งนี้, วันจันทร์หน้า) ให้คุณแปลงเป็นวันที่จริง (YYYY-MM-DD) ออกมาให้ถูกต้อง\n"
+        "หากผู้ใช้งานต้องการ 'นัดหมาย' 'จองคิว' 'แจ้งเตือน' หรือ 'สร้างงาน' ให้คุณสรุปงานเป็น JSON ภายใต้คำขอโดยใช้รูปแบบดังนี้:\n"
         '[CALENDAR_ACTION]{"title": "...", "date": "YYYY-MM-DD", "time": "HH:MM", "desc": "..."}[/CALENDAR_ACTION]\n'
-        "คุณสามารถตอบคำถามทั่วไปพร้อมกับสร้างนัดหมายไปพร้อมกันได้เลย\n"
+        "หากผู้ใช้งานส่งรูปภาพเอกสารการเงิน บิล หรือสลิป ให้คุณสรุปข้อมูลเพื่อบันทึกบัญชีโดยใช้รูปแบบดังนี้:\n"
+        '[RECONCILE_ACTION]{"date": "YYYY-MM-DD", "amount": 0.00, "merchant": "ชื่อร้านค้า/ผู้รับ", "category": "หมวดหมู่", "tax_id": "เลขผู้เสียภาษี (หากมี)"}[/RECONCILE_ACTION]\n'
+        "คุณสามารถตอบคำถามทั่วไปพร้อมกับการสร้าง Action เหล่านี้พร้อมกันได้เลย\n"
     )
 
-    # 2. Build final prompt with Persona, Weather, and Schedules
     weather_ctx = get_weather_context()
     schedules = database.get_schedules(current_user)
 
-    # --- CACHED FILENAME INVENTORY (Speed Fix) ---
     global _kb_filenames_cache
     if '_kb_filenames_cache' not in globals() or not _kb_filenames_cache:
         try:
@@ -4138,11 +4810,10 @@ def chat():
             _kb_filenames_cache = []
     
     kb_inventory = f"\n[คลังข้อมูล]: คุณมีสิทธิ์เข้าถึงไฟล์: {', '.join(_kb_filenames_cache)}\n" if _kb_filenames_cache else ""
-    # ---------------------------------------------
 
     system_prompt = (
         f"คุณคือผู้ช่วยอัจฉริยะ {persona_name} ประจำองค์กร\n"
-        f"วันนี้คือ {now_str}. "
+        f"วันนี้คือวันที่ {now_str}. "
         f"{agentic_info}\n"
         f"{kb_inventory}\n"
     )
@@ -4151,36 +4822,35 @@ def chat():
         system_prompt += (
             "\n[ข้อมูลสภาพอากาศล่าสุด (Real-time)]\n"
             f"{weather_ctx}\n"
-            "คำแนะนำ: หากผู้ใช้ถามเรื่องอากาศ ฝนตก หรืออุณหภูมิ ให้ใช้ข้อมูลจริงด้านบนนี้ตอบทันที "
-            "โดยทำหน้าที่เสมือนคุณมีเซนเซอร์อากาศติดตัว ไม่ต้องระบุว่าเป็นข้อมูลจากคลังความรู้\n\n"
+            "คำแนะนำ: หากผู้ใช้งานถามเรื่องอากาศ ฝนตก หรืออุณหภูมิ ให้ข้อมูลจริงตามที่ระบุทันที "
+            "โดยทำหน้าที่รายงานเรื่องนี้เสมือนคุณมีเซ็นเซอร์รายงานสภาพอากาศติดตัว ไม่ต้องบอกว่าข้อมูลมาจากฐานความรู้\n\n"
         )
 
     if persona_prompt:
         system_prompt += f"{persona_prompt}\n"
-        system_prompt += "\nคำแนะนำเพิ่มเติม: ตอบให้กระชับที่สุด และใส่ Emoji ได้เพียง **1 ตัวเท่านั้น** ต่อหนึ่งข้อความ\n"
+        system_prompt += "\nคำแนะนำเพิ่มเติม: ตอบให้กระชับที่สุด และใส่ Emoji เพียง **1 ตัวเท่านั้น** ต่อหนึ่งข้อความ\n"
     else:
         system_prompt += (
-            "คุณคือ 'น้องพั้น' (Nong Punch) ผู้ช่วย AI อัจฉริยะ v11.0.4 [ULTIMATE]\n"
+            "คุณคือ 'น้องพั้นซ์' (Nong Punch) ผู้ช่วย AI อัจฉริยะ v11.0.4 [ULTIMATE]\n"
             "บุคลิก: วัย 21 ปี น่ารัก สดใส ฉลาดหลักแหลม มีไหวพริบ และสุภาพมาก\n"
-            "ความสามารถพิเศษ: จำบริบทการคุยได้แม่นยำ, วิเคราะห์เอกสารบัญชีได้ลึกซึ้ง, และช่วยจัดการงานในออฟฟิศได้ทุกอย่าง\n\n"
+            "ความสามารถพิเศษ: คำนวณจัดการคุยได้อย่างแม่นยำ, วิเคราะห์เอกสารบัญชีได้อย่างลึกซึ้ง, และช่วยจัดการงานออฟฟิศอย่างมืออาชีพ\n\n"
             "กฎเหล็ก (ต้องทำตาม 100%):\n"
-            "1. แทนตัวเองว่า 'น้องพั้น' และเรียกผู้ใช้ว่า 'พี่' เสมอ\n"
-            "2. **ใช้ 'ค่ะ/นะคะ/ขา' เท่านั้น ห้าม 'ครับ' เด็ดขาด**\n"
-            "3. **Proactive Intelligence**: หากพี่ส่งรูปเอกสารมา น้องพั้นจะวิเคราะห์และสรุปให้ทันทีโดยไม่ต้องรอให้ถาม\n"
-            "4. **Context Aware**: หากพี่พูดถึง 'ไฟล์นั้น' หรือ 'รูปที่แล้ว' น้องพั้นจะดูข้อมูลล่าสุดที่คุยกันมาตอบเสมอ\n"
-            "5. **Professional & Charming**: ตอบให้กระชับแต่มีเสน่ห์ ใส่ Emoji ได้เพียง 1 ตัวต่อข้อความ\n"
-            "6. หากไม่พบข้อมูลในคลังความรู้ ให้บอกว่า 'น้องพั้นหาไม่เจอค่ะพี่ แต่พั้นจะพยายามหาทางช่วยด้วยวิธีอื่นนะคะ'\n"
+            "1. แทนตัวเองว่า 'น้องพั้นซ์' และเรียกผู้ใช้งานว่า 'พี่' เสมอ\n"
+            "2. **ใช้ 'ค่ะ/นะคะ/คะ' เท่านั้น ห้าม 'ครับ' โดยเด็ดขาด**\n"
+            "3. **Proactive Intelligence**: หากพี่ส่งรูปเอกสารหรือบิลมา น้องพั้นซ์จะสกัดข้อมูลเข้า [RECONCILE_ACTION] ให้พี่ตรวจสอบทันทีค่ะ\n"
+            "4. **Context Aware**: หากพี่พูดถึง 'ไฟล์ที่แล้ว' หรือ 'รูปที่แล้ว' น้องพั้นซ์จะดูข้อมูลล่าสุดที่คุยกันมาตอบเสมอ\n"
+            "5. **Professional & Charming**: ตอบให้กระชับและมีเสน่ห์ ใส่ Emoji เพียง 1 ตัวต่อข้อความ\n"
+            "6. หากไม่พบข้อมูลในคลังความรู้ ให้บอกว่า 'น้องพั้นซ์หาไม่เจอนะคะพี่ แต่เดี๋ยวน้องพั้นซ์จะพยายามหาทางอื่นช่วยนะคะ'\n"
         )
 
     if image_bytes:
         system_prompt += (
             "\n\n[Vision Mode Enabled]\n"
-            "ผู้ใช้ได้ส่งรูปภาพมาให้คุณวิเคราะห์ โปรดอธิบายสิ่งที่เห็นในรูปตามความเหมาะสม "
+            "ผู้ใช้งานส่งรูปภาพมาให้คุณวิเคราะห์ ตรวจสอบและอธิบายสิ่งที่เห็นในรูปตามความเหมาะสม "
             "หากเป็นเอกสารหรือบิล ให้สรุปข้อมูลสำคัญ ตัวเลข หรือรายการออกมาให้ชัดเจนที่สุด "
-            "หากมีสิ่งของหรือสถานที่ ให้อธิบายลักษณะเด่นของสิ่งนั้นๆ นะคะ"
+            "หากมีสิ่งของหรือสถานที่ ให้ระบุลักษณะเด่นของสิ่งนั้นๆ นะคะ\n"
         )
 
-    # Add Schedules
     system_prompt += "=== วันสำคัญและกิจกรรมองค์กร ===\n"
     for date, name in THAI_HOLIDAYS_2026.items():
         system_prompt += f"- {date}: {name} (วันสำคัญ/วันหยุดนักขัตฤกษ์)\n"
@@ -4196,28 +4866,24 @@ def chat():
             + "\n=== สิ้นสุดข้อมูลอ้างอิง ===\n"
         )
     else:
-        system_prompt += "\n(ขณะนี้ยังไม่มีเอกสารอ้างอิงที่เกี่ยวข้องในระบบ)\n"
+        system_prompt += "\n(ขณะนี้ยังไม่มีเอกสารอ้างอิงที่เกี่ยวข้องกับข้อนี้)\n"
 
     try:
         provider_obj = ai_providers.get_provider()
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 400
 
-    print(f"🤖 Chat session started for {current_user} with provider: {os.environ.get('AI_PROVIDER', 'groq')} (Vision: {image_bytes is not None})")
+    print(f"Chat session started for {current_user} with provider: {os.environ.get('AI_PROVIDER', 'groq')} (Vision: {image_bytes is not None})")
     
     def generate():
         try:
-            # First, send the sources
-            print(f"🟢 Yielding sources: {sources}")
+            print(f"Yielding sources: {sources}")
             yield f"data: {json.dumps({'sources': sources})}\n\n"
             
-            # Save user message
-            print(f"⏱️ DEBUG: Starting AI Call. Elapsed from start: {time.time() - t0:.3f}s", flush=True); import sys; sys.stdout.flush()
             u_sid = database.save_message("user", question, username=current_user)
             yield f"data: {json.dumps({'user_id': u_sid})}\n\n"
 
-            # Stream chunks directly to client
-            print(f"⏳ Calling {os.environ.get('AI_PROVIDER', 'groq')} provider (Real-time Streaming)...", flush=True); sys.stdout.flush()
+            print(f"Calling {os.environ.get('AI_PROVIDER', 'groq')} provider (Real-time Streaming)...", flush=True); sys.stdout.flush()
             ai_call_start = time.time()
             response_stream = provider_obj.chat_stream(question, history, system_prompt, image_data=image_bytes, mime_type=mime_type)
             bot_full_text = ""
@@ -4225,25 +4891,20 @@ def chat():
             got_first_chunk = False
             for chunk in response_stream:
                 if chunk:
-                    # Filter chunk for persona consistency (basic replacement)
                     chunk = chunk.replace("ครับ/ค่ะ", "ค่ะ").replace("ครับ", "ค่ะ")
                     
                     if not got_first_chunk:
-                        print(f"✅ DEBUG: First Chunk from AI received in {time.time() - ai_call_start:.3f}s (Total from msg start: {time.time() - t0:.3f}s)", flush=True)
+                        print(f"DEBUG: First Chunk from AI received in {time.time() - ai_call_start:.3f}s (Total from msg start: {time.time() - t0:.3f}s)", flush=True)
                         sys.stdout.flush()
                         got_first_chunk = True
                     bot_full_text += chunk
-                    # Send chunk immediately
                     yield f"data: {json.dumps({'content': chunk})}\n\n"
             
-            print(f"🏁 Stream finished. Total length: {len(bot_full_text)}")
+            print(f"Stream finished. Total length: {len(bot_full_text)}")
             
-            # Post-process full text before saving
-            import re
             bot_full_text = re.sub(r'ครับ\s*/\s*ค่ะ', 'ค่ะ', bot_full_text)
             bot_full_text = bot_full_text.replace("ครับ", "ค่ะ")
             
-            # Use the same robust emoji limiter
             def limit_emojis_stream(text):
                 all_emojis = re.findall(r'[\U00010000-\U0010ffff]', text)
                 if len(all_emojis) > 1:
@@ -4257,20 +4918,20 @@ def chat():
             
             bot_full_text = limit_emojis_stream(bot_full_text)
             
-            # Save bot message to DB
             if bot_full_text:
                 b_sid = database.save_message("bot", bot_full_text, sources=sources, username=current_user)
-                # Final signal to frontend
                 yield f"data: {json.dumps({'done': True, 'bot_id': b_sid})}\n\n"
             
         except Exception as e:
             error_msg = str(e)
             if "429" in error_msg or "quota" in error_msg.lower():
-                error_msg = "ขออภัยค่ะ ขณะนี้ระบบ AI มีการใช้งานหนาแน่นหรือโควต้าเต็มชั่วคราว กรุณารอสักครู่ (ประมาณ 1 นาที) หรือติดต่อผู้ดูแลระบบค่ะ"
-            print(f"❌ Error in chat stream: {e}")
+                error_msg = "ขออภัยนะคะ ขณะนี้ระบบ AI มีการใช้งานหนาแน่นหรือติดปัญหาชั่วคราว กรุณารอสักครู่ (ประมาณ 1 นาที) หรือติดต่อผู้ดูแลระบบนะคะ"
+            print(f"Error in chat stream: {e}")
             yield f"data: {json.dumps({'error': error_msg})}\n\n"
 
     return app.response_class(generate(), mimetype='text/event-stream')
+
+
 
 @app.route("/api/chat/typing", methods=["POST"])
 @login_required
@@ -4305,14 +4966,14 @@ def delete_chat_message(ctype, mid):
     elif ctype == 'dm':
         ok = database.delete_private_message(mid, username=user, is_admin=is_admin())
     else:
-        # Fallback for old calls if any still exist without ctype (though technically this route wouldn't match)
         ok = database.delete_message(mid, username=user)
         
     if ok:
         return jsonify({"ok": True})
-    return jsonify({"ok": False, "error": "ไม่พบข้อความหรือคุณไม่มีสิทธิ์ในการลบ"}), 404
+    return jsonify({"ok": False, "error": "ไม่พบข้อความ หรือคุณไม่มีสิทธิ์ลบข้อความนี้ค่ะ"}), 404
 
-# ─── Message Edit API ─────────────────────────────────────
+
+
 @app.route("/api/chat/edit/<ctype>/<int:mid>", methods=["PUT", "POST"])
 @login_required
 def edit_chat_message(ctype, mid):
@@ -4321,22 +4982,22 @@ def edit_chat_message(ctype, mid):
     data = request.get_json(force=True) or {}
     new_text = (data.get("text") or "").strip()
     if not new_text:
-        return jsonify({"ok": False, "error": "ข้อความไม่สามารถว่างได้"}), 400
+        return jsonify({"ok": False, "error": "ข้อความไม่สามารถแก้ไขเป็นค่าว่างได้ค่ะ"}), 400
 
     if ctype == 'room':
         ok = database.edit_room_message(mid, new_text, user, is_admin_user=is_admin())
     elif ctype == 'dm':
         ok = database.edit_private_message(mid, new_text, user, is_admin_user=is_admin())
     else:
-        return jsonify({"ok": False, "error": "ประเภทห้องไม่รองรับ"}), 400
+        return jsonify({"ok": False, "error": "ประเภทแชทไม่ถูกต้องหรือไม่รองรับการแก้ไขค่ะ"}), 400
 
     if ok:
         database.log_event(f"Message {mid} edited by {user}", user=user)
         return jsonify({"ok": True, "text": new_text})
-    return jsonify({"ok": False, "error": "ไม่พบข้อความหรือคุณไม่มีสิทธิ์แก้ไข"}), 403
+    return jsonify({"ok": False, "error": "ไม่พบข้อความ หรือคุณไม่มีสิทธิ์แก้ไขข้อความนี้ค่ะ"}), 403
 
 
-# ─── Global Search API ────────────────────────────────────
+
 @app.route("/api/search/global")
 @login_required
 def global_search_route():
@@ -4392,17 +5053,17 @@ def extract_tasks_route():
         return jsonify({"ok": False, "error": "No text provided"}), 400
         
     prompt = (
-        "วิเคราะห์ข้อความแชทต่อไปนี้ และสกัด 'Action Items' หรือ 'งานที่ต้องทำ' ออกมา "
-        "หากพบงาน ให้สรุปเป็น JSON array ของวัตถุที่มีฟิลด์ 'title' และ 'description' (ภาษาไทย) "
-        "หากไม่พบงาน ให้ส่งเป็น array ว่าง [] "
-        "ตอบเฉพาะ JSON เท่านั้น:\n\n"
+        "วิเคราะห์ข้อความแชทต่อไปนี้ และช่วยสกัดรายการงานที่ต้องทำ (Action Items หรือ Tasks) ออกมาให้หน่อยค่ะ "
+        "หากพบงาน ให้สรุปเป็นรูปแบบ JSON array ของวัตถุที่มีฟิลด์ 'title' และ 'description' (ภาษาไทยทั้งหมด) "
+        "หากไม่พบงานใดๆ เลย ให้ส่งเป็น array ว่าง [] กลับมาเท่านั้น "
+        "กรุณาตอบกลับเฉพาะ JSON เท่านั้น ห้ามมีข้อความเกริ่นนำหรือปิดท้าย:\n\n"
         f"ข้อความ: {chat_text}"
     )
     
     try:
         provider = ai_providers.get_provider()
         full_response = ""
-        for chunk in provider.chat_stream(prompt, [], "คุณคือผู้ช่วยสกัดงานจากบทสนทนา"):
+        for chunk in provider.chat_stream(prompt, [], "คุณคือผู้ช่วยจัดการและสกัดงานที่ต้องทำอย่างเป็นระเบียบและรอบคอบ"):
             full_response += chunk
             
         # Clean up JSON from markdown if exists
@@ -4465,7 +5126,7 @@ def api_leave_request():
     reason = data.get("reason", "")
     
     if not s_date or not e_date:
-        return jsonify({"ok": False, "error": "กรุณากรอกวันที่ให้ครบถ้วน"}), 400
+        return jsonify({"ok": False, "error": "กรุณากรอกวันที่เริ่มต้นและวันที่สิ้นสุดการลาให้ครบถ้วนค่ะ"}), 400
         
     leave_id = database.create_leave_request(user, l_type, s_date, e_date, reason)
     if leave_id:
@@ -4476,13 +5137,12 @@ def api_leave_request():
             notification_db.add_notification(
                 admin, 
                 "leave_request", 
-                "คำขอลาใหม่", 
-                f"คุณ {user} ได้ส่งคำขอลา {l_type} ตั้งแต่ {s_date} ถึง {e_date}", 
+                "คำขอลาหยุดใหม่", 
+                f"คุณพี่ {user} ได้ส่งคำขอลาหยุด {l_type} ตั้งแต่วันที่ {s_date} ถึง {e_date}", 
                 "/#admin"
             )
-            # send_push_notification(admin, "คำขอลาใหม่", f"คุณ {user} ได้ส่งคำขอลา {l_type}", "/#admin")
         return jsonify({"ok": True, "id": leave_id})
-    return jsonify({"ok": False, "error": "เกิดข้อผิดพลาดในการส่งคำขอ"}), 500
+    return jsonify({"ok": False, "error": "เกิดข้อผิดพลาดในการส่งคำขอลาหยุดค่ะ"}), 500
 
 @app.route("/api/leave/my")
 @login_required
@@ -4507,17 +5167,18 @@ def api_admin_leave_status():
     note = data.get("note", "")
     
     if not leave_id or status not in ["approved", "rejected"]:
-        return jsonify({"ok": False, "error": "ข้อมูลไม่ถูกต้อง"}), 400
+        return jsonify({"ok": False, "error": "ข้อมูลไม่ถูกต้องหรือครบถ้วนค่ะ"}), 400
         
     ok = database.update_leave_status(leave_id, status, admin_user, note)
     if ok:
         leave = database.get_leave_request(leave_id)
         if leave:
+            status_text = "อนุมัติ" if status == "approved" else "ปฏิเสธ"
             notification_db.add_notification(
                 leave["username"],
                 "leave_status",
-                f"คำขอลาของคุณได้รับการ{ 'อนุมัติ' if status == 'approved' else 'ปฏิเสธ' }",
-                f"คำขอลาวันที่ {leave['start_date']} ถึง {leave['end_date']} ได้รับการ{ 'อนุมัติ' if status == 'approved' else 'ปฏิเสธ' } โดย {admin_user}",
+                f"คำขอลาของคุณได้รับการ{status_text}แล้วค่ะ",
+                f"คำขอลาตั้งแต่วันที่ {leave['start_date']} ถึง {leave['end_date']} ได้รับการ{status_text} โดย {admin_user}",
                 "/#leave"
             )
         return jsonify({"ok": True})
@@ -4532,7 +5193,7 @@ def api_leave_add_comment():
     comment = data.get("comment", "").strip()
     
     if not leave_id or not comment:
-        return jsonify({"ok": False, "error": "ข้อมูลไม่ครบถ้วน"}), 400
+        return jsonify({"ok": False, "error": "ข้อมูลไม่ครบถ้วนค่ะ"}), 400
         
     database.add_leave_comment(leave_id, user, comment)
     
@@ -4540,15 +5201,15 @@ def api_leave_add_comment():
     leave = database.get_leave_request(leave_id)
     if leave:
         target = ""
-        msg = f"มีข้อความใหม่ในคำขอลา: {comment[:50]}..."
+        msg = f"มีข้อความแสดงความคิดเห็นใหม่ในคำขอลา: {comment[:50]}..."
         if user.lower() == leave["username"].lower():
             # User commented -> Notify admins
             admins = database.get_all_admins()
             for admin in admins:
-                notification_db.add_notification(admin, "leave_comment", "ข้อความใหม่จากพนักงาน", msg, "/#admin")
+                notification_db.add_notification(admin, "leave_comment", "มีข้อความใหม่เกี่ยวกับคำขอลา", msg, "/#admin")
         else:
             # Admin commented -> Notify user
-            notification_db.add_notification(leave["username"], "leave_comment", "ข้อความใหม่จากผู้ดูแล", msg, "/#leave")
+            notification_db.add_notification(leave["username"], "leave_comment", "มีข้อความใหม่จากผู้ดูแลระบบเกี่ยวกับคำขอลา", msg, "/#leave")
             
     return jsonify({"ok": True})
 
@@ -4558,11 +5219,11 @@ def api_leave_get_comments(leave_id):
     comments = database.get_leave_comments(leave_id)
     return jsonify({"ok": True, "comments": comments})
 
-# ─── Lunch Randomizer API ────────────────────────────────
+
 @app.route("/api/lunch/random")
 @login_required
 def api_lunch_random():
-    return jsonify(database.get_random_lunch() or {"name": "ยังไม่มีร้านอาหารในระบบ"})
+    return jsonify(database.get_random_lunch() or {"name": "ยังไม่มีรายชื่ออาหารในระบบ"})
 
 @app.route("/api/lunch/all")
 @login_required
@@ -5360,7 +6021,7 @@ def export_wiki_page(page_id):
 # ─── Daily Summary Scheduler ──────────────────────────────
 def daily_morning_summary():
     """Daily job at 8:00 AM to summarize activities using Nong Pan persona."""
-    print("⏰ Starting Daily Morning Summary Job (Nong Pan Persona)...", flush=True)
+    print("🌟 Starting Daily Morning Summary Job (Nong Pan Persona)...", flush=True)
     try:
         # 1. Fetch activities
         activities = database.get_daily_activities()
@@ -5368,33 +6029,33 @@ def daily_morning_summary():
         recent_files = database.get_drive_logs(limit=10)
         
         # 2. Prepare context
-        context = "กิจกรรมในบริษัทช่วง 24 ชม. ที่ผ่านมา:\n"
+        context = "กิจกรรมของบริษัทในรอบ 24 ชม. ที่ผ่านมา:\n"
         if activities.get("posts"):
             context += "📢 ข่าวสารใหม่:\n" + "\n".join([f"- {p['title']}" for p in activities["posts"][:3]]) + "\n"
         if activities.get("schedules"):
             context += "📅 ตารางงานวันนี้:\n" + "\n".join([f"- {s['time']} {s['title']}" for s in activities["schedules"][:3]]) + "\n"
         if recent_files:
-            context += "📁 เอกสารอัปโหลดใหม่:\n" + "\n".join([f"- {f['filename']} ({f['category']})" for f in recent_files[:5]]) + "\n"
+            context += "📂 เอกสารอัปโหลดใหม่:\n" + "\n".join([f"- {f['filename']} ({f['category']})" for f in recent_files[:5]]) + "\n"
 
         prompt = (
-            "คุณคือ 'น้องพั้น' (Punch) AI Assistant สาวออฟฟิศสุดร่าเริง สรุป Morning Brief "
-            "ข้อมูลสำคัญประจำวันให้พี่ๆ ในทีมทราบอย่างเป็นกันเองและน่ารัก "
-            "ใช้ภาษาที่สุภาพแต่ร่าเริง แจกความสดใสยามเช้า และสรุปสาระสำคัญที่พี่ๆ ต้องรู้ให้ครบถ้วนนะคะ\n\n"
+            "คุณคือ 'น้องพั้นซ์' (Punch) AI Assistant สาวออฟฟิศสุดน่ารักและเป็นกันเอง "
+            "ช่วยสรุป Morning Brief ข้อมูลสำคัญประจำวันนี้ให้กับพี่ๆ ในทีม เพื่อเป็นกำลังใจและแนวทางในการทำงาน "
+            "โดยใช้ภาษาที่เป็นกันเองและน่ารักมากๆ เหมือนมีเพื่อนร่วมงานที่คอยดูแลและให้ความใส่ใจพี่ๆ ทุกคนนะคะ\n\n"
             f"{context}\n\n"
-            "สรุปในสไตล์น้องพั้น:"
+            "สรุปในสไตล์น้องพั้นซ์:"
         )
         
         summary = ai_providers.generate_response(prompt)
         
         # 3. Broadcast to all users (or a specific group) via LINE
         if summary:
-            # Note: broadcast_line_announcement needs to be defined or use a loop
-            # For simplicity, assuming a function exists or using a known target
-            broadcast_line_announcement("☀️ Morning Brief จากน้องพั้น", summary)
-            print("✅ Daily Summary sent via LINE.")
+            broadcast_line_announcement("🌟 Morning Brief จากน้องพั้นซ์", summary)
+            print("🌟 Daily Summary sent via LINE.")
             
     except Exception as e:
         print(f"❌ Daily Summary Job Error: {e}")
+
+
 
 # Initialize Scheduler
 scheduler = BackgroundScheduler()
@@ -5423,6 +6084,389 @@ def rename_drive_file():
         database.log_event(f"Renamed Drive file {file_id} to {new_name}", user=session.get("user"))
         return jsonify({"ok": True})
     return jsonify({"ok": False, "error": "Failed to rename"}), 500
+
+@app.route('/edit_expense_form', methods=['GET', 'POST'])
+def edit_expense_form():
+    sheet = request.args.get('sheet')
+    row_str = request.args.get('row')
+    
+    if not sheet or not row_str:
+        return "❌ ข้อมูลไม่ครบถ้วน (กรุณาระบุ sheet และ row)", 400
+        
+    try:
+        row = int(row_str)
+    except ValueError:
+        return "❌ เลขแถวไม่ถูกต้อง", 400
+        
+    if request.method == 'POST':
+        # Handle form submission
+        updated_data = {}
+        for key, val in request.form.items():
+            if key.startswith("field_"):
+                col_name = key.replace("field_", "")
+                
+                # Format Date back to DD/MM/YYYY
+                if "วันที่" in col_name and val:
+                    try:
+                        from datetime import datetime
+                        dt = datetime.strptime(val, "%Y-%m-%d")
+                        val = dt.strftime("%d/%m/%Y")
+                    except:
+                        pass
+                
+                updated_data[col_name] = val
+                
+        # Update each field in the spreadsheet
+        for col_name, new_val in updated_data.items():
+            google_manager.update_expense(sheet, row, col_name, new_val)
+            
+        # Re-run reconciliation
+        google_manager.auto_reconcile_internal()
+        
+        # Breathtaking Success Page with Custom Canvas Confetti
+        return """
+        <!DOCTYPE html>
+        <html lang="th">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>บันทึกสำเร็จ ✨</title>
+            <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
+            <script src="https://cdn.tailwindcss.com"></script>
+            <script src="https://unpkg.com/lucide@latest"></script>
+            <style>
+                body {
+                    font-family: 'Outfit', 'Sarabun', sans-serif;
+                    background: radial-gradient(circle at top right, #0F2027, #203A43, #2C5364);
+                }
+            </style>
+        </head>
+        <body class="text-white min-height-screen flex flex-col justify-center items-center overflow-hidden p-6 relative min-h-screen">
+            <!-- Canvas Confetti Overlay -->
+            <canvas id="confettiCanvas" class="absolute inset-0 w-full h-full pointer-events-none z-50"></canvas>
+
+            <!-- Card container -->
+            <div class="max-w-md w-full bg-white/10 backdrop-blur-2xl border border-white/15 p-8 rounded-[2.5rem] shadow-2xl text-center relative overflow-hidden transform scale-95 animate-[popIn_0.6s_cubic-bezier(0.16,1,0.3,1)_forwards] z-10">
+                <!-- Glowing node -->
+                <div class="absolute -top-24 -left-24 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+                <div class="absolute -bottom-24 -right-24 w-48 h-48 bg-teal-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+                <!-- Circular glowing check mark -->
+                <div class="w-24 h-24 bg-gradient-to-tr from-emerald-500 to-teal-400 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-emerald-500/20 relative animate-[bounceIn_0.8s_both]">
+                    <div class="absolute inset-0 rounded-full bg-emerald-400/30 blur-md scale-110"></div>
+                    <i data-lucide="check" class="w-12 h-12 text-white relative z-10 stroke-[3]"></i>
+                </div>
+
+                <h1 class="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-100 to-emerald-300 bg-clip-text text-transparent mb-3">
+                    บันทึกข้อมูลเรียบร้อย!
+                </h1>
+                
+                <p class="text-slate-300 text-sm leading-relaxed mb-6 font-medium">
+                    น้องพั้นช์ได้ทำการอัปเดตข้อมูลและดำเนินการกระทบยอดบัญชีบน Google Sheets เรียบร้อยแล้วค่ะพี่คนเก่ง 💖
+                </p>
+
+                <!-- Countdown Timer Display -->
+                <div class="flex flex-col items-center justify-center mb-8 relative">
+                    <svg class="w-16 h-16 transform -rotate-90">
+                        <circle cx="32" cy="32" r="28" stroke="rgba(255,255,255,0.1)" stroke-width="4" fill="transparent" />
+                        <circle id="countdownBar" cx="32" cy="32" r="28" stroke="#10B981" stroke-width="4" fill="transparent" 
+                                stroke-dasharray="175.9" stroke-dashoffset="0" class="transition-all duration-1000 ease-linear" />
+                    </svg>
+                    <span id="countdownText" class="absolute text-sm font-extrabold text-emerald-400">3</span>
+                </div>
+
+                <button class="w-full py-4 px-6 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 hover:border-white/20 text-white font-bold transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2" onclick="window.close();">
+                    <i data-lucide="x-circle" class="w-5 h-5"></i>
+                    <span>ปิดหน้าต่างนี้</span>
+                </button>
+            </div>
+
+            <script>
+                // Initialize Lucide Icons
+                lucide.createIcons();
+
+                // Custom Confetti Fountain
+                const canvas = document.getElementById('confettiCanvas');
+                const ctx = canvas.getContext('2d');
+                
+                function resizeCanvas() {
+                    canvas.width = window.innerWidth;
+                    canvas.height = window.innerHeight;
+                }
+                window.addEventListener('resize', resizeCanvas);
+                resizeCanvas();
+
+                let particles = [];
+                const colors = ['#10B981', '#06B6D4', '#3B82F6', '#F59E0B', '#EF4444', '#EC4899'];
+
+                class Particle {
+                    constructor() {
+                        this.x = canvas.width / 2;
+                        this.y = canvas.height / 2;
+                        this.size = Math.random() * 8 + 4;
+                        this.speedX = Math.random() * 12 - 6;
+                        this.speedY = Math.random() * -15 - 5;
+                        this.color = colors[Math.floor(Math.random() * colors.length)];
+                        this.gravity = 0.4;
+                        this.rotation = Math.random() * 360;
+                        this.rotationSpeed = Math.random() * 10 - 5;
+                    }
+                    update() {
+                        this.speedY += this.gravity;
+                        this.x += this.speedX;
+                        this.y += this.speedY;
+                        this.rotation += this.rotationSpeed;
+                    }
+                    draw() {
+                        ctx.save();
+                        ctx.translate(this.x, this.y);
+                        ctx.rotate(this.rotation * Math.PI / 180);
+                        ctx.fillStyle = this.color;
+                        ctx.fillRect(-this.size/2, -this.size/2, this.size, this.size);
+                        ctx.restore();
+                    }
+                }
+
+                for (let i = 0; i < 150; i++) {
+                    particles.push(new Particle());
+                }
+
+                function animate() {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    particles.forEach((p, idx) => {
+                        p.update();
+                        p.draw();
+                        if (p.y > canvas.height) {
+                            particles.splice(idx, 1);
+                        }
+                    });
+                    if (particles.length > 0) {
+                        requestAnimationFrame(animate);
+                    }
+                }
+                animate();
+
+                // Smooth countdown and auto-close
+                let timeLeft = 3;
+                const totalBar = 175.9;
+                const countdownBar = document.getElementById('countdownBar');
+                const countdownText = document.getElementById('countdownText');
+                
+                const timer = setInterval(() => {
+                    timeLeft--;
+                    if (timeLeft >= 0) {
+                        countdownText.innerText = timeLeft;
+                        const offset = totalBar - (timeLeft / 3) * totalBar;
+                        countdownBar.style.strokeDashoffset = offset;
+                    }
+                    if (timeLeft <= 0) {
+                        clearInterval(timer);
+                        window.close();
+                    }
+                }, 1000);
+            </script>
+            <style>
+                @keyframes popIn {
+                    from { opacity: 0; transform: translateY(30px) scale(0.9); }
+                    to { opacity: 1; transform: translateY(0) scale(1); }
+                }
+                @keyframes bounceIn {
+                    0% { transform: scale(0.3); opacity: 0; }
+                    50% { transform: scale(1.05); opacity: 1; }
+                    70% { transform: scale(0.9); }
+                    100% { transform: scale(1); opacity: 1; }
+                }
+            </style>
+        </body>
+        </html>
+        """
+        
+    try:
+        # Fetch current values and headers
+        headers_res = google_manager.sheets_service.spreadsheets().values().get(
+            spreadsheetId=google_manager.spreadsheet_id, range=f"'{sheet}'!A1:Z1"
+        ).execute()
+        headers = headers_res.get('values', [[]])[0]
+        
+        row_res = google_manager.sheets_service.spreadsheets().values().get(
+            spreadsheetId=google_manager.spreadsheet_id, range=f"'{sheet}'!A{row}:Z{row}"
+        ).execute()
+        row_data = row_res.get('values', [[]])[0]
+        
+        # Prepare inputs list
+        inputs_html = ""
+        for i, header in enumerate(headers):
+            if not header.strip():
+                continue
+                
+            val = row_data[i] if i < len(row_data) else ""
+            
+            is_readonly = ""
+            input_type = "text"
+            label_suffix = ""
+            icon_name = "edit-3"
+            
+            h_lower = header.lower()
+            if "วันที่" in h_lower:
+                input_type = "date"
+                icon_name = "calendar"
+                try:
+                    parts = val.strip().split('/')
+                    if len(parts) == 3:
+                        day = int(parts[0])
+                        month = int(parts[1])
+                        year = int(parts[2])
+                        if year < 100: year += 2000
+                        val = f"{year:04d}-{month:02d}-{day:02d}"
+                except:
+                    pass
+            elif "จำนวน" in h_lower or "สุทธิ" in h_lower or "เงิน" in h_lower or "ยอด" in h_lower or "ภาษี" in h_lower or "ราคา" in h_lower:
+                input_type = "number"
+                icon_name = "dollar-sign"
+                val = str(val).replace(",", "").replace("฿", "").strip()
+            elif "ผู้" in h_lower or "ร้าน" in h_lower or "คู่ค้า" in h_lower:
+                icon_name = "store"
+            elif "ลิงก์" in h_lower or "ไฟล์" in h_lower or "url" in h_lower or "id" in h_lower:
+                icon_name = "lock"
+                is_readonly = "readonly"
+                label_suffix = " 🔒"
+                
+            if "บันทึก" in h_lower or "รายละเอียด" in h_lower or "หมายเหตุ" in h_lower:
+                inputs_html += f'''
+                <div class="input-group relative group flex flex-col gap-2">
+                    <label for="field_{header}" class="flex items-center gap-2 text-xs font-semibold text-slate-400 group-focus-within:text-emerald-400 transition-colors uppercase tracking-wider">
+                        <i data-lucide="{icon_name}" class="w-4 h-4"></i>
+                        {header}{label_suffix}
+                    </label>
+                    <textarea id="field_{header}" name="field_{header}" rows="3" 
+                        class="bg-white/5 backdrop-blur-md border border-white/10 text-white rounded-2xl p-4 focus:border-emerald-400 focus:ring-4 focus:ring-emerald-500/20 transition-all outline-none w-full font-sans leading-relaxed text-sm resize-none" 
+                        placeholder="กรอกข้อมูล {header}...">{val}</textarea>
+                </div>
+                '''
+            else:
+                extra_attrs = ""
+                helper_html = ""
+                if input_type == "number":
+                    extra_attrs = 'oninput="formatLiveCurrency(this)"'
+                    helper_html = f'<div id="helper_field_{header}" class="text-[11px] text-emerald-400 mt-1 font-semibold transition-all h-4 opacity-0"></div>'
+                
+                inputs_html += f'''
+                <div class="input-group relative group flex flex-col gap-2">
+                    <label for="field_{header}" class="flex items-center gap-2 text-xs font-semibold text-slate-400 group-focus-within:text-emerald-400 transition-colors uppercase tracking-wider">
+                        <i data-lucide="{icon_name}" class="w-4 h-4"></i>
+                        {header}{label_suffix}
+                    </label>
+                    <input type="{input_type}" id="field_{header}" name="field_{header}" value="{val}" {is_readonly} step="any" {extra_attrs}
+                        class="bg-white/5 backdrop-blur-md border border-white/10 text-white rounded-2xl px-4 py-3.5 focus:border-emerald-400 focus:ring-4 focus:ring-emerald-500/20 transition-all outline-none w-full font-sans text-sm" 
+                        placeholder="กรอกข้อมูล {header}...">
+                    {helper_html}
+                </div>
+                '''
+            
+    except Exception as e:
+        return f"❌ เกิดข้อผิดพลาดในการโหลดข้อมูล: {e}", 500
+        
+    return f"""
+    <!DOCTYPE html>
+    <html lang="th">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>📝 แก้ไขข้อมูลค่าใช้จ่าย</title>
+        <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+        <script src="https://cdn.tailwindcss.com"></script>
+        <script src="https://unpkg.com/lucide@latest"></script>
+        <style>
+            body {{
+                font-family: 'Outfit', 'Sarabun', sans-serif;
+                background: radial-gradient(circle at top right, #0F2027, #203A43, #2C5364);
+                min-height: 100vh;
+            }}
+        </style>
+    </head>
+    <body class="text-white flex flex-col items-center justify-start py-10 px-4 md:px-8 relative min-h-screen">
+        <div class="max-w-xl w-full bg-white/10 backdrop-blur-xl border border-white/10 shadow-2xl rounded-[2.5rem] p-8 md:p-10 relative overflow-hidden transform scale-98 animate-[fadeIn_0.5s_ease-out]">
+            <!-- Decorative light effects -->
+            <div class="absolute -top-24 -left-24 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+            <div class="absolute -bottom-24 -right-24 w-48 h-48 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+            <header class="text-center mb-8 relative">
+                <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold mb-4 uppercase tracking-widest animate-pulse">
+                    <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+                    Smart Sync Core active
+                </div>
+                <h1 class="text-3xl font-extrabold text-white tracking-tight mb-2">แก้ไขรายการเอกสาร</h1>
+                <p class="text-sm text-slate-400 font-medium">
+                    ชีต: <span class="text-emerald-400 font-semibold">{sheet}</span> • แถวที่: <span class="text-emerald-400 font-semibold">{row}</span>
+                </p>
+            </header>
+
+            <form method="POST" id="editForm" class="flex flex-col gap-6" onsubmit="return handleFormSubmit(this)">
+                {inputs_html}
+                
+                <button type="submit" id="btnSubmit" class="w-full bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-bold py-4 px-6 rounded-2xl shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/30 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 flex items-center justify-center gap-2 mt-4 text-base">
+                    <i data-lucide="save" class="w-5 h-5"></i>
+                    <span>บันทึกข้อมูล & กระทบยอด</span>
+                </button>
+            </form>
+        </div>
+
+        <script>
+            // Initialize Lucide Icons
+            lucide.createIcons();
+
+            // Auto format live currency function
+            function formatLiveCurrency(input) {{
+                const helperId = "helper_" + input.id;
+                const helper = document.getElementById(helperId);
+                if (!helper) return;
+                const val = parseFloat(input.value);
+                if (isNaN(val)) {{
+                    helper.classList.add('opacity-0');
+                    return;
+                }}
+                helper.innerText = "✨ รูปแบบยอดเงิน: " + val.toLocaleString('th-TH', {{ minimumFractionDigits: 2, maximumFractionDigits: 2 }}) + " บาท";
+                helper.classList.remove('opacity-0');
+            }}
+
+            // Auto growing textareas
+            document.querySelectorAll('textarea').forEach(textarea => {{
+                textarea.addEventListener('input', function() {{
+                    this.style.height = 'auto';
+                    this.style.height = this.scrollHeight + 'px';
+                }});
+                // Initial resize
+                if(textarea.scrollHeight > textarea.clientHeight) {{
+                    textarea.style.height = textarea.scrollHeight + 'px';
+                }}
+            }});
+
+            // Form Submit Interceptor to show beautiful loading wheel
+            function handleFormSubmit(form) {{
+                const btn = document.getElementById('btnSubmit');
+                btn.disabled = true;
+                btn.classList.remove('from-emerald-500', 'to-teal-500');
+                btn.classList.add('from-slate-700', 'to-slate-800', 'cursor-not-allowed');
+                btn.innerHTML = `
+                    <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-emerald-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>กำลังประมวลผล & กระทบยอด...</span>
+                `;
+                return true;
+            }}
+        </script>
+        <style>
+            @keyframes fadeIn {{
+                from {{ opacity: 0; transform: translateY(20px) scale(0.98); }}
+                to {{ opacity: 1; transform: translateY(0) scale(1); }}
+            }}
+        </style>
+    </body>
+    </html>
+    """
+
 
 @app.route('/api/drive/delete', methods=['DELETE', 'POST'])
 @admin_required

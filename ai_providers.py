@@ -147,7 +147,7 @@ def analyze_image_contents(image_data: bytes, mime_type: str = "image/jpeg"):
     ภารกิจ: สกัดข้อมูลจากเอกสารบัญชี/ภาษี ด้วยความแม่นยำสูงสุด
     
     **Auditor Intelligence (ระดับความฉลาดสูงสุด)**:
-    - หากยอดเงินไม่ชัดเจน ให้ใช้หลักการทางบัญชี: gross_amount + vat_amount - wht_amount = net_amount
+    - หากยอดเงินไม่ชัดเจน ให้ใช้หลักการทางบัญชี: gross_amount - discount_amount + vat_amount - wht_amount = net_amount
     - สังเกตโลโก้ธนาคารเพื่อระบุ sender_bank/receiver_bank แม้ตัวหนังสือจะไม่ชัด
     - ตรวจสอบ QR Code ในสลิป (ถ้ามี) เพื่อยืนยันความถูกต้องของข้อมูล
     - หากข้อมูลบางอย่างหายไป (เช่น สาขา) ให้พยายามคาดการณ์จากที่อยู่ในเอกสารอย่างสมเหตุสมผล
@@ -158,7 +158,7 @@ def analyze_image_contents(image_data: bytes, mime_type: str = "image/jpeg"):
        - สำคัญ: ระบุธนาคารต้นทาง (sender_bank) และธนาคารปลายทาง (receiver_bank) เช่น กสิกรไทย, ไทยพาณิชย์, SCB, KBANK เป็นต้น
        - ห้ามสกัด: income_type, wht_rate, tax_id (ถ้าไม่ใช่สลิปนิติบุคคล)
     2. **Receipt/Invoice (ใบเสร็จ/ใบกำกับภาษี)**:
-       - เน้น: เลขประจำตัวผู้เสียภาษี (tax_id), ยอดก่อนภาษี (gross_amount), ภาษี (vat_amount), ยอดสุทธิ (net_amount)
+       - เน้น: เลขประจำตัวผู้เสียภาษี (tax_id), ยอดก่อนภาษี (gross_amount), ส่วนลด (discount_amount), ภาษี (vat_amount), ยอดสุทธิ (net_amount)
        - **หัก ณ ที่จ่าย (wht_amount)**: สำคัญมาก! ต้องสกัดจากคำว่า "หัก ณ ที่จ่าย", "WHT", "ภาษีหัก ณ ที่จ่าย" หรือยอดที่ติดลบก่อนรวมเป็นยอดสุทธิ
        - **อัตราภาษี (wht_rate)**: เช่น 1%, 3%, 5%
     3. **Statement**: สกัดรายการ transactions ในรูปแบบ List
@@ -175,6 +175,7 @@ def analyze_image_contents(image_data: bytes, mime_type: str = "image/jpeg"):
         "receiver": "RECEIVER_NAME",
         "receiver_bank": "BANK_NAME (เช่น กสิกรไทย, ไทยพาณิชย์, SCB, KBANK)",
         "gross_amount": 0.00,
+        "discount_amount": 0.00,
         "vat_amount": 0.00,
         "wht_amount": 0.00,
         "net_amount": 0.00,

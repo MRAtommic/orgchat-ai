@@ -2130,20 +2130,34 @@ function saveHistory() {
 function parseAIActions(text) {
   let displayHtml = markdownToHtml(text || '');
   let calendarData = null;
+  let reconcileData = null;
 
   if (text && text.includes('[CALENDAR_ACTION]')) {
     const match = text.match(/\[CALENDAR_ACTION\]([\s\S]*?)\[\/CALENDAR_ACTION\]/);
     if (match) {
       try {
         calendarData = JSON.parse(match[1]);
-        const cleanText = text.replace(/\[CALENDAR_ACTION\][\s\S]*?\[\/CALENDAR_ACTION\]/, '').trim();
-        displayHtml = markdownToHtml(cleanText);
+        text = text.replace(/\[CALENDAR_ACTION\][\s\S]*?\[\/CALENDAR_ACTION\]/, '').trim();
       } catch (e) {
         console.error('Calendar parse error:', e);
       }
     }
   }
-  return { displayHtml, calendarData };
+
+  if (text && text.includes('[RECONCILE_ACTION]')) {
+    const match = text.match(/\[RECONCILE_ACTION\]([\s\S]*?)\[\/RECONCILE_ACTION\]/);
+    if (match) {
+      try {
+        reconcileData = JSON.parse(match[1]);
+        text = text.replace(/\[RECONCILE_ACTION\][\s\S]*?\[\/RECONCILE_ACTION\]/, '').trim();
+      } catch (e) {
+        console.error('Reconcile parse error:', e);
+      }
+    }
+  }
+
+  displayHtml = markdownToHtml(text || '');
+  return { displayHtml, calendarData, reconcileData };
 }
 
 async function loadHistory(isBackground = false) {
@@ -2165,11 +2179,14 @@ async function loadHistory(isBackground = false) {
         const isAtBottom = chatArea.scrollHeight - chatArea.scrollTop <= chatArea.clientHeight + 50;
 
         state.history.forEach(msg => {
-          const { displayHtml, calendarData } = parseAIActions(msg.text);
+          const { displayHtml, calendarData, reconcileData } = parseAIActions(msg.text);
           const msgEl = appendMessage(msg.role, displayHtml, msg.sources || [], false, msg.id);
           
           if (calendarData) {
             renderCalendarActionUI(msgEl, calendarData);
+          }
+          if (reconcileData) {
+            renderReconcileActionUI(msgEl, reconcileData);
           }
         });
 
@@ -3677,14 +3694,18 @@ async function sendMessage(text) {
 
   // Display the complete bot message once streaming is done to finalize parsing (actions etc)
   if (botText) {
-    const { displayHtml, calendarData } = parseAIActions(botText);
+    const { displayHtml, calendarData, reconcileData } = parseAIActions(botText);
     
     if (botMsgEl) {
        const bubbleText = botMsgEl.querySelector('.prose');
        if (bubbleText) bubbleText.innerHTML = displayHtml;
        if (calendarData) renderCalendarActionUI(botMsgEl, calendarData);
+       if (reconcileData) renderReconcileActionUI(botMsgEl, reconcileData);
+       initIcons();
     } else {
        botMsgEl = appendMessage('bot', displayHtml, sources, false, botId);
+       if (calendarData) renderCalendarActionUI(botMsgEl, calendarData);
+       if (reconcileData) renderReconcileActionUI(botMsgEl, reconcileData);
     }
 
     state.history.push({ role: 'bot', text: botText, sources: sources, id: botId });
@@ -3712,6 +3733,37 @@ async function sendMessage(text) {
     msgInput.focus();
     initIcons();
   }
+}
+
+/**
+ * Parses structured AI actions from text response.
+ */
+function parseAIActions(text) {
+  let displayHtml = markdownToHtml(text);
+  let calendarData = null;
+  let reconcileData = null;
+
+  // 1. Calendar Action Detection
+  const calMatch = text.match(/\[CALENDAR_ACTION\]([\s\S]*?)\[\/CALENDAR_ACTION\]/);
+  if (calMatch) {
+    try {
+      calendarData = JSON.parse(calMatch[1]);
+      // Clean up the text for display (remove the raw JSON tag)
+      displayHtml = displayHtml.replace(/\[CALENDAR_ACTION\][\s\S]*?\[\/CALENDAR_ACTION\]/g, '');
+    } catch (e) { console.error('Calendar JSON parse error:', e); }
+  }
+
+  // 2. Reconciliation (Accounting) Action Detection
+  const reconMatch = text.match(/\[RECONCILE_ACTION\]([\s\S]*?)\[\/RECONCILE_ACTION\]/);
+  if (reconMatch) {
+    try {
+      reconcileData = JSON.parse(reconMatch[1]);
+      // Clean up the text for display (remove the raw JSON tag)
+      displayHtml = displayHtml.replace(/\[RECONCILE_ACTION\][\s\S]*?\[\/RECONCILE_ACTION\]/g, '');
+    } catch (e) { console.error('Reconcile JSON parse error:', e); }
+  }
+
+  return { displayHtml, calendarData, reconcileData };
 }
 
 /**
@@ -3793,6 +3845,194 @@ function renderCalendarActionUI(msgEl, data) {
 
   cancelBtn.onclick = () => {
     panel.remove();
+  };
+}
+
+/**
+ * Renders an interactive confirmation panel for Financial Reconciliation.
+ * Allows user to edit fields before saving to Google Sheets.
+ */
+function renderReconcileActionUI(msgEl, data) {
+  const panel = msgEl.querySelector('.action-panel');
+  if (!panel) return;
+
+  panel.classList.remove('hidden');
+  // Premium Card Styling with Glassmorphism and vibrant emerald accents
+  panel.className = "action-panel mt-6 p-0 overflow-hidden bg-white/80 dark:bg-emerald-950/20 backdrop-blur-xl border border-emerald-100 dark:border-emerald-800/50 rounded-[2rem] animate-in slide-in-from-top-4 fade-in duration-700 shadow-2xl shadow-emerald-500/5";
+  
+  // Helper to normalize date from DD/MM/YYYY to YYYY-MM-DD for native date picker
+  const toISODate = (dStr) => {
+    if (!dStr) return '';
+    const parts = dStr.split('/');
+    if (parts.length === 3) {
+      // Assuming DD/MM/YYYY
+      let year = parts[2];
+      if (year.length === 2) year = '20' + year; // handle short year
+      return `${year}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+    }
+    return dStr;
+  };
+
+  const dateValueISO = toISODate(data.date || '');
+  const amountValue = data.amount || data.net_amount || '';
+  const merchantValue = data.merchant || data.receiver || '';
+  const categoryValue = data.category || 'Slip';
+  const taxIdValue = data.tax_id || '';
+
+  panel.innerHTML = `
+    <div class="relative">
+      <!-- Header with Gradient Area -->
+      <div class="h-16 bg-gradient-to-r from-emerald-500 to-teal-500 flex items-center px-6 gap-3">
+        <div class="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white shadow-inner">
+          <i data-lucide="receipt-text" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <div class="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-50/80 leading-none mb-1">Financial Audit</div>
+          <div class="text-sm font-bold text-white leading-none">สกัดข้อมูลค่าใช้จ่าย</div>
+        </div>
+      </div>
+
+      <div class="p-6">
+        <div class="grid grid-cols-2 gap-5">
+          <!-- Date Field -->
+          <div class="space-y-1.5">
+            <label class="flex items-center gap-1.5 text-[10px] font-bold text-surface-400 dark:text-surface-500 uppercase tracking-wider ml-1">
+              <i data-lucide="calendar" class="w-3 h-3"></i> วันที่
+            </label>
+            <input type="date" value="${dateValueISO}" 
+              class="recon-date w-full bg-surface-50 dark:bg-surface-900/50 border border-surface-100 dark:border-surface-800 rounded-2xl px-4 py-2.5 text-xs font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 outline-none transition-all">
+          </div>
+
+          <!-- Amount Field -->
+          <div class="space-y-1.5">
+            <label class="flex items-center gap-1.5 text-[10px] font-bold text-surface-400 dark:text-surface-500 uppercase tracking-wider ml-1">
+              <i data-lucide="banknote" class="w-3 h-3"></i> ยอดเงิน
+            </label>
+            <div class="relative">
+              <input type="number" step="0.01" value="${amountValue}" placeholder="0.00" 
+                class="recon-amount w-full bg-surface-50 dark:bg-surface-900/50 border border-surface-100 dark:border-surface-800 rounded-2xl px-4 py-2.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 outline-none transition-all text-right pr-8">
+              <span class="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-surface-400">฿</span>
+            </div>
+          </div>
+
+          <!-- Merchant Field -->
+          <div class="space-y-1.5 col-span-2">
+            <label class="flex items-center gap-1.5 text-[10px] font-bold text-surface-400 dark:text-surface-500 uppercase tracking-wider ml-1">
+              <i data-lucide="store" class="w-3 h-3"></i> ร้านค้า / ผู้รับเงิน
+            </label>
+            <input type="text" value="${merchantValue}" placeholder="ระบุชื่อผู้รับ" 
+              class="recon-receiver w-full bg-surface-50 dark:bg-surface-900/50 border border-surface-100 dark:border-surface-800 rounded-2xl px-4 py-2.5 text-xs font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 outline-none transition-all">
+          </div>
+
+          <!-- Tax ID Field -->
+          <div class="space-y-1.5 col-span-2">
+            <label class="flex items-center gap-1.5 text-[10px] font-bold text-surface-400 dark:text-surface-500 uppercase tracking-wider ml-1">
+              <i data-lucide="hash" class="w-3 h-3"></i> เลขผู้เสียภาษี
+            </label>
+            <input type="text" value="${taxIdValue}" placeholder="13 หลัก" 
+              class="recon-tax-id w-full bg-surface-50 dark:bg-surface-900/50 border border-surface-100 dark:border-surface-800 rounded-2xl px-4 py-2.5 text-xs font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 outline-none transition-all">
+          </div>
+
+          <!-- Category Field -->
+          <div class="space-y-1.5 col-span-2">
+            <label class="flex items-center gap-1.5 text-[10px] font-bold text-surface-400 dark:text-surface-500 uppercase tracking-wider ml-1">
+              <i data-lucide="tag" class="w-3 h-3"></i> หมวดหมู่รายการ
+            </label>
+            <div class="relative">
+              <select class="recon-category w-full appearance-none bg-surface-50 dark:bg-surface-900/50 border border-surface-100 dark:border-surface-800 rounded-2xl px-4 py-2.5 text-xs font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 outline-none transition-all cursor-pointer">
+                <option value="สลิปโอนเงิน" ${categoryValue === 'สลิปโอนเงิน' || categoryValue === 'Slip' ? 'selected' : ''}>💸 สลิปโอนเงิน</option>
+                <option value="ใบเสร็จ/ใบกำกับภาษี" ${categoryValue === 'ใบเสร็จ/ใบกำกับภาษี' || categoryValue === 'Invoice' || categoryValue === 'Receipt' ? 'selected' : ''}>📄 ใบเสร็จ/ใบกำกับภาษี</option>
+                <option value="สเตตเมนต์" ${categoryValue === 'สเตตเมนต์' || categoryValue === 'Statement' ? 'selected' : ''}>🏦 รายการสเตตเมนต์</option>
+                <option value="อื่นๆ">🌀 อื่นๆ</option>
+              </select>
+              <div class="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-surface-400">
+                <i data-lucide="chevron-down" class="w-4 h-4"></i>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex flex-col gap-2 mt-6">
+          <button class="confirm-recon-btn w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black uppercase tracking-widest rounded-2xl transition-all shadow-lg shadow-emerald-500/20 active:scale-[0.98] flex items-center justify-center gap-2 group">
+            <span>บันทึกลง Google Sheets</span>
+            <i data-lucide="arrow-right" class="w-4 h-4 transition-transform group-hover:translate-x-1"></i>
+          </button>
+          <button class="cancel-recon-btn w-full py-3 text-surface-400 hover:text-surface-600 dark:hover:text-surface-200 text-[10px] font-bold uppercase tracking-widest transition-all">
+            ยกเลิกรายการนี้
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  initIcons();
+
+  const confirmBtn = panel.querySelector('.confirm-recon-btn');
+  const cancelBtn = panel.querySelector('.cancel-recon-btn');
+
+  confirmBtn.onclick = async () => {
+    // Collect edited values
+    const editedDate = panel.querySelector('.recon-date').value;
+    const editedAmount = panel.querySelector('.recon-amount').value;
+    const editedReceiver = panel.querySelector('.recon-receiver').value;
+    const editedCategory = panel.querySelector('.recon-category').value;
+    const editedTaxId = panel.querySelector('.recon-tax-id').value;
+
+    confirmBtn.disabled = true;
+    confirmBtn.innerHTML = '<i class="animate-spin" data-lucide="loader-2"></i> กำลังบันทึก...';
+    initIcons();
+
+    try {
+      // Helper to convert YYYY-MM-DD back to DD/MM/YYYY if preferred, 
+      // but the backend parse_date handles both. We'll send what's in the field.
+      // If it's a date input, it will be YYYY-MM-DD.
+      
+      const res = await apiFetch('/api/reconcile/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          extracted_data: {
+            ...data, // Keep original data (sender, etc)
+            date: editedDate,
+            net_amount: editedAmount,
+            receiver: editedReceiver,
+            category: editedCategory,
+            tax_id: editedTaxId
+          },
+          summary: data.summary || 'บันทึกโดย AI (OrgChat)',
+          file_link: data.file_link || '-'
+        })
+      });
+
+      if (res && res.ok) {
+        toast('บันทึกข้อมูลลง Google Sheets สำเร็จแล้ว', 'success');
+        panel.innerHTML = `
+          <div class="flex flex-col items-center justify-center p-12 text-center animate-in zoom-in-95 duration-500">
+            <div class="w-20 h-20 bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 rounded-full flex items-center justify-center mb-4 shadow-xl shadow-emerald-500/10">
+              <i data-lucide="check-circle-2" class="w-10 h-10"></i>
+            </div>
+            <h3 class="text-lg font-black text-emerald-700 dark:text-emerald-400 uppercase tracking-tighter">เรียบร้อยค่ะ!</h3>
+            <p class="text-xs text-surface-500 mt-2">พั้นบันทึกข้อมูลลง Google Sheets ให้พี่เรียบร้อยแล้วนะคะ 🌿</p>
+          </div>
+        `;
+        initIcons();
+      } else {
+        toast('บันทึกไม่สำเร็จ: ' + (res?.error || 'Unknown error'), 'error');
+        confirmBtn.disabled = false;
+        confirmBtn.innerHTML = 'บันทึกลง Google Sheets';
+        initIcons();
+      }
+    } catch (e) {
+      toast('เกิดข้อผิดพลาดในการบันทึก', 'error');
+      confirmBtn.disabled = false;
+      confirmBtn.innerHTML = 'บันทึกลง Google Sheets';
+      initIcons();
+    }
+  };
+
+  cancelBtn.onclick = () => {
+    panel.classList.add('hidden');
   };
 }
 
@@ -5115,8 +5355,10 @@ function initSocket() {
       }
     } else {
       // Message is for another chat or we are not looking at the chat modal
-      // Trigger unread count refresh which will also show the toast notification
       if (data.sender !== currentUser) {
+        if (data.text && data.text.includes('[RECONCILE_ACTION]')) {
+          toast('📢 มีค่าใช้จ่ายใหม่จาก LINE ให้ตรวจสอบค่ะ! กรุณาเปิดแอปเพื่อยืนยัน', 'info');
+        }
         console.log("🔔 New message in background, showing notification...");
         loadUnreadCounts();
       } else {
@@ -7684,6 +7926,7 @@ function renderChatMessages(shouldScroll = false) {
             ${audioHtml}
             ${filesHtml}
             ${readAvatarsHtml}
+            <div class="action-panel hidden w-full max-w-sm mt-3 overflow-hidden rounded-3xl shadow-xl"></div>
           </div>
         </div>
       </div>
@@ -7709,6 +7952,22 @@ function renderChatMessages(shouldScroll = false) {
   if (shouldScroll || isAtBottom) {
     groupChatMessages.scrollTop = groupChatMessages.scrollHeight;
   }
+
+  // Handle Interactive Actions (Reconciliation / Calendar) in Group Chat
+  state.groupChat.messages.forEach(m => {
+    if (m.text && (m.text.includes('[RECONCILE_ACTION]') || m.text.includes('[CALENDAR_ACTION]'))) {
+       const msgEl = $(`msg-row-${m.id}`);
+       if (msgEl) {
+         const panel = msgEl.querySelector('.action-panel');
+         // Only trigger if panel is hidden to prevent resetting user edits during polling
+         if (panel && panel.classList.contains('hidden')) {
+           const { calendarData, reconcileData } = parseAIActions(m.text);
+           if (calendarData) renderCalendarActionUI(msgEl, calendarData);
+           if (reconcileData) renderReconcileActionUI(msgEl, reconcileData);
+         }
+       }
+    }
+  });
 }
 
 function scrollToMessage(id) {
