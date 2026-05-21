@@ -2704,6 +2704,28 @@
                 </div>
               </div>
 
+              <!-- Local PND53 Scan Control Card -->
+              <div class="glass p-6 rounded-3xl border border-surface-200/50 dark:border-surface-850 bg-gradient-to-br from-indigo-500/5 via-brand-500/5 to-purple-500/5 backdrop-blur-xl shadow-xl flex flex-col md:flex-row items-center justify-between gap-6 transition-all hover:shadow-2xl">
+                <div class="flex items-center gap-4">
+                  <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/30 shrink-0">
+                    <i data-lucide="folder-search" class="w-6 h-6 animate-pulse"></i>
+                  </div>
+                  <div>
+                    <h3 class="text-sm font-black text-surface-900 dark:text-white flex items-center gap-2 flex-wrap">
+                      สแกนและประมวลผล ภ.ง.ด. 53 ในเครื่อง
+                      <span class="px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-500 text-[9px] font-black uppercase tracking-wider border border-indigo-500/20">Local Ingestion</span>
+                    </h3>
+                    <p class="text-[11px] text-surface-500 font-medium mt-1 leading-relaxed max-w-xl">
+                      สแกนไฟล์เอกสาร 'ใบเสร็จรับเงิน/ใบกำกับภาษี' และ 'สลิปโอนเงิน' ในโฟลเดอร์เครื่องเซิร์ฟเวอร์อัตโนมัติ เพื่อนำเข้าระบบ RAG และกระทบยอดบัญชีบน Google Sheets ทันที
+                    </p>
+                  </div>
+                </div>
+                
+                <button id="startLocalScanBtn" class="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-indigo-500/20 flex items-center gap-2 shrink-0">
+                  <i data-lucide="scan" class="w-4 h-4"></i> สแกนโฟลเดอร์ ภงด. 53
+                </button>
+              </div>
+
               <!-- Action Buttons -->
               <div class="flex justify-center gap-3">
                 <button id="startReconBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-xl shadow-indigo-500/20 flex items-center gap-3">

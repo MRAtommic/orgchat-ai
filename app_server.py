@@ -783,88 +783,27 @@ def api_login_google():
 
     except Exception as e:
         print(f"Google Login Error: {e}")
-        return jsonify({"ok": False, "error": "การตรวจสอบสิทธิ์กับ Google ล้มเหลว"}), 401
+        return jsonify({"ok": False, "error": str(e)}), 500
 
-# --- LINE BOT HELPERS ---
 
-def verify_line_signature(body, signature):
-    """Verifies the LINE webhook signature using constant-time comparison."""
-    channel_secret = os.environ.get("LINE_CHANNEL_SECRET", "").strip()
-    if not channel_secret:
-        return True # Dev mode: allow if secret not set
-    
-    # Ensure body is bytes
-    if isinstance(body, str):
-        body = body.encode('utf-8')
-    
-    hash_obj = hmac.new(channel_secret.encode('utf-8'), body, hashlib.sha256).digest()
-    expected_signature = base64.b64encode(hash_obj).decode('utf-8')
-    
-    try:
-        return hmac.compare_digest(signature.strip(), expected_signature)
-    except:
-        return False
-
-def reply_to_line(reply_token, text, quick_reply=None, sticker_data=None):
-    """Sends a reply message to LINE (supports text + optional sticker)."""
-    token = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "").strip()
-    if not token or not reply_token: return
-    
-    url = "https://api.line.me/v2/bot/message/reply"
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
-    
-    messages = []
-    # If sticker is requested, add it as the first message in the bubble
-    if sticker_data:
-        messages.append({
-            "type": "sticker",
-            "packageId": sticker_data.get("packageId", "446"),
-            "stickerId": sticker_data.get("stickerId", "1988")
-        })
-    
-    # Main text message
-    if isinstance(text, dict):
-        text_msg = text
+def clean_flex_payload(obj):
+    """Recursively removes keys that violate LINE API schema, e.g. weight values other than 'bold'."""
+    if isinstance(obj, dict):
+        cleaned = {}
+        for k, v in obj.items():
+            if k == "weight" and v != "bold":
+                continue
+            cleaned[k] = clean_flex_payload(v)
+        return cleaned
+    elif isinstance(obj, list):
+        return [clean_flex_payload(item) for item in obj]
     else:
-        text_msg = {"type": "text", "text": str(text)[:5000]}
-        
-    if quick_reply:
-        text_msg["quickReply"] = quick_reply
-    messages.append(text_msg)
-        
-    payload = {"replyToken": reply_token, "messages": messages}
-    try:
-        logger.info(f"📤 [LINE Reply] Sending reply to {reply_token[:10]}...")
-        response = requests.post(url, headers=headers, json=payload, timeout=15)
-        logger.info(f"📥 [LINE Reply] Status: {response.status_code}, Response: {response.text}")
-    except Exception as e:
-        logger.error(f"❌ [LINE Reply] Error: {e}")
+        return obj
 
-def create_line_flex_bubble(title, subtitle, fields, color="#1DB446"):
-    """Creates a beautiful LINE Flex Message JSON bubble."""
-    contents = []
-    contents.append({"type": "text", "text": title, "weight": "bold", "size": "xl", "color": color})
-    if subtitle:
-        contents.append({"type": "text", "text": subtitle, "size": "sm", "color": "#aaaaaa", "wrap": True, "margin": "md"})
-    contents.append({"type": "separator", "margin": "lg"})
-    
-    field_rows = []
-    for key, val in fields.items():
-        field_rows.append({
-            "type": "box", "layout": "horizontal", "contents": [
-                {"type": "text", "text": key, "size": "sm", "color": "#555555", "flex": 1},
-                {"type": "text", "text": str(val), "size": "sm", "color": "#111111", "flex": 2, "wrap": True}
-            ]
-        })
-    contents.append({"type": "box", "layout": "vertical", "contents": field_rows, "margin": "lg"})
-    contents.append({"type": "separator", "margin": "lg"})
-    contents.append({"type": "text", "text": "OrgChat Smart Helper", "size": "xs", "color": "#aaaaaa", "align": "end", "style": "italic", "margin": "md"})
-
-    return {"type": "bubble", "body": {"type": "box", "layout": "vertical", "contents": contents}}
 
 def create_expense_flex_bubble(sheet_name, folder_name, net_amount, date_str, memo, vendor, file_link, sheet_url, edit_data_postback):
-    """Creates a beautiful, high-fidelity LINE Flex Message matching the user request."""
-    # Extract row_num from edit_data_postback safely
+    """Creates an ultra-premium, high-fidelity luxury minimal LINE Flex Message with zero emojis."""
+    # Extract row_num safely
     row_num = 1
     if edit_data_postback:
         try:
@@ -916,18 +855,6 @@ def create_expense_flex_bubble(sheet_name, folder_name, net_amount, date_str, me
     if amount_big.endswith(".00"):
         amount_big = amount_big[:-3]
 
-    # Emoji mapping for folders
-    folder_emoji = "📂"
-    folder_lower = folder_name.lower()
-    if "สินค้า" in folder_lower:
-        folder_emoji = "🛍️"
-    elif "ค่าใช้จ่าย" in folder_lower or "จ่าย" in folder_lower:
-        folder_emoji = "💸"
-    elif "ไอที" in folder_lower or "software" in folder_lower or "it" in folder_lower:
-        folder_emoji = "💻"
-    elif "เอกสาร" in folder_lower:
-        folder_emoji = "📄"
-
     # Defensive text wrapping
     sheet_name_str = str(sheet_name)
     folder_name_str = str(folder_name)
@@ -937,18 +864,54 @@ def create_expense_flex_bubble(sheet_name, folder_name, net_amount, date_str, me
 
     bubble = {
         "type": "bubble",
+        "size": "mega",
         "header": {
             "type": "box",
             "layout": "vertical",
-            "backgroundColor": "#EBF7EE",
-            "paddingAll": "16px",
+            "backgroundColor": "#F0FDF9",
+            "paddingAll": "20px",
+            "paddingBottom": "16px",
             "contents": [
                 {
+                    "type": "box",
+                    "layout": "horizontal",
+                    "contents": [
+                        {
+                            "type": "box",
+                            "layout": "vertical",
+                            "backgroundColor": "#059669",
+                            "cornerRadius": "20px",
+                            "paddingAll": "4px",
+                            "paddingStart": "10px",
+                            "paddingEnd": "10px",
+                            "contents": [
+                                {"type": "text", "text": "RECORDED", "size": "xxs", "color": "#FFFFFF", "weight": "bold"}
+                            ]
+                        },
+                        {"type": "filler"}
+                    ]
+                },
+                {
                     "type": "text",
-                    "text": "✅ บันทึกค่าใช้จ่ายสำเร็จ",
+                    "text": f"{amount_big} THB",
                     "weight": "bold",
-                    "color": "#1E7E34",
-                    "size": "md"
+                    "size": "xxl",
+                    "color": "#0F172A",
+                    "margin": "md",
+                    "action": {
+                        "type": "postback",
+                        "data": f"action=edit_field&sheet={sheet_name_str}&row={row_num}&field=จำนวนเงินสุทธิ&display=ยอดเงินสุทธิ",
+                        "displayText": "ฉันต้องการแก้ไขยอดเงินสุทธิ"
+                    }
+                },
+                {
+                    "type": "box",
+                    "layout": "horizontal",
+                    "margin": "sm",
+                    "contents": [
+                        {"type": "text", "text": folder_name_str, "size": "xs", "color": "#0D9488", "weight": "bold", "flex": 0},
+                        {"type": "text", "text": f"  ·  {formatted_date_str}", "size": "xs", "color": "#64748B", "flex": 1, "wrap": False}
+                    ]
                 }
             ]
         },
@@ -957,46 +920,16 @@ def create_expense_flex_bubble(sheet_name, folder_name, net_amount, date_str, me
             "layout": "vertical",
             "backgroundColor": "#FFFFFF",
             "paddingAll": "20px",
-            "spacing": "md",
+            "paddingTop": "12px",
             "contents": [
                 {
-                    "type": "box",
-                    "layout": "horizontal",
-                    "action": {
-                        "type": "postback",
-                        "data": f"action=edit_field&sheet={sheet_name_str}&row={row_num}&field=จำนวนเงินสุทธิ&display=ยอดเงินสุทธิ",
-                        "displayText": "ฉันต้องการแก้ไขยอดเงินสุทธิ"
-                    },
-                    "contents": [
-                        {
-                            "type": "text",
-                            "text": "จำนวนเงิน",
-                            "color": "#1E7E34",
-                            "size": "sm",
-                            "weight": "bold",
-                            "flex": 4,
-                            "align": "start"
-                        },
-                        {
-                            "type": "text",
-                            "text": f"{amount_big} THB",
-                            "weight": "bold",
-                            "size": "xl",
-                            "color": "#000000",
-                            "flex": 6,
-                            "align": "end"
-                        }
-                    ]
-                },
-                {
                     "type": "separator",
-                    "color": "#E2E8F0",
-                    "margin": "lg"
+                    "color": "#F8FAFC"
                 },
                 {
                     "type": "box",
                     "layout": "vertical",
-                    "spacing": "sm",
+                    "spacing": "md",
                     "margin": "lg",
                     "contents": [
                         {
@@ -1008,16 +941,16 @@ def create_expense_flex_bubble(sheet_name, folder_name, net_amount, date_str, me
                                 "displayText": "ฉันต้องการย้ายประเภทเอกสาร"
                             },
                             "contents": [
-                                {"type": "text", "text": "ประเภทเอกสาร", "color": "#1E7E34", "size": "sm", "weight": "bold", "flex": 4},
-                                {"type": "text", "text": sheet_name_str, "color": "#000000", "size": "sm", "flex": 6, "wrap": True}
+                                {"type": "text", "text": "BOOKSHEET", "color": "#94A3B8", "size": "xxs", "weight": "bold", "flex": 4, "align": "start"},
+                                {"type": "text", "text": sheet_name_str, "color": "#334155", "size": "xs", "weight": "regular", "flex": 8, "wrap": True, "align": "end"}
                             ]
                         },
                         {
                             "type": "box",
                             "layout": "horizontal",
                             "contents": [
-                                {"type": "text", "text": "ประเภทค่าใช้จ่าย", "color": "#64748B", "size": "sm", "flex": 4},
-                                {"type": "text", "text": f"{folder_emoji} {folder_name_str}", "color": "#000000", "size": "sm", "flex": 6, "wrap": True}
+                                {"type": "text", "text": "CLASSIFICATION", "color": "#94A3B8", "size": "xxs", "weight": "bold", "flex": 4, "align": "start"},
+                                {"type": "text", "text": folder_name_str, "color": "#334155", "size": "xs", "weight": "regular", "flex": 8, "wrap": True, "align": "end"}
                             ]
                         },
                         {
@@ -1030,8 +963,8 @@ def create_expense_flex_bubble(sheet_name, folder_name, net_amount, date_str, me
                                 "initial": initial_date
                             },
                             "contents": [
-                                {"type": "text", "text": "วันที่", "color": "#1E7E34", "size": "sm", "weight": "bold", "flex": 4},
-                                {"type": "text", "text": formatted_date_str, "color": "#000000", "size": "sm", "flex": 6, "wrap": True}
+                                {"type": "text", "text": "TRANSACTION DATE", "color": "#94A3B8", "size": "xxs", "weight": "bold", "flex": 4, "align": "start"},
+                                {"type": "text", "text": formatted_date_str, "color": "#334155", "size": "xs", "weight": "regular", "flex": 8, "wrap": True, "align": "end"}
                             ]
                         },
                         {
@@ -1043,64 +976,66 @@ def create_expense_flex_bubble(sheet_name, folder_name, net_amount, date_str, me
                                 "displayText": "ฉันต้องการแก้ไขผู้ขาย/ร้านค้า"
                             },
                             "contents": [
-                                {"type": "text", "text": "ผู้ขาย/ร้านค้า", "color": "#1E7E34", "size": "sm", "weight": "bold", "flex": 4},
-                                {"type": "text", "text": vendor_str, "color": "#000000", "size": "sm", "flex": 6, "wrap": True}
+                                {"type": "text", "text": "VENDOR / MERCHANT", "color": "#94A3B8", "size": "xxs", "weight": "bold", "flex": 4, "align": "start"},
+                                {"type": "text", "text": vendor_str, "color": "#334155", "size": "xs", "weight": "regular", "flex": 8, "wrap": True, "align": "end"}
+                            ]
+                        },
+                        {
+                            "type": "separator",
+                            "color": "#F8FAFC",
+                            "margin": "md"
+                        },
+                        {
+                            "type": "box",
+                            "layout": "vertical",
+                            "backgroundColor": "#F8FAFC",
+                            "cornerRadius": "8px",
+                            "paddingAll": "10px",
+                            "margin": "xs",
+                            "action": {
+                                "type": "postback",
+                                "data": f"action=edit_field&sheet={sheet_name_str}&row={row_num}&field=บันทึกช่วยจำ&display=รายละเอียดบันทึกช่วยจำ",
+                                "displayText": "ฉันต้องการแก้ไขรายละเอียด"
+                            },
+                            "contents": [
+                                {"type": "text", "text": "MEMO", "color": "#94A3B8", "size": "xxs", "weight": "bold"},
+                                {"type": "text", "text": memo_str, "color": "#334155", "size": "xs", "wrap": True, "margin": "xs"}
                             ]
                         }
-                    ]
-                },
-                {
-                    "type": "separator",
-                    "color": "#E2E8F0",
-                    "margin": "lg"
-                },
-                {
-                    "type": "box",
-                    "layout": "vertical",
-                    "margin": "lg",
-                    "action": {
-                        "type": "postback",
-                        "data": f"action=edit_field&sheet={sheet_name_str}&row={row_num}&field=บันทึกช่วยจำ&display=รายละเอียดบันทึกช่วยจำ",
-                        "displayText": "ฉันต้องการแก้ไขรายละเอียด"
-                    },
-                    "contents": [
-                        {"type": "text", "text": "รายละเอียด", "color": "#1E7E34", "size": "sm", "weight": "bold"},
-                        {"type": "text", "text": memo_str, "color": "#000000", "size": "sm", "wrap": True, "margin": "xs"}
                     ]
                 }
             ]
         }
     }
 
-    # Dynamically build footer contents to guarantee 100% valid URI actions
-    footer_contents = []
+    # Dynamically build footer with symmetrical outlined capsule buttons
+    buttons = []
     if file_link and str(file_link).startswith("http"):
-        footer_contents.append({
+        buttons.append({
             "type": "button",
-            "style": "link",
+            "style": "secondary",
+            "color": "#F1F5F9",
             "height": "sm",
             "action": {
                 "type": "uri",
-                "label": "📄 ดูไฟล์ต้นฉบับ",
+                "label": "ดูเอกสาร",
                 "uri": str(file_link)
             }
         })
     if sheet_url and str(sheet_url).startswith("http"):
-        footer_contents.append({
+        buttons.append({
             "type": "button",
-            "style": "link",
+            "style": "secondary",
+            "color": "#F1F5F9",
             "height": "sm",
             "action": {
                 "type": "uri",
-                "label": "📊 เปิด Google Sheets",
+                "label": "เปิดบัญชี",
                 "uri": str(sheet_url)
             }
         })
     if edit_data_postback:
-        # Resolve the public base URL dynamically
         base_url = "http://localhost:5005"
-        
-        # 1. Try to read from database setting LINE_WEBHOOK_URL
         try:
             webhook_url = database.get_app_setting("LINE_WEBHOOK_URL", "")
             if webhook_url and webhook_url.startswith("http"):
@@ -1113,17 +1048,14 @@ def create_expense_flex_bubble(sheet_name, folder_name, net_amount, date_str, me
         except Exception:
             pass
 
-        # 2. If it is still local or empty, inspect Request headers for Cloudflare / Ngrok / Reverse Proxy
         if "localhost" in base_url or "127.0.0.1" in base_url or not base_url.startswith("http"):
             try:
                 from flask import request
-                # Check X-Forwarded-Host
                 forwarded_host = request.headers.get('X-Forwarded-Host')
                 forwarded_proto = request.headers.get('X-Forwarded-Proto', 'https')
                 if forwarded_host and "localhost" not in forwarded_host and "127.0.0.1" not in forwarded_host:
                     base_url = f"{forwarded_proto}://{forwarded_host}"
                 else:
-                    # Check standard Host header
                     host = request.headers.get('Host')
                     if host and "localhost" not in host and "127.0.0.1" not in host:
                         scheme = request.scheme or "https"
@@ -1135,7 +1067,6 @@ def create_expense_flex_bubble(sheet_name, folder_name, net_amount, date_str, me
             except Exception:
                 pass
 
-        # 3. Last fallback, inspect environment variables
         if "localhost" in base_url or "127.0.0.1" in base_url:
             import os
             env_url = os.environ.get("BASE_URL") or os.environ.get("PUBLIC_URL")
@@ -1146,61 +1077,91 @@ def create_expense_flex_bubble(sheet_name, folder_name, net_amount, date_str, me
         encoded_sheet = urllib.parse.quote(sheet_name_str)
         web_edit_url = f"{base_url}/edit_expense_form?sheet={encoded_sheet}&row={row_num}"
         
-        footer_contents.append({
+        buttons.append({
             "type": "button",
-            "style": "primary",
-            "color": "#007BFF",
+            "style": "secondary",
+            "color": "#F1F5F9",
             "height": "sm",
             "action": {
                 "type": "uri",
-                "label": "แก้ไขด้วยฟอร์มเว็บ",
+                "label": "แก้ไขเว็บ",
                 "uri": web_edit_url
             }
         })
         
-        footer_contents.append({
+        buttons.append({
             "type": "button",
             "style": "secondary",
+            "color": "#F1F5F9",
             "height": "sm",
             "action": {
                 "type": "postback",
-                "label": "แก้ไขผ่านแชต",
+                "label": "แก้ไขแชต",
                 "data": str(edit_data_postback)
             }
         })
+
+    footer_contents = list(buttons)
 
     if footer_contents:
         bubble["footer"] = {
             "type": "box",
             "layout": "vertical",
             "backgroundColor": "#FFFFFF",
-            "spacing": "xs",
-            "paddingAll": "12px",
+            "spacing": "sm",
+            "paddingAll": "20px",
+            "paddingTop": "0px",
             "contents": footer_contents
         }
 
-    return bubble
+    return clean_flex_payload(bubble)
 
-def create_duplicate_warning_flex_bubble(sheet_name, row_num, ref_number, net_amount, sheet_url):
-    """Creates a premium and highly-informative LINE Flex bubble for duplicate slips."""
-    ref_str = str(ref_number) if ref_number else "-"
-    amt_str = str(net_amount) if net_amount and net_amount != "-" else "-"
-    sheet_name_str = str(sheet_name)
-    
+
+def create_links_flex_bubble(sheet_url, drive_url):
+    """Creates a beautiful, premium emerald-themed Flex card for links with zero emojis."""
     bubble = {
         "type": "bubble",
+        "size": "mega",
         "header": {
             "type": "box",
             "layout": "vertical",
-            "backgroundColor": "#FFF3CD",
-            "paddingAll": "16px",
+            "backgroundColor": "#F0FDF9",
+            "paddingAll": "20px",
+            "paddingBottom": "16px",
             "contents": [
                 {
+                    "type": "box",
+                    "layout": "horizontal",
+                    "contents": [
+                        {
+                            "type": "box",
+                            "layout": "vertical",
+                            "backgroundColor": "#059669",
+                            "cornerRadius": "20px",
+                            "paddingAll": "4px",
+                            "paddingStart": "10px",
+                            "paddingEnd": "10px",
+                            "contents": [
+                                {"type": "text", "text": "WORKSPACE", "size": "xxs", "color": "#FFFFFF", "weight": "bold"}
+                            ]
+                        },
+                        {"type": "filler"}
+                    ]
+                },
+                {
                     "type": "text",
-                    "text": "⚠️ ตรวจพบการอัปโหลดสลิปซ้ำซ้อน",
+                    "text": "ลิงก์ระบบบัญชีและเอกสาร",
                     "weight": "bold",
-                    "color": "#856404",
-                    "size": "sm"
+                    "size": "md",
+                    "color": "#0F172A",
+                    "margin": "sm"
+                },
+                {
+                    "type": "text",
+                    "text": "พี่สามารถเข้าถึงช่องทางต่าง ๆ ได้ผ่านปุ่มด้านล่างนี้ค่ะ",
+                    "size": "xs",
+                    "color": "#64748B",
+                    "margin": "xs"
                 }
             ]
         },
@@ -1209,93 +1170,446 @@ def create_duplicate_warning_flex_bubble(sheet_name, row_num, ref_number, net_am
             "layout": "vertical",
             "backgroundColor": "#FFFFFF",
             "paddingAll": "20px",
+            "paddingTop": "12px",
             "spacing": "md",
+            "contents": [
+                {
+                    "type": "separator",
+                    "color": "#F1F5F9"
+                },
+                {
+                    "type": "box",
+                    "layout": "vertical",
+                    "spacing": "sm",
+                    "contents": [
+                        {
+                            "type": "button",
+                            "action": {
+                                "type": "uri",
+                                "label": "เปิด Google Sheets (บัญชี)",
+                                "uri": sheet_url
+                            },
+                            "style": "secondary",
+                            "color": "#F1F5F9",
+                            "height": "sm"
+                        },
+                        {
+                            "type": "button",
+                            "action": {
+                                "type": "uri",
+                                "label": "เปิด Google Drive (โฟลเดอร์เก็บไฟล์)",
+                                "uri": drive_url
+                            },
+                            "style": "secondary",
+                            "color": "#F1F5F9",
+                            "height": "sm"
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+    return clean_flex_payload(bubble)
+
+
+def _get_item_flex_block(idx, r, folder_name, base_url):
+    """Generates an ultra-premium, compact item metadata block with zero emojis and high-end design."""
+    status = r.get("status", "success")
+    name = r.get("name", "ไฟล์")
+    sheet_name = r.get("sheet", "ทั่วไป")
+    row_num = r.get("row", 1)
+    file_link = r.get("link", "#")
+    
+    sheet_name_str = str(sheet_name)
+    
+    # Format amount beautifully
+    ext = r.get('analysis', {}).get('extracted_data', {}) if r.get('analysis') else {}
+    net_amt = ext.get('net_amount')
+    try:
+        val_clean = str(net_amt).replace(",", "").strip()
+        val_float = float(val_clean)
+        amt_str = f"{val_float:,.2f} THB"
+    except:
+        amt_str = f"{net_amt} THB" if net_amt and net_amt != "-" else "-"
+
+    if amt_str.endswith(".00"):
+        amt_str = amt_str[:-3]
+    if amt_str.endswith(".00 THB"):
+        amt_str = amt_str.replace(".00 THB", " THB")
+
+    import urllib.parse
+    encoded_sheet = urllib.parse.quote(sheet_name_str)
+    web_edit_url = f"{base_url}/edit_expense_form?sheet={encoded_sheet}&row={row_num}"
+    
+    status_label = f"RECORD {idx:02d}"
+    status_color = "#059669" if status == "success" else "#EF4444"
+    
+    block_contents = []
+    
+    # Display: strip extension, show basename cleanly
+    import os as _os
+    base_name = _os.path.splitext(name)[0]  # remove .jpg / .pdf etc.
+    display_name = base_name[:22] + "…" if len(base_name) > 22 else base_name
+    
+    block_contents.append({
+        "type": "box",
+        "layout": "horizontal",
+        "contents": [
+            {
+                "type": "text",
+                "text": status_label,
+                "weight": "bold",
+                "size": "xxs",
+                "color": status_color,
+                "flex": 3
+            },
+            {
+                "type": "text",
+                "text": display_name,
+                "size": "xxs",
+                "color": "#0F172A",
+                "weight": "bold",
+                "flex": 9,
+                "wrap": True,
+                "maxLines": 2,
+                "align": "end"
+            }
+        ]
+    })
+    
+    block_contents.append({
+        "type": "box",
+        "layout": "horizontal",
+        "margin": "xs",
+        "contents": [
+            {
+                "type": "text",
+                "text": "AMOUNT / TARGET" if status == "success" else "STATUS",
+                "size": "xxs",
+                "color": "#94A3B8",
+                "weight": "bold",
+                "flex": 4
+            },
+            {
+                "type": "text",
+                "text": f"{amt_str} to {sheet_name_str}" if status == "success" else "ซ้ำซ้อน",
+                "size": "xs",
+                "color": "#334155" if status == "success" else "#9F1239",
+                "weight": "regular",
+                "flex": 8,
+                "align": "end"
+            }
+        ]
+    })
+    
+    links = []
+    has_file = False
+    if file_link and str(file_link).startswith("http"):
+        has_file = True
+
+    if has_file:
+        # We have three links. Let's make them flex 1, start / center / end
+        links.append({
+            "type": "text",
+            "text": "ดูเอกสารจริง",
+            "size": "xxs",
+            "color": "#059669",
+            "weight": "bold",
+            "decoration": "underline",
+            "align": "start",
+            "flex": 1,
+            "action": {
+                "type": "uri",
+                "label": "ดูไฟล์",
+                "uri": str(file_link)
+            }
+        })
+        
+        links.append({
+            "type": "text",
+            "text": "ย้ายประเภท",
+            "size": "xxs",
+            "color": "#059669",
+            "weight": "bold",
+            "decoration": "underline",
+            "align": "center",
+            "flex": 1,
+            "action": {
+                "type": "postback",
+                "label": "ย้ายประเภท",
+                "data": f"action=choose_new_sheet&sheet={sheet_name_str}&row={row_num}",
+                "displayText": "ฉันต้องการย้ายประเภทเอกสาร"
+            }
+        })
+        
+        links.append({
+            "type": "text",
+            "text": "แก้ไขข้อมูล",
+            "size": "xxs",
+            "color": "#059669",
+            "weight": "bold",
+            "decoration": "underline",
+            "align": "end",
+            "flex": 1,
+            "action": {
+                "type": "uri",
+                "label": "แก้ไข",
+                "uri": web_edit_url
+            }
+        })
+    else:
+        # We only have two links. Let's make them start and end
+        links.append({
+            "type": "text",
+            "text": "ย้ายประเภท",
+            "size": "xxs",
+            "color": "#059669",
+            "weight": "bold",
+            "decoration": "underline",
+            "align": "start",
+            "flex": 1,
+            "action": {
+                "type": "postback",
+                "label": "ย้ายประเภท",
+                "data": f"action=choose_new_sheet&sheet={sheet_name_str}&row={row_num}",
+                "displayText": "ฉันต้องการย้ายประเภทเอกสาร"
+            }
+        })
+        
+        links.append({
+            "type": "text",
+            "text": "แก้ไขข้อมูล",
+            "size": "xxs",
+            "color": "#059669",
+            "weight": "bold",
+            "decoration": "underline",
+            "align": "end",
+            "flex": 1,
+            "action": {
+                "type": "uri",
+                "label": "แก้ไข",
+                "uri": web_edit_url
+            }
+        })
+    
+    block_contents.append({
+        "type": "box",
+        "layout": "horizontal",
+        "margin": "sm",
+        "contents": links
+    })
+    
+    return {
+        "type": "box",
+        "layout": "vertical",
+        "contents": block_contents
+    }
+
+
+def create_paired_expense_flex_bubble(item1, idx1, item2, idx2, folder_name, base_url, sheet_url):
+    """Creates a beautiful, ultra-minimal paired receipt bubble for carousels with zero emojis."""
+    body_contents = []
+    
+    box1 = _get_item_flex_block(idx1, item1, folder_name, base_url)
+    body_contents.append(box1)
+    
+    if item2:
+        body_contents.append({
+            "type": "separator",
+            "color": "#F1F5F9",
+            "margin": "md"
+        })
+        box2 = _get_item_flex_block(idx2, item2, folder_name, base_url)
+        body_contents.append(box2)
+        
+    bubble = {
+        "type": "bubble",
+        "size": "mega",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#F0FDF9",
+            "paddingAll": "16px",
+            "paddingBottom": "12px",
             "contents": [
                 {
                     "type": "box",
                     "layout": "horizontal",
                     "contents": [
                         {
-                            "type": "text",
-                            "text": "เลขที่รายการ",
-                            "color": "#856404",
-                            "size": "sm",
-                            "flex": 2
+                            "type": "box",
+                            "layout": "vertical",
+                            "backgroundColor": "#059669",
+                            "cornerRadius": "20px",
+                            "paddingAll": "4px",
+                            "paddingStart": "10px",
+                            "paddingEnd": "10px",
+                            "contents": [
+                                {"type": "text", "text": "BATCH", "size": "xxs", "color": "#FFFFFF", "weight": "bold"}
+                            ]
                         },
-                        {
-                            "type": "text",
-                            "text": ref_str,
-                            "color": "#000000",
-                            "weight": "bold",
-                            "size": "sm",
-                            "flex": 4,
-                            "align": "end",
-                            "wrap": True
-                        }
+                        {"type": "filler"}
                     ]
-                },
-                {
-                    "type": "separator",
-                    "color": "#F3F4F6"
-                },
-                {
-                    "type": "box",
-                    "layout": "horizontal",
-                    "contents": [
-                        {
-                            "type": "text",
-                            "text": "พบในชีต",
-                            "color": "#856404",
-                            "size": "sm",
-                            "flex": 2
-                        },
-                        {
-                            "type": "text",
-                            "text": f"'{sheet_name_str}' แถวที่ {row_num}",
-                            "color": "#000000",
-                            "weight": "bold",
-                            "size": "sm",
-                            "flex": 4,
-                            "align": "end"
-                        }
-                    ]
-                },
-                {
-                    "type": "separator",
-                    "color": "#F3F4F6"
-                },
-                {
-                    "type": "box",
-                    "layout": "horizontal",
-                    "contents": [
-                        {
-                            "type": "text",
-                            "text": "ยอดเงิน",
-                            "color": "#856404",
-                            "size": "sm",
-                            "flex": 2
-                        },
-                        {
-                            "type": "text",
-                            "text": amt_str,
-                            "color": "#000000",
-                            "weight": "bold",
-                            "size": "sm",
-                            "flex": 4,
-                            "align": "end"
-                        }
-                    ]
-                },
-                {
-                    "type": "separator",
-                    "color": "#F3F4F6"
                 },
                 {
                     "type": "text",
-                    "text": "น้องพั้นช์ตรวจสอบเลขที่อ้างอิงรายการโอนเงินแล้วพบว่ามีข้อมูลนี้อยู่แล้วในชีต เพื่อความถูกต้องของบัญชีและป้องกันการบันทึกยอดซ้ำซ้อน ระบบจึงไม่ได้ลงรายการซ้ำให้ค่ะ 🥰",
-                    "color": "#6B7280",
+                    "text": "รายละเอียดเอกสารนำส่ง",
+                    "weight": "bold",
+                    "size": "md",
+                    "color": "#0F172A",
+                    "margin": "sm"
+                }
+            ]
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#FFFFFF",
+            "paddingAll": "20px",
+            "paddingTop": "12px",
+            "spacing": "md",
+            "contents": body_contents
+        }
+    }
+    
+    if sheet_url and sheet_url != "#":
+        bubble["footer"] = {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#FFFFFF",
+            "paddingAll": "16px",
+            "paddingTop": "0px",
+            "contents": [
+                {
+                    "type": "box",
+                    "layout": "horizontal",
+                    "spacing": "sm",
+                    "contents": [
+                        {
+                            "type": "button",
+                            "action": {
+                                "type": "uri",
+                                "label": "เปิดบัญชี",
+                                "uri": sheet_url
+                            },
+                            "style": "primary",
+                            "color": "#059669",
+                            "height": "sm"
+                        }
+                    ]
+                }
+            ]
+        }
+        
+    return clean_flex_payload(bubble)
+
+
+def create_duplicate_warning_flex_bubble(sheet_name, row_num, ref_number, net_amount, sheet_url):
+    """Creates a premium and highly-compact minimal LINE Flex bubble for duplicate slips with zero emojis."""
+    ref_str = str(ref_number) if ref_number else "-"
+    
+    try:
+        val_clean = str(net_amount).replace(",", "").strip()
+        val_float = float(val_clean)
+        amt_str = f"{val_float:,.2f} THB"
+    except:
+        amt_str = f"{net_amount} THB" if net_amount and net_amount != "-" else "-"
+        
+    sheet_name_str = str(sheet_name)
+    
+    bubble = {
+        "type": "bubble",
+        "size": "mega",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#FFF1F2",
+            "paddingAll": "20px",
+            "paddingBottom": "16px",
+            "contents": [
+                {
+                    "type": "box",
+                    "layout": "horizontal",
+                    "contents": [
+                        {
+                            "type": "box",
+                            "layout": "vertical",
+                            "backgroundColor": "#9F1239",
+                            "cornerRadius": "20px",
+                            "paddingAll": "4px",
+                            "paddingStart": "10px",
+                            "paddingEnd": "10px",
+                            "contents": [
+                                {"type": "text", "text": "DUPLICATE", "size": "xxs", "color": "#FFFFFF", "weight": "bold"}
+                            ]
+                        },
+                        {"type": "filler"}
+                    ]
+                },
+                {
+                    "type": "text",
+                    "text": amt_str,
+                    "weight": "bold",
+                    "size": "xxl",
+                    "color": "#0F172A",
+                    "margin": "md"
+                },
+                {
+                    "type": "text",
+                    "text": "ระบบตรวจพบรายการซ้ำซ้อน",
                     "size": "xs",
-                    "wrap": True
+                    "color": "#9F1239",
+                    "margin": "xs"
+                }
+            ]
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#FFFFFF",
+            "paddingAll": "20px",
+            "paddingTop": "12px",
+            "contents": [
+                {
+                    "type": "separator",
+                    "color": "#F1F5F9"
+                },
+                {
+                    "type": "box",
+                    "layout": "vertical",
+                    "spacing": "md",
+                    "margin": "lg",
+                    "contents": [
+                        {
+                            "type": "box",
+                            "layout": "horizontal",
+                            "contents": [
+                                {"type": "text", "text": "TRANSACTION ID", "color": "#94A3B8", "size": "xxs", "weight": "bold", "flex": 4, "align": "start"},
+                                {"type": "text", "text": ref_str, "color": "#334155", "size": "xs", "weight": "regular", "flex": 8, "wrap": True, "align": "end"}
+                            ]
+                        },
+                        {
+                            "type": "box",
+                            "layout": "horizontal",
+                            "contents": [
+                                {"type": "text", "text": "EXISTING RECORD", "color": "#94A3B8", "size": "xxs", "weight": "bold", "flex": 4, "align": "start"},
+                                {"type": "text", "text": f"{sheet_name_str} แถวที่ {row_num}", "color": "#334155", "size": "xs", "weight": "regular", "flex": 8, "wrap": True, "align": "end"}
+                            ]
+                        },
+                        {
+                            "type": "separator",
+                            "color": "#F1F5F9",
+                            "margin": "md"
+                        },
+                        {
+                            "type": "text",
+                            "text": "ระบบตรวจสอบพบว่าหลักฐานการโอนเงินนี้ได้รับการบันทึกไว้ในบัญชีเรียบร้อยแล้ว เพื่อความถูกต้องทางบัญชีและป้องกันรายการซ้ำซ้อน ระบบจึงเว้นการบันทึกรายการนี้ให้ค่ะ",
+                            "color": "#64748B",
+                            "size": "xs",
+                            "wrap": True,
+                            "margin": "xs"
+                        }
+                    ]
                 }
             ]
         }
@@ -1306,22 +1620,255 @@ def create_duplicate_warning_flex_bubble(sheet_name, row_num, ref_number, net_am
             "type": "box",
             "layout": "vertical",
             "backgroundColor": "#FFFFFF",
-            "paddingAll": "12px",
+            "paddingAll": "16px",
+            "paddingTop": "0px",
             "contents": [
                 {
-                    "type": "button",
-                    "action": {
-                        "type": "uri",
-                        "label": "📊 เปิดดู Google Sheets",
-                        "uri": sheet_url
-                    },
-                    "style": "secondary",
-                    "height": "sm"
+                    "type": "box",
+                    "layout": "horizontal",
+                    "spacing": "sm",
+                    "contents": [
+                        {
+                            "type": "button",
+                            "action": {
+                                "type": "uri",
+                                "label": "เปิดบัญชี",
+                                "uri": sheet_url
+                            },
+                            "style": "secondary",
+                            "color": "#F1F5F9",
+                            "height": "sm"
+                        }
+                    ]
                 }
             ]
         }
         
-    return bubble
+    return clean_flex_payload(bubble)
+
+
+def create_batch_summary_flex_bubble(uploaded_results, folder_name):
+    """Creates an ultra-premium elegant batch process summary bubble with zero emojis."""
+    total_val = 0.0
+    success_count = 0
+    duplicate_count = 0
+    items_contents = []
+    
+    for idx, r in enumerate(uploaded_results[:10]):
+        status = r.get("status")
+        name = r.get("name", "ไฟล์")
+        ext = r.get('analysis', {}).get('extracted_data', {}) if r.get('analysis') else {}
+        net_amt = ext.get('net_amount')
+        
+        parsed_amt = 0.0
+        if net_amt is not None and net_amt != "-":
+            try:
+                parsed_amt = float(str(net_amt).replace(",", "").strip())
+            except ValueError:
+                pass
+                
+        if status == "success":
+            success_count += 1
+            total_val += parsed_amt
+            amt_display = f"{parsed_amt:,.2f} THB" if parsed_amt > 0 else "-"
+        else:
+            duplicate_count += 1
+            amt_display = "รายการซ้ำซ้อน"
+            
+        if amt_display.endswith(".00 THB"):
+            amt_display = amt_display.replace(".00 THB", " THB")
+
+        items_contents.append({
+            "type": "box",
+            "layout": "horizontal",
+            "margin": "xs",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": f"{idx+1:02d}. {name[:24]}",
+                    "size": "xs",
+                    "color": "#0F172A",
+                    "flex": 7,
+                    "wrap": False
+                },
+                {
+                    "type": "text",
+                    "text": amt_display,
+                    "size": "xs",
+                    "color": "#0F172A" if status == "success" else "#EF4444",
+                    "weight": "bold" if status == "success" else "regular",
+                    "flex": 5,
+                    "align": "end"
+                }
+            ]
+        })
+        
+    if len(uploaded_results) > 10:
+        items_contents.append({
+            "type": "text",
+            "text": f"+ {len(uploaded_results) - 10} รายการเพิ่มเติม...",
+            "size": "xxs",
+            "color": "#64748B",
+            "margin": "sm",
+            "align": "center"
+        })
+        
+    sheet_id = google_manager.spreadsheet_id
+    sheet_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit" if sheet_id else "#"
+    
+    folder_url = "https://drive.google.com"
+    try:
+        subfolders = google_manager.list_subfolders()
+        for sf in subfolders:
+            if sf['name'].lower() == folder_name.lower():
+                folder_url = f"https://drive.google.com/drive/folders/{sf['id']}"
+                break
+    except:
+        pass
+        
+    total_str = f"{total_val:,.2f} THB"
+    if total_str.endswith(".00 THB"):
+        total_str = total_str.replace(".00 THB", " THB")
+        
+    bubble = {
+        "type": "bubble",
+        "size": "mega",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#F0FDF9",
+            "paddingAll": "20px",
+            "paddingBottom": "16px",
+            "contents": [
+                {
+                    "type": "box",
+                    "layout": "horizontal",
+                    "contents": [
+                        {
+                            "type": "box",
+                            "layout": "vertical",
+                            "backgroundColor": "#059669",
+                            "cornerRadius": "20px",
+                            "paddingAll": "4px",
+                            "paddingStart": "10px",
+                            "paddingEnd": "10px",
+                            "contents": [
+                                {"type": "text", "text": "COMPLETED", "size": "xxs", "color": "#FFFFFF", "weight": "bold"}
+                            ]
+                        },
+                        {"type": "filler"}
+                    ]
+                },
+                {
+                    "type": "text",
+                    "text": "ประมวลผลไฟล์นำส่งสำเร็จ",
+                    "weight": "bold",
+                    "size": "md",
+                    "color": "#0F172A",
+                    "margin": "sm"
+                },
+                {
+                    "type": "text",
+                    "text": f"{success_count} รายการ  ·  {duplicate_count} ซ้ำ",
+                    "size": "xs",
+                    "color": "#0D9488",
+                    "margin": "xs"
+                }
+            ]
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#FFFFFF",
+            "paddingAll": "20px",
+            "paddingTop": "12px",
+            "contents": [
+                {
+                    "type": "box",
+                    "layout": "horizontal",
+                    "spacing": "sm",
+                    "contents": [
+                        {
+                            "type": "box",
+                            "layout": "vertical",
+                            "flex": 6,
+                            "backgroundColor": "#F0FDF9",
+                            "cornerRadius": "8px",
+                            "paddingAll": "12px",
+                            "contents": [
+                                {"type": "text", "text": "TOTAL VALUE", "color": "#0D9488", "size": "xxs", "weight": "bold"},
+                                {"type": "text", "text": total_str, "color": "#0F172A", "size": "md", "weight": "bold", "margin": "xs"}
+                            ]
+                        },
+                        {
+                            "type": "box",
+                            "layout": "vertical",
+                            "flex": 6,
+                            "backgroundColor": "#F8FAFC",
+                            "cornerRadius": "8px",
+                            "paddingAll": "12px",
+                            "contents": [
+                                {"type": "text", "text": "RECORDS", "color": "#64748B", "size": "xxs", "weight": "bold"},
+                                {"type": "text", "text": f"{success_count} บันทึก  {duplicate_count} ซ้ำ", "color": "#0F172A", "size": "sm", "weight": "bold", "margin": "xs"}
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "type": "separator",
+                    "color": "#F1F5F9",
+                    "margin": "md"
+                },
+                {
+                    "type": "box",
+                    "layout": "vertical",
+                    "spacing": "xs",
+                    "margin": "md",
+                    "contents": items_contents
+                }
+            ]
+        },
+        "footer": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#FFFFFF",
+            "paddingAll": "16px",
+            "paddingTop": "0px",
+            "contents": [
+                {
+                    "type": "box",
+                    "layout": "horizontal",
+                    "spacing": "sm",
+                    "contents": [
+                        {
+                            "type": "button",
+                            "action": {
+                                "type": "uri",
+                                "label": "เปิดบัญชี",
+                                "uri": sheet_url
+                            },
+                            "style": "secondary",
+                            "color": "#F1F5F9",
+                            "height": "sm"
+                        },
+                        {
+                            "type": "button",
+                            "action": {
+                                "type": "uri",
+                                "label": "โฟลเดอร์ Drive",
+                                "uri": folder_url
+                            },
+                            "style": "secondary",
+                            "color": "#F1F5F9",
+                            "height": "sm"
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+    
+    return clean_flex_payload(bubble)
 
 def send_line_push_notification(target_username, title, text, fields=None):
     """Sends a one-to-one message to a specific user via LINE."""
@@ -1395,6 +1942,38 @@ LINE_FOLDER_CACHE = {}
 _line_batch_timer = {}
 _pending_line_files = {} # uid -> list of {content, mimetype, original_name, msg_type}
 ACTIVE_EDIT_SESSIONS = {} # user_id -> {sheet, row, field, display, timestamp}
+
+def reply_to_line(reply_token, message, quick_reply=None, sticker_data=None):
+    """Send a reply message to LINE using the reply token."""
+    token = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "").strip()
+    if not token or not reply_token:
+        logger.warning("⚠️ reply_to_line: missing token or reply_token")
+        return
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
+    if isinstance(message, dict) and "type" in message:
+        messages = [dict(message)]
+    elif isinstance(message, list):
+        messages = list(message)
+    else:
+        messages = [{"type": "text", "text": str(message)}]
+
+    if sticker_data:
+        messages.append({"type": "sticker", "packageId": sticker_data["packageId"], "stickerId": sticker_data["stickerId"]})
+
+    if quick_reply and messages:
+        messages[-1] = dict(messages[-1])
+        messages[-1]["quickReply"] = quick_reply
+    try:
+        res = requests.post(
+            "https://api.line.me/v2/bot/message/reply",
+            headers=headers,
+            json={"replyToken": reply_token, "messages": messages},
+            timeout=10
+        )
+        if res.status_code != 200:
+            logger.error(f"❌ reply_to_line failed: {res.status_code} {res.text}")
+    except Exception as e:
+        logger.error(f"❌ reply_to_line exception: {e}")
 
 def broadcast_line_announcement(title, text, fields=None):
     """Sends a push notification to all linked users via Flex Message."""
@@ -1666,14 +2245,20 @@ def process_pending_uploads(uid, folder_id, folder_name, reply_tok):
     files = _pending_line_files.pop(uid, [])
     if not files: return
     
-    # Let user know we're working on it
+    # Let user know we're working on it — push ONLY (never use reply_tok here).
+    # reply_tok must be preserved exclusively for the Flex card delivery below
+    # because: (1) reply token expires in 30s, (2) it can only be used once.
+    # Processing takes ~15-20s so reply_tok will still be valid for the Flex card.
     processing_msg = f"กำลังวิเคราะห์และจัดเก็บ {len(files)} ไฟล์ลง '{folder_name}' ⏳ (อาจใช้เวลาสักครู่)"
-    # Use push notification for the processing status
     token = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "").strip()
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
-    requests.post("https://api.line.me/v2/bot/message/push", headers=headers, 
-                  json={"to": uid, "messages": [{"type": "text", "text": processing_msg}]}, timeout=10)
-    
+    try:
+        requests.post("https://api.line.me/v2/bot/message/push", headers=headers,
+                      json={"to": uid, "messages": [{"type": "text", "text": processing_msg}]}, timeout=10)
+    except Exception:
+        pass  # Silently skip processing message if push fails (quota or network error)
+
+
     uploaded_results = []
     for item in files:
         try:
@@ -1716,6 +2301,7 @@ def process_pending_uploads(uid, folder_id, folder_name, reply_tok):
                 log_data = {
                     "file_link": link,
                     "summary": analysis.get("summary", f"Auto-upload: {original_name}") if analysis else f"Auto-upload: {original_name}",
+                    "original_filename": original_name,
                     "extracted_data": sanitized_ext
                 }
                     
@@ -1744,93 +2330,252 @@ def process_pending_uploads(uid, folder_id, folder_name, reply_tok):
             logger.error(f"Pending upload failed: {e}")
 
     if uploaded_results:
-        # We can send a beautiful Flex message for each uploaded file
         token = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "").strip()
-        url = "https://api.line.me/v2/bot/message/push"
+        push_url = "https://api.line.me/v2/bot/message/push"
+        reply_url = "https://api.line.me/v2/bot/message/reply"
         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
-        
-        messages = []
-        for r in uploaded_results:
-            sheet_name = r.get("sheet", "ทั่วไป")
-            row_num = r.get("row", 1)
-            file_link = r.get("link", "#")
-            
+        _flex_reply_used = [False]  # mutable flag
+
+        def _send_messages(msgs, label=""):
+            """Try push; if 429 quota exceeded, fall back to reply token (free, expires in 30s)."""
+            res = requests.post(push_url, headers=headers, json={"to": uid, "messages": msgs}, timeout=20)
+            logger.info(f"\U0001f4e4 [LINE Push Flex{' ' + label if label else ''}] Status: {res.status_code}, Response: {res.text}")
+            if res.status_code == 429 and reply_tok and not _flex_reply_used[0]:
+                logger.warning("\u26a0\ufe0f Push quota exceeded (429). Falling back to reply token for Flex card.")
+                _flex_reply_used[0] = True
+                reply_msgs = msgs[:5]  # reply API supports max 5 messages
+                r2 = requests.post(reply_url, headers=headers,
+                                   json={"replyToken": reply_tok, "messages": reply_msgs}, timeout=20)
+                logger.info(f"\U0001f4e4 [LINE Reply Flex Fallback] Status: {r2.status_code}, Response: {r2.text}")
+                if r2.status_code != 200:
+                    # Reply token expired or invalid — send best-effort plain-text summary
+                    logger.warning(f"\u26a0\ufe0f Reply also failed ({r2.status_code}). Sending plain-text summary as last resort.")
+                    summary_lines = []
+                    for m in msgs:
+                        if m.get("type") == "flex":
+                            alt = m.get("altText", "")
+                            if alt:
+                                summary_lines.append(alt)
+                    if summary_lines:
+                        summary_text = "\n".join(summary_lines)
+                        try:
+                            requests.post(push_url, headers=headers,
+                                          json={"to": uid, "messages": [{"type": "text", "text": summary_text}]}, timeout=10)
+                        except Exception:
+                            pass
+
+
+        if len(uploaded_results) >= 5:
+
+            # Generate Base URL
+            base_url = "http://localhost:5005"
+            try:
+                webhook_url = database.get_app_setting("LINE_WEBHOOK_URL", "")
+                if webhook_url and webhook_url.startswith("http"):
+                    if "/api/line/webhook" in webhook_url:
+                        base_url = webhook_url.split("/api/line/webhook")[0]
+                    else:
+                        from urllib.parse import urlparse
+                        parsed = urlparse(webhook_url)
+                        base_url = f"{parsed.scheme}://{parsed.netloc}"
+            except Exception:
+                pass
+
+            if "localhost" in base_url or "127.0.0.1" in base_url or not base_url.startswith("http"):
+                try:
+                    from flask import request
+                    forwarded_host = request.headers.get('X-Forwarded-Host')
+                    forwarded_proto = request.headers.get('X-Forwarded-Proto', 'https')
+                    if forwarded_host and "localhost" not in forwarded_host and "127.0.0.1" not in forwarded_host:
+                        base_url = f"{forwarded_proto}://{forwarded_host}"
+                    else:
+                        host = request.headers.get('Host')
+                        if host and "localhost" not in host and "127.0.0.1" not in host:
+                            scheme = request.scheme or "https"
+                            base_url = f"{scheme}://{host}"
+                        else:
+                            url_root = request.url_root.rstrip('/')
+                            if "localhost" not in url_root and "127.0.0.1" not in url_root:
+                                base_url = url_root
+                except Exception:
+                    pass
+
+            if "localhost" in base_url or "127.0.0.1" in base_url:
+                env_url = os.environ.get("BASE_URL") or os.environ.get("PUBLIC_URL")
+                if env_url:
+                    base_url = env_url.rstrip('/')
+
             sheet_id = google_manager.spreadsheet_id
             sheet_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit" if sheet_id else "#"
+
+            summary_bubble = create_batch_summary_flex_bubble(uploaded_results, folder_name)
             
-            status = r.get("status", "success")
-            
-            if status == "duplicate":
-                ext = r.get('analysis', {}).get('extracted_data', {}) if r.get('analysis') else {}
-                net_amt = ext.get('net_amount')
-                if not net_amt or net_amt in [0, '0', 'None', '']:
-                    net_amt = "-"
+            paired_bubbles = []
+            carousel_results = uploaded_results[:20]
+            for i in range(0, len(carousel_results), 2):
+                item1 = carousel_results[i]
+                idx1 = i + 1
+                item2 = carousel_results[i+1] if i+1 < len(carousel_results) else None
+                idx2 = i + 2 if item2 else None
                 
-                ref_num = r.get("ref_number", "-")
-                
-                flex_bubble = create_duplicate_warning_flex_bubble(
-                    sheet_name=sheet_name,
-                    row_num=row_num,
-                    ref_number=ref_num,
-                    net_amount=net_amt,
+                bubble = create_paired_expense_flex_bubble(
+                    item1=item1,
+                    idx1=idx1,
+                    item2=item2,
+                    idx2=idx2,
+                    folder_name=folder_name,
+                    base_url=base_url,
                     sheet_url=sheet_url
                 )
-                
-                messages.append({
+                paired_bubbles.append(bubble)
+
+            messages = [
+                {
                     "type": "flex",
-                    "altText": "⚠️ ตรวจพบการอัปโหลดสลิปซ้ำซ้อน",
-                    "contents": flex_bubble
-                })
-            else:
-                ext = r.get('analysis', {}).get('extracted_data', {}) if r.get('analysis') else {}
-                net_amt = ext.get('net_amount')
-                if not net_amt or net_amt in [0, '0', 'None', '']:
-                    net_amt = "-"
-                
-                date_val = ext.get('date') or datetime.now().strftime("%d/%m/%Y")
-                memo_val = ext.get('memo') or ext.get('summary') or r.get('name')
-                
-                # Intelligent vendor finder
-                vendor_val = ext.get('receiver') or ext.get('sender') or ext.get('merchant_name') or ext.get('supplier_name') or "-"
-                
-                edit_data_postback = f"action=edit_prompt&sheet={sheet_name}&row={row_num}"
-                
-                flex_bubble = create_expense_flex_bubble(
-                    sheet_name=sheet_name,
-                    folder_name=folder_name,
-                    net_amount=net_amt,
-                    date_str=date_val,
-                    memo=memo_val,
-                    vendor=vendor_val,
-                    file_link=file_link,
-                    sheet_url=sheet_url,
-                    edit_data_postback=edit_data_postback
-                )
-                
-                messages.append({
-                    "type": "flex",
-                    "altText": "✅ บันทึกค่าใช้จ่ายสำเร็จ",
-                    "contents": flex_bubble
-                })
+                    "altText": "📊 สรุปรายการอัปโหลดแบบกลุ่ม",
+                    "contents": summary_bubble
+                }
+            ]
             
-            # Limit to 5 messages per push as per LINE API rules
-            if len(messages) == 5:
-                try:
-                    res = requests.post(url, headers=headers, json={"to": uid, "messages": messages}, timeout=15)
-                    logger.info(f"📤 [LINE Push Flex] Batch Status: {res.status_code}, Response: {res.text}")
-                except Exception as e:
-                    logger.error(f"❌ [LINE Push Flex] Batch HTTP Error: {e}")
-                messages = []
-                
-        if messages:
+            if paired_bubbles:
+                messages.append({
+                    "type": "flex",
+                    "altText": "📂 รายละเอียดรายการใบเสร็จ",
+                    "contents": {
+                        "type": "carousel",
+                        "contents": paired_bubbles
+                    }
+                })
+
+            # Full quick reply shortcuts attached to batch summary card
+            _sheet_qr = f"https://docs.google.com/spreadsheets/d/{google_manager.spreadsheet_id}/edit" if google_manager.spreadsheet_id else "https://sheets.google.com"
+            _p_id2 = os.getenv("GOOGLE_DRIVE_PARENT_ID") or os.getenv("PARENT_FOLDER_ID")
+            _drive_qr = f"https://drive.google.com/drive/folders/{_p_id2}" if _p_id2 else "https://drive.google.com"
+            quick_reply_batch = {
+                "items": [
+                    {"type": "action", "action": {"type": "message", "label": "ส่งสลิปเพิ่ม", "text": "ส่งสลิประบบจะจัดเก็บให้อัตโนมัติค่ะ"}},
+                    {"type": "action", "action": {"type": "message", "label": "สรุปรายจ่าย", "text": "สรุปรายจ่ายวันนี้"}},
+                    {"type": "action", "action": {"type": "message", "label": "สรุปยอดวันนี้", "text": "สรุปยอดวันนี้"}},
+                    {"type": "action", "action": {"type": "message", "label": "กระทบยอด", "text": "กระทบยอด"}},
+                    {"type": "action", "action": {"type": "message", "label": "หาไฟล์", "text": "ค้นหา "}},
+                    {"type": "action", "action": {"type": "uri", "label": "ดูบัญชี", "uri": _sheet_qr}},
+                    {"type": "action", "action": {"type": "uri", "label": "Google Drive", "uri": _drive_qr}}
+                ]
+            }
+            messages[-1]["quickReply"] = quick_reply_batch
+
+
             try:
-                res = requests.post(url, headers=headers, json={"to": uid, "messages": messages}, timeout=15)
-                logger.info(f"📤 [LINE Push Flex] Status: {res.status_code}, Response: {res.text}")
+                _send_messages(messages, "Batch")
             except Exception as e:
-                logger.error(f"❌ [LINE Push Flex] HTTP Error: {e}")
+                logger.error(f"❌ [LINE Push Flex Batch] HTTP Error: {e}")
+
+        else:
+            messages = []
+            for r in uploaded_results:
+                sheet_name = r.get("sheet", "ทั่วไป")
+                row_num = r.get("row", 1)
+                file_link = r.get("link", "#")
+                
+                sheet_id = google_manager.spreadsheet_id
+                sheet_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit" if sheet_id else "#"
+                
+                status = r.get("status", "success")
+                
+                if status == "duplicate":
+                    ext = r.get('analysis', {}).get('extracted_data', {}) if r.get('analysis') else {}
+                    net_amt = ext.get('net_amount')
+                    if not net_amt or net_amt in [0, '0', 'None', '']:
+                        net_amt = "-"
+                    
+                    ref_num = r.get("ref_number", "-")
+                    
+                    flex_bubble = create_duplicate_warning_flex_bubble(
+                        sheet_name=sheet_name,
+                        row_num=row_num,
+                        ref_number=ref_num,
+                        net_amount=net_amt,
+                        sheet_url=sheet_url
+                    )
+                    
+                    messages.append({
+                        "type": "flex",
+                        "altText": "⚠️ ตรวจพบการอัปโหลดสลิปซ้ำซ้อน",
+                        "contents": flex_bubble
+                    })
+                else:
+                    ext = r.get('analysis', {}).get('extracted_data', {}) if r.get('analysis') else {}
+                    net_amt = ext.get('net_amount')
+                    if not net_amt or net_amt in [0, '0', 'None', '']:
+                        net_amt = "-"
+                    
+                    date_val = ext.get('date') or datetime.now().strftime("%d/%m/%Y")
+                    memo_val = ext.get('memo') or ext.get('summary') or r.get('name')
+                    
+                    vendor_val = ext.get('receiver') or ext.get('sender') or ext.get('merchant_name') or ext.get('supplier_name') or "-"
+                    
+                    edit_data_postback = f"action=edit_prompt&sheet={sheet_name}&row={row_num}"
+                    
+                    flex_bubble = create_expense_flex_bubble(
+                        sheet_name=sheet_name,
+                        folder_name=folder_name,
+                        net_amount=net_amt,
+                        date_str=date_val,
+                        memo=memo_val,
+                        vendor=vendor_val,
+                        file_link=file_link,
+                        sheet_url=sheet_url,
+                        edit_data_postback=edit_data_postback
+                    )
+                    
+                    messages.append({
+                        "type": "flex",
+                        "altText": "✅ บันทึกค่าใช้จ่ายสำเร็จ",
+                        "contents": flex_bubble
+                    })
+                
+                # Limit to 5 messages per push as per LINE API rules
+                if len(messages) == 5:
+                    try:
+                        _send_messages(messages, "Batch")
+                    except Exception as e:
+                        logger.error(f"❌ [LINE Push Flex] Batch HTTP Error: {e}")
+                    messages = []
+                    
+            if messages:
+                # Full quick reply shortcuts on the last message
+                _sheet_url_qr = f"https://docs.google.com/spreadsheets/d/{google_manager.spreadsheet_id}/edit" if google_manager.spreadsheet_id else "https://sheets.google.com"
+                _p_id = os.getenv("GOOGLE_DRIVE_PARENT_ID") or os.getenv("PARENT_FOLDER_ID")
+                _drive_url = f"https://drive.google.com/drive/folders/{_p_id}" if _p_id else "https://drive.google.com"
+                quick_reply = {
+                    "items": [
+                        {"type": "action", "action": {"type": "message", "label": "ส่งสลิปเพิ่ม", "text": "ส่งสลิประบบจะจัดเก็บให้อัตโนมัติค่ะ"}},
+                        {"type": "action", "action": {"type": "message", "label": "สรุปรายจ่าย", "text": "สรุปรายจ่ายวันนี้"}},
+                        {"type": "action", "action": {"type": "message", "label": "สรุปยอดวันนี้", "text": "สรุปยอดวันนี้"}},
+                        {"type": "action", "action": {"type": "message", "label": "กระทบยอด", "text": "กระทบยอด"}},
+                        {"type": "action", "action": {"type": "message", "label": "หาไฟล์", "text": "ค้นหา "}},
+                        {"type": "action", "action": {"type": "uri", "label": "ดูบัญชี", "uri": _sheet_url_qr}},
+                        {"type": "action", "action": {"type": "uri", "label": "Google Drive", "uri": _drive_url}}
+                    ]
+                }
+                messages[-1]["quickReply"] = quick_reply
+                try:
+                    _send_messages(messages)
+                except Exception as e:
+                    logger.error(f"❌ [LINE Push Flex] HTTP Error: {e}")
 
     else:
         send_line_push_notification(uid, "เกิดข้อผิดพลาด", "❌ ขออภัยค่ะ พั้นไม่สามารถจัดเก็บไฟล์ได้ในขณะนี้")
+
+def verify_line_signature(body_bytes, signature):
+    """Verifies the LINE webhook signature using LINE_CHANNEL_SECRET."""
+    channel_secret = os.environ.get("LINE_CHANNEL_SECRET", "").strip()
+    if not channel_secret:
+        logger.warning("⚠️ LINE_CHANNEL_SECRET is not set. Bypassing verification.")
+        return True
+    hash_obj = hmac.new(channel_secret.encode('utf-8'), body_bytes, hashlib.sha256).digest()
+    calc_signature = base64.b64encode(hash_obj).decode('utf-8')
+    return calc_signature == signature
 
 @app.route("/api/line/webhook", methods=['POST'])
 def line_webhook():
@@ -1899,19 +2644,52 @@ def process_line_command(text, user_id, reply_token):
 
     text_lower = text.lower().strip()
     
-    # 🌐 Drive Persistent Quick Reply
+    # Persistent Quick Reply — shown after every bot text response (max 13 items)
     p_id = os.getenv("GOOGLE_DRIVE_PARENT_ID") or os.getenv("PARENT_FOLDER_ID")
-    drive_url = f"https://drive.google.com/drive/folders/{p_id}"
+    drive_url = f"https://drive.google.com/drive/folders/{p_id}" if p_id else "https://drive.google.com"
+    sheet_url_qr = f"https://docs.google.com/spreadsheets/d/{google_manager.spreadsheet_id}/edit" if google_manager.spreadsheet_id else "https://sheets.google.com"
+
     quick_reply = {
-        "items": [{
-            "type": "action",
-            "action": {
-                "type": "uri",
-                "label": "🌐 เปิด Google Drive",
-                "uri": drive_url
+        "items": [
+            {
+                "type": "action",
+                "action": {"type": "message", "label": "📊 สรุปรายจ่ายวันนี้", "text": "สรุปรายจ่ายวันนี้"}
+            },
+            {
+                "type": "action",
+                "action": {"type": "message", "label": "💰 สรุปยอดวันนี้", "text": "สรุปยอดวันนี้"}
+            },
+            {
+                "type": "action",
+                "action": {"type": "message", "label": "🔄 เริ่มกระทบยอด", "text": "กระทบยอด"}
+            },
+            {
+                "type": "action",
+                "action": {"type": "message", "label": "🔍 ค้นหาไฟล์", "text": "ค้นหา "}
+            },
+            {
+                "type": "action",
+                "action": {"type": "message", "label": "📂 เลือกโฟลเดอร์", "text": "เลือกโฟลเดอร์"}
+            },
+            {
+                "type": "action",
+                "action": {"type": "message", "label": "📝 บันทึกวันลา", "text": "ลางาน"}
+            },
+            {
+                "type": "action",
+                "action": {"type": "message", "label": "🔗 ขอลิงก์ระบบ", "text": "ขอลิงก์"}
+            },
+            {
+                "type": "action",
+                "action": {"type": "uri", "label": "🟢 ดู Google Sheet", "uri": sheet_url_qr}
+            },
+            {
+                "type": "action",
+                "action": {"type": "uri", "label": "🔵 Google Drive", "uri": drive_url}
             }
-        }]
+        ]
     }
+
     
     try:
         # 1. Account Linking (/link [user])
@@ -1923,9 +2701,68 @@ def process_line_command(text, user_id, reply_token):
                 reply_to_line(reply_token, f"❌ น้องพั้นหาชื่อผู้ใช้ '{target_user}' ไม่เจอค่ะ", quick_reply=quick_reply)
             return
 
+        # 🔗 Workspace Links Request
+        if any(k in text_lower for k in ["ขอลิงค์", "ขอลิ้งค์", "ขอลิงก์", "ขอลิ้ง", "ขอลิงค์หน่อย"]):
+            sheet_id = google_manager.spreadsheet_id
+            sheet_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit" if sheet_id else "https://sheets.google.com"
+            p_id = os.getenv("GOOGLE_DRIVE_PARENT_ID") or os.getenv("PARENT_FOLDER_ID")
+            drive_url = f"https://drive.google.com/drive/folders/{p_id}" if p_id else "https://drive.google.com"
+            
+            links_bubble = create_links_flex_bubble(sheet_url, drive_url)
+            reply_to_line(reply_token, {
+                "type": "flex",
+                "altText": "🔗 ลิงก์ระบบบัญชีและเอกสารของพี่ค่ะ",
+                "contents": links_bubble
+            }, quick_reply=quick_reply)
+            return
+
         # 2. Expense Reporting
         if any(k in text_lower for k in ["สรุปรายจ่าย", "ยอดรายจ่าย", "รายจ่าย", "วันนี้"]):
             summary = google_manager.get_monthly_summary()
+            
+            # --- 📊 Stunning Donut Chart Generation & Integration ---
+            try:
+                raw_data = google_manager.get_monthly_summary(return_raw=True)
+                if isinstance(raw_data, tuple) and len(raw_data) == 3:
+                    total_expense, total_count, categories_breakdown = raw_data
+                    if total_count > 0 and categories_breakdown:
+                        from chart_generator import generate_monthly_expense_chart
+                        
+                        # Determine base URL dynamically
+                        base_url = "http://localhost:5005"
+                        webhook_url = os.environ.get("ACTIVE_PUBLIC_URL")
+                        if webhook_url:
+                            if "/api/line/webhook" in webhook_url:
+                                base_url = webhook_url.split("/api/line/webhook")[0]
+                            else:
+                                base_url = webhook_url.rstrip('/')
+                        else:
+                            env_url = os.environ.get("BASE_URL") or os.environ.get("PUBLIC_URL")
+                            if env_url:
+                                base_url = env_url.rstrip('/')
+                        
+                        # Generate the beautiful donut chart
+                        chart_filename = generate_monthly_expense_chart(categories_breakdown)
+                        chart_url = f"{base_url}/uploads/social_feed/{chart_filename}"
+                        
+                        # Construct a multi-message response containing both the Flex summary and the chart image!
+                        messages = []
+                        if isinstance(summary, dict):
+                            messages.append(summary)
+                        else:
+                            messages.append({"type": "text", "text": str(summary)})
+                            
+                        messages.append({
+                            "type": "image",
+                            "originalContentUrl": chart_url,
+                            "previewImageUrl": chart_url
+                        })
+                        
+                        reply_to_line(reply_token, messages, quick_reply=quick_reply)
+                        return
+            except Exception as chart_err:
+                logger.error(f"⚠️ Failed to generate and attach expense chart: {chart_err}")
+                
             reply_to_line(reply_token, summary, quick_reply=quick_reply)
             return
 

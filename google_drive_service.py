@@ -23,7 +23,48 @@ from dotenv import load_dotenv
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-load_dotenv()
+def parse_to_yyyymmdd(date_str):
+    """Parses date string into YYYYMMDD format, handling Thai Buddhist Era and various formats."""
+    if not date_str or str(date_str).strip() in ['-', '']:
+        return datetime.now().strftime("%Y%m%d")
+    
+    s = str(date_str).strip()
+    # Try common formats using datetime first
+    for fmt in ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d", "%Y/%m/%d"):
+        try:
+            from datetime import datetime as dt
+            parsed = dt.strptime(s, fmt)
+            year = parsed.year
+            if year > 2500:
+                year -= 543
+            return f"{year:04d}{parsed.month:02d}{parsed.day:02d}"
+        except:
+            continue
+            
+    # Regular expression fallback if not perfectly matching simple formats
+    digits = re.findall(r'\d+', s)
+    if len(digits) >= 3:
+        try:
+            d1, d2, d3 = digits[0], digits[1], digits[2]
+            if len(d1) == 4:
+                year, month, day = int(d1), int(d2), int(d3)
+            elif len(d3) == 4:
+                year, month, day = int(d3), int(d2), int(d1)
+            else:
+                day, month, year = int(d1), int(d2), int(d3)
+                if year < 100:
+                    year += 2000
+            
+            if year > 2400:
+                year -= 543
+            
+            if month < 1 or month > 12: month = 1
+            if day < 1 or day > 31: day = 1
+            return f"{year:04d}{month:02d}{day:02d}"
+        except Exception:
+            pass
+    
+    return datetime.now().strftime("%Y%m%d")
 
 def normalize_thai_name(name):
     """Cleans up Thai business names for better matching, stripping special characters."""
@@ -76,6 +117,10 @@ class GoogleWorkspaceManager:
         self.spreadsheet_id = os.getenv("SPREADSHEET_ID")
         self._initialize_services()
         self._validate_or_create_spreadsheet()
+        try:
+            self.ensure_essential_sheets()
+        except Exception as e:
+            logger.warning(f"⚠️ Initial essential sheets check failed: {e}")
         self._initialized = True
 
     def _load_sheet_schema(self):
@@ -103,11 +148,22 @@ class GoogleWorkspaceManager:
                 "statement": "สเตตเมนต์",
                 "ID_Card": "บัตรประชาชน",
                 "slip": "สลิปโอนเงิน",
-                "Uploads": "สลิปโอนเงิน"
+                "Uploads": "สลิปโอนเงิน",
+                "WHT": "ใบหัก ณ ที่จ่าย",
+                "wht": "ใบหัก ณ ที่จ่าย",
+                "Withholding_Tax": "ใบหัก ณ ที่จ่าย",
+                "ใบหักณที่จ่าย": "ใบหัก ณ ที่จ่าย",
+                "หนังสือรับรองการหักภาษี ณ ที่จ่าย": "ใบหัก ณ ที่จ่าย",
+                "peak": "peak",
+                "Import_Expenses": "peak"
             },
             "schemas": {
                 "บัตรประชาชน": {
-                    "headers": ["เวลาที่บันทึก", "หมวดหมู่", "วันที่บันทึก", "เวลาที่บันทึก", "AI Model", "เลขบัตรประชาชน", "ชื่อ (ไทย)", "นามสกุล (ไทย)", "ชื่อ (อังกฤษ)", "นามสกุล (อังกฤษ)", "วันเกิด", "เพศ", "ที่อยู่", "วันหมดอายุ", "Laser ID", "ลิงก์ไฟล์", "AI ถูก/ผิด"],
+                    "headers": [
+                        "เวลาที่บันทึก", "หมวดหมู่", "วันที่บันทึก", "เวลาที่บันทึก", "AI Model", 
+                        "เลขบัตรประชาชน", "ชื่อ (ไทย)", "นามสกุล (ไทย)", "ชื่อ (อังกฤษ)", "นามสกุล (อังกฤษ)", 
+                        "วันเกิด", "เพศ", "ที่อยู่", "วันหมดอายุ", "Laser ID", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด"
+                    ],
                     "columns": [
                         {"source": "current_datetime"},
                         {"source": "const:ID_Card"},
@@ -124,12 +180,17 @@ class GoogleWorkspaceManager:
                         {"source": "ai_keys:address"},
                         {"source": "ai_keys:expiry_date,expired_date,expiry"},
                         {"source": "ai_keys:laser_id,laser,ref_number"},
+                        {"source": "original_filename"},
                         {"source": "file_link"},
                         {"source": "const:-"}
                     ]
                 },
                 "สเตตเมนต์": {
-                    "headers": ["เวลาที่บันทึก", "วันที่เอกสาร", "เวลา/วันที่มีผล", "รายการ", "รายละเอียด", "ถอน/เงินออก", "ฝาก/เงินเข้า", "ค่าธรรมเนียม", "ยอดคงเหลือ", "ช่องทาง", "เลขที่อ้างอิง", "คู่ค้า/ผู้โอน", "ลิงก์ไฟล์"],
+                    "headers": [
+                        "เวลาที่บันทึก", "วันที่เอกสาร", "เวลา/วันที่มีผล", "รายการ", "รายละเอียด", 
+                        "ถอน/เงินออก", "ฝาก/เงินเข้า", "ค่าธรรมเนียม", "ยอดคงเหลือ", "ช่องทาง", 
+                        "เลขที่อ้างอิง", "คู่ค้า/ผู้โอน", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์"
+                    ],
                     "columns": [
                         {"source": "current_datetime"},
                         {"source": "statement_date"},
@@ -143,17 +204,23 @@ class GoogleWorkspaceManager:
                         {"source": "statement_channel"},
                         {"source": "ai_keys:ref,ref_number,เลขที่อ้างอิง", "cleaner": "id"},
                         {"source": "ai_keys:counterparty,sender,receiver,คู่ค้า"},
+                        {"source": "original_filename"},
                         {"source": "file_link"}
                     ]
                 },
                 "ใบเสร็จ/ใบกำกับภาษี": {
-                    "headers": ["เวลาที่บันทึก", "หมวดหมู่", "วันที่ในเอกสาร", "ผู้ส่ง/ร้านค้า", "รหัสสาขา", "เลขผู้เสียภาษี", "ที่อยู่คู่ค้า", "ผู้รับ", "ช่องทางการติดต่อ", "จำนวนเงินสุทธิ", "ยอดก่อนภาษี", "ส่วนลด", "VAT", "WHT", "ประเภท WHT", "เลขที่อ้างอิง", "สรุปจาก AI", "ลิงก์ไฟล์", "AI ถูก/ผิด"],
+                    "headers": [
+                        "เวลาที่บันทึก", "หมวดหมู่", "วันที่ในเอกสาร", "ผู้ส่ง/ร้านค้า", "รหัสสาขา", 
+                        "เลขผู้เสียภาษี", "ที่อยู่คู่ค้า", "ผู้รับ", "ช่องทางการติดต่อ", "จำนวนเงินสุทธิ", 
+                        "ยอดก่อนภาษี", "ส่วนลด", "VAT", "หัก ณ ที่จ่าย", "ประเภท หัก ณ ที่จ่าย", "เลขที่อ้างอิง", 
+                        "ตามใบกำกับ", "สรุปจาก AI", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด"
+                    ],
                     "columns": [
                         {"source": "current_datetime"},
                         {"source": "const:ใบเสร็จ/ใบกำกับภาษี"},
                         {"source": "ai_keys:date"},
                         {"source": "sender_name_fallback"},
-                        {"source": "ai_keys:branch"},
+                        {"source": "ai_keys:branch", "cleaner": "branch"},
                         {"source": "ai_keys:tax_id", "cleaner": "id"},
                         {"source": "ai_keys:address"},
                         {"source": "receiver_name_fallback"},
@@ -165,22 +232,26 @@ class GoogleWorkspaceManager:
                         {"source": "ai_keys:wht_amount", "cleaner": "float"},
                         {"source": "ai_keys:wht_type,wht_category,wht_rate,wht_percent"},
                         {"source": "ai_keys:ref_number"},
+                        {"source": "invoice_follow_up"},
                         {"source": "summary"},
+                        {"source": "original_filename"},
                         {"source": "file_link"},
                         {"source": "const:-"}
                     ]
                 },
                 "สลิปโอนเงิน": {
-                    "headers": ["เวลาที่บันทึก", "หมวดหมู่", "วันที่ในเอกสาร", "เวลาในเอกสาร", "ผู้ส่ง/ร้านค้า", "เลขผู้เสียภาษี", "ผู้รับ", "ช่องทางการติดต่อ", "จำนวนเงินสุทธิ", "ยอดก่อนภาษี", "WHT", "เลขที่อ้างอิง", "ธนาคารต้นทาง", "ธนาคารปลายทาง", "บันทึกช่วยจำ", "สรุปจาก AI", "ลิงก์ไฟล์", "AI ถูก/ผิด"],
+                    "headers": [
+                        "เวลาที่บันทึก", "หมวดหมู่", "วันที่ในเอกสาร", "เวลาในเอกสาร", "ผู้ส่ง/ร้านค้า", 
+                        "ผู้รับ", "จำนวนเงินสุทธิ", "ยอดก่อนภาษี", "หัก ณ ที่จ่าย", "เลขที่อ้างอิง", 
+                        "ธนาคารต้นทาง", "ธนาคารปลายทาง", "บันทึกช่วยจำ", "สรุปจาก AI", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด"
+                    ],
                     "columns": [
                         {"source": "current_datetime"},
                         {"source": "const:สลิปโอนเงิน"},
                         {"source": "ai_keys:date"},
                         {"source": "ai_keys:time"},
                         {"source": "sender_name_fallback"},
-                        {"source": "ai_keys:tax_id", "cleaner": "id"},
                         {"source": "receiver_name_fallback"},
-                        {"source": "ai_keys:contact,phone"},
                         {"source": "ai_keys:net_amount", "cleaner": "float"},
                         {"source": "ai_keys:gross_amount", "cleaner": "float"},
                         {"source": "ai_keys:wht_amount", "cleaner": "float"},
@@ -189,12 +260,34 @@ class GoogleWorkspaceManager:
                         {"source": "ai_keys:receiver_bank,bank_to"},
                         {"source": "ai_keys:memo"},
                         {"source": "summary"},
+                        {"source": "original_filename"},
+                        {"source": "file_link"},
+                        {"source": "const:-"}
+                    ]
+                },
+                "ใบหัก ณ ที่จ่าย": {
+                    "headers": [
+                        "เวลาที่บันทึก", "หมวดหมู่", "วันที่ในเอกสาร", "ผู้มีหน้าที่หักภาษี (ผู้จ่ายเงิน)", "ผู้ถูกหักภาษี (ผู้รับเงิน)", "จำนวนเงินสุทธิ", "ยอดก่อนภาษี", "จำนวนภาษีที่หัก", "อัตราภาษี", "ประเภทเงินได้", "เลขที่อ้างอิง", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด"
+                    ],
+                    "columns": [
+                        {"source": "current_datetime"},
+                        {"source": "const:ใบหัก ณ ที่จ่าย"},
+                        {"source": "ai_keys:date"},
+                        {"source": "ai_keys:payer_name,ผู้จ่ายเงิน"},
+                        {"source": "ai_keys:payee_name,ผู้รับเงิน"},
+                        {"source": "ai_keys:net_amount", "cleaner": "float"},
+                        {"source": "ai_keys:gross_amount", "cleaner": "float"},
+                        {"source": "ai_keys:wht_amount", "cleaner": "float"},
+                        {"source": "ai_keys:wht_rate,wht_percent"},
+                        {"source": "ai_keys:wht_type,income_type"},
+                        {"source": "ai_keys:ref_number"},
+                        {"source": "original_filename"},
                         {"source": "file_link"},
                         {"source": "const:-"}
                     ]
                 },
                 "ใบเสนอราคา": {
-                    "headers": ["เวลาที่บันทึก", "วันที่เอกสาร", "ผู้เสนอราคา", "ลูกค้า", "ยอดเงินสุทธิ", "สถานะ", "ลิงก์ไฟล์", "AI ถูก/ผิด"],
+                    "headers": ["เวลาที่บันทึก", "วันที่เอกสาร", "ผู้เสนอราคา", "ลูกค้า", "ยอดเงินสุทธิ", "สถานะ", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด"],
                     "columns": [
                         {"source": "current_datetime"},
                         {"source": "ai_keys:date"},
@@ -202,12 +295,46 @@ class GoogleWorkspaceManager:
                         {"source": "receiver_name_fallback"},
                         {"source": "ai_keys:net_amount", "cleaner": "float"},
                         {"source": "const:รออนุมัติ"},
+                        {"source": "original_filename"},
                         {"source": "file_link"},
                         {"source": "const:-"}
                     ]
                 },
+                "peak": {
+                    "headers": [
+                        "ลำดับที่*", "วันที่เอกสาร", "อ้างอิงถึง", "ผู้รับเงิน/คู่ค้า", "เลขทะเบียน 13 หลัก", 
+                        "เลขสาขา 5 หลัก", "เลขที่ใบกำกับฯ (ถ้ามี)", "วันที่ใบกำกับฯ (ถ้ามี)", "วันที่บันทึกภาษีซื้อ (ถ้ามี)", 
+                        "ประเภทราคา", "บัญชี", "คำอธิบาย", "จำนวน", "ราคาต่อหน่วย", "อัตราภาษี", 
+                        "หัก ณ ที่จ่าย (ถ้ามี)", "ชำระโดย", "จำนวนเงินที่ชำระ", "ภ.ง.ด. (ถ้ามี)", "หมายเหตุ", "กลุ่มจัดประเภท", "ไฟล์ต้นฉบับ", "ลิงก์ drive"
+                    ],
+                    "columns": [
+                        {"source": "peak_seq"},
+                        {"source": "peak_doc_date"},
+                        {"source": "ai_keys:ref_number"},
+                        {"source": "ai_keys:sender_name,sender,vendor,merchant,payee_name,ผู้รับเงิน,ร้านค้า,ผู้ส่ง"},
+                        {"source": "ai_keys:tax_id", "cleaner": "id"},
+                        {"source": "ai_keys:branch", "cleaner": "branch"},
+                        {"source": "ai_keys:invoice_number,ref_number,เลขที่อ้างอิง"},
+                        {"source": "peak_invoice_date"},
+                        {"source": "peak_invoice_date"},
+                        {"source": "peak_price_type"},
+                        {"source": "peak_account_code"},
+                        {"source": "summary"},
+                        {"source": "const:1"},
+                        {"source": "peak_price_unit"},
+                        {"source": "peak_vat_rate"},
+                        {"source": "peak_wht_rate"},
+                        {"source": "peak_payment_channel"},
+                        {"source": "ai_keys:net_amount", "cleaner": "float"},
+                        {"source": "peak_wht_type"},
+                        {"source": "file_link"},
+                        {"source": "const:-"},
+                        {"source": "original_filename"},
+                        {"source": "file_link"}
+                    ]
+                },
                 "default": {
-                    "headers": ["เวลาที่บันทึก", "หมวดหมู่", "วันที่ในเอกสาร", "สรุปข้อมูล", "ลิงก์ไฟล์", "AI ถูก/ผิด"],
+                    "headers": ["เวลาที่บันทึก", "หมวดหมู่", "วันที่ในเอกสาร", "สรุปข้อมูล", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด"],
                     "columns": [
                         {"source": "current_datetime"},
                         {"source": "sheet_name"},
@@ -349,6 +476,190 @@ class GoogleWorkspaceManager:
             logger.info(f"🚀 Created new Spreadsheet: {new_id}")
         except Exception as e:
             logger.error(f"❌ Failed to create new spreadsheet: {e}")
+
+    def freeze_sheet(self, sheet_title):
+        """Locks the first row (headers) and applies royal blue header styling and data validations."""
+        if not self.sheets_service or not self.spreadsheet_id:
+            return
+        try:
+            spreadsheet = self.sheets_service.spreadsheets().get(spreadsheetId=self.spreadsheet_id).execute()
+            sheet_id = next((s['properties']['sheetId'] for s in spreadsheet.get('sheets', []) if s['properties']['title'] == sheet_title), None)
+            if sheet_id is None:
+                return
+
+            # Skip custom styling for the dashboard sheet, only apply grid styling if needed
+            is_dashboard = sheet_title == "📊 แดชบอร์ดสรุป"
+            
+            requests = []
+            
+            # Freeze the first row
+            requests.append({
+                "updateSheetProperties": {
+                    "properties": {
+                        "sheetId": sheet_id,
+                        "gridProperties": {
+                            "frozenRowCount": 0 if is_dashboard else 1
+                        }
+                    },
+                    "fields": "gridProperties.frozenRowCount"
+                }
+            })
+            
+            if not is_dashboard:
+                # Get the number of columns in the header to style
+                try:
+                    res = self.sheets_service.spreadsheets().values().get(
+                        spreadsheetId=self.spreadsheet_id, range=f"'{sheet_title}'!A1:Z1"
+                    ).execute()
+                    headers_row = res.get('values', [[]])[0]
+                    num_cols = len(headers_row) if headers_row else 20
+                except Exception:
+                    num_cols = 20
+                
+                # Apply royal blue background (#1D4ED8) and white bold text formatting
+                requests.append({
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": sheet_id,
+                            "startRowIndex": 0,
+                            "endRowIndex": 1,
+                            "startColumnIndex": 0,
+                            "endColumnIndex": num_cols
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "backgroundColor": {
+                                    "red": 0.1137,     # 29/255 -> #1D4ED8
+                                    "green": 0.3098,   # 78/255
+                                    "blue": 0.8471     # 216/255
+                                },
+                                "textFormat": {
+                                    "foregroundColor": {
+                                        "red": 1.0,
+                                        "green": 1.0,
+                                        "blue": 1.0
+                                    },
+                                    "bold": True,
+                                    "fontSize": 10,
+                                    "fontFamily": "Inter"
+                                },
+                                "horizontalAlignment": "CENTER",
+                                "verticalAlignment": "MIDDLE"
+                            }
+                        },
+                        "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)"
+                    }
+                })
+                
+                # Apply data validation dropdown for Column Q ("ตามใบกำกับ" at index 16)
+                if sheet_title == "ใบเสร็จ/ใบกำกับภาษี":
+                    requests.append({
+                        "setDataValidation": {
+                            "range": {
+                                "sheetId": sheet_id,
+                                "startRowIndex": 1,      # Row 2 onwards
+                                "startColumnIndex": 16,  # Column Q
+                                "endColumnIndex": 17
+                            },
+                            "rule": {
+                                "condition": {
+                                    "type": "ONE_OF_LIST",
+                                    "values": [
+                                        {"userEnteredValue": "ต้องตาม"},
+                                        {"userEnteredValue": "ไม่ต้องตาม"}
+                                    ]
+                                },
+                                "showCustomUi": True,
+                                "strict": True
+                            }
+                        }
+                    })
+
+            self.sheets_service.spreadsheets().batchUpdate(
+                spreadsheetId=self.spreadsheet_id, 
+                body={"requests": requests}
+            ).execute()
+            logger.info(f"📌 Froze and styled sheet headers: {sheet_title}")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to freeze/style headers for sheet '{sheet_title}': {e}")
+
+    def freeze_all_existing_sheets(self):
+        """Iterates over all sheets in the spreadsheet and freezes/styles them."""
+        if not self.sheets_service or not self.spreadsheet_id:
+            return
+        try:
+            spreadsheet = self.sheets_service.spreadsheets().get(spreadsheetId=self.spreadsheet_id).execute()
+            for s in spreadsheet.get('sheets', []):
+                title = s['properties']['title']
+                self.freeze_sheet(title)
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to freeze/style all sheets: {e}")
+
+    def ensure_essential_sheets(self):
+        """Ensures all essential sheets exist in the spreadsheet and have standard headers & styling."""
+        if not self.sheets_service or not self.spreadsheet_id:
+            return
+        
+        try:
+            # 1. Fetch existing sheets
+            spreadsheet = self.sheets_service.spreadsheets().get(spreadsheetId=self.spreadsheet_id).execute()
+            existing_sheets = {s['properties']['title']: s['properties']['sheetId'] for s in spreadsheet.get('sheets', [])}
+            
+            # 2. Define essential sheets and their headers
+            registry = self._load_sheet_schema()
+            schemas = registry.get("schemas", {})
+            
+            essential_sheets = {
+                "ใบเสร็จ/ใบกำกับภาษี": schemas.get("ใบเสร็จ/ใบกำกับภาษี", {}).get("headers", []),
+                "สลิปโอนเงิน": schemas.get("สลิปโอนเงิน", {}).get("headers", []),
+                "สรุปกระทบยอด": ["วันที่ประมวลผล", "สถานะ", "วันที่เอกสาร", "ยอดเงิน", "คู่ค้า/ร้านค้า", "ลิงก์สลิป", "ลิงก์ใบกำกับ", "หมายเหตุ"],
+                "peak": schemas.get("peak", {}).get("headers", [])
+            }
+            
+            # 3. Create missing sheets
+            for sheet_title, headers in essential_sheets.items():
+                if sheet_title not in existing_sheets:
+                    logger.info(f"➕ Pre-creating missing essential sheet: {sheet_title}")
+                    try:
+                        res = self.sheets_service.spreadsheets().batchUpdate(
+                            spreadsheetId=self.spreadsheet_id, 
+                            body={'requests': [{'addSheet': {'properties': {'title': sheet_title}}}]}
+                        ).execute()
+                        # Extract newly created sheetId
+                        new_sheet_id = res['replies'][0]['addSheet']['properties']['sheetId']
+                        existing_sheets[sheet_title] = new_sheet_id
+                        
+                        # Initialize headers
+                        self.sheets_service.spreadsheets().values().update(
+                            spreadsheetId=self.spreadsheet_id,
+                            range=f"'{sheet_title}'!A1",
+                            valueInputOption="RAW",
+                            body={"values": [headers]}
+                        ).execute()
+                    except Exception as ce:
+                        logger.error(f"❌ Failed to create sheet {sheet_title}: {ce}")
+            
+            # 4. Update "📊 แดชบอร์ดสรุป" and "สรุปกระทบยอด" if needed
+            self.update_dashboard()
+            
+            # 5. Apply freezing, styling, and data validation to all sheets
+            self.freeze_all_existing_sheets()
+            
+            # 6. Delete default sheet "Sheet1" or "ชีต1" if we have other sheets
+            sheets = self.sheets_service.spreadsheets().get(spreadsheetId=self.spreadsheet_id).execute().get('sheets', [])
+            if len(sheets) > 1:
+                for s in sheets:
+                    title = s['properties']['title']
+                    if title in ["Sheet1", "ชีต1"]:
+                        s_id = s['properties']['sheetId']
+                        self.sheets_service.spreadsheets().batchUpdate(
+                            spreadsheetId=self.spreadsheet_id, 
+                            body={'requests': [{'deleteSheet': {'sheetId': s_id}}]}
+                        ).execute()
+                        logger.info(f"🗑 Deleted default sheet: {title}")
+                        break
+        except Exception as e:
+            logger.error(f"⚠️ ensure_essential_sheets error: {e}")
 
     def upload_file(self, file_content, filename, mimetype, folder_id=None):
         """Uploads file with Year/Month/Day folder structure."""
@@ -707,35 +1018,44 @@ class GoogleWorkspaceManager:
             category_map = registry.get("category_map", {})
             sheet_name = category_map.get(raw_category, raw_category).strip()
 
+            # Fetch existing sheet titles to avoid 400 Bad Request
+            existing_sheets = []
+            try:
+                spreadsheet = self.sheets_service.spreadsheets().get(spreadsheetId=self.spreadsheet_id).execute()
+                existing_sheets = [s['properties']['title'] for s in spreadsheet.get('sheets', [])]
+            except Exception as e:
+                logger.warning(f"⚠️ Could not fetch spreadsheet metadata: {e}")
+
             # --- 🛡️ Duplicate Slip Detection by Ref Number ---
             ref_val = get_val(['ref', 'ref_number', 'เลขที่อ้างอิง', 'transaction_id'])
             if ref_val and str(ref_val).strip() != '-':
                 cleaned_ref = str(ref_val).replace('-', '').replace(' ', '').replace("'", "").strip()
                 if cleaned_ref and len(cleaned_ref) >= 6:
-                    try:
-                        res_val = self.sheets_service.spreadsheets().values().get(
-                            spreadsheetId=self.spreadsheet_id, 
-                            range=f"'{sheet_name}'!A1:Z1000"
-                        ).execute()
-                        existing_rows = res_val.get('values', [])
-                        
-                        for r_idx, row_data in enumerate(existing_rows):
-                            if r_idx == 0: continue # Skip header
-                            for cell_val in row_data:
-                                if cell_val:
-                                    cleaned_cell = str(cell_val).replace('-', '').replace(' ', '').replace("'", "").strip()
-                                    if cleaned_cell == cleaned_ref:
-                                        logger.warning(f"⚠️ Duplicate slip detected! Ref: {ref_val} at row {r_idx + 1}")
-                                        return {
-                                            "ok": False, 
-                                            "error": "duplicate", 
-                                            "sheet": sheet_name, 
-                                            "row": r_idx + 1, 
-                                            "ref_number": ref_val,
-                                            "data": row_data
-                                        }
-                    except Exception as e:
-                        logger.error(f"Failed to check duplicate: {e}")
+                    if sheet_name in existing_sheets:
+                        try:
+                            res_val = self.sheets_service.spreadsheets().values().get(
+                                spreadsheetId=self.spreadsheet_id, 
+                                range=f"'{sheet_name}'!A1:Z1000"
+                            ).execute()
+                            existing_rows = res_val.get('values', [])
+                            
+                            for r_idx, row_data in enumerate(existing_rows):
+                                if r_idx == 0: continue # Skip header
+                                for cell_val in row_data:
+                                    if cell_val:
+                                        cleaned_cell = str(cell_val).replace('-', '').replace(' ', '').replace("'", "").strip()
+                                        if cleaned_cell == cleaned_ref:
+                                            logger.warning(f"⚠️ Duplicate slip detected! Ref: {ref_val} at row {r_idx + 1}")
+                                            return {
+                                                "ok": False, 
+                                                "error": "duplicate", 
+                                                "sheet": sheet_name, 
+                                                "row": r_idx + 1, 
+                                                "ref_number": ref_val,
+                                                "data": row_data
+                                            }
+                        except Exception as e:
+                            logger.error(f"Failed to check duplicate: {e}")
             
             # Retrieve schema config for this sheet
             schemas = registry.get("schemas", {})
@@ -753,9 +1073,18 @@ class GoogleWorkspaceManager:
                 if v is None: return '-'
                 s = str(v).replace('-', '').replace(' ', '').strip()
                 if not s or s == '-': return '-'
-                if s.isdigit() and len(s) >= 10:
-                    return f"'{s}"
+                s_digits = re.sub(r'\D', '', s)
+                if len(s_digits) in [10, 13]:
+                    return f"'{s_digits}"
                 return s
+
+            def clean_branch(v):
+                if v is None: return "00000"
+                s = str(v).replace('-', '').replace(' ', '').strip()
+                if not s or s == '-': return "00000"
+                s_digits = re.sub(r'\D', '', s)
+                if not s_digits: return "00000"
+                return f"'{int(s_digits):05d}"
 
             # Custom Value Extractor based on source string
             def extract_field_value(col_def, context_ext=None, context_data=None):
@@ -817,6 +1146,22 @@ class GoogleWorkspaceManager:
                     val = context_data.get('summary', '-')
                 elif src == "sheet_name":
                     val = sheet_name
+                elif src == "original_filename":
+                    val = context_data.get('original_filename', context_data.get('original_name', '-'))
+                    if val == '-':
+                        val = context_ext.get('original_filename', context_ext.get('original_name', '-'))
+                    if val == '-':
+                        summary_val = context_data.get('summary', '')
+                        if 'Auto-upload: ' in summary_val:
+                            val = summary_val.replace('Auto-upload: ', '').strip()
+                elif src == "invoice_follow_up":
+                    is_et = context_ext.get("is_etax")
+                    if isinstance(is_et, str):
+                        is_et = is_et.strip().lower() in ['true', 'yes', '1']
+                    if is_et is True:
+                        val = "ไม่ต้องตาม"
+                    else:
+                        val = "ต้องตาม"
                 elif src.startswith("const:"):
                     val = src.replace("const:", "")
                 elif src.startswith("ai_keys:"):
@@ -826,6 +1171,89 @@ class GoogleWorkspaceManager:
                     val = local_get_val(['sender', 'from', 'vendor', 'vendor_name', 'seller', 'company_name'])
                 elif src == "receiver_name_fallback":
                     val = local_get_val(['receiver', 'to', 'payee', 'buyer', 'customer', 'customer_name'])
+                
+                # --- Custom PEAK Extraction (Image 2) ---
+                elif src == "peak_seq":
+                    val = "1"
+                elif src == "peak_doc_date":
+                    doc_d = local_get_val(['date', 'doc_date', 'document_date', 'billing_date', 'invoice_date'])
+                    val = parse_to_yyyymmdd(doc_d)
+                elif src == "peak_invoice_date":
+                    inv_d = local_get_val(['invoice_date', 'tax_date', 'billing_date', 'receipt_date', 'date'], None)
+                    if not inv_d or str(inv_d).strip() in ['-', '']:
+                        val = ""
+                    else:
+                        val = parse_to_yyyymmdd(inv_d)
+                elif src == "peak_price_type":
+                    vat_val = clean_val(local_get_val(['vat_amount', 'vat', 'tax_amount', 'tax']))
+                    vat_rate_val = local_get_val(['vat_rate', 'vat_percent', 'อัตราภาษี'])
+                    has_vat = (vat_val > 0) or (str(vat_rate_val).strip() not in ['-', '', '0', '0%', 'NO', 'no', 'No'])
+                    val = "1" if has_vat else "3"
+                elif src == "peak_account_code":
+                    val = local_get_val(['account_code', 'account_number', 'account_id', 'code'], "")
+                    if val == '-': val = ""
+                elif src == "peak_price_unit":
+                    vat_val = clean_val(local_get_val(['vat_amount', 'vat', 'tax_amount', 'tax']))
+                    vat_rate_val = local_get_val(['vat_rate', 'vat_percent', 'อัตราภาษี'])
+                    has_vat = (vat_val > 0) or (str(vat_rate_val).strip() not in ['-', '', '0', '0%', 'NO', 'no', 'No'])
+                    gross_val = clean_val(local_get_val(['gross_amount', 'amount_before_vat', 'before_vat']))
+                    net_val = clean_val(local_get_val(['net_amount', 'total_amount', 'amount']))
+                    if has_vat:
+                        if gross_val > 0:
+                            val = gross_val
+                        else:
+                            val = round(net_val / 1.07, 2)
+                    else:
+                        val = net_val if net_val > 0 else gross_val
+                elif src == "peak_vat_rate":
+                    vat_val = clean_val(local_get_val(['vat_amount', 'vat', 'tax_amount', 'tax']))
+                    vat_rate_val = local_get_val(['vat_rate', 'vat_percent', 'อัตราภาษี'])
+                    has_vat = (vat_val > 0) or (str(vat_rate_val).strip() not in ['-', '', '0', '0%', 'NO', 'no', 'No'])
+                    val = "7%" if has_vat else "NO"
+                elif src == "peak_wht_rate":
+                    wht_rate_val = local_get_val(['wht_rate', 'wht_percent', 'wht_percent_rate'])
+                    if wht_rate_val and str(wht_rate_val).strip() != '-':
+                        s = str(wht_rate_val).replace('%', '').strip()
+                        try:
+                            w_num = float(s)
+                            if w_num > 0:
+                                if w_num.is_integer():
+                                    val = f"{int(w_num)}%"
+                                else:
+                                    val = f"{w_num}%"
+                            else:
+                                val = "0"
+                        except:
+                            val = "0"
+                    else:
+                        wht_amt = clean_val(local_get_val(['wht_amount', 'wht']))
+                        if wht_amt > 0:
+                            val = "3%"
+                        else:
+                            val = "0"
+                elif src == "peak_payment_channel":
+                    val = local_get_val(['payment_channel', 'payment_method', 'channel'], "")
+                    if val == '-': val = ""
+                elif src == "peak_wht_type":
+                    wht_rate_str = extract_field_value({"source": "peak_wht_rate"}, context_ext, context_data)
+                    if wht_rate_str == "0":
+                        val = "ไม่ระบุ"
+                    else:
+                        vendor_name = str(local_get_val(['sender', 'from', 'vendor', 'vendor_name', 'seller', 'company_name'])).strip()
+                        tax_id = str(local_get_val(['tax_id', 'tax_number', 'เลขผู้เสียภาษี'])).strip()
+                        is_company = False
+                        for word in ['บริษัท', 'บจก', 'หจก', 'จำกัด', 'CO.', 'LTD', 'CORP', 'PUBLIC', 'มหาชน', 'ห้างหุ้นส่วน']:
+                            if word in vendor_name or word.upper() in vendor_name.upper():
+                                is_company = True
+                                break
+                        cleaned_tax = re.sub(r'\D', '', tax_id)
+                        if len(cleaned_tax) == 13:
+                            if cleaned_tax.startswith('0'):
+                                is_company = True
+                        if is_company:
+                            val = "53"
+                        else:
+                            val = "3"
                 
                 # Special cases for ID card split
                 elif src == "id_card_first_name_th":
@@ -888,6 +1316,8 @@ class GoogleWorkspaceManager:
                     val = clean_val(val)
                 elif cleaner == "id":
                     val = clean_id(val)
+                elif cleaner == "branch":
+                    val = clean_branch(val)
                     
                 return val
 
@@ -913,19 +1343,32 @@ class GoogleWorkspaceManager:
                 rows = [row_vals]
 
             # Check if sheet exists and update headers if they don't match our strict format
-            try:
-                res = self.sheets_service.spreadsheets().values().get(spreadsheetId=self.spreadsheet_id, range=f"'{sheet_name}'!A1:Z1").execute()
-                current_headers = res.get('values', [[]])[0]
-                # Force update if headers are English, empty, or too short (missing columns)
-                if not current_headers or len(current_headers) < (len(headers) - 2) or any(x in str(current_headers) for x in ["Log Time", "Category", "Doc Date"]):
-                    logger.info(f"🔄 Updating headers for {sheet_name} to match system standards...")
-                    self.sheets_service.spreadsheets().values().update(spreadsheetId=self.spreadsheet_id, range=f"'{sheet_name}'!A1", valueInputOption="RAW", body={"values": [headers]}).execute()
-            except Exception as e:
-                logger.warning(f"⚠️ Header check failed: {e}")
+            if sheet_name in existing_sheets:
+                try:
+                    res = self.sheets_service.spreadsheets().values().get(spreadsheetId=self.spreadsheet_id, range=f"'{sheet_name}'!A1:Z1").execute()
+                    current_headers = res.get('values', [[]])[0]
+                    # Force update if headers are English, empty, or too short (missing columns)
+                    if not current_headers or len(current_headers) < (len(headers) - 2) or any(x in str(current_headers) for x in ["Log Time", "Category", "Doc Date"]):
+                        logger.info(f"🔄 Updating headers for {sheet_name} to match system standards...")
+                        self.sheets_service.spreadsheets().values().update(spreadsheetId=self.spreadsheet_id, range=f"'{sheet_name}'!A1", valueInputOption="RAW", body={"values": [headers]}).execute()
+                except Exception as e:
+                    logger.warning(f"⚠️ Header check failed: {e}")
+            else:
+                logger.info(f"Sheet {sheet_name} does not exist. Creating new sheet and initializing headers...")
                 try:
                     self.sheets_service.spreadsheets().batchUpdate(spreadsheetId=self.spreadsheet_id, body={'requests': [{'addSheet': {'properties': {'title': sheet_name}}}]}).execute()
-                except: pass
-                self.sheets_service.spreadsheets().values().update(spreadsheetId=self.spreadsheet_id, range=f"'{sheet_name}'!A1", valueInputOption="RAW", body={"values": [headers]}).execute()
+                except Exception as ce:
+                    logger.error(f"Failed to create sheet {sheet_name}: {ce}")
+                try:
+                    self.sheets_service.spreadsheets().values().update(spreadsheetId=self.spreadsheet_id, range=f"'{sheet_name}'!A1", valueInputOption="RAW", body={"values": [headers]}).execute()
+                except Exception as ue:
+                    logger.error(f"Failed to update headers for new sheet {sheet_name}: {ue}")
+
+            # Lock headers (freeze first row)
+            try:
+                self.freeze_sheet(sheet_name)
+            except Exception as fe:
+                logger.warning(f"⚠️ Failed to freeze headers: {fe}")
 
             # Append the data
             try:
@@ -949,6 +1392,56 @@ class GoogleWorkspaceManager:
                 
                 # --- Trigger Reconciliation ---
                 self.auto_reconcile_internal()
+                
+                # If the logged sheet is "ใบเสร็จ/ใบกำกับภาษี", duplicate the record to "peak" sheet!
+                if sheet_name == "ใบเสร็จ/ใบกำกับภาษี":
+                    try:
+                        logger.info("🔄 Duplicating record to 'peak' sheet...")
+                        peak_schema = registry.get("schemas", {}).get("peak", {})
+                        peak_cols = peak_schema.get("columns", [])
+                        peak_headers = peak_schema.get("headers", [])
+                        
+                        peak_row = []
+                        for col in peak_cols:
+                            peak_row.append(extract_field_value(col, context_ext=ext, context_data=data))
+                        
+                        # Ensure "peak" sheet exists
+                        if "peak" not in existing_sheets:
+                            logger.info("Sheet 'peak' does not exist. Creating new sheet and initializing headers...")
+                            try:
+                                self.sheets_service.spreadsheets().batchUpdate(
+                                    spreadsheetId=self.spreadsheet_id, 
+                                    body={'requests': [{'addSheet': {'properties': {'title': 'peak'}}}]}
+                                ).execute()
+                                existing_sheets.append("peak")
+                            except Exception as ce:
+                                logger.error(f"Failed to create sheet 'peak': {ce}")
+                            try:
+                                self.sheets_service.spreadsheets().values().update(
+                                    spreadsheetId=self.spreadsheet_id, 
+                                    range="'peak'!A1", 
+                                    valueInputOption="RAW", 
+                                    body={"values": [peak_headers]}
+                                ).execute()
+                            except Exception as ue:
+                                logger.error(f"Failed to update headers for new sheet 'peak': {ue}")
+                        
+                        # Lock headers and style them
+                        try:
+                            self.freeze_sheet("peak")
+                        except Exception as fe:
+                            logger.warning(f"⚠️ Failed to freeze/style headers for 'peak': {fe}")
+                            
+                        # Append to peak
+                        self.sheets_service.spreadsheets().values().append(
+                            spreadsheetId=self.spreadsheet_id,
+                            range="'peak'!A2",
+                            valueInputOption="USER_ENTERED",
+                            body={"values": [peak_row]}
+                        ).execute()
+                        logger.info("✅ Duplicated record to 'peak' sheet successfully.")
+                    except Exception as pe:
+                        logger.error(f"❌ Failed to duplicate to 'peak' sheet: {pe}")
                 
                 return {"ok": True, "sheet": sheet_name, "row": row_idx, "data": rows[0]}
 
@@ -1118,7 +1611,7 @@ class GoogleWorkspaceManager:
             logger.error(f"Error moving row from {from_sheet} to {to_sheet}: {e}")
             return False, str(e)
 
-    def get_monthly_summary(self):
+    def get_monthly_summary(self, return_raw=False):
         """Fetches real spreadsheet data and generates a stunning monthly expense summary Flex Message."""
         if not self.sheets_service or not self.spreadsheet_id:
             return "❌ ระบบ Google Sheets ยังไม่ได้เชื่อมต่อหรือยังไม่ได้ลงทะเบียนค่ะ"
@@ -1187,9 +1680,12 @@ class GoogleWorkspaceManager:
                         except:
                             pass
 
+            if return_raw:
+                return total_expense, total_count, categories_breakdown
+
             # If no data found at all
             if total_count == 0:
-                return "📊 ไม่พบข้อมูลรายการใช้จ่ายที่บันทึกไว้ใน Google Sheets ในขณะนี้ค่ะ ลองบันทึกข้อมูลก่อนนะคะ 😊"
+                return "ไม่พบข้อมูลรายการใช้จ่ายที่บันทึกไว้ใน Google Sheets ในขณะนี้ค่ะ พี่ลองบันทึกข้อมูลก่อนนะคะ"
 
             # Format amounts cleanly
             total_expense_str = f"{total_expense:,.2f}"
@@ -1217,19 +1713,19 @@ class GoogleWorkspaceManager:
                     "contents": [
                         {
                             "type": "text",
-                            "text": f"📁 {cat}",
+                            "text": str(cat),
                             "size": "sm",
-                            "color": "#333333",
-                            "flex": 5
+                            "color": "#475569",
+                            "flex": 6
                         },
                         {
                             "type": "text",
                             "text": f"{amt_formatted} THB",
                             "size": "sm",
                             "weight": "bold",
-                            "color": "#111111",
+                            "color": "#0F172A",
                             "align": "end",
-                            "flex": 5
+                            "flex": 4
                         }
                     ]
                 })
@@ -1242,15 +1738,43 @@ class GoogleWorkspaceManager:
                 "header": {
                     "type": "box",
                     "layout": "vertical",
-                    "backgroundColor": "#17A2B8",
-                    "paddingAll": "16px",
+                    "backgroundColor": "#F0FDF9",
+                    "paddingAll": "20px",
+                    "paddingBottom": "16px",
                     "contents": [
                         {
+                            "type": "box",
+                            "layout": "horizontal",
+                            "contents": [
+                                {
+                                    "type": "box",
+                                    "layout": "vertical",
+                                    "backgroundColor": "#059669",
+                                    "cornerRadius": "20px",
+                                    "paddingAll": "4px",
+                                    "paddingStart": "10px",
+                                    "paddingEnd": "10px",
+                                    "contents": [
+                                        {"type": "text", "text": "SUMMARY", "size": "xxs", "color": "#FFFFFF", "weight": "bold"}
+                                    ]
+                                },
+                                {"type": "filler"}
+                            ]
+                        },
+                        {
                             "type": "text",
-                            "text": "📊 รายงานสรุปรายจ่ายทั้งหมด",
+                            "text": f"{total_expense_str} THB",
                             "weight": "bold",
-                            "color": "#FFFFFF",
-                            "size": "md"
+                            "size": "xxl",
+                            "color": "#0F172A",
+                            "margin": "md"
+                        },
+                        {
+                            "type": "text",
+                            "text": "รายงานสรุปรายจ่ายสะสม",
+                            "size": "xs",
+                            "color": "#64748B",
+                            "margin": "xs"
                         }
                     ]
                 },
@@ -1262,43 +1786,17 @@ class GoogleWorkspaceManager:
                     "contents": [
                         {
                             "type": "box",
-                            "layout": "horizontal",
-                            "contents": [
-                                {
-                                    "type": "text",
-                                    "text": "ยอดรวมรายจ่าย",
-                                    "color": "#666666",
-                                    "size": "sm",
-                                    "flex": 4,
-                                    "align": "start"
-                                },
-                                {
-                                    "type": "text",
-                                    "text": f"{total_expense_str} THB",
-                                    "weight": "bold",
-                                    "size": "xl",
-                                    "color": "#17A2B8",
-                                    "flex": 6,
-                                    "align": "end"
-                                }
-                            ]
-                        },
-                        {
-                            "type": "separator",
-                            "margin": "lg"
-                        },
-                        {
-                            "type": "box",
                             "layout": "vertical",
-                            "margin": "lg",
+                            "margin": "md",
                             "spacing": "sm",
                             "contents": [
                                 {
                                     "type": "text",
-                                    "text": "📂 แยกตามประเภทบัญชี/หมวดหมู่",
+                                    "text": "แยกตามประเภทบัญชี/หมวดหมู่",
                                     "weight": "bold",
                                     "size": "sm",
-                                    "color": "#17A2B8"
+                                    "color": "#0F172A",
+                                    "margin": "none"
                                 }
                             ] + contents_list
                         },
@@ -1311,21 +1809,25 @@ class GoogleWorkspaceManager:
                             "layout": "vertical",
                             "margin": "lg",
                             "spacing": "xs",
+                            "paddingAll": "12px",
+                            "cornerRadius": "8px",
+                            "backgroundColor": "#F8FAFC",
                             "contents": [
                                 {
                                     "type": "box",
                                     "layout": "horizontal",
                                     "contents": [
-                                        {"type": "text", "text": "จำนวนรายการทั้งหมด", "color": "#888888", "size": "xs", "flex": 6},
-                                        {"type": "text", "text": f"{total_count} รายการ", "color": "#333333", "weight": "bold", "size": "xs", "flex": 4, "align": "end"}
+                                        {"type": "text", "text": "จำนวนรายการทั้งหมด", "color": "#64748B", "size": "xs", "flex": 6},
+                                        {"type": "text", "text": f"{total_count} รายการ", "color": "#0F172A", "weight": "bold", "size": "xs", "flex": 4, "align": "end"}
                                     ]
                                 },
                                 {
                                     "type": "box",
                                     "layout": "horizontal",
+                                    "margin": "sm",
                                     "contents": [
-                                        {"type": "text", "text": "ยอดเฉลี่ยต่อรายการ", "color": "#888888", "size": "xs", "flex": 6},
-                                        {"type": "text", "text": f"{avg_expense_str} THB", "color": "#333333", "weight": "bold", "size": "xs", "flex": 4, "align": "end"}
+                                        {"type": "text", "text": "ยอดเฉลี่ยต่อรายการ", "color": "#64748B", "size": "xs", "flex": 6},
+                                        {"type": "text", "text": f"{avg_expense_str} THB", "color": "#0F172A", "weight": "bold", "size": "xs", "flex": 4, "align": "end"}
                                     ]
                                 }
                             ]
@@ -1340,10 +1842,10 @@ class GoogleWorkspaceManager:
                         {
                             "type": "button",
                             "style": "primary",
-                            "color": "#17A2B8",
+                            "color": "#059669",
                             "action": {
                                 "type": "uri",
-                                "label": "📊 เปิดดูรายละเอียดใน Google Sheets",
+                                "label": "เปิด Google Sheets",
                                 "uri": sheet_url
                             }
                         }
@@ -1353,13 +1855,14 @@ class GoogleWorkspaceManager:
             
             return {
                 "type": "flex",
-                "altText": "📊 รายงานสรุปยอดรายจ่ายของพี่ค่ะ",
+                "altText": "รายงานสรุปยอดรายจ่ายของพี่ค่ะ",
                 "contents": flex_bubble
             }
             
         except Exception as e:
             logger.error(f"Error compiling monthly summary: {e}")
-            return f"❌ เกิดข้อผิดพลาดในการดึงข้อมูลรายจ่าย: {e}"
+            return f"เกิดข้อผิดพลาดในการดึงข้อมูลรายจ่าย: {e}"
+
 
 google_manager = GoogleWorkspaceManager()
 

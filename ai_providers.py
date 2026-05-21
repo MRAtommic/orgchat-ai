@@ -155,7 +155,7 @@ def analyze_image_contents(image_data: bytes, mime_type: str = "image/jpeg"):
     **กฎการสกัดข้อมูล**:
     1. **Bank Slip (สลิปโอนเงิน)**:
        - เน้น: วันที่, เวลา, ผู้โอน, ผู้รับ, ยอดเงิน (net_amount), บันทึก (memo)
-       - สำคัญ: ระบุธนาคารต้นทาง (sender_bank) และธนาคารปลายทาง (receiver_bank) เช่น กสิกรไทย, ไทยพาณิชย์, SCB, KBANK เป็นต้น
+       - สำคัญ: ระบุธนาคารต้นทาง (sender_bank) และธนาคารปลายทาง (receiver_bank) เป็นชื่อเต็มภาษาอังกฤษเสมอ (เช่น Kasikornbank, Siam Commercial Bank, Bangkok Bank, Krungthai Bank, TMBThanachart Bank, Bank of Ayudhya, Government Savings Bank, United Overseas Bank, Bank for Agriculture and Agricultural Cooperatives) ห้ามใช้ภาษาไทยหรือตัวย่อเด็ดขาด
        - ห้ามสกัด: income_type, wht_rate, tax_id (ถ้าไม่ใช่สลิปนิติบุคคล)
     2. **Receipt/Invoice (ใบเสร็จ/ใบกำกับภาษี)**:
        - เน้น: เลขประจำตัวผู้เสียภาษี (tax_id), ยอดก่อนภาษี (gross_amount), ส่วนลด (discount_amount), ภาษี (vat_amount), ยอดสุทธิ (net_amount)
@@ -171,9 +171,9 @@ def analyze_image_contents(image_data: bytes, mime_type: str = "image/jpeg"):
         "date": "DD/MM/YYYY",
         "time": "HH:MM",
         "sender": "SENDER_NAME",
-        "sender_bank": "BANK_NAME (เช่น กสิกรไทย, ไทยพาณิชย์, SCB, KBANK)",
+        "sender_bank": "BANK_NAME in full English (MUST use full name: Kasikornbank, Siam Commercial Bank, Bangkok Bank, Krungthai Bank, TMBThanachart Bank, Bank of Ayudhya, Government Savings Bank, United Overseas Bank, Bank for Agriculture and Agricultural Cooperatives, Government Housing Bank)",
         "receiver": "RECEIVER_NAME",
-        "receiver_bank": "BANK_NAME (เช่น กสิกรไทย, ไทยพาณิชย์, SCB, KBANK)",
+        "receiver_bank": "BANK_NAME in full English (MUST use full name: Kasikornbank, Siam Commercial Bank, Bangkok Bank, Krungthai Bank, TMBThanachart Bank, Bank of Ayudhya, Government Savings Bank, United Overseas Bank, Bank for Agriculture and Agricultural Cooperatives, Government Housing Bank)",
         "gross_amount": 0.00,
         "discount_amount": 0.00,
         "vat_amount": 0.00,
@@ -181,13 +181,15 @@ def analyze_image_contents(image_data: bytes, mime_type: str = "image/jpeg"):
         "net_amount": 0.00,
         "tax_id": "13_DIGIT_ID",
         "memo": "MEMO_TEXT",
-        "ref_number": "REF_NO",
+        "ref_number": "REF_NO (สำหรับสลิป POS ใช้ INV/TRACE# หรือ Transaction ID, สำหรับใบกำกับใช้เลขที่ใบกำกับ)",
+        "appr_code": "APPROVAL_CODE / Auth Code / APPR CODE (เช่น 624913 ที่ปรากฏในสลิปธนาคาร EDC และใบเสร็จจากร้านค้า คือตัวเดียวกัน ต้องสกัดให้ได้เสมอ)",
         "branch": "BRANCH_NAME",
         "sender_address": "ADDRESS_OF_SENDER",
         "receiver_address": "ADDRESS_OF_RECEIVER",
         "income_type": "ประเภทเงินได้ (เช่น ค่าบริการ, ค่าขนส่ง)",
         "wht_type": "ประเภทภาษีหัก ณ ที่จ่าย (เช่น ค่าบริการ 3%)",
         "contact": "ช่องทางการติดต่อ (เบอร์โทร/อีเมล)",
+        "is_etax": false,
         "transactions": [
           {
             "date": "DD/MM/YYYY",
@@ -208,16 +210,18 @@ def analyze_image_contents(image_data: bytes, mime_type: str = "image/jpeg"):
     }
     
     RULES:
+    - **is_etax**: ให้ระบุเป็น true หากพบข้อความที่ระบุว่าเป็น e-tax, e-Tax Invoice, ใบกำกับภาษีอิเล็กทรอนิกส์, ใบเสร็จรับเงินอิเล็กทรอนิกส์, เอกสารที่จัดทำและส่งข้อมูลให้แก่กรมสรรพากรด้วยวิธีการทางอิเล็กทรอนิกส์ หรือมีการระบุว่าส่งข้อมูลสรรพากรทางอิเล็กทรอนิกส์ หรือลงลายมือชื่อดิจิทัล (digitally signed) หรือระบุว่าเป็น etax, มิฉะนั้นระบุเป็น false
     - **สแกนบันทึกช่วยจำ (Memo)**: หากเห็นคำว่า "ExWHT" หรือ "หัก ณ ที่จ่าย" ในบันทึกช่วยจำ ต้องตีความว่ามีการหักภาษีแล้ว และสกัดยอดออกมาให้ได้
     - **ระบุธนาคารให้แม่นยำ**: ต้องระบุธนาคารต้นทาง (sender_bank) และปลายทาง (receiver_bank) ให้ได้ โดยดูจากชื่อธนาคาร หรือ "โลโก้" ที่อยู่ใกล้ชื่อนั้นๆ
     - **กรณี Bill Payment (ชำระบิล)**: หากเห็นคำว่า "Bill Payment", "Comp Code", หรือ "Biller ID" และไม่มีโลโก้ธนาคารที่ชัดเจนของฝั่งผู้รับ **ให้ใส่ receiver_bank เป็น "-"** ห้ามเดาเอาจากโลโก้ธนาคารที่ใช้โอน (เช่น K-BIZ, K Plus)
     - **สกัดวันและเวลาให้แม่นยำ**: มักจะอยู่คู่กัน (เช่น 10/03/2026 15:12 หรือ 10-03-26 15:12) ต้องสกัดทั้งคู่ หากเจอเวลาต้องใส่ในช่อง `time` ห้ามทิ้งเป็น "-" หากมีข้อมูล
     - **หัก ณ ที่จ่าย (WHT) และ ที่อยู่ (Address)**: สำคัญมาก! ต้องสกัดที่อยู่ (`sender_address`) และเลขประจำตัวผู้เสียภาษี (`tax_id`) จากใบกำกับภาษีให้ได้ครบถ้วนที่สุด หากเจอหลายที่อยู่ ให้เลือกที่อยู่ของผู้ที่ออกเอกสาร (Seller/Vendor) เป็นหลัก
-    - **หัก ณ ที่จ่าย (WHT) ต้องสกัดให้ได้**: มักจะเป็นยอดเล็กๆ ที่อยู่ท้ายบิล หรือระบุเป็น % (1%, 3%, 5%) หากเห็นคำว่า "หัก ณ ที่จ่าย", "WHT", "ภาษีหัก ณ ที่จ่าย" ต้องเอาตัวเลขนั้นมาใส่ใน `wht_amount` และระบุประเภทใน `wht_type` (เช่น ค่าบริการ 3%, ค่าขนส่ง 1%) ห้ามข้ามเด็ดขาด
+    - **หัก ณ ที่จ่าย (WHT) ต้องสกัดให้ได้**: มักจะเป็นยอดเล็กๆ ที่อยู่ท้ายบิล หรือระบุเป็น % (1%, 3%, 5%) หากเห็นคำว่า "หัก ณ ที่จ่าย", "WHT", "ภาษีหัก ณ ที่จ่าย" ต้องเอาตัวเลขนั้นมาใส่ใน `wht_amount` และระบุประเภท in `wht_type` (เช่น ค่าบริการ 3%, ค่าขนส่ง 1%) ห้ามข้ามเด็ดขาด
+    - **APPR CODE / Auth Code (สำคัญมาก! ใช้บล็อกเอกสารซ้ำข้ามประเภท)**: ต้องสกัดรหัสอนุมัติ (APPR CODE, Auth Code, Approval Code) ใส่ใน `appr_code` เสมอ รหัสนี้จะเหมือนกันทั้งบนสลิปจากเครื่อง EDC ของธนาคาร (เช่น Bangkok Bank POS Slip APPR CODE: 624913) และใบเสร็จ/ใบกำกับภาษีจากร้านค้า (เช่น CP AXTRA Tax Invoice Auth Code = 624913) เพราะเป็นธุรกรรมเดียวกัน ระบบจะใช้ `appr_code` ตรวจสอบว่าเป็นเอกสารซ้ำจากธุรกรรมเดียวกันหรือไม่ แม้ชื่อร้านหรือเลขอ้างอิงอื่นจะต่างกัน
     - **หมวดหมู่ (Category)**: 
-        - "Slip": สลิปโอนเงินธนาคาร
-        - "Receipt": ใบเสร็จรับเงิน/ใบกำกับภาษีที่มีการชำระเงินแล้ว
-        - "Invoice": ใบแจ้งหนี้ที่ยังไม่ได้ชำระ
+        - "Slip": สลิปโอนเงินธนาคาร (รวมถึงสลิป e-Slip, สลิปโอนเงินที่มียอดชำระบิล Bill Payment, หรือรูปภาพบันทึกการโอนเงินจากแอปพลิเคชันธนาคารทุกประเภท แม้จะมีชื่อบริษัทผู้รับเงิน เช่น 'บริษัท ปังปัง คอร์ปอเรชัน จำกัด' หรือข้อความว่าชำระเงินสำเร็จอยู่ก็ตาม ห้ามจัดเป็น Receipt เด็ดขาด)
+        - "Receipt": ใบเสร็จรับเงิน/ใบกำกับภาษีที่มีการชำระเงินแล้ว (ที่เป็นกระดาษเอกสารทางการเงิน, PDF, หรือใบเสร็จที่ออกโดยบริษัทคู่ค้า ไม่ใช่สลิปจากแอปธนาคาร)
+        - "Invoice": ใบแจ้งหนี้/ใบกำกับภาษีที่ยังไม่ได้ชำระ
         - "Statement": รายการเดินบัญชีธนาคาร (ต้องสกัดรายการเดินบัญชี "ทุกบรรทัด" ที่ปรากฏในภาพ ใส่ลงใน transactions ให้ครบถ้วนที่สุด ทั้งวันที่, เวลา, รายการ, ยอดเงิน และคู่ค้า)
         - "ID_Card": บัตรประชาชน (ต้องสกัดให้ครบ: id_number, first_name_th, last_name_th, first_name_en, last_name_en, birth_date, gender, address, expiry_date, laser_id)
     - ตัวอย่างโครงสร้าง ID_Card: {"id_number": "...", "first_name_th": "วีรภัทร", "last_name_th": "ชื่นชอบ", "first_name_en": "Weeraphat", "last_name_en": "Chuenchob", ...}

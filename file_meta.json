@@ -46,5 +46,29 @@
     "status": "ready",
     "api_key_status": "AIzaS...",
     "timestamp": "2026-05-11T10:24:46.287703"
+  },
+  "5a4ca817e6683e473c52e252b0070450b7a189f035f4dd0b2f8255d60222b52c": {
+    "name": "QT-20260519-7190.pdf",
+    "path": "C:\\Users\\KC_Ketwilai\\Downloads\\orgchat-ai-main\\orgchat-ai-main\\webai\\uploads\\QT-20260519-7190.pdf",
+    "chunks": 3,
+    "size": 57470,
+    "type": "pdf",
+    "department": "General",
+    "category_id": null,
+    "status": "ready",
+    "api_key_status": "AIzaS...",
+    "timestamp": "2026-05-19T23:13:01.764436"
+  },
+  "f05ae734639a37057d5fdc0e6eafc0e479d1387d8588ce6cc774478eab14c8a3": {
+    "name": "QT-20260519-4665.pdf",
+    "path": "C:\\Users\\KC_Ketwilai\\Downloads\\orgchat-ai-main\\orgchat-ai-main\\webai\\uploads\\QT-20260519-4665.pdf",
+    "chunks": 4,
+    "size": 59274,
+    "type": "pdf",
+    "department": "General",
+    "category_id": null,
+    "status": "ready",
+    "api_key_status": "AIzaS...",
+    "timestamp": "2026-05-20T10:38:57.696218"
   }
 }

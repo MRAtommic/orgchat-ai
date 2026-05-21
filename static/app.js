@@ -5413,6 +5413,23 @@ function initSocket() {
     }
   });
 
+  // Listen for local scan status updates
+  socket.on('local_scan_status', (data) => {
+    console.log("📂 Local Scan Status Received:", data);
+    if (data.ok) {
+      toast(data.message, 'success');
+    } else {
+      toast(data.message, 'error');
+    }
+    // Re-enable local scan button
+    const localScanBtn = $('startLocalScanBtn');
+    if (localScanBtn) {
+      localScanBtn.disabled = false;
+      localScanBtn.innerHTML = `<i data-lucide="scan" class="w-4 h-4"></i> สแกนโฟลเดอร์ ภงด. 53`;
+      if (typeof initIcons === 'function') initIcons();
+    }
+  });
+
   // WebRTC Signaling — handled by initWebRTCSignaling() at bottom of file
 
 }
@@ -13852,7 +13869,42 @@ document.addEventListener('DOMContentLoaded', () => {
     if (resetBtn) resetBtn.onclick = resetReconciliation;
     const filteredBtn = $('downloadFilteredBtn');
     if (filteredBtn) filteredBtn.onclick = downloadFilteredRecon;
+    const localScanBtn = $('startLocalScanBtn');
+    if (localScanBtn) localScanBtn.onclick = triggerLocalScan;
 });
+
+async function triggerLocalScan() {
+    const btn = $('startLocalScanBtn');
+    if (!btn) return;
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> กำลังส่งคำขอ...`;
+    initIcons();
+    
+    try {
+        const res = await fetch('/api/admin/reconcile/local-scan', { 
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await res.json();
+        if (data.ok) {
+            toast(data.message || 'เริ่มสแกนโฟลเดอร์เอกสารและกระทบยอดแล้วค่ะ ⏳', 'info');
+            btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> กำลังสแกนในเบื้องหลัง...`;
+            initIcons();
+        } else {
+            toast(data.error || 'เกิดข้อผิดพลาดในการสแกน', 'error');
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+            initIcons();
+        }
+    } catch (e) {
+        console.error(e);
+        toast('การเชื่อมต่อล้มเหลว', 'error');
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+        initIcons();
+    }
+}
 
 async function initAuth() {
     const userEl = $('loginUsername');

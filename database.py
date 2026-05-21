@@ -174,6 +174,31 @@ def init_db():
         cursor.execute("ALTER TABLE schedules ADD COLUMN target_users TEXT") # Comma separated usernames
     except sqlite3.OperationalError: pass
 
+    # Migrations for leave_requests to sync duplicate schemas
+    try:
+        cursor.execute("ALTER TABLE leave_requests ADD COLUMN line_user_id TEXT")
+    except sqlite3.OperationalError: pass
+
+    try:
+        cursor.execute("ALTER TABLE leave_requests ADD COLUMN leave_type TEXT")
+    except sqlite3.OperationalError: pass
+
+    try:
+        cursor.execute("ALTER TABLE leave_requests ADD COLUMN type TEXT")
+    except sqlite3.OperationalError: pass
+
+    try:
+        cursor.execute("ALTER TABLE leave_requests ADD COLUMN file_link TEXT")
+    except sqlite3.OperationalError: pass
+
+    try:
+        cursor.execute("ALTER TABLE leave_requests ADD COLUMN approved_by TEXT")
+    except sqlite3.OperationalError: pass
+
+    try:
+        cursor.execute("ALTER TABLE leave_requests ADD COLUMN approver_note TEXT")
+    except sqlite3.OperationalError: pass
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS private_messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

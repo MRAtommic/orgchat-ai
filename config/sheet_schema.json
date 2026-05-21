@@ -11,14 +11,21 @@
     "statement": "สเตตเมนต์",
     "ID_Card": "บัตรประชาชน",
     "slip": "สลิปโอนเงิน",
-    "Uploads": "สลิปโอนเงิน"
+    "Uploads": "สลิปโอนเงิน",
+    "WHT": "ใบหัก ณ ที่จ่าย",
+    "wht": "ใบหัก ณ ที่จ่าย",
+    "Withholding_Tax": "ใบหัก ณ ที่จ่าย",
+    "ใบหักณที่จ่าย": "ใบหัก ณ ที่จ่าย",
+    "หนังสือรับรองการหักภาษี ณ ที่จ่าย": "ใบหัก ณ ที่จ่าย",
+    "peak": "peak",
+    "Import_Expenses": "peak"
   },
   "schemas": {
     "บัตรประชาชน": {
       "headers": [
         "เวลาที่บันทึก", "หมวดหมู่", "วันที่บันทึก", "เวลาที่บันทึก", "AI Model", 
         "เลขบัตรประชาชน", "ชื่อ (ไทย)", "นามสกุล (ไทย)", "ชื่อ (อังกฤษ)", "นามสกุล (อังกฤษ)", 
-        "วันเกิด", "เพศ", "ที่อยู่", "วันหมดอายุ", "Laser ID", "ลิงก์ไฟล์", "AI ถูก/ผิด"
+        "วันเกิด", "เพศ", "ที่อยู่", "วันหมดอายุ", "Laser ID", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด"
       ],
       "columns": [
         {"source": "current_datetime"},
@@ -36,6 +43,7 @@
         {"source": "ai_keys:address"},
         {"source": "ai_keys:expiry_date,expired_date,expiry"},
         {"source": "ai_keys:laser_id,laser,ref_number"},
+        {"source": "original_filename"},
         {"source": "file_link"},
         {"source": "const:-"}
       ]
@@ -44,7 +52,7 @@
       "headers": [
         "เวลาที่บันทึก", "วันที่เอกสาร", "เวลา/วันที่มีผล", "รายการ", "รายละเอียด", 
         "ถอน/เงินออก", "ฝาก/เงินเข้า", "ค่าธรรมเนียม", "ยอดคงเหลือ", "ช่องทาง", 
-        "เลขที่อ้างอิง", "คู่ค้า/ผู้โอน", "ลิงก์ไฟล์"
+        "เลขที่อ้างอิง", "คู่ค้า/ผู้โอน", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์"
       ],
       "columns": [
         {"source": "current_datetime"},
@@ -59,6 +67,7 @@
         {"source": "statement_channel"},
         {"source": "ai_keys:ref,ref_number,เลขที่อ้างอิง", "cleaner": "id"},
         {"source": "ai_keys:counterparty,sender,receiver,คู่ค้า"},
+        {"source": "original_filename"},
         {"source": "file_link"}
       ]
     },
@@ -66,15 +75,15 @@
       "headers": [
         "เวลาที่บันทึก", "หมวดหมู่", "วันที่ในเอกสาร", "ผู้ส่ง/ร้านค้า", "รหัสสาขา", 
         "เลขผู้เสียภาษี", "ที่อยู่คู่ค้า", "ผู้รับ", "ช่องทางการติดต่อ", "จำนวนเงินสุทธิ", 
-        "ยอดก่อนภาษี", "ส่วนลด", "VAT", "WHT", "ประเภท WHT", "เลขที่อ้างอิง", 
-        "สรุปจาก AI", "ลิงก์ไฟล์", "AI ถูก/ผิด"
+        "ยอดก่อนภาษี", "ส่วนลด", "VAT", "หัก ณ ที่จ่าย", "ประเภท หัก ณ ที่จ่าย", "เลขที่อ้างอิง", 
+        "ตามใบกำกับ", "สรุปจาก AI", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด"
       ],
       "columns": [
         {"source": "current_datetime"},
         {"source": "const:ใบเสร็จ/ใบกำกับภาษี"},
         {"source": "ai_keys:date"},
         {"source": "sender_name_fallback"},
-        {"source": "ai_keys:branch"},
+        {"source": "ai_keys:branch", "cleaner": "branch"},
         {"source": "ai_keys:tax_id", "cleaner": "id"},
         {"source": "ai_keys:address"},
         {"source": "receiver_name_fallback"},
@@ -86,7 +95,9 @@
         {"source": "ai_keys:wht_amount", "cleaner": "float"},
         {"source": "ai_keys:wht_type,wht_category,wht_rate,wht_percent"},
         {"source": "ai_keys:ref_number"},
+        {"source": "invoice_follow_up"},
         {"source": "summary"},
+        {"source": "original_filename"},
         {"source": "file_link"},
         {"source": "const:-"}
       ]
@@ -94,9 +105,8 @@
     "สลิปโอนเงิน": {
       "headers": [
         "เวลาที่บันทึก", "หมวดหมู่", "วันที่ในเอกสาร", "เวลาในเอกสาร", "ผู้ส่ง/ร้านค้า", 
-        "เลขผู้เสียภาษี", "ผู้รับ", "ช่องทางการติดต่อ", "จำนวนเงินสุทธิ", "ยอดก่อนภาษี", 
-        "WHT", "เลขที่อ้างอิง", "ธนาคารต้นทาง", "ธนาคารปลายทาง", "บันทึกช่วยจำ", 
-        "สรุปจาก AI", "ลิงก์ไฟล์", "AI ถูก/ผิด"
+        "ผู้รับ", "จำนวนเงินสุทธิ", "ยอดก่อนภาษี", "หัก ณ ที่จ่าย", "เลขที่อ้างอิง", 
+        "ธนาคารต้นทาง", "ธนาคารปลายทาง", "บันทึกช่วยจำ", "สรุปจาก AI", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด"
       ],
       "columns": [
         {"source": "current_datetime"},
@@ -104,9 +114,7 @@
         {"source": "ai_keys:date"},
         {"source": "ai_keys:time"},
         {"source": "sender_name_fallback"},
-        {"source": "ai_keys:tax_id", "cleaner": "id"},
         {"source": "receiver_name_fallback"},
-        {"source": "ai_keys:contact,phone"},
         {"source": "ai_keys:net_amount", "cleaner": "float"},
         {"source": "ai_keys:gross_amount", "cleaner": "float"},
         {"source": "ai_keys:wht_amount", "cleaner": "float"},
@@ -115,6 +123,28 @@
         {"source": "ai_keys:receiver_bank,bank_to"},
         {"source": "ai_keys:memo"},
         {"source": "summary"},
+        {"source": "original_filename"},
+        {"source": "file_link"},
+        {"source": "const:-"}
+      ]
+    },
+    "ใบหัก ณ ที่จ่าย": {
+      "headers": [
+        "เวลาที่บันทึก", "หมวดหมู่", "วันที่ในเอกสาร", "ผู้มีหน้าที่หักภาษี (ผู้จ่ายเงิน)", "ผู้ถูกหักภาษี (ผู้รับเงิน)", "จำนวนเงินสุทธิ", "ยอดก่อนภาษี", "จำนวนภาษีที่หัก", "อัตราภาษี", "ประเภทเงินได้", "เลขที่อ้างอิง", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด"
+      ],
+      "columns": [
+        {"source": "current_datetime"},
+        {"source": "const:ใบหัก ณ ที่จ่าย"},
+        {"source": "ai_keys:date"},
+        {"source": "ai_keys:payer_name,ผู้จ่ายเงิน"},
+        {"source": "ai_keys:payee_name,ผู้รับเงิน"},
+        {"source": "ai_keys:net_amount", "cleaner": "float"},
+        {"source": "ai_keys:gross_amount", "cleaner": "float"},
+        {"source": "ai_keys:wht_amount", "cleaner": "float"},
+        {"source": "ai_keys:wht_rate,wht_percent"},
+        {"source": "ai_keys:wht_type,income_type"},
+        {"source": "ai_keys:ref_number"},
+        {"source": "original_filename"},
         {"source": "file_link"},
         {"source": "const:-"}
       ]
@@ -122,7 +152,7 @@
     "ใบเสนอราคา": {
       "headers": [
         "เวลาที่บันทึก", "วันที่เอกสาร", "ผู้เสนอราคา", "ลูกค้า", "ยอดเงินสุทธิ", 
-        "สถานะ", "ลิงก์ไฟล์", "AI ถูก/ผิด"
+        "สถานะ", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด"
       ],
       "columns": [
         {"source": "current_datetime"},
@@ -131,19 +161,54 @@
         {"source": "receiver_name_fallback"},
         {"source": "ai_keys:net_amount", "cleaner": "float"},
         {"source": "const:รออนุมัติ"},
+        {"source": "original_filename"},
         {"source": "file_link"},
         {"source": "const:-"}
       ]
     },
+    "peak": {
+      "headers": [
+        "ลำดับที่*", "วันที่เอกสาร", "อ้างอิงถึง", "ผู้รับเงิน/คู่ค้า", "เลขทะเบียน 13 หลัก", 
+        "เลขสาขา 5 หลัก", "เลขที่ใบกำกับฯ (ถ้ามี)", "วันที่ใบกำกับฯ (ถ้ามี)", "วันที่บันทึกภาษีซื้อ (ถ้ามี)", 
+        "ประเภทราคา", "บัญชี", "คำอธิบาย", "จำนวน", "ราคาต่อหน่วย", "อัตราภาษี", 
+        "หัก ณ ที่จ่าย (ถ้ามี)", "ชำระโดย", "จำนวนเงินที่ชำระ", "ภ.ง.ด. (ถ้ามี)", "หมายเหตุ", "กลุ่มจัดประเภท", "ไฟล์ต้นฉบับ", "ลิงก์ drive"
+      ],
+      "columns": [
+        {"source": "peak_seq"},
+        {"source": "peak_doc_date"},
+        {"source": "ai_keys:ref_number"},
+        {"source": "ai_keys:sender_name,sender,vendor,merchant,payee_name,ผู้รับเงิน,ร้านค้า,ผู้ส่ง"},
+        {"source": "ai_keys:tax_id", "cleaner": "id"},
+        {"source": "ai_keys:branch", "cleaner": "branch"},
+        {"source": "ai_keys:invoice_number,ref_number,เลขที่อ้างอิง"},
+        {"source": "peak_invoice_date"},
+        {"source": "peak_invoice_date"},
+        {"source": "peak_price_type"},
+        {"source": "peak_account_code"},
+        {"source": "summary"},
+        {"source": "const:1"},
+        {"source": "peak_price_unit"},
+        {"source": "peak_vat_rate"},
+        {"source": "peak_wht_rate"},
+        {"source": "peak_payment_channel"},
+        {"source": "ai_keys:net_amount", "cleaner": "float"},
+        {"source": "peak_wht_type"},
+        {"source": "file_link"},
+        {"source": "const:-"},
+        {"source": "original_filename"},
+        {"source": "file_link"}
+      ]
+    },
     "default": {
       "headers": [
-        "เวลาที่บันทึก", "หมวดหมู่", "วันที่ในเอกสาร", "สรุปข้อมูล", "ลิงก์ไฟล์", "AI ถูก/ผิด"
+        "เวลาที่บันทึก", "หมวดหมู่", "วันที่ในเอกสาร", "สรุปข้อมูล", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด"
       ],
       "columns": [
         {"source": "current_datetime"},
         {"source": "sheet_name"},
         {"source": "ai_keys:date"},
         {"source": "summary"},
+        {"source": "original_filename"},
         {"source": "file_link"},
         {"source": "const:-"}
       ]

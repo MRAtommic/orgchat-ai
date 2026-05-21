@@ -192,7 +192,7 @@ class BatchedGoogleEmbeddingFunction(embedding_functions.EmbeddingFunction):
                 for emb in response.embeddings:
                     all_embeddings.append(emb.values)
                 if len(input) > batch_size:
-                    time.sleep(5.0)
+                    time.sleep(1.0)  # Reduced from 5.0 to 1.0 to keep responsive
             except Exception as e:
                 err_msg = str(e).lower()
                 if "429" in err_msg or "quota" in err_msg:
@@ -200,8 +200,8 @@ class BatchedGoogleEmbeddingFunction(embedding_functions.EmbeddingFunction):
                         print("🚫 DAILY Quota Exceeded. หยุดการ embed ชั่วคราว")
                         self.daily_quota_hit = True
                         raise Exception("DAILY_QUOTA_EXCEEDED")
-                    print(f"⚠️ Rate Limit — รอ 30 วินาทีแล้วลองใหม่...")
-                    time.sleep(30.0)
+                    print(f"⚠️ Rate Limit — รอ 3 วินาทีแล้วลองใหม่...")
+                    time.sleep(3.0)  # Reduced from 30.0 to 3.0 to prevent Gunicorn timeout
                     try:
                         response = self._client.models.embed_content(
                             model=self._model_name,
@@ -285,8 +285,19 @@ class KnowledgeBase:
                 ef = FastEmbedEmbeddingFunction()
             except ImportError:
                 print("⚠️ Falling back to Dummy embeddings because fastembed is missing.")
-                # We'll throw an error later if they try to use it
                 ef = None
+            except Exception as e:
+                print(f"⚠️ [CRASH PREVENTED] Local FastEmbed failed to initialize (e.g. OOM/bad allocation): {e}")
+                print(f"☁️ [SELF-HEAL] Automatically falling back to Google Gemini Cloud Embeddings...")
+                try:
+                    ef = BatchedGoogleEmbeddingFunction(
+                        api_key=self.api_key,
+                        model_name="models/gemini-embedding-001"
+                    )
+                    self.provider = "gemini"
+                except Exception as ex:
+                    print(f"❌ Fallback failed: {ex}")
+                    ef = None
         else:
             print(f"☁️ ใช้ Google Gemini Embeddings (google-genai SDK ใหม่)")
             ef = BatchedGoogleEmbeddingFunction(
@@ -827,6 +838,16 @@ def get_file_content(file_id: str) -> str:
 def retrieve_context(question: str, where: dict = None) -> tuple[str, list[dict]]:
     """Return (context_text, list_of_detailed_sources) for the question."""
     print(f"[SEARCH] Starting RAG retrieval for: '{question[:20]}...' Filter: {where}")
+    
+    # ⚡ FAST PATH: Skip ChromaDB / RAG completely for short/noisy queries, greetings, or junk
+    try:
+        clean_q = re.sub(r'[0-9๐-๙\s\W]', '', question)
+        if not question or len(question) < 5 or (len(clean_q) < 2 and len(question) < 15):
+            print(f"ℹ️ Fast Path: Skipping RAG for noisy/short query: '{question}'", flush=True)
+            return "", []
+    except Exception as fe:
+        print(f"⚠️ Fast Path check error: {fe}")
+
     final_results = []
     
     try:
@@ -857,13 +878,6 @@ def retrieve_context(question: str, where: dict = None) -> tuple[str, list[dict]
                             })
             except Exception as fe:
                 print(f"⚠️ Filename match error: {fe}")
-        
-        # If it's a very short question or casual greeting, skip expensive RAG
-        # Added: Better detection for Thai number gibberish or pure noise
-        clean_q = re.sub(r'[0-9๐-๙\s\W]', '', question)
-        if not question or len(question) < 5 or (len(clean_q) < 2 and len(question) < 15):
-            print(f"ℹ️ Fast Path: Skipping RAG for noisy/short query: '{question}'", flush=True)
-            return "", []
         
         # 2. Standard Hybrid Query (Semantic + Keyword)
         results = _kb.hybrid_query(question, where=where)
