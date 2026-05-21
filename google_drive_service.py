@@ -788,6 +788,16 @@ class GoogleWorkspaceManager:
     def auto_reconcile_internal(self):
         """Reconciles Bank Statements (Master Reference) ↔ Payment Slips ↔ Invoices (3-Way Match)."""
         if not self.sheets_service or not self.spreadsheet_id: return
+        
+        def col_idx_to_letter(idx):
+            letter = ""
+            while idx >= 0:
+                letter = chr(idx % 26 + ord('A')) + letter
+                idx = idx // 26 - 1
+            return letter
+            
+        idx_wht = 8  # Default WHT column index for slip
+        
         try:
             # 0. Check sheet titles
             spreadsheet = self.sheets_service.spreadsheets().get(spreadsheetId=self.spreadsheet_id).execute()
@@ -808,14 +818,24 @@ class GoogleWorkspaceManager:
                         idx_amt = next((i for i, h in enumerate(header_row) if "จำนวนเงิน" in h or "สุทธิ" in h), 8)
                         idx_rec = next((i for i, h in enumerate(header_row) if "ผู้รับ" in h), 4)
                         idx_link = next((i for i, h in enumerate(header_row) if "ลิงก์" in h), 16)
+                        idx_wht = next((i for i, h in enumerate(header_row) if "หัก" in h), 8)
                         for r_idx, row in enumerate(data_rows):
                             if len(row) <= max(idx_date, idx_amt): continue
+                            slip_wht_val = str(row[idx_wht]).strip() if len(row) > idx_wht else "-"
+                            slip_wht_present = (slip_wht_val == "หัก ณ ที่จ่าย" or "WHT" in slip_wht_val.upper() or "EXWHT" in slip_wht_val.upper())
+                            try:
+                                if not slip_wht_present and slip_wht_val != '-':
+                                    if float(slip_wht_val.replace(',', '').strip()) > 0:
+                                        slip_wht_present = True
+                            except:
+                                pass
                             slips.append({
                                 'index': r_idx,
                                 'date': row[idx_date],
                                 'amount': str(row[idx_amt]).replace(',', '').strip(),
                                 'receiver': row[idx_rec] if len(row) > idx_rec else "-",
-                                'link': row[idx_link] if len(row) > idx_link else ""
+                                'link': row[idx_link] if len(row) > idx_link else "",
+                                'wht_present': slip_wht_present
                             })
                 except Exception as e:
                     logger.warning(f"Error loading slips for reconciliation: {e}")
@@ -834,21 +854,39 @@ class GoogleWorkspaceManager:
                         data_rows = inv_vals[1:]
                         i_idx_date = next((i for i, h in enumerate(inv_header) if "วันที่" in h), 2)
                         i_idx_amt = next((i for i, h in enumerate(inv_header) if "จำนวนเงิน" in h or "สุทธิ" in h), 9)
-                        i_idx_wht = next((i for i, h in enumerate(inv_header) if "WHT" in h), 13)
+                        i_idx_wht = next((i for i, h in enumerate(inv_header) if "WHT" in h or "หัก" in h), 13)
                         i_idx_vend = next((i for i, h in enumerate(inv_header) if "ผู้ส่ง" in h or "ร้านค้า" in h or "คู่ค้า" in h), 3)
                         i_idx_link = next((i for i, h in enumerate(inv_header) if "ลิงก์" in h), 17)
                         i_idx_gross = next((i for i, h in enumerate(inv_header) if "ก่อน" in h or "gross" in h.lower()), 10)
                         for r_idx, row in enumerate(data_rows):
                             if len(row) <= max(i_idx_date, i_idx_amt): continue
                             
+                            net_amt = 0.0
+                            wht_val = 0.0
+                            gross_val = 0.0
+                            wht_present = False
+                            
                             try:
-                                net_amt = float(str(row[i_idx_amt]).replace(',', '').strip()) if row[i_idx_amt] != '-' else 0
-                                wht_val = float(str(row[i_idx_wht]).replace(',', '').strip()) if len(row) > i_idx_wht and row[i_idx_wht] != '-' else 0
-                                gross_val = float(str(row[i_idx_gross]).replace(',', '').strip()) if len(row) > i_idx_gross and row[i_idx_gross] != '-' else 0
+                                net_amt = float(str(row[i_idx_amt]).replace(',', '').strip()) if row[i_idx_amt] != '-' else 0.0
                             except:
-                                net_amt = 0
-                                wht_val = 0
-                                gross_val = 0
+                                pass
+                                
+                            if len(row) > i_idx_wht:
+                                val_str = str(row[i_idx_wht]).strip()
+                                if val_str == "หัก ณ ที่จ่าย" or "WHT" in val_str.upper() or "EXWHT" in val_str.upper():
+                                    wht_present = True
+                                elif val_str != '-':
+                                    try:
+                                        wht_val = float(val_str.replace(',', '').strip())
+                                        if wht_val > 0:
+                                            wht_present = True
+                                    except:
+                                        pass
+                                        
+                            try:
+                                gross_val = float(str(row[i_idx_gross]).replace(',', '').strip()) if len(row) > i_idx_gross and row[i_idx_gross] != '-' else 0.0
+                            except:
+                                pass
 
                             invoices.append({
                                 'index': r_idx,
@@ -856,6 +894,7 @@ class GoogleWorkspaceManager:
                                 'net_amount': net_amt,
                                 'wht_amount': wht_val,
                                 'gross_amount': gross_val,
+                                'wht_present': wht_present,
                                 'vendor': row[i_idx_vend] if len(row) > i_idx_vend else "-",
                                 'link': row[i_idx_link] if len(row) > i_idx_link else ""
                             })
@@ -1000,9 +1039,25 @@ class GoogleWorkspaceManager:
                         "ค่าธรรมเนียมธนาคาร / บริการทางการเงิน (บันทึกรายจ่ายตรง)"
                     ])
                 elif matched_slip and matched_inv:
+                    # Auto-backfill slip WHT if invoice has WHT and slip doesn't
+                    if matched_inv.get('wht_present') and not matched_slip.get('wht_present'):
+                        try:
+                            col_letter = col_idx_to_letter(idx_wht)
+                            sheet_range = f"'สลิปโอนเงิน'!{col_letter}{matched_slip['index'] + 2}"
+                            self.sheets_service.spreadsheets().values().update(
+                                spreadsheetId=self.spreadsheet_id,
+                                range=sheet_range,
+                                valueInputOption="RAW",
+                                body={"values": [["หัก ณ ที่จ่าย"]]}
+                            ).execute()
+                            logger.info(f"✨ Auto-backfilled WHT column for slip at row {matched_slip['index'] + 2} from matched invoice")
+                            matched_slip['wht_present'] = True
+                        except Exception as backfill_err:
+                            logger.warning(f"Failed to backfill slip WHT: {backfill_err}")
+
                     status = "✅ จับคู่สำเร็จ (3-Way)"
                     note = f"พบจากสเตตเมนต์: จับคู่สลิปโอนเงิน + ใบกำกับภาษีเรียบร้อย"
-                    if matched_inv['wht_amount'] > 0:
+                    if matched_inv.get('wht_present') or matched_inv['wht_amount'] > 0:
                         note += " (หัก WHT ถูกต้อง)" if wht_correct else " (⚠️ ลืมหัก WHT?)"
                     matches.append([
                         dt.now().strftime("%d/%m/%Y %H:%M"),
@@ -1075,6 +1130,22 @@ class GoogleWorkspaceManager:
                             break
 
                 if matched_inv:
+                    # Auto-backfill slip WHT if invoice has WHT and slip doesn't
+                    if matched_inv.get('wht_present') and not slip.get('wht_present'):
+                        try:
+                            col_letter = col_idx_to_letter(idx_wht)
+                            sheet_range = f"'สลิปโอนเงิน'!{col_letter}{slip['index'] + 2}"
+                            self.sheets_service.spreadsheets().values().update(
+                                spreadsheetId=self.spreadsheet_id,
+                                range=sheet_range,
+                                valueInputOption="RAW",
+                                body={"values": [["หัก ณ ที่จ่าย"]]}
+                            ).execute()
+                            logger.info(f"✨ Auto-backfilled WHT column for slip at row {slip['index'] + 2} from invoice (Pass 2)")
+                            slip['wht_present'] = True
+                        except Exception as backfill_err:
+                            logger.warning(f"Failed to backfill slip WHT in Pass 2: {backfill_err}")
+
                     matches.append([
                         dt.now().strftime("%d/%m/%Y %H:%M"),
                         "📬 รอสเตตเมนต์ (สลิป ↔ ใบกำกับ)",
@@ -1299,9 +1370,9 @@ class GoogleWorkspaceManager:
                 src = col_def.get("source", "")
                 cleaner = col_def.get("cleaner", "")
                 
-                # Custom WHT column override: If header name contains WHT related keywords
+                # Custom WHT column override: If header name contains WHT related keywords (excluding "peak" sheet which requires numeric/rate values)
                 is_wht_col = False
-                if col_idx is not None and col_idx < len(headers):
+                if col_idx is not None and col_idx < len(headers) and sheet_name != "peak":
                     h_name = headers[col_idx]
                     if any(x in h_name for x in ["หัก ณ ที่จ่าย", "จำนวนภาษีที่หัก"]):
                         is_wht_col = True
@@ -1682,8 +1753,8 @@ class GoogleWorkspaceManager:
                         peak_headers = peak_schema.get("headers", [])
                         
                         peak_row = []
-                        for col in peak_cols:
-                            peak_row.append(extract_field_value(col, context_ext=ext, context_data=data))
+                        for col_idx, col in enumerate(peak_cols):
+                            peak_row.append(extract_field_value(col, context_ext=ext, context_data=data, col_idx=col_idx))
                         
                         # Ensure "peak" sheet exists
                         if "peak" not in existing_sheets:
