@@ -719,220 +719,358 @@ class GoogleWorkspaceManager:
         except: return []
 
     def auto_reconcile_internal(self):
-        """Matches Payment Slips with Invoices in the current Spreadsheet."""
+        """Reconciles Bank Statements (Master Reference) ↔ Payment Slips ↔ Invoices (3-Way Match)."""
         if not self.sheets_service or not self.spreadsheet_id: return
         try:
-            # 0. ตรวจสอบก่อนว่ามี Sheet หรือไม่ เพื่อป้องกัน Error 400
+            # 0. Check sheet titles
             spreadsheet = self.sheets_service.spreadsheets().get(spreadsheetId=self.spreadsheet_id).execute()
             sheet_titles = [s['properties']['title'] for s in spreadsheet.get('sheets', [])]
 
-            # 1. Read Payments (สลิปโอนเงิน + สเตตเมนต์)
-            payments = []
-            # 1. โหลดข้อมูลสลิป
+            # 1. Read Slips
+            slips = []
             if "สลิปโอนเงิน" in sheet_titles:
                 try:
-                    res_slip = self.sheets_service.spreadsheets().values().get(spreadsheetId=self.spreadsheet_id, range="'สลิปโอนเงิน'!A1:S").execute()
-                    vals = res_slip.get('values', [])
-                    if vals:
-                        header_row = vals[0]
-                        data_rows = vals[1:]
-                        
-                        # หาตำแหน่งคอลัมน์แบบไดนามิก
+                    res_slip = self.sheets_service.spreadsheets().values().get(
+                        spreadsheetId=self.spreadsheet_id, range="'สลิปโอนเงิน'!A1:S"
+                    ).execute()
+                    slip_vals = res_slip.get('values', [])
+                    if slip_vals and len(slip_vals) > 1:
+                        header_row = slip_vals[0]
+                        data_rows = slip_vals[1:]
                         idx_date = next((i for i, h in enumerate(header_row) if "วันที่" in h), 2)
                         idx_amt = next((i for i, h in enumerate(header_row) if "จำนวนเงิน" in h or "สุทธิ" in h), 8)
                         idx_rec = next((i for i, h in enumerate(header_row) if "ผู้รับ" in h), 4)
                         idx_link = next((i for i, h in enumerate(header_row) if "ลิงก์" in h), 16)
-
-                        for row in data_rows:
+                        for r_idx, row in enumerate(data_rows):
                             if len(row) <= max(idx_date, idx_amt): continue
-                            payments.append({
+                            slips.append({
+                                'index': r_idx,
                                 'date': row[idx_date],
                                 'amount': str(row[idx_amt]).replace(',', '').strip(),
                                 'receiver': row[idx_rec] if len(row) > idx_rec else "-",
-                                'link': row[idx_link] if len(row) > idx_link else "",
-                                'source': "สลิป"
+                                'link': row[idx_link] if len(row) > idx_link else ""
                             })
                 except Exception as e:
-                    print(f"Error loading slips for reconciliation: {e}")
+                    logger.warning(f"Error loading slips for reconciliation: {e}")
 
-            # 2. โหลดข้อมูลสเตตเมนต์
+            # 2. Read Invoices
+            invoices = []
+            inv_header = []
+            if "ใบเสร็จ/ใบกำกับภาษี" in sheet_titles:
+                try:
+                    res_inv = self.sheets_service.spreadsheets().values().get(
+                        spreadsheetId=self.spreadsheet_id, range="'ใบเสร็จ/ใบกำกับภาษี'!A1:W"
+                    ).execute()
+                    inv_vals = res_inv.get('values', [])
+                    if inv_vals and len(inv_vals) > 1:
+                        inv_header = inv_vals[0]
+                        data_rows = inv_vals[1:]
+                        i_idx_date = next((i for i, h in enumerate(inv_header) if "วันที่" in h), 2)
+                        i_idx_amt = next((i for i, h in enumerate(inv_header) if "จำนวนเงิน" in h or "สุทธิ" in h), 9)
+                        i_idx_wht = next((i for i, h in enumerate(inv_header) if "WHT" in h), 13)
+                        i_idx_vend = next((i for i, h in enumerate(inv_header) if "ผู้ส่ง" in h or "ร้านค้า" in h or "คู่ค้า" in h), 3)
+                        i_idx_link = next((i for i, h in enumerate(inv_header) if "ลิงก์" in h), 17)
+                        i_idx_gross = next((i for i, h in enumerate(inv_header) if "ก่อน" in h or "gross" in h.lower()), 10)
+                        for r_idx, row in enumerate(data_rows):
+                            if len(row) <= max(i_idx_date, i_idx_amt): continue
+                            
+                            try:
+                                net_amt = float(str(row[i_idx_amt]).replace(',', '').strip()) if row[i_idx_amt] != '-' else 0
+                                wht_val = float(str(row[i_idx_wht]).replace(',', '').strip()) if len(row) > i_idx_wht and row[i_idx_wht] != '-' else 0
+                                gross_val = float(str(row[i_idx_gross]).replace(',', '').strip()) if len(row) > i_idx_gross and row[i_idx_gross] != '-' else 0
+                            except:
+                                net_amt = 0
+                                wht_val = 0
+                                gross_val = 0
+
+                            invoices.append({
+                                'index': r_idx,
+                                'date': row[i_idx_date],
+                                'net_amount': net_amt,
+                                'wht_amount': wht_val,
+                                'gross_amount': gross_val,
+                                'vendor': row[i_idx_vend] if len(row) > i_idx_vend else "-",
+                                'link': row[i_idx_link] if len(row) > i_idx_link else ""
+                            })
+                except Exception as e:
+                    logger.warning(f"Error loading invoices for reconciliation: {e}")
+
+            # 3. Read Statements (Primary Master Reference)
+            statements = []
             if "สเตตเมนต์" in sheet_titles:
                 try:
-                    res_stmt = self.sheets_service.spreadsheets().values().get(spreadsheetId=self.spreadsheet_id, range="'สเตตเมนต์'!A1:M").execute()
-                    s_vals = res_stmt.get('values', [])
-                    if s_vals:
-                        s_header = s_vals[0]
-                        s_data = s_vals[1:]
-                        
+                    res_stmt = self.sheets_service.spreadsheets().values().get(
+                        spreadsheetId=self.spreadsheet_id, range="'สเตตเมนต์'!A1:M"
+                    ).execute()
+                    stmt_vals = res_stmt.get('values', [])
+                    if stmt_vals and len(stmt_vals) > 1:
+                        s_header = stmt_vals[0]
+                        s_data = stmt_vals[1:]
                         s_idx_date = next((i for i, h in enumerate(s_header) if "วันที่" in h or "เอกสาร" in h), 1)
                         s_idx_out = next((i for i, h in enumerate(s_header) if "ถอน" in h or "ออก" in h), 5)
                         s_idx_cparty = next((i for i, h in enumerate(s_header) if "คู่ค้า" in h or "รายละเอียด" in h), 11)
                         s_idx_link = next((i for i, h in enumerate(s_header) if "ลิงก์" in h), 12)
-
-                        for row in s_data:
+                        for r_idx, row in enumerate(s_data):
                             if len(row) <= max(s_idx_date, s_idx_out): continue
                             amount = str(row[s_idx_out]).replace(',', '').strip()
-                            if amount == '-' or not amount or amount == '0.0': continue 
-                            payments.append({
+                            if amount == '-' or not amount or amount == '0.0': continue
+                            statements.append({
+                                'index': r_idx,
                                 'date': row[s_idx_date],
-                                'amount': amount,
-                                'receiver': row[s_idx_cparty] if len(row) > s_idx_cparty else "-",
-                                'link': row[s_idx_link] if len(row) > s_idx_link else "",
-                                'source': "สเตตเมนต์"
+                                'amount': float(amount),
+                                'counterparty': row[s_idx_cparty] if len(row) > s_idx_cparty else "-",
+                                'link': row[s_idx_link] if len(row) > s_idx_link else ""
                             })
                 except Exception as e:
-                    print(f"Error loading statements for reconciliation: {e}")
+                    logger.warning(f"Error loading statements for reconciliation: {e}")
 
-            # 2. Read Invoices (ใบเสร็จ/ใบกำกับภาษี)
-            inv_header = []
-            invoices = []
-            if "ใบเสร็จ/ใบกำกับภาษี" in sheet_titles:
-                try:
-                    res_inv = self.sheets_service.spreadsheets().values().get(spreadsheetId=self.spreadsheet_id, range="'ใบเสร็จ/ใบกำกับภาษี'!A1:W").execute()
-                    inv_all = res_inv.get('values', [])
-                    if inv_all:
-                        inv_header = inv_all[0]
-                        invoices = inv_all[1:]
-                except: pass
-
-            if not payments and not invoices: 
+            # If absolutely no data loaded, stop.
+            if not statements and not slips and not invoices:
                 self.update_dashboard()
                 return
 
-            # 3. Match Logic
-            matches = []
-            matched_inv_indices = set()
-            
+            # Helper functions for Date parsing and name normalization
             from datetime import datetime as dt
             def parse_date(d_str):
                 if not d_str or d_str == '-': return None
                 d_str = str(d_str).strip()
-                try: 
+                try:
                     for fmt in ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d"):
-                        try: 
+                        try:
                             parsed = dt.strptime(d_str, fmt)
                             if parsed.year > 2500: parsed = parsed.replace(year=parsed.year - 543)
                             return parsed
                         except: continue
                     return None
                 except: return None
-            
-            for p in payments:
-                try: s_amount = float(str(p['amount']).replace(',', ''))
-                except: s_amount = 0
-                s_receiver = str(p['receiver']).strip()
-                s_date = parse_date(str(p['date']).strip())
-                s_link = p['link']
 
-                found = False
-                # หาตำแหน่งคอลัมน์ใบกำกับแบบไดนามิก
-                i_idx_date = next((i for i, h in enumerate(inv_header) if "วันที่" in h), 2)
-                i_idx_amt = next((i for i, h in enumerate(inv_header) if "จำนวนเงิน" in h or "สุทธิ" in h), 8)
-                i_idx_wht = next((i for i, h in enumerate(inv_header) if "WHT" in h), 11)
-                i_idx_vend = next((i for i, h in enumerate(inv_header) if "ผู้ส่ง" in h or "ร้านค้า" in h or "คู่ค้า" in h), 4)
-                i_idx_link = next((i for i, h in enumerate(inv_header) if "ลิงก์" in h), 18)
+            matches = []
+            matched_slip_indices = set()
+            matched_invoice_indices = set()
 
-                for inv_idx, inv in enumerate(invoices):
-                    if inv_idx in matched_inv_indices: continue
-                    if len(inv) <= max(i_idx_date, i_idx_amt): continue
-                    
+            # Pass 1: Match from Statement (Primary Master)
+            for stmt in statements:
+                s_amount = stmt['amount']
+                s_date = parse_date(stmt['date'])
+                s_receiver = stmt['counterparty']
+
+                matched_slip = None
+                matched_inv = None
+
+                # Find matching Payment Slip
+                for slip in slips:
+                    if slip['index'] in matched_slip_indices: continue
                     try:
-                        i_amount = float(str(inv[i_idx_amt]).replace(',', '')) if inv[i_idx_amt] != '-' else 0
-                        i_wht = float(str(inv[i_idx_wht]).replace(',', '')) if len(inv) > i_idx_wht and inv[i_idx_wht] != '-' else 0
-                    except: 
-                        i_amount = 0
-                        i_wht = 0
+                        slip_amt = float(slip['amount'])
+                    except:
+                        slip_amt = 0
                     
-                    i_vendor = str(inv[i_idx_vend]).strip() if len(inv) > i_idx_vend else "-"
-                    i_date = parse_date(str(inv[i_idx_date]).strip())
-                    i_link = str(inv[i_idx_link]).strip() if len(inv) > i_idx_link else ""
+                    if abs(slip_amt - s_amount) < 5.0:
+                        slip_date = parse_date(slip['date'])
+                        date_match = (abs((s_date - slip_date).days) <= 3) if s_date and slip_date else False
+                        name_match = (get_name_similarity(slip['receiver'], s_receiver) > 0.7) if slip['receiver'] != '-' and s_receiver != '-' else False
+                        if date_match or name_match:
+                            matched_slip = slip
+                            matched_slip_indices.add(slip['index'])
+                            break
 
-                    # SMART MATCH LOGIC
-                    total_before_wht = i_amount + i_wht if i_wht > 0 else i_amount
+                # Find matching Invoice
+                for inv in invoices:
+                    if inv['index'] in matched_invoice_indices: continue
                     
-                    # Case 1: Payment matches Net Amount (Correct)
-                    if abs(s_amount - i_amount) < 5.0:
+                    # 3-Way Match Check (Gross, Net, WHT logic)
+                    total_before_wht = inv['net_amount'] + inv['wht_amount'] if inv['wht_amount'] > 0 else inv['net_amount']
+                    amount_match = False
+                    wht_correct = True
+
+                    if abs(s_amount - inv['net_amount']) < 5.0:
                         amount_match = True
                         wht_correct = True
-                    # Case 2: Payment matches Total before WHT (Forgot to deduct)
-                    elif i_wht > 0 and abs(s_amount - total_before_wht) < 5.0:
+                    elif inv['wht_amount'] > 0 and abs(s_amount - total_before_wht) < 5.0:
                         amount_match = True
                         wht_correct = False
-                    else:
-                        amount_match = False
-                        wht_correct = False
-                    
-                    # Name Matching with Fuzzy Logic
-                    s_norm = normalize_thai_name(s_receiver)
-                    i_norm = normalize_thai_name(i_vendor)
-                    
-                    similarity = get_name_similarity(s_receiver, i_vendor)
-                    name_match = (similarity > 0.7) if s_receiver != '-' and i_vendor != '-' else False
-                    
-                    date_match = (abs((s_date - i_date).days) <= 7) if s_date and i_date else False
+                    elif inv['gross_amount'] > 0 and abs(s_amount - inv['gross_amount']) < 5.0:
+                        amount_match = True
+                        wht_correct = True
 
-                    if amount_match and (name_match or date_match):
-                        status = "✅ จับคู่สำเร็จ"
-                        if i_wht > 0:
-                            note = f"พบจาก {p['source']}: " + ("หัก WHT ถูกต้อง" if wht_correct else "⚠️ ลืมหัก WHT? (จ่ายยอดเต็ม)")
-                        else:
-                            note = f"พบจาก {p['source']}: จ่ายยอดเต็ม (ไม่มี WHT)"
-                            
-                        matches.append([dt.now().strftime("%d/%m/%Y %H:%M"), status, str(p['date']), s_amount, i_vendor, s_link, i_link, note])
-                        matched_inv_indices.add(inv_idx)
-                        found = True
-                        break
+                    if amount_match:
+                        inv_date = parse_date(inv['date'])
+                        date_match = (abs((s_date - inv_date).days) <= 7) if s_date and inv_date else False
+                        name_match = (get_name_similarity(inv['vendor'], s_receiver) > 0.7) if inv['vendor'] != '-' and s_receiver != '-' else False
+                        if date_match or name_match:
+                            matched_inv = inv
+                            matched_invoice_indices.add(inv['index'])
+                            break
+
+                # Determine Status and write note
+                s_date_display = stmt['date']
+                s_rec_upper = s_receiver.upper()
+                is_internal = "ฮาร์ทวอม" in s_rec_upper or "HEARTWARMING" in s_rec_upper
                 
-                if not found:
-                    s_date_display = p.get('date', '-')
-                    s_rec_upper = s_receiver.upper()
-                    if "ฮาร์ทวอมมิ" in s_rec_upper or "HEARTWARMING" in s_rec_upper:
-                        matches.append([
-                            dt.now().strftime("%d/%m/%Y %H:%M"),
-                            "🔄 โอนย้ายระหว่างบัญชี",
-                            s_date_display,
-                            s_amount,
-                            s_receiver,
-                            s_link,
-                            "-",
-                            "โอนย้ายระหว่างบัญชีภายใน บจก. ฮาร์ทวอมมิ่ง (ไม่ต้องมีใบกำกับ)"
-                        ])
-                    else:
-                        matches.append([
-                            dt.now().strftime("%d/%m/%Y %H:%M"),
-                            f"⚠️ รอใบกำกับ ({p['source']})",
-                            s_date_display,
-                            s_amount,
-                            s_receiver,
-                            s_link,
-                            "-",
-                            "ยังไม่พบใบกำกับภาษีที่ยอดตรงกัน"
-                        ])
+                # Check for other bank-specific transaction codes
+                is_fee = "FEE" in s_rec_upper or "ค่าธรรมเนียม" in s_receiver
 
-            for inv_idx, inv in enumerate(invoices):
-                if inv_idx not in matched_inv_indices:
-                    if len(inv) <= max(i_idx_date, i_idx_amt): continue
-                    # ใช้ i_idx_date, i_idx_amt, i_idx_vend ที่หาได้แบบ Dynamic
-                    inv_d = inv[i_idx_date] if len(inv) > i_idx_date else "-"
-                    inv_a = inv[i_idx_amt] if len(inv) > i_idx_amt else "-"
-                    inv_v = inv[i_idx_vend] if len(inv) > i_idx_vend else "-"
-                    inv_l = inv[i_idx_link] if len(inv) > i_idx_link else "-"
-                    matches.append([dt.now().strftime("%d/%m/%Y %H:%M"), "📬 รอการชำระเงิน", inv_d, inv_a, inv_v, "-", inv_l, "มีใบกำกับแล้วแต่ยังไม่พบยอดโอน"])
+                if is_internal:
+                    matches.append([
+                        dt.now().strftime("%d/%m/%Y %H:%M"),
+                        "🔄 โอนย้ายระหว่างบัญชี",
+                        s_date_display,
+                        s_amount,
+                        s_receiver,
+                        matched_slip['link'] if matched_slip else "-",
+                        "-",
+                        "โอนย้ายระหว่างบัญชีภายใน บจก. ฮาร์ทวอมมิ่ง (ไม่ต้องมีใบกำกับ)"
+                    ])
+                elif is_fee:
+                    matches.append([
+                        dt.now().strftime("%d/%m/%Y %H:%M"),
+                        "✅ ชำระค่าธรรมเนียม",
+                        s_date_display,
+                        s_amount,
+                        s_receiver,
+                        "-",
+                        "-",
+                        "ค่าธรรมเนียมธนาคาร / บริการทางการเงิน (บันทึกรายจ่ายตรง)"
+                    ])
+                elif matched_slip and matched_inv:
+                    status = "✅ จับคู่สำเร็จ (3-Way)"
+                    note = f"พบจากสเตตเมนต์: จับคู่สลิปโอนเงิน + ใบกำกับภาษีเรียบร้อย"
+                    if matched_inv['wht_amount'] > 0:
+                        note += " (หัก WHT ถูกต้อง)" if wht_correct else " (⚠️ ลืมหัก WHT?)"
+                    matches.append([
+                        dt.now().strftime("%d/%m/%Y %H:%M"),
+                        status,
+                        s_date_display,
+                        s_amount,
+                        matched_inv['vendor'],
+                        matched_slip['link'],
+                        matched_inv['link'],
+                        note
+                    ])
+                elif matched_slip and not matched_inv:
+                    matches.append([
+                        dt.now().strftime("%d/%m/%Y %H:%M"),
+                        "⚠️ รอใบกำกับ (สลิปตรง)",
+                        s_date_display,
+                        s_amount,
+                        matched_slip['receiver'],
+                        matched_slip['link'],
+                        "-",
+                        "พบยอดในสเตตเมนต์ตรงกับสลิปโอนเงินแล้ว แต่ยังไม่พบใบกำกับภาษีที่ยอดตรงกัน"
+                    ])
+                elif matched_inv and not matched_slip:
+                    matches.append([
+                        dt.now().strftime("%d/%m/%Y %H:%M"),
+                        "⚠️ รอสลิปโอนเงิน (ใบกำกับตรง)",
+                        s_date_display,
+                        s_amount,
+                        matched_inv['vendor'],
+                        "-",
+                        matched_inv['link'],
+                        "พบยอดในสเตตเมนต์ตรงกับใบกำกับภาษีแล้ว แต่ระบบตรวจไม่พบสลิปโอนเงิน"
+                    ])
+                else:
+                    matches.append([
+                        dt.now().strftime("%d/%m/%Y %H:%M"),
+                        "❌ รอเอกสาร (ไม่พบหลักฐาน)",
+                        s_date_display,
+                        s_amount,
+                        s_receiver,
+                        "-",
+                        "-",
+                        "พบยอดถอนออกในสเตตเมนต์ธนาคาร แต่ยังไม่พบสลิปโอนเงินหรือใบกำกับภาษีในระบบ"
+                    ])
+
+            # Pass 2: Unmatched Slips (Check if they match any unmatched Invoice)
+            for slip in slips:
+                if slip['index'] in matched_slip_indices: continue
+                
+                # Check if this slip matches an unmatched invoice
+                matched_inv = None
+                try:
+                    slip_amt = float(slip['amount'])
+                except:
+                    slip_amt = 0
+
+                for inv in invoices:
+                    if inv['index'] in matched_invoice_indices: continue
+                    total_before_wht = inv['net_amount'] + inv['wht_amount'] if inv['wht_amount'] > 0 else inv['net_amount']
+                    amount_match = abs(slip_amt - inv['net_amount']) < 5.0 or abs(slip_amt - total_before_wht) < 5.0 or abs(slip_amt - inv['gross_amount']) < 5.0
+                    
+                    if amount_match:
+                        s_date = parse_date(slip['date'])
+                        inv_date = parse_date(inv['date'])
+                        date_match = (abs((s_date - inv_date).days) <= 7) if s_date and inv_date else False
+                        name_match = (get_name_similarity(inv['vendor'], slip['receiver']) > 0.7) if inv['vendor'] != '-' and slip['receiver'] != '-' else False
+                        if date_match or name_match:
+                            matched_inv = inv
+                            matched_invoice_indices.add(inv['index'])
+                            break
+
+                if matched_inv:
+                    matches.append([
+                        dt.now().strftime("%d/%m/%Y %H:%M"),
+                        "📬 รอสเตตเมนต์ (สลิป ↔ ใบกำกับ)",
+                        slip['date'],
+                        slip_amt,
+                        matched_inv['vendor'],
+                        slip['link'],
+                        matched_inv['link'],
+                        "มีสลิปโอนเงินคู่กับใบกำกับภาษีเรียบร้อยแล้ว แต่ยังไม่พบรายการถอนแสดงในสเตตเมนต์ธนาคาร"
+                    ])
+                else:
+                    matches.append([
+                        dt.now().strftime("%d/%m/%Y %H:%M"),
+                        "📬 รอสเตตเมนต์ (สลิปเปล่า)",
+                        slip['date'],
+                        slip_amt,
+                        slip['receiver'],
+                        slip['link'],
+                        "-",
+                        "พบสลิปโอนเงินแล้ว แต่ยังไม่มีประวัติการชำระแสดงบนสเตตเมนต์ธนาคาร"
+                    ])
+
+            # Pass 3: Unmatched Invoices
+            for inv in invoices:
+                if inv['index'] in matched_invoice_indices: continue
+                matches.append([
+                    dt.now().strftime("%d/%m/%Y %H:%M"),
+                    "📬 รอสเตตเมนต์ (ใบกำกับเปล่า)",
+                    inv['date'],
+                    inv['net_amount'],
+                    inv['vendor'],
+                    "-",
+                    inv['link'],
+                    "มีใบกำกับภาษีเข้าระบบแล้ว แต่ยังไม่พบประวัติการทำรายการโอนจ่ายเงินในระบบและสเตตเมนต์"
+                ])
 
             # 4. Write to "สรุปกระทบยอด"
             sheet_name = "สรุปกระทบยอด"
             headers = ["วันที่ประมวลผล", "สถานะ", "วันที่เอกสาร", "ยอดเงิน", "คู่ค้า/ร้านค้า", "ลิงก์สลิป", "ลิงก์ใบกำกับ", "หมายเหตุ"]
             try:
-                self.sheets_service.spreadsheets().batchUpdate(spreadsheetId=self.spreadsheet_id, body={'requests': [{'addSheet': {'properties': {'title': sheet_name}}}]}).execute()
+                self.sheets_service.spreadsheets().batchUpdate(
+                    spreadsheetId=self.spreadsheet_id, 
+                    body={'requests': [{'addSheet': {'properties': {'title': sheet_name}}}]}
+                ).execute()
             except: pass
+
+            self.sheets_service.spreadsheets().values().update(
+                spreadsheetId=self.spreadsheet_id, range=f"'{sheet_name}'!A1",
+                valueInputOption="RAW", body={"values": [headers]}
+            ).execute()
             
-            self.sheets_service.spreadsheets().values().update(spreadsheetId=self.spreadsheet_id, range=f"'{sheet_name}'!A1", valueInputOption="RAW", body={"values": [headers]}).execute()
-            self.sheets_service.spreadsheets().values().clear(spreadsheetId=self.spreadsheet_id, range=f"'{sheet_name}'!A2:Z").execute()
+            self.sheets_service.spreadsheets().values().clear(
+                spreadsheetId=self.spreadsheet_id, range=f"'{sheet_name}'!A2:Z"
+            ).execute()
+            
             if matches:
-                self.sheets_service.spreadsheets().values().update(spreadsheetId=self.spreadsheet_id, range=f"'{sheet_name}'!A2", valueInputOption="RAW", body={"values": matches}).execute()
-            
+                self.sheets_service.spreadsheets().values().update(
+                    spreadsheetId=self.spreadsheet_id, range=f"'{sheet_name}'!A2",
+                    valueInputOption="RAW", body={"values": matches}
+                ).execute()
+
             self.update_dashboard()
-            logger.info("🎯 Reconciliation & Dashboard updated.")
+            logger.info("🎯 3-Way Reconciliation & Dashboard updated successfully using Statement as master reference.")
         except Exception as e:
             logger.error(f"Reconciliation error: {e}")
 
