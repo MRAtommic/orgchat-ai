@@ -483,9 +483,10 @@ class GoogleWorkspaceManager:
             return
         try:
             spreadsheet = self.sheets_service.spreadsheets().get(spreadsheetId=self.spreadsheet_id).execute()
-            sheet_id = next((s['properties']['sheetId'] for s in spreadsheet.get('sheets', []) if s['properties']['title'] == sheet_title), None)
-            if sheet_id is None:
+            existing_sheet = next((s for s in spreadsheet.get('sheets', []) if s['properties']['title'] == sheet_title), None)
+            if existing_sheet is None:
                 return
+            sheet_id = existing_sheet['properties']['sheetId']
 
             # Skip custom styling for the dashboard sheet, only apply grid styling if needed
             is_dashboard = sheet_title == "📊 แดชบอร์ดสรุป"
@@ -545,13 +546,13 @@ class GoogleWorkspaceManager:
                                 },
                                 "horizontalAlignment": "CENTER",
                                 "verticalAlignment": "MIDDLE"
-                            }
+                              }
                         },
                         "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)"
                     }
                 })
                 
-                # Apply data validation dropdown for Column Q ("ตามใบกำกับ" at index 16)
+                # Apply data validation dropdown and conditional formatting for Column Q ("ตามใบกำกับ" at index 16)
                 if sheet_title == "ใบเสร็จ/ใบกำกับภาษี":
                     requests.append({
                         "setDataValidation": {
@@ -572,6 +573,72 @@ class GoogleWorkspaceManager:
                                 "showCustomUi": True,
                                 "strict": True
                             }
+                        }
+                    })
+
+                    # Clear existing conditional formatting rules to prevent duplicates
+                    existing_rules = existing_sheet.get('conditionalFormats', [])
+                    for _ in range(len(existing_rules)):
+                        requests.append({
+                            "deleteConditionalFormatRule": {
+                                "sheetId": sheet_id,
+                                "index": 0
+                            }
+                        })
+
+                    # Add Rule 1: "ต้องตาม" (Pastel light red background with dark red text)
+                    requests.append({
+                        "addConditionalFormatRule": {
+                            "rule": {
+                                "ranges": [{
+                                    "sheetId": sheet_id,
+                                    "startRowIndex": 1,
+                                    "startColumnIndex": 16,
+                                    "endColumnIndex": 17
+                                }],
+                                "booleanRule": {
+                                    "condition": {
+                                        "type": "TEXT_EQ",
+                                        "values": [{"userEnteredValue": "ต้องตาม"}]
+                                    },
+                                    "format": {
+                                        "backgroundColor": {"red": 0.992, "green": 0.925, "blue": 0.925},
+                                        "textFormat": {
+                                            "foregroundColor": {"red": 0.863, "green": 0.204, "blue": 0.204},
+                                            "bold": True
+                                        }
+                                    }
+                                }
+                            },
+                            "index": 0
+                        }
+                    })
+
+                    # Add Rule 2: "ไม่ต้องตาม" (Pastel light gray/green background with dark slate text)
+                    requests.append({
+                        "addConditionalFormatRule": {
+                            "rule": {
+                                "ranges": [{
+                                    "sheetId": sheet_id,
+                                    "startRowIndex": 1,
+                                    "startColumnIndex": 16,
+                                    "endColumnIndex": 17
+                                }],
+                                "booleanRule": {
+                                    "condition": {
+                                        "type": "TEXT_EQ",
+                                        "values": [{"userEnteredValue": "ไม่ต้องตาม"}]
+                                    },
+                                    "format": {
+                                        "backgroundColor": {"red": 0.941, "green": 0.949, "blue": 0.961},
+                                        "textFormat": {
+                                            "foregroundColor": {"red": 0.419, "green": 0.447, "blue": 0.502},
+                                            "bold": True
+                                        }
+                                    }
+                                }
+                            },
+                            "index": 1
                         }
                     })
 
@@ -1225,12 +1292,87 @@ class GoogleWorkspaceManager:
                 return f"'{int(s_digits):05d}"
 
             # Custom Value Extractor based on source string
-            def extract_field_value(col_def, context_ext=None, context_data=None):
+            def extract_field_value(col_def, context_ext=None, context_data=None, col_idx=None):
                 if context_ext is None: context_ext = ext
                 if context_data is None: context_data = data
                 
                 src = col_def.get("source", "")
                 cleaner = col_def.get("cleaner", "")
+                
+                # Custom WHT column override: If header name contains WHT related keywords
+                is_wht_col = False
+                if col_idx is not None and col_idx < len(headers):
+                    h_name = headers[col_idx]
+                    if any(x in h_name for x in ["หัก ณ ที่จ่าย", "จำนวนภาษีที่หัก"]):
+                        is_wht_col = True
+                
+                if is_wht_col:
+                    has_wht = False
+                    
+                    # Sub-helper to get values with multiple key possibilities
+                    def wht_local_get_val(keys, default='-'):
+                        if isinstance(keys, str): keys = [keys]
+                        for k in keys:
+                            v = context_ext.get(k)
+                            if v is not None and str(v).strip() != '-': return v
+                        return default
+                    
+                    if sheet_name == "สลิปโอนเงิน":
+                        slip_wht_amt = clean_val(wht_local_get_val(['wht_amount', 'wht']))
+                        memo_str = str(wht_local_get_val('memo')).upper()
+                        # If slip itself has WHT
+                        if (slip_wht_amt > 0) or ("EXWHT" in memo_str) or ("หัก ณ ที่จ่าย" in memo_str) or ("WHT" in memo_str):
+                            has_wht = True
+                        else:
+                            # 3-Way check: Look up from "ใบเสร็จ/ใบกำกับภาษี" sheet
+                            invoice_has_wht = False
+                            if "ใบเสร็จ/ใบกำกับภาษี" in existing_sheets:
+                                try:
+                                    res_val = self.sheets_service.spreadsheets().values().get(
+                                        spreadsheetId=self.spreadsheet_id, 
+                                        range="'ใบเสร็จ/ใบกำกับภาษี'!A1:Z1000"
+                                    ).execute()
+                                    inv_rows = res_val.get('values', [])
+                                    if inv_rows and len(inv_rows) > 1:
+                                        inv_hdr = inv_rows[0]
+                                        idx_amt = next((i for i, h in enumerate(inv_hdr) if "สุทธิ" in h), 9)
+                                        idx_vend = next((i for i, h in enumerate(inv_hdr) if "ผู้ส่ง" in h or "ร้านค้า" in h or "คู่ค้า" in h), 3)
+                                        idx_wht = next((i for i, h in enumerate(inv_hdr) if "หัก ณ ที่จ่าย" in h), 13)
+                                        
+                                        slip_amt = clean_val(wht_local_get_val(['net_amount', 'amount']))
+                                        slip_receiver = str(wht_local_get_val(['receiver', 'to', 'payee'])).strip()
+                                        
+                                        for r in inv_rows[1:]:
+                                            if len(r) <= max(idx_amt, idx_vend): continue
+                                            try:
+                                                r_amt = clean_val(r[idx_amt])
+                                                r_vend = str(r[idx_vend]).strip()
+                                                if abs(r_amt - slip_amt) < 5.0:
+                                                    name_match = (get_name_similarity(r_vend, slip_receiver) > 0.7) or (r_vend in slip_receiver) or (slip_receiver in r_vend)
+                                                    if name_match:
+                                                        r_wht = str(r[idx_wht]).strip() if len(r) > idx_wht else "-"
+                                                        if r_wht == "หัก ณ ที่จ่าย" or clean_val(r_wht) > 0:
+                                                            invoice_has_wht = True
+                                                            break
+                                            except Exception as ex:
+                                                logger.warning(f"Error checking invoice matching WHT: {ex}")
+                                except Exception as e:
+                                    logger.warning(f"Error checking invoices: {e}")
+                            
+                            if invoice_has_wht:
+                                has_wht = True
+                                
+                    elif sheet_name == "ใบเสร็จ/ใบกำกับภาษี":
+                        inv_wht_amt = clean_val(wht_local_get_val(['wht_amount', 'wht']))
+                        wht_rate_val = str(wht_local_get_val(['wht_rate', 'wht_percent', 'อัตราภาษี'])).strip()
+                        wht_type_val = str(wht_local_get_val(['wht_type', 'income_type'])).strip()
+                        if (inv_wht_amt > 0) or (wht_rate_val not in ['-', '', '0', '0%']) or ("หัก" in wht_type_val or "WHT" in wht_type_val.upper()):
+                            has_wht = True
+                            
+                    elif sheet_name == "ใบหัก ณ ที่จ่าย":
+                        has_wht = True
+                        
+                    return "หัก ณ ที่จ่าย" if has_wht else "-"
                 
                 # Built-in fallback helper inside extract_field_value
                 def local_get_val(keys, default='-'):
@@ -1466,18 +1608,18 @@ class GoogleWorkspaceManager:
                     rows = []
                     for t in transactions:
                         row_vals = []
-                        for col in columns_def:
-                            row_vals.append(extract_field_value(col, context_ext=t))
+                        for col_idx, col in enumerate(columns_def):
+                            row_vals.append(extract_field_value(col, context_ext=t, col_idx=col_idx))
                         rows.append(row_vals)
                 else:
                     row_vals = []
-                    for col in columns_def:
-                        row_vals.append(extract_field_value(col))
+                    for col_idx, col in enumerate(columns_def):
+                        row_vals.append(extract_field_value(col, col_idx=col_idx))
                     rows = [row_vals]
             else:
                 row_vals = []
-                for col in columns_def:
-                    row_vals.append(extract_field_value(col))
+                for col_idx, col in enumerate(columns_def):
+                    row_vals.append(extract_field_value(col, col_idx=col_idx))
                 rows = [row_vals]
 
             # Check if sheet exists and update headers if they don't match our strict format
