@@ -984,11 +984,45 @@ class GoogleWorkspaceManager:
     def list_subfolders(self, parent_id=None):
         if not self.drive_service: return []
         p_id = parent_id or self.parent_folder_id
+        if not p_id: return []
         try:
+            # 1. Fetch existing subfolders
             query = f"'{p_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
             results = self.drive_service.files().list(q=query, fields="files(id, name)", supportsAllDrives=True).execute()
-            return results.get('files', [])
-        except: return []
+            existing_folders = results.get('files', [])
+            existing_names = {f['name'] for f in existing_folders}
+            
+            # 2. Define essential folders matching the luxury minimal structure
+            essential_folders = [
+                "เงินยืมกรรมการ",
+                "บัตรประชาชน",
+                "สลิปโอนเงิน",
+                "ใบเสร็จ_ใบกำกับ",
+                "ใบหัก ณ ที่จ่าย",
+                "ใบเสนอราคา",
+                "statement",
+                "อื่นๆ"
+            ]
+            
+            # 3. Auto-create any missing folders
+            created_any = False
+            for folder_name in essential_folders:
+                if folder_name not in existing_names:
+                    try:
+                        self._get_or_create_folder(folder_name, p_id)
+                        created_any = True
+                    except Exception as ce:
+                        logger.error(f"Error pre-creating essential folder {folder_name}: {ce}")
+            
+            # 4. Refetch if we created new folders to return the complete list
+            if created_any:
+                results = self.drive_service.files().list(q=query, fields="files(id, name)", supportsAllDrives=True).execute()
+                existing_folders = results.get('files', [])
+                
+            return existing_folders
+        except Exception as e:
+            logger.error(f"Error in list_subfolders: {e}")
+            return []
 
     @thread_safe
     def auto_reconcile_internal(self):
