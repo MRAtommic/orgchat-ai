@@ -40,6 +40,7 @@ import google_drive_service
 from task_tracker import db_task_tracker
 from reconciliation_service import ReconciliationService
 import settings_manager
+from redis_manager import RedisManager
 
 from routes.shared import (
     VERSION, socketio, _limiter, login_required, admin_required,
