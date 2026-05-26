@@ -16,6 +16,7 @@ import os
 import csv
 import hashlib
 import json
+import threading
 import re
 import gc
 from pathlib import Path
@@ -32,9 +33,14 @@ try:
 except ImportError:
     PDF_SUPPORTED = False
 
-import chromadb
-from chromadb.utils import embedding_functions
-
+os.environ["ANONYMIZED_TELEMETRY"] = "False"
+os.environ["CHROMA_API_IMPL"] = "chromadb.api.segment.SegmentAPI"
+try:
+    import chromadb
+    from chromadb.utils import embedding_functions
+except ImportError:
+    chromadb = None
+    embedding_functions = None
 # Load environment variables early and override any existing session variables
 BASE_DIR = Path(__file__).parent.absolute()
 load_dotenv(BASE_DIR / ".env", override=True)
@@ -53,7 +59,6 @@ except ImportError:
 
 try:
     from PIL import Image
-    import pytesseract
     IMAGE_SUPPORTED = True
 except ImportError:
     IMAGE_SUPPORTED = False
@@ -263,6 +268,194 @@ class FastEmbedEmbeddingFunction(embedding_functions.EmbeddingFunction):
 
 import requests # Ensure requests is available in rag_engine
 
+# ─────────────────────────────────────────────
+# Fallback Vector Store for Windows without C++ compiler (hnswlib issue)
+# ─────────────────────────────────────────────
+def cosine_similarity(v1, v2):
+    dot_product = sum(a * b for a, b in zip(v1, v2))
+    norm_v1 = sum(a * a for a in v1) ** 0.5
+    norm_v2 = sum(b * b for b in v2) ** 0.5
+    if not norm_v1 or not norm_v2:
+        return 0.0
+    return dot_product / (norm_v1 * norm_v2)
+
+def evaluate_filter(metadata, filter_expr):
+    if not filter_expr:
+        return True
+    
+    if not isinstance(filter_expr, dict):
+        return False
+        
+    for key, val in filter_expr.items():
+        if key == "$and":
+            if not isinstance(val, list):
+                return False
+            return all(evaluate_filter(metadata, sub) for sub in val)
+            
+        elif key == "$or":
+            if not isinstance(val, list):
+                return False
+            return any(evaluate_filter(metadata, sub) for sub in val)
+            
+        else:
+            meta_val = metadata.get(key)
+            if isinstance(val, dict):
+                for op, op_val in val.items():
+                    if op == "$eq":
+                        if op_val is None:
+                            if meta_val is None or meta_val == "" or meta_val == "None":
+                                continue
+                            else:
+                                return False
+                        else:
+                            if str(meta_val) == str(op_val):
+                                continue
+                            else:
+                                return False
+                    elif op == "$in":
+                        if not isinstance(op_val, list):
+                            return False
+                        string_op_val = {str(x) for x in op_val}
+                        if str(meta_val) in string_op_val:
+                            continue
+                        else:
+                            return False
+                    else:
+                        return False
+            else:
+                if val is None or val == "":
+                    if meta_val is None or meta_val == "" or meta_val == "None":
+                        continue
+                    else:
+                        return False
+                else:
+                    if str(meta_val) == str(val):
+                        continue
+                    else:
+                        return False
+    return True
+
+class PurePythonVectorStore:
+    def __init__(self, ef, persist_path):
+        self.ef = ef
+        self.persist_path = Path(persist_path)
+        self.data = []  # List of dicts: {"id": str, "document": str, "metadata": dict, "embedding": list[float]}
+        self.load()
+
+    def load(self):
+        if self.persist_path.exists():
+            try:
+                with open(self.persist_path, "r", encoding="utf-8") as f:
+                    self.data = json.load(f)
+                print(f"✅ Loaded {len(self.data)} chunks from pure Python vector store fallback.")
+            except Exception as e:
+                print(f"⚠️ Error loading fallback vector store: {e}")
+                self.data = []
+
+    def save(self):
+        try:
+            with open(self.persist_path, "w", encoding="utf-8") as f:
+                json.dump(self.data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"⚠️ Error saving fallback vector store: {e}")
+
+    def upsert(self, documents: list[str], ids: list[str], metadatas: list[dict]):
+        try:
+            embeddings = self.ef(documents)
+        except Exception as e:
+            print(f"❌ In-memory upsert embedding error: {e}")
+            raise e
+
+        id_set = set(ids)
+        self.data = [item for item in self.data if item["id"] not in id_set]
+
+        for doc, cid, meta, emb in zip(documents, ids, metadatas, embeddings):
+            if hasattr(emb, "tolist"):
+                emb_list = emb.tolist()
+            elif isinstance(emb, (list, tuple)):
+                emb_list = [float(x) for x in emb]
+            else:
+                emb_list = [float(x) for x in list(emb)]
+
+            self.data.append({
+                "id": cid,
+                "document": doc,
+                "metadata": meta,
+                "embedding": emb_list
+            })
+        self.save()
+
+    def count(self) -> int:
+        return len(self.data)
+
+    def delete(self, ids: list[str] = None, where: dict = None):
+        if ids:
+            id_set = set(ids)
+            self.data = [item for item in self.data if item["id"] not in id_set]
+        elif where:
+            self.data = [item for item in self.data if not evaluate_filter(item.get("metadata", {}), where)]
+        self.save()
+
+    def get(self, where: dict = None, include: list[str] = None) -> dict:
+        matched = []
+        for item in self.data:
+            if where:
+                if not evaluate_filter(item.get("metadata", {}), where):
+                    continue
+            matched.append(item)
+
+        return {
+            "ids": [item["id"] for item in matched],
+            "documents": [item["document"] for item in matched],
+            "metadatas": [item["metadata"] for item in matched],
+            "embeddings": [item["embedding"] for item in matched]
+        }
+
+    def update(self, ids: list[str], metadatas: list[dict]):
+        meta_dict = {cid: meta for cid, meta in zip(ids, metadatas)}
+        for item in self.data:
+            cid = item["id"]
+            if cid in meta_dict:
+                item["metadata"] = meta_dict[cid]
+        self.save()
+
+    def query(self, query_texts: list[str], n_results: int = 4, where: dict = None) -> dict:
+        if not query_texts:
+            return {"documents": [[]], "metadatas": [[]], "distances": [[]]}
+
+        matched = []
+        for item in self.data:
+            if where:
+                if not evaluate_filter(item.get("metadata", {}), where):
+                    continue
+            matched.append(item)
+
+        if not matched:
+            return {"documents": [[]], "metadatas": [[]], "distances": [[]]}
+
+        try:
+            query_embs = self.ef(query_texts)
+        except Exception as e:
+            print(f"❌ In-memory query embedding error: {e}")
+            return {"documents": [[]], "metadatas": [[]], "distances": [[]]}
+
+        query_emb = query_embs[0]
+
+        scored = []
+        for item in matched:
+            sim = cosine_similarity(query_emb, item["embedding"])
+            dist = 1.0 - sim
+            scored.append((item, dist))
+
+        scored.sort(key=lambda x: x[1])
+        top_results = scored[:n_results]
+
+        return {
+            "documents": [[item[0]["document"] for item in top_results]],
+            "metadatas": [[item[0]["metadata"] for item in top_results]],
+            "distances": [[item[1] for item in top_results]]
+        }
+
 class KnowledgeBase:
     def __init__(self):
         # Use absolute path for ChromaDB
@@ -273,7 +466,6 @@ class KnowledgeBase:
             print("⚠️ Warning: GEMINI_API_KEY not found in environment.")
             self.api_key = "dummy_key_for_init"
         self.provider = os.environ.get("AI_EMBEDDING_PROVIDER", "gemini").strip().lower()
-        print(f"DEBUG: AI_EMBEDDING_PROVIDER from env is: '{self.provider}'")
         provider = self.provider
         if provider == "ollama":
             embed_model = os.environ.get("OLLAMA_EMBED_MODEL", "mxbai-embed-large")
@@ -299,39 +491,58 @@ class KnowledgeBase:
                     print(f"❌ Fallback failed: {ex}")
                     ef = None
         else:
-            print(f"☁️ ใช้ Google Gemini Embeddings (google-genai SDK ใหม่)")
             ef = BatchedGoogleEmbeddingFunction(
                 api_key=self.api_key,
                 model_name="models/gemini-embedding-001"
             )
-        
+
         if ef is None:
              raise Exception("EMBEDDING_PROVIDER_NOT_READY")
+
+        self._ephemeral = False
+
+        # ─── ChromaDB (local persistent) ───
+        if chromadb is None:
+            print("⚠️ chromadb ไม่ได้ติดตั้ง — บังคับใช้ Pure Python Vector Store แทน", flush=True)
+            self._ephemeral = True
+            self.collection = PurePythonVectorStore(ef, BASE_DIR / "chroma_db_fallback.json")
+            print("✅ Pure Python Vector Store Fallback ready.", flush=True)
+            return
+
+        _chroma_settings = chromadb.config.Settings(
+            anonymized_telemetry=False,
+            chroma_api_impl="chromadb.api.segment.SegmentAPI",
+        )
+
+        def _open_persistent():
+            _result = [None]
+            _err = [None]
+            def _run():
+                try:
+                    _result[0] = chromadb.PersistentClient(path=str(CHROMA_DIR), settings=_chroma_settings)
+                except Exception as e:
+                    _err[0] = e
+            t = threading.Thread(target=_run, daemon=True)
+            t.start()
+            t.join(timeout=15)
+            if t.is_alive() or _result[0] is None:
+                return None, _err[0] or "Timeout"
+            return _result[0], None
+
         try:
-            client = chromadb.PersistentClient(path=str(CHROMA_DIR))
+            client, err = _open_persistent()
+            if client is None:
+                raise Exception(f"ChromaDB persistent client timed out or failed: {err}")
             self.collection = client.get_or_create_collection(
-                name="org_knowledge",
+                name=f"org_knowledge_{self.provider}",
                 embedding_function=ef,
                 metadata={"hnsw:space": "cosine"},
             )
         except Exception as e:
-            # Self-healing for ChromaDB version/type mismatches
-            print(f"⚠️ ChromaDB Error detected: {e}. Attempting self-healing...")
-            import shutil
-            if CHROMA_DIR.exists():
-                shutil.rmtree(CHROMA_DIR)
-            CHROMA_DIR.mkdir(exist_ok=True)
-            # Wipe meta too to stay in sync
-            if META_FILE.exists():
-                os.remove(META_FILE)
-            
-            client = chromadb.PersistentClient(path=str(CHROMA_DIR))
-            self.collection = client.get_or_create_collection(
-                name="org_knowledge",
-                embedding_function=ef,
-                metadata={"hnsw:space": "cosine"},
-            )
-            print("✅ Database reset and ready.")
+            print(f"⚠️ ChromaDB Error/Timeout detected: {e}. Falling back to Pure Python Vector Store.", flush=True)
+            self._ephemeral = True
+            self.collection = PurePythonVectorStore(ef, BASE_DIR / "chroma_db_fallback.json")
+            print("✅ Pure Python Vector Store Fallback ready.", flush=True)
 
     def update_api_key(self, api_key: str):
         """อัปเดต API key และรีเซ็ต collection"""
@@ -342,13 +553,31 @@ class KnowledgeBase:
             api_key=api_key,
             model_name="models/gemini-embedding-001"
         )
-        client = chromadb.PersistentClient(path=str(CHROMA_DIR))
-        self.collection = client.get_or_create_collection(
-            name="org_knowledge",
-            embedding_function=ef,
-            metadata={"hnsw:space": "cosine"},
-        )
-        print("✅ KnowledgeBase API Key อัปเดตแล้ว collection รีเซ็ตเรียบร้อย")
+        if isinstance(self.collection, PgVectorStore):
+            self.collection.ef = ef
+            print("✅ [pgvector] KnowledgeBase API Key updated for Supabase pgvector store.")
+            return
+        if self._ephemeral and isinstance(self.collection, PurePythonVectorStore):
+            self.collection.ef = ef
+            print("✅ [FALLBACK] KnowledgeBase API Key updated for pure Python store.")
+            return
+
+        if chromadb is not None:
+            try:
+                client = chromadb.PersistentClient(path=str(CHROMA_DIR))
+                self.collection = client.get_or_create_collection(
+                    name=f"org_knowledge_{self.provider}",
+                    embedding_function=ef,
+                    metadata={"hnsw:space": "cosine"},
+                )
+                print("✅ KnowledgeBase API Key อัปเดตแล้ว collection รีเซ็ตเรียบร้อย")
+                return
+            except Exception as e:
+                print(f"⚠️ Failed to update API key with chromadb: {e}. Keeping fallback.")
+        
+        # Fallback if chromadb is None or fails
+        self._ephemeral = True
+        self.collection = PurePythonVectorStore(ef, BASE_DIR / "chroma_db_fallback.json")
 
     def is_key_valid(self):
         """Simple check if we have a real key if provider is Gemini."""
@@ -370,25 +599,33 @@ class KnowledgeBase:
             self.collection.upsert(documents=chunks, ids=ids, metadatas=metadatas)
         except Exception as e:
             err_msg = str(e).lower()
+            if self._ephemeral and isinstance(self.collection, PurePythonVectorStore):
+                raise e
             # Only recreate if it's a GENUINE dimension mismatch (e.g. model changed)
             # Standard Chroma dimension error contains 'Expected' and 'got'
             if "dimension" in err_msg and ("expected" in err_msg or "but got" in err_msg):
                 print("⚠️ Critical Dimension mismatch detected. Recreating collection for new model...")
-                # To change dimensions, we MUST delete the collection and recreate it.
-                client = chromadb.PersistentClient(path=str(CHROMA_DIR))
-                try:
-                    client.delete_collection("org_knowledge")
-                except:
-                    pass
-                
-                # Re-init collection using current embedding function
-                self.collection = client.get_or_create_collection(
-                    name="org_knowledge",
-                    embedding_function=self.collection._embedding_function,
-                    metadata={"hnsw:space": "cosine"},
-                )
-                # Retry once
-                self.collection.upsert(documents=chunks, ids=ids, metadatas=metadatas)
+                if chromadb is not None:
+                    try:
+                        # To change dimensions, we MUST delete the collection and recreate it.
+                        client = chromadb.PersistentClient(path=str(CHROMA_DIR))
+                        try:
+                            client.delete_collection(f"org_knowledge_{self.provider}")
+                        except:
+                            pass
+                        
+                        # Re-init collection using current embedding function
+                        self.collection = client.get_or_create_collection(
+                            name=f"org_knowledge_{self.provider}",
+                            embedding_function=self.collection._embedding_function,
+                            metadata={"hnsw:space": "cosine"},
+                        )
+                        # Retry once
+                        self.collection.upsert(documents=chunks, ids=ids, metadatas=metadatas)
+                        return
+                    except Exception as ex:
+                        print(f"⚠️ Failed to reset collection: {ex}")
+                raise e
             else:
                 raise e
 
@@ -661,6 +898,10 @@ class FileProcessor:
         if not IMAGE_SUPPORTED:
             return ["[OCR unavailable]"], [{"location": "error"}]
         try:
+            import pytesseract
+        except (ImportError, Exception):
+            return ["[OCR unavailable — pytesseract not installed]"], [{"location": "error"}]
+        try:
             img = Image.open(str(path))
             text = pytesseract.image_to_string(img, lang="tha+eng")
             chunks = _chunk_text(text) or ["[No text found in image]"]
@@ -672,27 +913,61 @@ class FileProcessor:
 # ─────────────────────────────────────────────
 # Public API used by app.py
 # ─────────────────────────────────────────────
-_kb = KnowledgeBase()
+_kb = None  # Lazy — initialized in background via reinit_kb(), not at import time
+
+def _get_kb() -> "KnowledgeBase":
+    """Return the current KnowledgeBase, creating it if not yet initialized."""
+    global _kb
+    if _kb is None:
+        _kb = KnowledgeBase()
+    return _kb
 
 # Re-init in case load_dotenv was called in app.py after this module was first loaded
+def _migrate_org_id_to_chunks():
+    """Backfill organization_id=1 on all existing chunks that lack it."""
+    try:
+        col = _get_kb().collection
+        results = col.get(include=["metadatas"])
+        ids = results.get("ids", [])
+        metas = results.get("metadatas", [])
+        to_update_ids = []
+        to_update_metas = []
+        for cid, m in zip(ids, metas):
+            if m and "organization_id" not in m:
+                m2 = dict(m)
+                m2["organization_id"] = 1
+                to_update_ids.append(cid)
+                to_update_metas.append(m2)
+        if to_update_ids:
+            batch = 100
+            for i in range(0, len(to_update_ids), batch):
+                col.update(ids=to_update_ids[i:i+batch], metadatas=to_update_metas[i:i+batch])
+            print(f"✅ Migrated {len(to_update_ids)} chunks with organization_id=1")
+    except Exception as e:
+        print(f"⚠️ org_id chunk migration error: {e}")
+
+
 def reinit_kb():
     global _kb
     print("🔄 Re-initializing KnowledgeBase to refresh settings...")
     _kb = KnowledgeBase()
-    # Sync missing category IDs to ChromaDB one-time on startup
     try:
         meta = _load_meta()
-        _kb.fix_chroma_categories(meta)
+        _get_kb().fix_chroma_categories(meta)
     except Exception as e:
         print(f"⚠️ Initial Chroma Sync error: {e}")
+    try:
+        _migrate_org_id_to_chunks()
+    except Exception as e:
+        print(f"⚠️ org_id migration error: {e}")
 
 
-def ingest_file(file_path: Path, original_name: str, department: str = "General", category_id: int = None) -> dict:
+def ingest_file(file_path: Path, original_name: str, department: str = "General", category_id: int = None, org_id: int = 1) -> dict:
     """Parse file, chunk, embed, and store in ChromaDB. Returns metadata dict."""
     meta = _load_meta()
     fid = _file_hash(file_path)
 
-    print(f"[INGEST] Ingesting: {original_name} ({fid}) | Dept: {department}")
+    print(f"[INGEST] Ingesting: {original_name} ({fid}) | Dept: {department} | Org: {org_id}")
     if fid in meta and meta[fid].get("status") == "ready":
         print(f"⏩ Duplicate file: {original_name}")
         return {"status": "duplicate", "file_id": fid, "name": original_name}
@@ -706,13 +981,14 @@ def ingest_file(file_path: Path, original_name: str, department: str = "General"
         "type": file_path.suffix.lower().lstrip("."),
         "department": department,
         "category_id": category_id,
+        "organization_id": org_id,
         "status": "processing",
-        "api_key_status": _kb.api_key[:5] + "..." if _kb.is_key_valid() else "MISSING KEY",
+        "api_key_status": _get_kb().api_key[:5] + "..." if _get_kb().is_key_valid() else "MISSING KEY",
         "timestamp": datetime.now().isoformat()
     }
     _save_meta(meta)
 
-    if not _kb.is_key_valid():
+    if not _get_kb().is_key_valid():
         print(f"❌ API Key not valid while ingesting {original_name}")
         return {"status": "error", "error": "API Key not set. Cannot ingest file.", "file_id": fid, "name": original_name}
 
@@ -726,8 +1002,8 @@ def ingest_file(file_path: Path, original_name: str, department: str = "General"
 
     for m in chunk_metas:
         m["department"] = department
-        # Always set category_id as a string (use "" if not provided)
         m["category_id"] = str(category_id) if category_id is not None else ""
+        m["organization_id"] = org_id
 
     try:
         # Step-by-step ingestion to save RAM
@@ -735,8 +1011,8 @@ def ingest_file(file_path: Path, original_name: str, department: str = "General"
         for i in range(0, len(chunks), batch_size):
             batch_chunks = chunks[i : i + batch_size]
             batch_metas = chunk_metas[i : i + batch_size]
-            _kb.add_chunks(batch_chunks, source_name=original_name, file_id=fid, metadatas=batch_metas)
-            gc.collect() 
+            _get_kb().add_chunks(batch_chunks, source_name=original_name, file_id=fid, metadatas=batch_metas)
+            gc.collect()
     except Exception as e:
         if "DAILY_QUOTA_EXCEEDED" in str(e):
              raise e # Propagate hard stop
@@ -753,35 +1029,35 @@ def ingest_file(file_path: Path, original_name: str, department: str = "General"
         "type": file_path.suffix.lower().lstrip("."),
         "department": department,
         "category_id": category_id,
+        "organization_id": org_id,
         "status": "ready",
-        "api_key_status": _kb.api_key[:5] + "..." if _kb.is_key_valid() else "MISSING KEY",
+        "api_key_status": _get_kb().api_key[:5] + "..." if _get_kb().is_key_valid() else "MISSING KEY",
         "timestamp": meta[fid].get("timestamp", datetime.now().isoformat())
     }
     _save_meta(meta)
-    return {"status": "ok", "file_id": fid, "name": original_name, "chunks": len(chunks), "department": department, "category_id": category_id}
+    return {"status": "ok", "file_id": fid, "name": original_name, "chunks": len(chunks), "department": department, "category_id": category_id, "organization_id": org_id}
 
 
-def ingest_text(text: str, source_name: str, department: str = "General", category_id: int = None) -> dict:
+def ingest_text(text: str, source_name: str, department: str = "General", category_id: int = None, org_id: int = 1) -> dict:
     """Useful for ingesting Wiki pages or AI-generated content directly."""
     if not text.strip():
         return {"status": "empty"}
-    
-    # Create a deterministic ID for source
+
     import hashlib
     source_id = hashlib.md5(source_name.encode()).hexdigest()[:12]
-    
+
     # First, clear previous version of this source if it exists
-    _kb.delete_by_source(source_name)
-    
+    _get_kb().delete_by_source(source_name)
+
     chunks = _chunk_text(text)
     chunk_metas = []
     for _ in chunks:
-        m = {"department": department, "source": source_name, "type": "wiki"}
-        m["category_id"] = category_id # Always set
+        m = {"department": department, "source": source_name, "type": "wiki", "organization_id": org_id}
+        m["category_id"] = category_id
         chunk_metas.append(m)
 
     try:
-        _kb.add_chunks(chunks, source_name=source_name, file_id=f"text_{source_id}", metadatas=chunk_metas)
+        _get_kb().add_chunks(chunks, source_name=source_name, file_id=f"text_{source_id}", metadatas=chunk_metas)
         return {"status": "ok", "chunks": len(chunks), "source": source_name}
     except Exception as e:
         print(f"❌ ingest_text Error: {e}")
@@ -797,7 +1073,7 @@ def delete_file(file_id: str, delete_from_disk: bool = True) -> bool:
     meta = _load_meta()
     if file_id not in meta:
         return False
-    _kb.delete_by_file_id(file_id)
+    _get_kb().delete_by_file_id(file_id)
     info = meta.pop(file_id)
     _save_meta(meta)
     if delete_from_disk:
@@ -816,18 +1092,18 @@ def update_file_category(file_id: str, category_id: int) -> bool:
     _save_meta(meta)
     
     # Also update vector database chunks
-    _kb.update_metadata_by_file_id(file_id, {"category_id": category_id})
+    _get_kb().update_metadata_by_file_id(file_id, {"category_id": category_id})
     return True
 
 
 def get_file_content(file_id: str) -> str:
     """Retrieve all text chunks for a specific file_id from vector store."""
     try:
-        results = _kb.collection.get(where={"file_id": file_id})
+        results = _get_kb().collection.get(where={"file_id": file_id})
         docs = results.get("documents", [])
         if not docs:
             # Fallback: check if it's a 'source' name instead of hash ID
-            results = _kb.collection.get(where={"source": file_id})
+            results = _get_kb().collection.get(where={"source": file_id})
             docs = results.get("documents", [])
         return "\n".join(docs)
     except Exception as e:
@@ -856,7 +1132,7 @@ def retrieve_context(question: str, where: dict = None) -> tuple[str, list[dict]
         if question and len(question) > 2:
             try:
                 # 1a. Efficiently get candidates: Fetch unique source names first
-                inv_data = _kb.collection.get(include=['metadatas'], limit=100)
+                inv_data = _get_kb().collection.get(include=['metadatas'], limit=100)
                 sources_in_db = list(set([m.get("source") for m in inv_data.get("metadatas", []) if m.get("source")]))
                 
                 # 1b. Match filenames against the RAW question (Better for Thai)
@@ -865,7 +1141,7 @@ def retrieve_context(question: str, where: dict = None) -> tuple[str, list[dict]
                 if matched_sources:
                     print(f"📂 Thai Match filenames: {matched_sources}")
                     # Fetch chunks for matched files
-                    f_res = _kb.collection.get(
+                    f_res = _get_kb().collection.get(
                         where={"source": {"$in": matched_sources}} if not where else {"$and": [where, {"source": {"$in": matched_sources}}]},
                         limit=5
                     )
@@ -880,7 +1156,7 @@ def retrieve_context(question: str, where: dict = None) -> tuple[str, list[dict]
                 print(f"⚠️ Filename match error: {fe}")
         
         # 2. Standard Hybrid Query (Semantic + Keyword)
-        results = _kb.hybrid_query(question, where=where)
+        results = _get_kb().hybrid_query(question, where=where)
         # Filter by score (keep only >= 0.42) - Increased from 0.35 to reduce noise
         results = [r for r in results if r.get("score", 0) >= 0.42]
         
@@ -935,13 +1211,13 @@ def retrieve_context(question: str, where: dict = None) -> tuple[str, list[dict]
 
 
 def kb_stats() -> dict:
-    return {"total_chunks": _kb.total_chunks(), "total_files": len(_load_meta())}
+    return {"total_chunks": _get_kb().total_chunks(), "total_files": len(_load_meta())}
 
 
 def get_quota_status() -> dict:
     """Check quota for current embedding function."""
     res = {"embedding_quota_hit": False, "provider": "gemini"}
-    ef = getattr(_kb.collection, "_embedding_function", None)
+    ef = getattr(_get_kb().collection, "_embedding_function", None)
     if ef:
         if isinstance(ef, BatchedGoogleEmbeddingFunction):
             res["embedding_quota_hit"] = ef.daily_quota_hit
@@ -956,7 +1232,7 @@ def prune_kb() -> int:
     """Consolidate and remove orphaned chunks from the vector database."""
     meta = _load_meta()
     valid_ids = list(meta.keys())
-    return _kb.prune_orphaned_chunks(valid_ids)
+    return _get_kb().prune_orphaned_chunks(valid_ids)
 
 def wipe_knowledge_base():
     """Wipe all data from the knowledge base and clear meta."""
@@ -969,7 +1245,7 @@ def wipe_knowledge_base():
 def fix_categories():
     """Sync and normalize category_ids from meta file to ChromaDB."""
     meta = _load_meta()
-    return _kb.fix_chroma_categories(meta)
+    return _get_kb().fix_chroma_categories(meta)
 
 def sync_uploads():
     """Scan the uploads folder and ingest any files that are not already in meta."""
@@ -990,7 +1266,7 @@ def sync_uploads():
                 # DEEP SYNC FIX: Check if the file actually has data in ChromaDB
                 in_db = False
                 try:
-                    db_check = _kb.collection.get(where={"file_id": fid}, limit=1)
+                    db_check = _get_kb().collection.get(where={"file_id": fid}, limit=1)
                     if db_check and db_check.get("ids"):
                         in_db = True
                 except:
@@ -1012,7 +1288,7 @@ def sync_uploads():
 
 def search_kb(question: str, n_results: int = 5, where: dict = None) -> list[dict]:
     """Perform a raw search in the knowledge base with optional permissions filter."""
-    return _kb.hybrid_query(question, n_results=n_results, where=where)
+    return _get_kb().hybrid_query(question, n_results=n_results, where=where)
 
 def query(question: str, n_results: int = 4, where: dict = None) -> list[dict]:
     """Alias for search_kb to maintain compatibility."""
@@ -1020,7 +1296,7 @@ def query(question: str, n_results: int = 4, where: dict = None) -> list[dict]:
 
 def get_all_chunks(where: dict = None, limit: int = 20) -> list[dict]:
     """Fetch raw chunks from the knowledge base without semantic search."""
-    data = _kb.collection.get(where=where, limit=limit)
+    data = _get_kb().collection.get(where=where, limit=limit)
     docs = data.get("documents", [])
     metas = data.get("metadatas", [])
     
