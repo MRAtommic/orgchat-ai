@@ -237,7 +237,7 @@ class GoogleOAuth2Service:
 
     def setup_user_workspace(self, username, google_email):
         """
-        Create a personal Spreadsheet and Drive folder for a newly connected user.
+        Create or reuse a personal Spreadsheet and Drive folder for a connected user.
         Called once after successful OAuth2 authorization.
         """
         drive_service = self.build_user_drive_service(username)
@@ -248,47 +248,65 @@ class GoogleOAuth2Service:
             return False
 
         try:
-            # 1. Create a root folder in user's Drive
-            folder_meta = {
-                'name': 'OrgChat AI — เอกสารบัญชี',
-                'mimeType': 'application/vnd.google-apps.folder'
-            }
-            folder = drive_service.files().create(
-                body=folder_meta, fields='id'
-            ).execute()
-            folder_id = folder.get('id')
-            database.set_user_drive_folder_id(username, folder_id)
-            logger.info(f"📁 Created Drive folder for {username}: {folder_id}")
-
-            # 2. Create a Spreadsheet in user's Drive
-            spreadsheet_body = {
-                'properties': {
-                    'title': f'OrgChat AI — บัญชีของ {google_email}'
+            # 1. Search for existing folder with the same name in the user's Drive
+            folder_name = 'OrgChat AI — เอกสารบัญชี'
+            query = f"name = '{folder_name}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+            results = drive_service.files().list(q=query, fields="files(id)", pageSize=1).execute()
+            files = results.get('files', [])
+            
+            if files:
+                folder_id = files[0]['id']
+                logger.info(f"📁 Reusing existing Drive folder for {username}: {folder_id}")
+            else:
+                folder_meta = {
+                    'name': folder_name,
+                    'mimeType': 'application/vnd.google-apps.folder'
                 }
-            }
-            spreadsheet = sheets_service.spreadsheets().create(
-                body=spreadsheet_body, fields='spreadsheetId'
-            ).execute()
-            spreadsheet_id = spreadsheet.get('spreadsheetId')
+                folder = drive_service.files().create(
+                    body=folder_meta, fields='id'
+                ).execute()
+                folder_id = folder.get('id')
+                logger.info(f"📁 Created Drive folder for {username}: {folder_id}")
+                
+            database.set_user_drive_folder_id(username, folder_id)
 
-            # Move spreadsheet into the folder
-            file_info = drive_service.files().get(
-                fileId=spreadsheet_id, fields='parents'
-            ).execute()
-            previous_parents = ",".join(file_info.get('parents', []))
-            drive_service.files().update(
-                fileId=spreadsheet_id,
-                addParents=folder_id,
-                removeParents=previous_parents,
-                fields='id, parents'
-            ).execute()
-
+            # 2. Search for existing Spreadsheet with the same name in user's Drive
+            sheet_title = f'OrgChat AI — บัญชีของ {google_email}'
+            query_sheet = f"name = '{sheet_title}' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false"
+            results_sheet = drive_service.files().list(q=query_sheet, fields="files(id)", pageSize=1).execute()
+            sheets = results_sheet.get('files', [])
+            
+            if sheets:
+                spreadsheet_id = sheets[0]['id']
+                logger.info(f"📊 Reusing existing Spreadsheet for {username}: {spreadsheet_id}")
+            else:
+                spreadsheet_body = {
+                    'properties': {
+                        'title': sheet_title
+                    }
+                }
+                spreadsheet = sheets_service.spreadsheets().create(
+                    body=spreadsheet_body, fields='spreadsheetId'
+                ).execute()
+                spreadsheet_id = spreadsheet.get('spreadsheetId')
+                
+                # Move spreadsheet into the folder
+                file_info = drive_service.files().get(
+                    fileId=spreadsheet_id, fields='parents'
+                ).execute()
+                previous_parents = ",".join(file_info.get('parents', []))
+                drive_service.files().update(
+                    fileId=spreadsheet_id,
+                    addParents=folder_id,
+                    removeParents=previous_parents,
+                    fields='id, parents'
+                ).execute()
+                
+                # Initialize essential sheets only if newly created
+                self._init_essential_sheets(sheets_service, spreadsheet_id)
+                logger.info(f"📊 Created and initialized new Spreadsheet for {username}: {spreadsheet_id}")
+                
             database.set_user_spreadsheet_id(username, spreadsheet_id)
-            logger.info(f"📊 Created Spreadsheet for {username}: {spreadsheet_id}")
-
-            # 3. Initialize essential sheets with headers (reuse from google_drive_service schema)
-            self._init_essential_sheets(sheets_service, spreadsheet_id)
-
             return True
 
         except Exception as e:
@@ -527,6 +545,13 @@ class GoogleOAuth2Service:
             logger.error(f"❌ Cannot setup org workspace for org {org_id}: no credentials")
             return False
 
+    def setup_org_workspace(self, org_id: int, google_email: str, connected_by: str = None) -> bool:
+        """Create or reuse a shared Spreadsheet and Drive folder for the org. Called once on connect."""
+        creds = self.build_org_credentials(org_id)
+        if not creds:
+            logger.error(f"❌ Cannot setup org workspace for org {org_id}: no credentials")
+            return False
+
         try:
             drive_service = build('drive', 'v3', credentials=creds, cache_discovery=False)
             sheets_service = build('sheets', 'v4', credentials=creds, cache_discovery=False)
@@ -543,37 +568,56 @@ class GoogleOAuth2Service:
             except Exception:
                 pass
 
-            folder_meta = {
-                'name': f'OrgChat AI — {org_name}',
-                'mimeType': 'application/vnd.google-apps.folder'
-            }
-            folder = drive_service.files().create(body=folder_meta, fields='id').execute()
-            folder_id = folder.get('id')
+            folder_name = f'OrgChat AI — {org_name}'
+            query = f"name = '{folder_name}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+            results = drive_service.files().list(q=query, fields="files(id)", pageSize=1).execute()
+            files = results.get('files', [])
+            
+            if files:
+                folder_id = files[0]['id']
+                logger.info(f"📁 Reusing existing org Drive folder for org {org_id}: {folder_id}")
+            else:
+                folder_meta = {
+                    'name': folder_name,
+                    'mimeType': 'application/vnd.google-apps.folder'
+                }
+                folder = drive_service.files().create(body=folder_meta, fields='id').execute()
+                folder_id = folder.get('id')
+                logger.info(f"📁 Created org Drive folder for org {org_id}: {folder_id}")
+                
             database.set_org_drive_folder_id(org_id, folder_id)
-            logger.info(f"📁 Created org Drive folder for org {org_id}: {folder_id}")
 
             # Create Spreadsheet
-            spreadsheet = sheets_service.spreadsheets().create(
-                body={'properties': {'title': f'OrgChat AI — บัญชี {org_name}'}},
-                fields='spreadsheetId'
-            ).execute()
-            spreadsheet_id = spreadsheet.get('spreadsheetId')
-
-            # Move spreadsheet into the folder
-            file_info = drive_service.files().get(fileId=spreadsheet_id, fields='parents').execute()
-            previous_parents = ",".join(file_info.get('parents', []))
-            drive_service.files().update(
-                fileId=spreadsheet_id,
-                addParents=folder_id,
-                removeParents=previous_parents,
-                fields='id, parents'
-            ).execute()
-
+            sheet_title = f'OrgChat AI — บัญชี {org_name}'
+            query_sheet = f"name = '{sheet_title}' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false"
+            results_sheet = drive_service.files().list(q=query_sheet, fields="files(id)", pageSize=1).execute()
+            sheets = results_sheet.get('files', [])
+            
+            if sheets:
+                spreadsheet_id = sheets[0]['id']
+                logger.info(f"📊 Reusing existing org Spreadsheet for org {org_id}: {spreadsheet_id}")
+            else:
+                spreadsheet = sheets_service.spreadsheets().create(
+                    body={'properties': {'title': sheet_title}},
+                    fields='spreadsheetId'
+                ).execute()
+                spreadsheet_id = spreadsheet.get('spreadsheetId')
+                
+                # Move spreadsheet into the folder
+                file_info = drive_service.files().get(fileId=spreadsheet_id, fields='parents').execute()
+                previous_parents = ",".join(file_info.get('parents', []))
+                drive_service.files().update(
+                    fileId=spreadsheet_id,
+                    addParents=folder_id,
+                    removeParents=previous_parents,
+                    fields='id, parents'
+                ).execute()
+                
+                # Initialize sheet tabs
+                self._init_essential_sheets(sheets_service, spreadsheet_id)
+                logger.info(f"📊 Created and initialized new org Spreadsheet for org {org_id}: {spreadsheet_id}")
+                
             database.set_org_spreadsheet_id(org_id, spreadsheet_id)
-            logger.info(f"📊 Created org Spreadsheet for org {org_id}: {spreadsheet_id}")
-
-            # Initialize sheet tabs
-            self._init_essential_sheets(sheets_service, spreadsheet_id)
             return True
 
         except Exception as e:

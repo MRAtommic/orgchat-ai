@@ -1001,6 +1001,7 @@ class GoogleWorkspaceManager:
                 "ใบหัก ณ ที่จ่าย",
                 "ใบเสนอราคา",
                 "statement",
+                "ทั่วไป",
                 "อื่นๆ"
             ]
             
