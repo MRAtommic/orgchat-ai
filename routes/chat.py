@@ -5115,14 +5115,13 @@ def chat():
         is_greeting = any(g in (question or "").lower() for g in common_greets)
         
         if question and len(question) > 5 and not is_greeting:
-            import sys
             rag_filter = get_rag_filter(current_user, org_id=get_current_org_id())
             context, sources = rag_engine.retrieve_context(question, where=rag_filter)
         else:
             context, sources = "", []
             if is_greeting: 
                 print("Fast Path: Skipping RAG", flush=True)
-                import sys; sys.stdout.flush()
+                sys.stdout.flush()
 
     now_str = get_current_time()
     
