@@ -77,6 +77,9 @@ class DynamicCursorWrapper:
         # Translate SQLite DATETIME to Postgres TIMESTAMP
         sql_translated = re.sub(r'(?i)\bDATETIME\b', 'TIMESTAMP', sql_translated)
             
+        # Translate SQLite GROUP_CONCAT to Postgres STRING_AGG
+        sql_translated = re.sub(r'(?i)\bGROUP_CONCAT\b', 'STRING_AGG', sql_translated)
+            
         # Translate INSERT OR IGNORE / INSERT OR REPLACE to PostgreSQL syntax
         if "INSERT OR IGNORE" in upper_sql:
             sql_translated = sql_translated.replace("INSERT OR IGNORE INTO", "INSERT INTO")
@@ -3145,31 +3148,33 @@ def superadmin_get_all_users() -> list:
     """Super admin: all users across ALL orgs with their org memberships."""
     conn = _get_conn()
     conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT
-            p.username,
-            COALESCE(p.display_name, p.username) AS display_name,
-            p.avatar_url,
-            COALESCE(p.department, 'General') AS department,
-            p.created_at AS profile_created,
-            COALESCE(s.role, 'user') AS role,
-            COALESCE(s.is_active, 1) AS is_active,
-            COALESCE(s.notes, '') AS notes,
-            COALESCE(s.can_edit_kb, 0) AS can_edit_kb,
-            GROUP_CONCAT(
-                o.id || ':' || o.name || ':' || om.role || ':' || COALESCE(o.plan, 'free'),
-                '|'
-            ) AS org_memberships
-        FROM user_profiles p
-        LEFT JOIN user_settings s ON p.username = s.username COLLATE NOCASE
-        LEFT JOIN organization_members om ON p.username = om.username COLLATE NOCASE
-        LEFT JOIN organizations o ON om.organization_id = o.id
-        GROUP BY p.username
-        ORDER BY p.created_at DESC
-    """)
-    rows = cur.fetchall()
-    conn.close()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT
+                p.username,
+                COALESCE(p.display_name, p.username) AS display_name,
+                p.avatar_url,
+                COALESCE(p.department, 'General') AS department,
+                p.timestamp AS profile_created,
+                COALESCE(s.role, 'user') AS role,
+                COALESCE(s.is_active, 1) AS is_active,
+                COALESCE(s.notes, '') AS notes,
+                COALESCE(s.can_edit_kb, 0) AS can_edit_kb,
+                GROUP_CONCAT(
+                    CAST(o.id AS TEXT) || ':' || o.name || ':' || om.role || ':' || COALESCE(o.plan, 'free'),
+                    '|'
+                ) AS org_memberships
+            FROM user_profiles p
+            LEFT JOIN user_settings s ON p.username = s.username COLLATE NOCASE
+            LEFT JOIN organization_members om ON p.username = om.username COLLATE NOCASE
+            LEFT JOIN organizations o ON om.organization_id = o.id
+            GROUP BY p.username
+            ORDER BY p.timestamp DESC
+        """)
+        rows = cur.fetchall()
+    finally:
+        conn.close()
     result = []
     for r in rows:
         d = dict(r)
