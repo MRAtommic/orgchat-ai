@@ -1211,7 +1211,12 @@ def retrieve_context(question: str, where: dict = None) -> tuple[str, list[dict]
 
 
 def kb_stats() -> dict:
-    return {"total_chunks": _get_kb().total_chunks(), "total_files": len(_load_meta())}
+    chunks = _get_kb().total_chunks()
+    return {
+        "total_chunks": chunks, 
+        "total_files": len(_load_meta()),
+        "knowledge_base_size": chunks
+    }
 
 
 def get_quota_status() -> dict:

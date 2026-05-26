@@ -874,6 +874,98 @@ def admin_dashboard_stats():
     })
 
 
+@admin_bp.route("/api/admin/system/diagnostics")
+@admin_required
+def admin_system_diagnostics():
+    """Provides a detailed system diagnostic check for admins."""
+    import sys
+    import platform
+    import sqlite3
+    import time
+    
+    diagnostics = {}
+    
+    # 1. OS & Environment
+    diagnostics["os"] = {
+        "platform": platform.platform(),
+        "python_version": sys.version,
+        "current_time": shared.get_current_time()
+    }
+    
+    # 2. Database Status
+    db_path = database.DB_PATH
+    db_exists = db_path.exists()
+    db_size = db_path.stat().st_size if db_exists else 0
+    db_writable = False
+    if db_exists:
+        try:
+            with open(db_path, "a+b") as f:
+                db_writable = True
+        except Exception:
+            pass
+            
+    diagnostics["database"] = {
+        "engine": database.DB_TYPE,
+        "sqlite_path": str(db_path.absolute()),
+        "sqlite_exists": db_exists,
+        "sqlite_size_mb": round(db_size / (1024 * 1024), 2),
+        "sqlite_writable": db_writable,
+    }
+    
+    # 3. Vector Database Status
+    kb = rag_engine._get_kb()
+    is_fallback = kb._ephemeral
+    diagnostics["vector_db"] = {
+        "engine": "PurePythonVectorStore (Fallback)" if is_fallback else "ChromaDB (Persistent)",
+        "total_chunks": kb.total_chunks(),
+        "total_files": len(rag_engine._load_meta()),
+        "provider": kb.provider
+    }
+    
+    # 4. AI Credentials & Quota
+    diagnostics["ai"] = {
+        "provider": os.environ.get("AI_PROVIDER", "groq").lower(),
+        "embedding_provider": os.environ.get("AI_EMBEDDING_PROVIDER", "gemini").lower(),
+        "gemini_api_key_set": bool(os.environ.get("GEMINI_API_KEY")),
+        "groq_api_key_set": bool(os.environ.get("GROQ_API_KEY")),
+        "quota_info": rag_engine.get_quota_status()
+    }
+    
+    # 5. File System & Uploads
+    upload_dir = rag_engine.UPLOAD_DIR
+    upload_dir_exists = upload_dir.exists()
+    upload_writable = False
+    if upload_dir_exists:
+        try:
+            test_file = upload_dir / f"test_write_{int(time.time())}.tmp"
+            test_file.write_text("write_test")
+            test_file.unlink()
+            upload_writable = True
+        except Exception:
+            pass
+            
+    diagnostics["filesystem"] = {
+        "upload_dir": str(upload_dir.absolute()),
+        "exists": upload_dir_exists,
+        "writable": upload_writable
+    }
+    
+    # 6. Google Drive & OAuth2 Services
+    token_path = Path("token.json")
+    google_drive_linked = token_path.exists()
+    diagnostics["google_services"] = {
+        "oauth2_enabled": shared.OAUTH2_AVAILABLE,
+        "google_auth_available": shared.GOOGLE_AUTH_AVAILABLE,
+        "drive_linked": google_drive_linked,
+        "drive_parent_id_set": bool(os.environ.get("GOOGLE_DRIVE_PARENT_ID"))
+    }
+    
+    return jsonify({
+        "ok": True,
+        "diagnostics": diagnostics
+    })
+
+
 @admin_bp.route("/api/admin/settings", methods=["GET", "POST"])
 @admin_required
 def admin_settings_route():
