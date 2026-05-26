@@ -396,13 +396,16 @@ class PurePythonVectorStore:
             self.data = [item for item in self.data if not evaluate_filter(item.get("metadata", {}), where)]
         self.save()
 
-    def get(self, where: dict = None, include: list[str] = None) -> dict:
+    def get(self, where: dict = None, include: list[str] = None, limit: int = None, **kwargs) -> dict:
         matched = []
         for item in self.data:
             if where:
                 if not evaluate_filter(item.get("metadata", {}), where):
                     continue
             matched.append(item)
+
+        if limit is not None:
+            matched = matched[:limit]
 
         return {
             "ids": [item["id"] for item in matched],
