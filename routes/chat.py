@@ -2038,7 +2038,14 @@ def get_folder_flex_message(user_id=None, uploader_id=None, pending_id=None):
         mgr.set_context(username=u_name, org_id=org_id)
 
         folders = mgr.list_subfolders()
-        if not folders: return None
+        if not folders:
+            try:
+                p_id = mgr.parent_folder_id
+                default_folder_id = mgr._get_or_create_folder("ทั่วไป", p_id)
+                folders = [{'id': default_folder_id, 'name': 'ทั่วไป'}]
+            except Exception as create_err:
+                logger.error(f"Error auto-creating default folder 'ทั่วไป': {create_err}")
+                return None
         
         buttons = []
         for f in folders[:10]:
