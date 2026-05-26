@@ -44,6 +44,7 @@ import settings_manager
 from redis_manager import RedisManager
 
 _line_batch_timer = {}
+LINE_FOLDER_CACHE = {}
 
 from routes.shared import (
     VERSION, socketio, _limiter, login_required, admin_required,
