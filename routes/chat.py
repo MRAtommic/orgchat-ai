@@ -22,7 +22,8 @@ import json
 from datetime import datetime, timedelta
 from functools import wraps
 from bs4 import BeautifulSoup
-import requests as http_requests
+import requests
+http_requests = requests
 import logging
 
 from google import genai
@@ -41,6 +42,8 @@ from task_tracker import db_task_tracker
 from reconciliation_service import ReconciliationService
 import settings_manager
 from redis_manager import RedisManager
+
+_line_batch_timer = {}
 
 from routes.shared import (
     VERSION, socketio, _limiter, login_required, admin_required,
