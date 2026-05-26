@@ -42,6 +42,7 @@ from routes.shared import (
     PENDING_LINE_LINKS, _OAUTH_STATES, _store_oauth_state, _pop_oauth_state,
     send_push_notification, batch_send_push_notification,
     get_weather_context, THAI_HOLIDAYS_2026, get_current_time,
+    _APP_START_TIME,
     VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_CLAIMS,
     OAUTH2_AVAILABLE, oauth2_service,
     _set_session_org, get_current_org_id,
@@ -113,13 +114,15 @@ def admin_line_groups_page():
 @admin_required
 def get_broadcast_history():
     try:
-        conn = sqlite3.connect(database.DB_PATH)
+        conn = database._get_conn()
         conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM line_broadcast_history ORDER BY timestamp DESC LIMIT 50")
-        rows = [dict(r) for r in cursor.fetchall()]
-        conn.close()
-        return jsonify({"ok": True, "history": rows})
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM line_broadcast_history ORDER BY timestamp DESC LIMIT 50")
+            rows = [dict(r) for r in cursor.fetchall()]
+            return jsonify({"ok": True, "history": rows})
+        finally:
+            conn.close()
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)})
 
@@ -709,11 +712,13 @@ def manage_schedules():
             if target_depts:
                 t_depts = [d.strip() for d in target_depts.split(',') if d.strip()]
                 # Get all users in these departments
-                conn = sqlite3.connect(database.DB_PATH)
-                cursor = conn.cursor()
-                cursor.execute(f"SELECT username FROM user_profiles WHERE department IN ({','.join(['?']*len(t_depts))})", t_depts)
-                dept_users = [r[0] for r in cursor.fetchall() if r[0].lower() != user.lower()]
-                conn.close()
+                conn = database._get_conn()
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute(f"SELECT username FROM user_profiles WHERE department IN ({','.join(['?']*len(t_depts))})", t_depts)
+                    dept_users = [r[0] for r in cursor.fetchall() if r[0].lower() != user.lower()]
+                finally:
+                    conn.close()
                 if dept_users:
                     notification_db.notify_users(
                         dept_users, 'calendar', 'กิจกรรมใหม่ในแผนก: ' + title,
@@ -832,11 +837,13 @@ def lunch_add():
 @login_required
 @admin_required
 def lunch_delete(place_id):
-    conn = sqlite3.connect(database.DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM lunch_places WHERE id = ?", (place_id,))
-    conn.commit()
-    conn.close()
+    conn = database._get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM lunch_places WHERE id = ?", (place_id,))
+        conn.commit()
+    finally:
+        conn.close()
     return jsonify({"ok": True})
 
 
@@ -844,25 +851,26 @@ def lunch_delete(place_id):
 @admin_required
 def admin_dashboard_stats():
     """Provides system-wide statistics for the admin dashboard."""
-    conn = sqlite3.connect(database.DB_PATH)
-    cursor = conn.cursor()
-    
-    # Total Queries (All users)
-    cursor.execute("SELECT COUNT(*) FROM messages WHERE role = 'user'")
-    total_queries = cursor.fetchone()[0]
-    
-    # Active Users (last 30 days)
-    cursor.execute("SELECT COUNT(DISTINCT username) FROM user_profiles") # Simplified for now
-    total_users = cursor.fetchone()[0]
-    
-    # Storage Stats
-    uploads_size = sum(f.stat().st_size for f in rag_engine.UPLOAD_DIR.glob('*') if f.is_file())
-    
-    # Feedback counts
-    cursor.execute("SELECT feedback, COUNT(*) FROM messages WHERE role = 'bot' GROUP BY feedback")
-    feedback_stats = dict(cursor.fetchall())
-    
-    conn.close()
+    conn = database._get_conn()
+    try:
+        cursor = conn.cursor()
+        
+        # Total Queries (All users)
+        cursor.execute("SELECT COUNT(*) FROM messages WHERE role = 'user'")
+        total_queries = cursor.fetchone()[0]
+        
+        # Active Users (last 30 days)
+        cursor.execute("SELECT COUNT(DISTINCT username) FROM user_profiles") # Simplified for now
+        total_users = cursor.fetchone()[0]
+        
+        # Storage Stats
+        uploads_size = sum(f.stat().st_size for f in rag_engine.UPLOAD_DIR.glob('*') if f.is_file())
+        
+        # Feedback counts
+        cursor.execute("SELECT feedback, COUNT(*) FROM messages WHERE role = 'bot' GROUP BY feedback")
+        feedback_stats = dict(cursor.fetchall())
+    finally:
+        conn.close()
     
     return jsonify({
         "ok": True,

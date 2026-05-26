@@ -3551,11 +3551,13 @@ def delete_file_route(file_id):
 @chat_bp.route("/api/departments")
 @login_required
 def list_all_departments():
-    conn = sqlite3.connect(database.DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("SELECT DISTINCT department FROM user_profiles WHERE department IS NOT NULL AND department != ''")
-    rows = cursor.fetchall()
-    conn.close()
+    conn = database._get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT DISTINCT department FROM user_profiles WHERE department IS NOT NULL AND department != ''")
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
     depts = [r[0] for r in rows]
     if "General" not in depts: depts.append("General")
     return jsonify({"ok": True, "departments": sorted(depts)})
@@ -3649,11 +3651,13 @@ def get_kb_category_access(cat_id):
     if user != "Admin" and cat_info["created_by"] != user:
         return jsonify({"ok": False, "error": "คุณไม่มีสิทธิ์เข้าถึงข้อมูลนี้"}), 403
 
-    conn = sqlite3.connect(database.DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("SELECT username FROM user_category_access WHERE category_id = ?", (cat_id,))
-    users = [r[0] for r in cursor.fetchall()]
-    conn.close()
+    conn = database._get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT username FROM user_category_access WHERE category_id = ?", (cat_id,))
+        users = [r[0] for r in cursor.fetchall()]
+    finally:
+        conn.close()
     
     return jsonify({"ok": True, "users": users})
 
@@ -3755,8 +3759,12 @@ def assign_file_category():
 @chat_bp.route("/api/personas", methods=["GET"])
 @login_required
 def get_personas():
-    personas = database.get_all_personas_v2()
-    return jsonify({"ok": True, "personas": personas})
+    try:
+        personas = database.get_all_personas_v2()
+        return jsonify({"ok": True, "personas": personas})
+    except Exception as e:
+        logger.error(f"[personas] {e}", exc_info=True)
+        return jsonify({"ok": True, "personas": []})
 
 
 @chat_bp.route("/api/kb/files/view/<file_id>")
@@ -4015,59 +4023,60 @@ def dashboard_data():
     # Auto cleanup/archive very old data (90+ days)
     database.auto_archive_old_schedules(90)
 
-    conn = sqlite3.connect(database.DB_PATH)
-    cursor = conn.cursor()
-    
-    # 1. Total Files & Chunks
-    kb_info = rag_engine.kb_stats()
-    
-    # 2. Total Chat Messages for this user
-    cursor.execute("SELECT COUNT(*) FROM messages WHERE username = ?", (user,))
-    chat_count = cursor.fetchone()[0]
-    
-    # 3. Total Users
-    cursor.execute("SELECT COUNT(DISTINCT username) FROM user_profiles") # Simplified for now
-    user_count = cursor.fetchone()[0]
-    
-    # 4. Recent Activity (Latest 5 events for this user)
-    cursor.execute("SELECT event_text, time FROM events WHERE user = ? ORDER BY time DESC LIMIT 5", (user,))
-    logs = cursor.fetchall()
-    activity_count = len(logs)
-    
-    # 5. Recent History (Latest 5 chats)
-    cursor.execute("SELECT text, timestamp FROM messages WHERE username = ? AND role = 'user' ORDER BY timestamp DESC LIMIT 5", (user,))
-    recent_chats = [{"text": r[0], "time": r[1]} for r in cursor.fetchall()]
-    
-    # 7. Recent Files (Filtered by visibility)
-    all_files = rag_engine.list_files()
-    visible_categories = database.get_categories(user)
-    visible_cat_ids = {str(c["id"]) for c in visible_categories}
-    
-    filtered_recent = []
-    for f in all_files:
-        cat_id = str(f.get("category_id") or "")
-        if not cat_id or cat_id in visible_cat_ids:
-            filtered_recent.append(f)
-            
-    recent_files = sorted(filtered_recent, key=lambda x: x.get('uploaded_at', ''), reverse=True)[:5]
-    
-    # 8. Unread Notifications Count
-    import notification_db
-    unread_notifs = notification_db.get_notifications(user, unread_only=True)
-    unread_count = len(unread_notifs)
-
-    # 9. Tasks and Schedules
-    from datetime import date
-    today = date.today().isoformat()
-    user_schedules = database.get_schedules(user, org_id=get_current_org_id())
-    pending_tasks = [s for s in user_schedules if s.get("status", "todo") in ("todo", "doing") and s.get("date", "") >= today]
-    completed_tasks_count = len([s for s in user_schedules if s.get("status") == "done"])
-
-
-    # 10. Drive Logs Stats
-    drive_stats = database.get_drive_stats()
-
-    conn.close()
+    conn = database._get_conn()
+    try:
+        cursor = conn.cursor()
+        
+        # 1. Total Files & Chunks
+        kb_info = rag_engine.kb_stats()
+        
+        # 2. Total Chat Messages for this user
+        cursor.execute("SELECT COUNT(*) FROM messages WHERE username = ?", (user,))
+        chat_count = cursor.fetchone()[0]
+        
+        # 3. Total Users
+        cursor.execute("SELECT COUNT(DISTINCT username) FROM user_profiles") # Simplified for now
+        user_count = cursor.fetchone()[0]
+        
+        # 4. Recent Activity (Latest 5 events for this user)
+        cursor.execute("SELECT event_text, time FROM events WHERE user = ? ORDER BY time DESC LIMIT 5", (user,))
+        logs = cursor.fetchall()
+        activity_count = len(logs)
+        
+        # 5. Recent History (Latest 5 chats)
+        cursor.execute("SELECT text, timestamp FROM messages WHERE username = ? AND role = 'user' ORDER BY timestamp DESC LIMIT 5", (user,))
+        recent_chats = [{"text": r[0], "time": r[1]} for r in cursor.fetchall()]
+        
+        # 7. Recent Files (Filtered by visibility)
+        all_files = rag_engine.list_files()
+        visible_categories = database.get_categories(user)
+        visible_cat_ids = {str(c["id"]) for c in visible_categories}
+        
+        filtered_recent = []
+        for f in all_files:
+            cat_id = str(f.get("category_id") or "")
+            if not cat_id or cat_id in visible_cat_ids:
+                filtered_recent.append(f)
+                
+        recent_files = sorted(filtered_recent, key=lambda x: x.get('uploaded_at', ''), reverse=True)[:5]
+        
+        # 8. Unread Notifications Count
+        import notification_db
+        unread_notifs = notification_db.get_notifications(user, unread_only=True)
+        unread_count = len(unread_notifs)
+     
+        # 9. Tasks and Schedules
+        from datetime import date
+        today = date.today().isoformat()
+        user_schedules = database.get_schedules(user, org_id=get_current_org_id())
+        pending_tasks = [s for s in user_schedules if s.get("status", "todo") in ("todo", "doing") and s.get("date", "") >= today]
+        completed_tasks_count = len([s for s in user_schedules if s.get("status") == "done"])
+     
+     
+        # 10. Drive Logs Stats
+        drive_stats = database.get_drive_stats()
+    finally:
+        conn.close()
     
     return jsonify({
         "ok": True,
@@ -4175,11 +4184,13 @@ def generate_global_summary():
             # Try to get category name for better context if no focus given
             if not search_query:
                 try:
-                    conn = sqlite3.connect(database.DB_PATH)
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT name FROM kb_categories WHERE id = ?", (int(category_id),))
-                    row = cursor.fetchone()
-                    conn.close()
+                    conn = database._get_conn()
+                    try:
+                        cursor = conn.cursor()
+                        cursor.execute("SELECT name FROM kb_categories WHERE id = ?", (int(category_id),))
+                        row = cursor.fetchone()
+                    finally:
+                        conn.close()
                     if row: search_query = f"สรุปข้อมูลเกี่ยวกับ {row[0]}"
                 except: pass
     # else: category_id == "all" → where_filter stays None (search ALL data)
@@ -4344,16 +4355,18 @@ def trigger_system_cleanup():
 def get_all_users_status():
     """Get online/offline status + last_seen for all users."""
     try:
-        conn = sqlite3.connect("chat_history.db")
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT us.username, us.is_online, us.last_activity, up.display_name, up.avatar_url
-            FROM user_status us
-            LEFT JOIN user_profiles up ON us.username = up.username COLLATE NOCASE
-            ORDER BY us.is_online DESC, us.last_activity DESC
-        """)
-        rows = cursor.fetchall()
-        conn.close()
+        conn = database._get_conn()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT us.username, us.is_online, us.last_activity, up.display_name, up.avatar_url
+                FROM user_status us
+                LEFT JOIN user_profiles up ON us.username = up.username COLLATE NOCASE
+                ORDER BY us.is_online DESC, us.last_activity DESC
+            """)
+            rows = cursor.fetchall()
+        finally:
+            conn.close()
         
         users = []
         for row in rows:
@@ -4517,17 +4530,19 @@ def get_room_members(room_id):
     if not room:
         return jsonify({"ok": False, "error": "Not a member"}), 403
     
-    conn = sqlite3.connect(database.DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT rm.username, COALESCE(up.display_name, rm.username) as display_name, up.avatar_url
-        FROM room_members rm
-        LEFT JOIN user_profiles up ON LOWER(up.username) = LOWER(rm.username)
-        WHERE rm.room_id = ?
-        ORDER BY display_name ASC
-    """, (room_id,))
-    rows = cursor.fetchall()
-    conn.close()
+    conn = database._get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT rm.username, COALESCE(up.display_name, rm.username) as display_name, up.avatar_url
+            FROM room_members rm
+            LEFT JOIN user_profiles up ON LOWER(up.username) = LOWER(rm.username)
+            WHERE rm.room_id = ?
+            ORDER BY display_name ASC
+        """, (room_id,))
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
     
     members = [{"username": r[0], "display_name": r[1], "avatar_url": r[2]} for r in rows]
     return jsonify({"ok": True, "users": members})
@@ -4742,16 +4757,18 @@ def send_unified_message():
         # In this context, let's just send the ID, and the frontend will already have the message in its local state.
         # Actually, for correctness, we should include sender and text for the recipient who might not have it.
         try:
-            conn = sqlite3.connect(database.DB_PATH)
-            cur = conn.cursor()
-            table = "room_messages" if ctype == "room" else "private_messages"
-            sender_col = "username" if ctype == "room" else "sender"
-            cur.execute(f"SELECT {sender_col}, text FROM {table} WHERE id = ?", (reply_to_id,))
-            row = cur.fetchone()
-            if row:
-                res_data["reply_sender"] = row[0]
-                res_data["reply_text"] = row[1]
-            conn.close()
+            conn = database._get_conn()
+            try:
+                cur = conn.cursor()
+                table = "room_messages" if ctype == "room" else "private_messages"
+                sender_col = "username" if ctype == "room" else "sender"
+                cur.execute(f"SELECT {sender_col}, text FROM {table} WHERE id = ?", (reply_to_id,))
+                row = cur.fetchone()
+                if row:
+                    res_data["reply_sender"] = row[0]
+                    res_data["reply_text"] = row[1]
+            finally:
+                conn.close()
         except: pass
 
     if ctype == 'room':

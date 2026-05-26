@@ -28,6 +28,9 @@ logger = logging.getLogger("OrgChatAI")
 # ─── Version ─────────────────────────────────────────────────
 VERSION = "1.10.0-STABLE"
 
+# ─── App Start Time ──────────────────────────────────────────
+_APP_START_TIME = time.time()
+
 # ─── Allowed File Extensions ─────────────────────────────────
 ALLOWED_EXTENSIONS = {".pdf", ".csv", ".txt", ".md", ".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".webp", ".docx", ".xlsx"}
 

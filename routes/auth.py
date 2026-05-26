@@ -128,7 +128,10 @@ def auth_google_callback():
     # Check for error from Google
     error = request.args.get('error')
     if error:
-        return f"<h1>Google ปฏิเสธการเชื่อมต่อ</h1><p>{error}</p><p><a href='/'>กลับหน้าหลัก</a></p>", 400
+        if error == 'access_denied':
+            # User pressed cancel — redirect back, previously connected email is still saved
+            return redirect('/?google_cancelled=1')
+        return redirect(f'/?google_error=1')
 
     authorization_code = request.args.get('code')
     if not authorization_code:
@@ -188,7 +191,9 @@ def auth_google_callback():
 
         if setup_ok:
             return render_template_string(f"""<!DOCTYPE html><html><head><meta charset="utf-8"><title>เชื่อมต่อสำเร็จ!</title>
-            <style>{_CSS}</style></head>
+            <style>{_CSS}</style>
+            <script>setTimeout(()=>{{window.location.href='/?google_connected=1';}},3000);</script>
+            </head>
             <body style="background:linear-gradient(135deg,#667eea,#764ba2)">
             <div class="card">
               <div style="font-size:48px">✅</div>
@@ -196,17 +201,20 @@ def auth_google_callback():
               <span class="badge">ระดับ: {{{{ scope }}}}</span>
               <br><div class="email">{{{{ email }}}}</div>
               <p style="color:#475569">ระบบสร้าง Google Sheets และโฟลเดอร์ Drive เรียบร้อยแล้ว</p>
-              <a href="/" class="btn">กลับหน้าหลัก</a>
+              <p style="color:#94a3b8;font-size:13px">กำลังกลับหน้าหลักใน 3 วินาที...</p>
+              <a href="/?google_connected=1" class="btn">กลับหน้าหลัก</a>
             </div></body></html>""", email=google_email, scope=scope_label)
         else:
             return render_template_string(f"""<!DOCTYPE html><html><head><meta charset="utf-8"><title>เชื่อมต่อ (บางส่วน)</title>
-            <style>{_CSS}</style></head>
+            <style>{_CSS}</style>
+            <script>setTimeout(()=>{{window.location.href='/?google_connected=1';}},4000);</script>
+            </head>
             <body style="background:linear-gradient(135deg,#f59e0b,#ef4444)">
             <div class="card">
               <h1 style="color:#D97706">⚠️ เชื่อมต่อสำเร็จ แต่สร้าง Workspace ไม่สมบูรณ์</h1>
               <span class="badge">ระดับ: {{{{ scope }}}}</span>
               <p style="color:#475569">บัญชีเชื่อมต่อแล้ว แต่สร้าง Sheets/Drive ไม่สำเร็จ ลองยกเลิกแล้วเชื่อมต่อใหม่</p>
-              <a href="/" class="btn">กลับหน้าหลัก</a>
+              <a href="/?google_connected=1" class="btn">กลับหน้าหลัก</a>
             </div></body></html>""", scope=scope_label)
 
     except Exception as e:
@@ -819,13 +827,29 @@ def api_login():
     
     # 1. Check Database first (Dynamic Users) — supports bcrypt hashed passwords
     settings = database.get_user_setting(username_raw)
-    
+
+    def _check_whitelist(uname):
+        """Return error string if whitelist blocks this user, else None."""
+        user_orgs = database.get_user_orgs(uname)
+        org_id = user_orgs[0]["id"] if user_orgs else 1
+        if not database.is_whitelist_enabled(org_id):
+            return None
+        if database.is_org_admin(org_id, uname):
+            return None
+        email = settings.get("email", "")
+        if not email or not database.is_email_allowed(org_id, email):
+            return "อีเมลนี้ไม่อยู่ในรายชื่อที่ได้รับอนุญาต (Whitelist)"
+        return None
+
     if settings.get("custom_password") and database.check_password(password, settings["custom_password"]):
         if not settings.get("is_active", 1):
             return jsonify({"ok": False, "error": "บัญชีนี้ถูกระงับโดยผู้ดูแลระบบ"}), 403
+        wl_err = _check_whitelist(username_raw)
+        if wl_err:
+            return jsonify({"ok": False, "error": wl_err}), 403
         session.permanent = True
         session["user"] = settings.get("username_original", username_raw)
-        session["role"] = settings.get("role", "user")  # ← ใช้สำหรับ feature gate ระดับ system
+        session["role"] = settings.get("role", "user")
         _set_session_org(session["user"])
         return jsonify({"ok": True, "user": session["user"], "role": session["role"], "org_role": session.get("org_role", "member")})
 
@@ -995,15 +1019,16 @@ def api_me():
         
         org_name = "Default Organization"
         try:
-            import sqlite3
-            conn = sqlite3.connect("chat_history.db")
+            conn = database._get_conn()
             conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            cursor.execute("SELECT name FROM organizations WHERE id = ?", (org_id,))
-            org_row = cursor.fetchone()
-            if org_row:
-                org_name = org_row["name"]
-            conn.close()
+            try:
+                cursor = conn.cursor()
+                cursor.execute("SELECT name FROM organizations WHERE id = ?", (org_id,))
+                org_row = cursor.fetchone()
+                if org_row:
+                    org_name = org_row["name"]
+            finally:
+                conn.close()
         except Exception:
             pass
 
@@ -1259,15 +1284,16 @@ def get_my_profile():
         
         org_name = "Default Organization"
         try:
-            import sqlite3
-            conn = sqlite3.connect("chat_history.db")
+            conn = database._get_conn()
             conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            cursor.execute("SELECT name FROM organizations WHERE id = ?", (org_id,))
-            org_row = cursor.fetchone()
-            if org_row:
-                org_name = org_row["name"]
-            conn.close()
+            try:
+                cursor = conn.cursor()
+                cursor.execute("SELECT name FROM organizations WHERE id = ?", (org_id,))
+                org_row = cursor.fetchone()
+                if org_row:
+                    org_name = org_row["name"]
+            finally:
+                conn.close()
         except Exception:
             pass
             
