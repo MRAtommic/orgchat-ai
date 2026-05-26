@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Executive Financial Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Sarabun:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Outfit', 'Sarabun', sans-serif; }
+
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        .stat-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 1rem;
+            transition: box-shadow 0.2s, transform 0.2s;
+        }
+        .stat-card:hover { box-shadow: 0 4px 20px rgba(15,23,42,0.07); transform: translateY(-1px); }
+
+        .accent-bar { width: 3px; border-radius: 2px; flex-shrink: 0; }
+
+        /* Media Sidebar */
+        #mediaSidebar {
+            position: fixed;
+            top: 0; right: -420px;
+            width: 420px;
+            height: 100vh;
+            background: #ffffff;
+            border-left: 1px solid #e2e8f0;
+            box-shadow: -8px 0 32px rgba(15,23,42,0.12);
+            z-index: 300;
+            transition: right 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            flex-direction: column;
+        }
+        #mediaSidebar.open { right: 0; }
+        #sidebarOverlay {
+            position: fixed; inset: 0;
+            background: rgba(15,23,42,0.25);
+            backdrop-filter: blur(2px);
+            z-index: 299;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+        #sidebarOverlay.active { opacity: 1; pointer-events: all; }
+        #mediaFrame { flex: 1; border: none; width: 100%; }
+        #audioPlayer { width: 100%; }
+
+        /* Move Modal */
+        .modal-backdrop {
+            background: rgba(15,23,42,0.4);
+            backdrop-filter: blur(4px);
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(16px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .slide-up { animation: slideUp 0.3s ease-out; }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spinning { animation: spin 0.8s linear infinite; }
+
+        .table-row-hover:hover { background: #f8fafc; }
+
+        .badge-amber {
+            background: #fef3c7; color: #92400e;
+            border: 1px solid #fde68a;
+        }
+        .badge-emerald {
+            background: #d1fae5; color: #065f46;
+            border: 1px solid #a7f3d0;
+        }
+        .badge-slate {
+            background: #f1f5f9; color: #475569;
+            border: 1px solid #e2e8f0;
+        }
+        .btn-primary {
+            background: #059669; color: white;
+            border-radius: 0.625rem; font-weight: 600;
+            transition: background 0.15s;
+        }
+        .btn-primary:hover { background: #047857; }
+        .btn-ghost {
+            background: #f1f5f9; color: #475569;
+            border-radius: 0.625rem; font-weight: 600;
+            border: 1px solid #e2e8f0;
+            transition: background 0.15s;
+        }
+        .btn-ghost:hover { background: #e2e8f0; }
+
+        input[type="text"]:focus { outline: none; box-shadow: 0 0 0 3px rgba(5,150,105,0.15); }
+        select:focus { outline: none; box-shadow: 0 0 0 3px rgba(5,150,105,0.15); }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+
+    <!-- TOP NAV -->
+    <nav class="sticky top-0 z-50 bg-white border-b border-slate-200 px-6 py-3.5">
+        <div class="max-w-7xl mx-auto flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 bg-emerald-600 rounded-xl flex items-center justify-center shadow-sm">
+                    <i data-lucide="bar-chart-3" class="text-white w-5 h-5"></i>
+                </div>
+                <div>
+                    <h1 class="text-base font-bold text-slate-900 leading-tight">Financial Dashboard</h1>
+                    <p class="text-[10px] text-slate-400 uppercase tracking-widest font-semibold">Tax &amp; Expense Overview</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <a href="/" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition">
+                    <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> กลับหน้าหลัก
+                </a>
+                <button onclick="loadDashboardData()" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition border border-slate-200">
+                    <i data-lucide="refresh-cw" id="refreshIcon" class="w-3.5 h-3.5"></i> รีเฟรช
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 md:px-6 py-8 space-y-7">
+
+        <!-- SUMMARY STAT CARDS -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+
+            <!-- Total Expense -->
+            <div class="stat-card p-5 flex gap-4 items-start">
+                <div class="accent-bar h-12 bg-slate-700 mt-0.5"></div>
+                <div class="min-w-0">
+                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">ค่าใช้จ่ายรวม</p>
+                    <p id="valExpense" class="text-2xl font-bold text-slate-900 leading-none">0.00</p>
+                    <p class="text-[10px] text-slate-400 mt-1 font-medium">บาท (THB)</p>
+                </div>
+            </div>
+
+            <!-- VAT -->
+            <div class="stat-card p-5 flex gap-4 items-start">
+                <div class="accent-bar h-12 bg-emerald-500 mt-0.5"></div>
+                <div class="min-w-0">
+                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">VAT 7% รวม</p>
+                    <p id="valVat" class="text-2xl font-bold text-emerald-700 leading-none">0.00</p>
+                    <p class="text-[10px] text-slate-400 mt-1 font-medium">จากใบกำกับภาษี</p>
+                </div>
+            </div>
+
+            <!-- WHT 3% -->
+            <div class="stat-card p-5 flex gap-4 items-start">
+                <div class="accent-bar h-12 bg-amber-400 mt-0.5"></div>
+                <div class="min-w-0">
+                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">ภ.ง.ด.3</p>
+                    <p id="valWht3" class="text-2xl font-bold text-amber-700 leading-none">0.00</p>
+                    <p class="text-[10px] text-slate-400 mt-1 font-medium">หัก ณ ที่จ่าย (บุคคล)</p>
+                </div>
+            </div>
+
+            <!-- WHT 53% -->
+            <div class="stat-card p-5 flex gap-4 items-start">
+                <div class="accent-bar h-12 bg-rose-400 mt-0.5"></div>
+                <div class="min-w-0">
+                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">ภ.ง.ด.53</p>
+                    <p id="valWht53" class="text-2xl font-bold text-rose-700 leading-none">0.00</p>
+                    <p class="text-[10px] text-slate-400 mt-1 font-medium">หัก ณ ที่จ่าย (นิติ)</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- CHART + CATEGORIES -->
+        <div class="grid grid-cols-1 lg:grid-cols-5 gap-5">
+
+            <!-- Donut Chart -->
+            <div class="lg:col-span-3 stat-card p-6">
+                <div class="flex items-center justify-between mb-5">
+                    <h3 class="text-sm font-bold text-slate-700 uppercase tracking-widest">สัดส่วนค่าใช้จ่ายตามหมวดหมู่</h3>
+                    <i data-lucide="pie-chart" class="w-4 h-4 text-slate-400"></i>
+                </div>
+                <div class="relative mx-auto" style="max-width:280px; height:280px;">
+                    <canvas id="mainChart"></canvas>
+                    <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                        <span class="text-[10px] text-slate-400 font-bold uppercase">รวม</span>
+                        <span id="chartTotalLabel" class="text-lg font-bold text-slate-900">0.00</span>
+                        <span class="text-[10px] text-slate-400">THB</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Category Breakdown List -->
+            <div class="lg:col-span-2 stat-card p-6 flex flex-col">
+                <h3 class="text-sm font-bold text-slate-700 uppercase tracking-widest mb-4">รายละเอียดหมวดหมู่</h3>
+                <div id="catList" class="space-y-2.5 flex-1 overflow-y-auto">
+                    <div class="text-center py-10 text-slate-400 text-sm">กำลังโหลด...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- UNCLEAR SCANS TABLE -->
+        <div class="stat-card overflow-hidden">
+            <!-- Table Header -->
+            <div class="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-center">
+                        <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-500"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-bold text-slate-800">รายการที่ต้องตรวจสอบ</h3>
+                        <p class="text-[10px] text-slate-400 font-medium">รายการที่ข้อมูลไม่ครบถ้วน หรือ AI ไม่มั่นใจ</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span id="unclearCountBadge" class="badge-slate px-2.5 py-1 rounded-full text-[10px] font-bold uppercase">0 รายการ</span>
+                </div>
+            </div>
+
+            <!-- Search Bar -->
+            <div class="px-5 py-3 border-b border-slate-100 bg-slate-50/60">
+                <div class="relative max-w-xs">
+                    <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400"></i>
+                    <input
+                        id="tableSearch"
+                        type="text"
+                        placeholder="ค้นหาร้านค้า, วันที่, ปัญหา..."
+                        oninput="filterTable()"
+                        class="w-full pl-9 pr-3 py-2 text-xs bg-white border border-slate-200 rounded-lg text-slate-700 placeholder-slate-400 transition"
+                    >
+                </div>
+            </div>
+
+            <!-- Table -->
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead>
+                        <tr class="bg-slate-50 border-b border-slate-100">
+                            <th class="px-5 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">วันที่</th>
+                            <th class="px-5 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">ร้านค้า / ผู้ส่ง</th>
+                            <th class="px-5 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">ยอดเงิน</th>
+                            <th class="px-5 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">ปัญหา</th>
+                            <th class="px-5 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">ไฟล์</th>
+                            <th class="px-5 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-right">จัดการ</th>
+                        </tr>
+                    </thead>
+                    <tbody id="unclearScansTable" class="divide-y divide-slate-100">
+                        <tr>
+                            <td colspan="6" class="py-16 text-center text-slate-400 text-sm">กำลังโหลดข้อมูล...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Empty State when filter returns nothing -->
+            <div id="filterEmpty" class="hidden px-5 py-10 text-center text-slate-400 text-sm">
+                ไม่พบรายการที่ตรงกับคำค้นหา
+            </div>
+        </div>
+
+    </main>
+
+    <!-- ═══════════ MEDIA SIDEBAR ═══════════ -->
+    <div id="sidebarOverlay" onclick="closeMediaSidebar()"></div>
+    <aside id="mediaSidebar">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 flex-shrink-0">
+            <div class="flex items-center gap-2">
+                <div class="w-7 h-7 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center justify-center">
+                    <i data-lucide="file-search" class="w-3.5 h-3.5 text-emerald-600"></i>
+                </div>
+                <div>
+                    <p id="sidebarFileName" class="text-sm font-bold text-slate-800 truncate max-w-[260px]">พรีวิวไฟล์</p>
+                    <p id="sidebarFileType" class="text-[10px] text-slate-400 font-medium uppercase">Google Drive</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-1.5">
+                <a id="sidebarOpenLink" href="#" target="_blank"
+                   class="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition">
+                    <i data-lucide="external-link" class="w-3.5 h-3.5"></i> เปิดแท็บ
+                </a>
+                <button onclick="closeMediaSidebar()" class="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Audio Player (shown for audio files) -->
+        <div id="audioSection" class="hidden px-5 py-4 bg-slate-50 border-b border-slate-100 flex-shrink-0">
+            <div class="flex items-center gap-2 mb-2">
+                <i data-lucide="volume-2" class="w-4 h-4 text-emerald-600"></i>
+                <span class="text-xs font-bold text-slate-600 uppercase tracking-wider">เครื่องเล่นเสียง</span>
+            </div>
+            <audio id="audioPlayer" controls class="w-full rounded-lg" style="height:40px;">
+                <source id="audioSource" src="" type="audio/mpeg">
+            </audio>
+        </div>
+
+        <!-- Embed iframe (for images, PDFs, Drive previews) -->
+        <iframe id="mediaFrame" src="about:blank" allow="autoplay" class="flex-1 bg-slate-50"></iframe>
+
+        <!-- Loading placeholder -->
+        <div id="sidebarLoading" class="absolute inset-0 flex flex-col items-center justify-center bg-white gap-3 pointer-events-none">
+            <div class="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full spinning"></div>
+            <p class="text-xs text-slate-400 font-medium">กำลังโหลดไฟล์...</p>
+        </div>
+    </aside>
+
+    <!-- ═══════════ MOVE MODAL ═══════════ -->
+    <div id="moveModal" class="fixed inset-0 z-[400] hidden flex items-center justify-center p-4">
+        <div class="modal-backdrop absolute inset-0" onclick="closeMoveModal()"></div>
+        <div class="bg-white rounded-2xl max-w-sm w-full p-7 relative shadow-2xl slide-up z-10">
+            <button onclick="closeMoveModal()" class="absolute top-5 right-5 p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition">
+                <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+            <div class="flex items-center gap-3 mb-5">
+                <div class="w-9 h-9 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-center">
+                    <i data-lucide="folder-symlink" class="w-4.5 h-4.5 text-emerald-600"></i>
+                </div>
+                <div>
+                    <h3 class="text-base font-bold text-slate-900">ย้ายหมวดหมู่</h3>
+                    <p class="text-[11px] text-slate-400">เลือกชีตปลายทางที่ต้องการ</p>
+                </div>
+            </div>
+
+            <form id="moveForm" onsubmit="submitMoveExpense(event)" class="space-y-4">
+                <input type="hidden" id="moveFromSheet">
+                <input type="hidden" id="moveRow">
+
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">ชีตปลายทาง</label>
+                    <select id="moveToSheet" required
+                        class="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-700 transition appearance-none cursor-pointer">
+                        <option value="">-- เลือกชีต --</option>
+                    </select>
+                </div>
+
+                <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2.5 text-[11px] text-amber-700 leading-relaxed">
+                    <i data-lucide="info" class="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-500"></i>
+                    ระบบจะย้ายข้อมูลออกจากชีตต้นทางและเพิ่มในชีตปลายทางทันที
+                </div>
+
+                <div class="flex gap-2.5 pt-1">
+                    <button type="button" onclick="closeMoveModal()" class="flex-1 py-2.5 btn-ghost text-sm">ยกเลิก</button>
+                    <button type="submit" id="moveSubmitBtn" class="flex-1 py-2.5 btn-primary text-sm flex items-center justify-center gap-1.5">
+                        <i data-lucide="check" class="w-3.5 h-3.5"></i> ย้ายรายการ
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // ─── State ───────────────────────────────────────────
+        let myChart = null;
+        let globalSheetsList = [];
+        let allRows = [];   // full dataset for client-side filter
+
+        // ─── Init ────────────────────────────────────────────
+        window.onload = function () {
+            lucide.createIcons();
+            loadDashboardData();
+        };
+
+        // ─── DATA LOADING ────────────────────────────────────
+        function loadDashboardData() {
+            const icon = document.getElementById('refreshIcon');
+            icon.classList.add('spinning');
+
+            document.getElementById('catList').innerHTML =
+                '<div class="text-center py-8 text-slate-400 text-sm">กำลังดึงข้อมูล...</div>';
+
+            fetch('/api/dashboard/tax-expense-data')
+                .then(r => r.json())
+                .then(data => {
+                    icon.classList.remove('spinning');
+                    if (!data.ok) { showError(data.error); return; }
+                    renderAll(data);
+                })
+                .catch(err => {
+                    icon.classList.remove('spinning');
+                    console.error(err);
+                });
+        }
+
+        function renderAll(data) {
+            // Stats
+            animateValue('valExpense', data.total_expense);
+            animateValue('valVat',     data.total_vat);
+            animateValue('valWht3',    data.total_wht_3);
+            animateValue('valWht53',   data.total_wht_53);
+            document.getElementById('chartTotalLabel').textContent =
+                formatNum(data.total_expense);
+
+            globalSheetsList = data.sheets_list || [];
+            allRows = data.unclear_scans || [];
+
+            renderCategories(data.categories, data.total_expense);
+            renderChart(data.categories);
+            renderTable(allRows);
+        }
+
+        // ─── CATEGORIES ──────────────────────────────────────
+        const CAT_COLORS = {
+            'สลิปโอนเงิน':         '#059669',
+            'ใบเสร็จ/ใบกำกับภาษี': '#0284c7',
+            'ใบเสนอราคา':          '#d97706',
+            'บันทึกค่าใช้จ่าย':    '#7c3aed',
+            'ทั่วไป':              '#64748b',
+        };
+        const PALETTE = ['#059669','#0284c7','#d97706','#7c3aed','#e11d48','#0891b2','#65a30d'];
+        let _colorIdx = 0;
+        function catColor(name) {
+            if (CAT_COLORS[name]) return CAT_COLORS[name];
+            const c = PALETTE[_colorIdx % PALETTE.length]; _colorIdx++; return c;
+        }
+
+        function renderCategories(cats, total) {
+            const el = document.getElementById('catList');
+            if (!cats || cats.length === 0) {
+                el.innerHTML = '<div class="text-center py-8 text-slate-400 text-sm">ไม่พบข้อมูล</div>';
+                return;
+            }
+            _colorIdx = 0;
+            el.innerHTML = cats.map(c => {
+                const pct = total > 0 ? ((c.value / total) * 100).toFixed(1) : 0;
+                const color = catColor(c.name);
+                return `
+                <div class="flex items-center gap-3 py-2 border-b border-slate-50 last:border-0">
+                    <div class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background:${color}"></div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs font-semibold text-slate-700 truncate">${c.name}</span>
+                            <span class="text-xs font-bold text-slate-900 ml-2 tabular-nums">${formatNum(c.value)}</span>
+                        </div>
+                        <div class="mt-1 h-1 bg-slate-100 rounded-full overflow-hidden">
+                            <div class="h-full rounded-full" style="width:${pct}%; background:${color}; opacity:0.7;"></div>
+                        </div>
+                    </div>
+                    <span class="text-[10px] text-slate-400 font-medium w-10 text-right">${pct}%</span>
+                </div>`;
+            }).join('');
+        }
+
+        // ─── CHART ───────────────────────────────────────────
+        function renderChart(cats) {
+            if (!cats || cats.length === 0) return;
+            _colorIdx = 0;
+            const labels = cats.map(c => c.name);
+            const values = cats.map(c => c.value);
+            const colors = cats.map(c => catColor(c.name));
+
+            const ctx = document.getElementById('mainChart').getContext('2d');
+            if (myChart) myChart.destroy();
+
+            myChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels,
+                    datasets: [{
+                        data: values,
+                        backgroundColor: colors.map(c => c + 'cc'),
+                        borderColor: colors,
+                        borderWidth: 1.5,
+                        hoverOffset: 8,
+                        borderRadius: 4,
+                        spacing: 3,
+                    }]
+                },
+                options: {
+                    cutout: '78%',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: '#1e293b',
+                            titleFont: { size: 12, weight: '700', family: 'Outfit' },
+                            bodyFont:  { size: 11, family: 'Outfit' },
+                            padding: 10,
+                            cornerRadius: 10,
+                            callbacks: {
+                                label: ctx => ` ${ctx.label}: ${formatNum(ctx.raw)} THB`
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // ─── TABLE ───────────────────────────────────────────
+        function renderTable(rows) {
+            const tbody  = document.getElementById('unclearScansTable');
+            const badge  = document.getElementById('unclearCountBadge');
+            const empty  = document.getElementById('filterEmpty');
+
+            badge.textContent = `${rows.length} รายการ`;
+            badge.className   = rows.length === 0
+                ? 'badge-emerald px-2.5 py-1 rounded-full text-[10px] font-bold uppercase'
+                : 'badge-amber   px-2.5 py-1 rounded-full text-[10px] font-bold uppercase';
+
+            const searchVal = document.getElementById('tableSearch').value.trim();
+            empty.classList.add('hidden');
+
+            if (rows.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="py-16 text-center text-slate-400 text-sm">
+                            ไม่พบรายการที่ต้องตรวจสอบ
+                        </td>
+                    </tr>`;
+                lucide.createIcons();
+                return;
+            }
+
+            tbody.innerHTML = rows.map(item => {
+                const fileHtml = buildFileButton(item);
+                return `
+                <tr class="table-row-hover transition" data-search="${escHtml(item.date + ' ' + item.vendor + ' ' + item.issues + ' ' + item.sheet).toLowerCase()}">
+                    <td class="px-5 py-4 text-sm text-slate-600 whitespace-nowrap">${escHtml(item.date)}</td>
+                    <td class="px-5 py-4">
+                        <p class="text-sm font-semibold text-slate-800">${escHtml(item.vendor)}</p>
+                        <p class="text-[10px] text-slate-400 font-medium uppercase mt-0.5">${escHtml(item.sheet)} &middot; แถว ${item.row}</p>
+                    </td>
+                    <td class="px-5 py-4 text-sm font-bold text-slate-800 tabular-nums whitespace-nowrap">${formatNum(item.amount)}</td>
+                    <td class="px-5 py-4">
+                        <span class="badge-amber px-2 py-0.5 rounded-md text-[10px] font-bold">${escHtml(item.issues)}</span>
+                    </td>
+                    <td class="px-5 py-4">${fileHtml}</td>
+                    <td class="px-5 py-4 text-right">
+                        <button onclick="openMoveModal('${escAttr(item.sheet)}', ${item.row})"
+                            class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 rounded-lg transition">
+                            <i data-lucide="folder-symlink" class="w-3 h-3"></i> ย้าย
+                        </button>
+                    </td>
+                </tr>`;
+            }).join('');
+
+            lucide.createIcons();
+
+            // re-apply search filter if text exists
+            if (searchVal) applyFilter(searchVal.toLowerCase());
+        }
+
+        function buildFileButton(item) {
+            if (!item.link) return `<span class="text-[11px] text-slate-400 italic">ไม่มีไฟล์</span>`;
+
+            const isAudio = /\.(mp3|wav|ogg|m4a|aac|opus)(\?|$)/i.test(item.link) ||
+                            item.link.includes('voice') || item.link.includes('audio');
+
+            const icon = isAudio ? 'volume-2' : 'file-text';
+            const label = isAudio ? 'ฟังเสียง' : 'ดูไฟล์';
+
+            return `
+                <button onclick="openMediaSidebar('${escAttr(item.link)}', '${escAttr(item.vendor)}', ${isAudio})"
+                    class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 hover:border-slate-300 rounded-lg transition">
+                    <i data-lucide="${icon}" class="w-3 h-3"></i> ${label}
+                </button>`;
+        }
+
+        // ─── FILTER / SEARCH ─────────────────────────────────
+        function filterTable() {
+            const q = document.getElementById('tableSearch').value.trim().toLowerCase();
+            applyFilter(q);
+        }
+
+        function applyFilter(q) {
+            const rows  = document.querySelectorAll('#unclearScansTable tr[data-search]');
+            const empty = document.getElementById('filterEmpty');
+            let visible = 0;
+            rows.forEach(tr => {
+                const match = !q || tr.dataset.search.includes(q);
+                tr.style.display = match ? '' : 'none';
+                if (match) visible++;
+            });
+            empty.classList.toggle('hidden', visible > 0 || q === '');
+        }
+
+        // ─── MEDIA SIDEBAR ───────────────────────────────────
+        function openMediaSidebar(rawUrl, name, isAudio) {
+            const sidebar  = document.getElementById('mediaSidebar');
+            const overlay  = document.getElementById('sidebarOverlay');
+            const frame    = document.getElementById('mediaFrame');
+            const loading  = document.getElementById('sidebarLoading');
+            const openLink = document.getElementById('sidebarOpenLink');
+            const fileType = document.getElementById('sidebarFileType');
+            const fileName = document.getElementById('sidebarFileName');
+            const audioSec = document.getElementById('audioSection');
+            const audioSrc = document.getElementById('audioSource');
+            const audioEl  = document.getElementById('audioPlayer');
+
+            fileName.textContent = name || 'ไฟล์แนบ';
+            openLink.href = rawUrl;
+            loading.style.display = 'flex';
+
+            // Reset state
+            audioSec.classList.add('hidden');
+            audioEl.pause();
+            frame.src = 'about:blank';
+
+            if (isAudio) {
+                fileType.textContent = 'Audio Recording';
+                audioSrc.src = rawUrl;
+                audioEl.load();
+                audioSec.classList.remove('hidden');
+                frame.src = 'about:blank';
+                loading.style.display = 'none';
+            } else {
+                fileType.textContent = 'Google Drive Preview';
+                const embedUrl = driveEmbedUrl(rawUrl);
+                frame.onload = () => { loading.style.display = 'none'; };
+                frame.src = embedUrl;
+            }
+
+            sidebar.classList.add('open');
+            overlay.classList.add('active');
+            lucide.createIcons();
+        }
+
+        function closeMediaSidebar() {
+            const sidebar = document.getElementById('mediaSidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            const frame   = document.getElementById('mediaFrame');
+            const audioEl = document.getElementById('audioPlayer');
+
+            sidebar.classList.remove('open');
+            overlay.classList.remove('active');
+
+            setTimeout(() => {
+                frame.src = 'about:blank';
+                audioEl.pause();
+            }, 350);
+        }
+
+        function driveEmbedUrl(url) {
+            // If already a preview url, return as-is
+            if (url.includes('/preview')) return url;
+
+            // Extract Google Drive file ID
+            const patterns = [
+                /drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/,
+                /drive\.google\.com\/open\?id=([a-zA-Z0-9_-]+)/,
+                /id=([a-zA-Z0-9_-]+)/
+            ];
+            for (const re of patterns) {
+                const m = url.match(re);
+                if (m) return `https://drive.google.com/file/d/${m[1]}/preview`;
+            }
+            // Fallback: use Google Docs viewer for generic URLs
+            return `https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`;
+        }
+
+        // ─── MOVE MODAL ──────────────────────────────────────
+        function openMoveModal(sheet, row) {
+            document.getElementById('moveFromSheet').value = sheet;
+            document.getElementById('moveRow').value = row;
+
+            const sel = document.getElementById('moveToSheet');
+            sel.innerHTML = '<option value="">-- เลือกชีตปลายทาง --</option>';
+            globalSheetsList.forEach(s => {
+                if (s !== sheet && !['Dashboard','แดชบอร์ด','Sheet1'].includes(s)) {
+                    sel.innerHTML += `<option value="${escHtml(s)}">${escHtml(s)}</option>`;
+                }
+            });
+
+            document.getElementById('moveModal').classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function closeMoveModal() {
+            document.getElementById('moveModal').classList.add('hidden');
+        }
+
+        function submitMoveExpense(e) {
+            e.preventDefault();
+            const from = document.getElementById('moveFromSheet').value;
+            const row  = parseInt(document.getElementById('moveRow').value);
+            const to   = document.getElementById('moveToSheet').value;
+            const btn  = document.getElementById('moveSubmitBtn');
+
+            if (!to) return;
+
+            btn.disabled = true;
+            btn.innerHTML = '<div class="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full spinning"></div> กำลังย้าย...';
+
+            fetch('/api/reconciliation/move-row', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ from_sheet: from, row_index: row, to_sheet: to })
+            })
+            .then(r => r.json())
+            .then(data => {
+                btn.disabled = false;
+                btn.innerHTML = '<i data-lucide="check" class="w-3.5 h-3.5"></i> ย้ายรายการ';
+                lucide.createIcons();
+                if (data.ok) {
+                    closeMoveModal();
+                    loadDashboardData();
+                } else {
+                    alert('ล้มเหลว: ' + (data.error || 'ไม่ทราบสาเหตุ'));
+                }
+            })
+            .catch(() => {
+                btn.disabled = false;
+                btn.innerHTML = '<i data-lucide="check" class="w-3.5 h-3.5"></i> ย้ายรายการ';
+                lucide.createIcons();
+            });
+        }
+
+        // ─── UTILS ───────────────────────────────────────────
+        function formatNum(n) {
+            return (n || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function animateValue(id, end) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            const duration = 1000;
+            let start = null;
+            const step = ts => {
+                if (!start) start = ts;
+                const p = Math.min((ts - start) / duration, 1);
+                el.textContent = formatNum(p * end);
+                if (p < 1) requestAnimationFrame(step);
+            };
+            requestAnimationFrame(step);
+        }
+
+        function escHtml(s) {
+            return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+        function escAttr(s) {
+            return String(s || '').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+        }
+
+        function showError(msg) {
+            document.getElementById('catList').innerHTML =
+                `<div class="text-center py-8 text-rose-400 text-sm">เกิดข้อผิดพลาด: ${escHtml(msg)}</div>`;
+        }
+    </script>
+</body>
+</html>

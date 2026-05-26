@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>นโยบายความเป็นส่วนตัว — OrgChat AI</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&family=Sarabun:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>body { font-family: 'Sarabun', 'Outfit', sans-serif; }</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+<nav class="bg-white border-b border-slate-200 px-6 py-4">
+    <div class="max-w-3xl mx-auto flex items-center justify-between">
+        <a href="/" class="flex items-center gap-2">
+            <div class="w-7 h-7 bg-emerald-600 rounded-lg flex items-center justify-center">
+                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            </div>
+            <span class="font-bold text-slate-900">OrgChat AI</span>
+        </a>
+        <a href="/terms" class="text-sm text-emerald-600 hover:underline">ข้อกำหนดการใช้งาน</a>
+    </div>
+</nav>
+
+<main class="max-w-3xl mx-auto px-6 py-12">
+    <h1 class="text-3xl font-bold text-slate-900 mb-2">นโยบายความเป็นส่วนตัว</h1>
+    <p class="text-sm text-slate-400 mb-8">อัปเดตล่าสุด: 23 พฤษภาคม 2568</p>
+
+    <div class="prose prose-slate max-w-none space-y-8 text-slate-700 leading-relaxed">
+
+        <section>
+            <h2 class="text-xl font-bold text-slate-800 mb-3">1. ข้อมูลที่เราเก็บรวบรวม</h2>
+            <p>OrgChat AI เก็บข้อมูลดังต่อไปนี้เพื่อให้บริการ:</p>
+            <ul class="list-disc pl-6 mt-2 space-y-1">
+                <li>ชื่อองค์กร, ชื่อผู้ใช้, และรหัสผ่าน (เข้ารหัสด้วย bcrypt)</li>
+                <li>ไฟล์เอกสาร/สลิปที่อัปโหลดผ่าน LINE Bot</li>
+                <li>ข้อมูลที่ AI วิเคราะห์จากเอกสาร (ชื่อ, จำนวนเงิน, วันที่)</li>
+                <li>ประวัติการสนทนากับ AI</li>
+                <li>ข้อมูลการชำระเงินผ่าน Stripe (เราไม่เก็บหมายเลขบัตรโดยตรง)</li>
+            </ul>
+        </section>
+
+        <section>
+            <h2 class="text-xl font-bold text-slate-800 mb-3">2. วัตถุประสงค์การใช้ข้อมูล</h2>
+            <ul class="list-disc pl-6 space-y-1">
+                <li>ให้บริการวิเคราะห์เอกสารและ AI ตามที่ผู้ใช้ร้องขอ</li>
+                <li>จัดเก็บไฟล์ใน Google Drive ขององค์กร</li>
+                <li>ส่งการแจ้งเตือนการหมดอายุแพลน</li>
+                <li>ปรับปรุงคุณภาพบริการ</li>
+            </ul>
+        </section>
+
+        <section>
+            <h2 class="text-xl font-bold text-slate-800 mb-3">3. การเปิดเผยข้อมูลแก่บุคคลที่สาม</h2>
+            <p>เราส่งข้อมูลไปยังผู้ให้บริการดังนี้เท่านั้น:</p>
+            <ul class="list-disc pl-6 mt-2 space-y-1">
+                <li><strong>Google (Drive/Sheets)</strong> — จัดเก็บไฟล์และบันทึกข้อมูล</li>
+                <li><strong>Google Gemini / Groq</strong> — วิเคราะห์เนื้อหาเอกสาร</li>
+                <li><strong>Stripe</strong> — ประมวลผลการชำระเงิน</li>
+                <li><strong>LINE Corporation</strong> — ส่งข้อความผ่าน LINE Bot</li>
+                <li><strong>Sentry</strong> — ติดตาม error เพื่อปรับปรุงระบบ</li>
+            </ul>
+            <p class="mt-2">เราไม่ขาย ไม่ให้เช่า หรือเปิดเผยข้อมูลของท่านแก่บุคคลอื่นเพื่อวัตถุประสงค์ทางการตลาด</p>
+        </section>
+
+        <section>
+            <h2 class="text-xl font-bold text-slate-800 mb-3">4. การเก็บรักษาและความปลอดภัย</h2>
+            <ul class="list-disc pl-6 space-y-1">
+                <li>รหัสผ่านถูกเข้ารหัสด้วย bcrypt ก่อนจัดเก็บ</li>
+                <li>การสื่อสารทั้งหมดผ่าน HTTPS</li>
+                <li>ข้อมูลถูก backup ทุก 24 ชั่วโมง</li>
+                <li>เราเก็บข้อมูลตราบเท่าที่บัญชียังใช้งานอยู่ หรือจนกว่าท่านจะขอลบ</li>
+            </ul>
+        </section>
+
+        <section>
+            <h2 class="text-xl font-bold text-slate-800 mb-3">5. สิทธิ์ของท่าน (PDPA)</h2>
+            <p>ภายใต้พระราชบัญญัติคุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562 ท่านมีสิทธิ์:</p>
+            <ul class="list-disc pl-6 mt-2 space-y-1">
+                <li>เข้าถึงและขอสำเนาข้อมูลส่วนบุคคลของท่าน</li>
+                <li>ขอแก้ไขข้อมูลที่ไม่ถูกต้อง</li>
+                <li>ขอลบข้อมูลและปิดบัญชี</li>
+                <li>คัดค้านหรือจำกัดการประมวลผลข้อมูล</li>
+            </ul>
+            <p class="mt-2">ติดต่อใช้สิทธิ์ได้ที่: <a href="mailto:contact@orgchat.ai" class="text-emerald-600 hover:underline font-semibold">contact@orgchat.ai</a></p>
+        </section>
+
+        <section>
+            <h2 class="text-xl font-bold text-slate-800 mb-3">6. ติดต่อเรา</h2>
+            <p>หากมีคำถามเกี่ยวกับนโยบายนี้ กรุณาติดต่อ:</p>
+            <p class="mt-1"><strong>OrgChat AI</strong> | อีเมล: <a href="mailto:contact@orgchat.ai" class="text-emerald-600 hover:underline">contact@orgchat.ai</a></p>
+        </section>
+    </div>
+</main>
+
+<footer class="border-t border-slate-200 mt-12 py-6 text-center text-xs text-slate-400">
+    © 2025 OrgChat AI · <a href="/privacy" class="hover:text-slate-600">นโยบายความเป็นส่วนตัว</a> · <a href="/terms" class="hover:text-slate-600">ข้อกำหนดการใช้งาน</a>
+</footer>
+</body>
+</html>

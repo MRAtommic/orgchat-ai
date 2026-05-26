@@ -1,4 +1,3 @@
-import pandas as pd
 import os
 import io
 
@@ -15,6 +14,7 @@ class ReconciliationService:
         
         Returns: (df_result, financial_summary)
         """
+        import pandas as pd
 
         # ═══════════════════════════════════════
         # 1. Load Marketplace Data (Shopee / Lazada)
@@ -301,6 +301,7 @@ class ReconciliationService:
 
     @staticmethod
     def generate_excel_report(df):
+        import pandas as pd
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, index=False, sheet_name='Reconciliation Results')

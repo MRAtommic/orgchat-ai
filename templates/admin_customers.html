@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>จัดการลูกค้า — OrgChat Admin</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Sarabun:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Outfit', 'Sarabun', sans-serif; }
+        .plan-badge { padding: 0.2rem 0.65rem; border-radius: 9999px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+        .plan-free     { background: #f1f5f9; color: #64748b; }
+        .plan-pro      { background: #d1fae5; color: #065f46; }
+        .plan-business { background: #1e293b; color: #f1f5f9; }
+        .usage-bar { height: 4px; border-radius: 9999px; background: #e2e8f0; overflow: hidden; }
+        .usage-fill { height: 100%; border-radius: 9999px; transition: width 0.4s; }
+        .btn-sm { padding: 0.3rem 0.75rem; border-radius: 0.5rem; font-size: 0.78rem; font-weight: 600; border: none; cursor: pointer; transition: all 0.15s; }
+        select.plan-select { border: 1.5px solid #e2e8f0; border-radius: 0.5rem; padding: 0.25rem 0.5rem; font-size: 0.8rem; outline: none; }
+        select.plan-select:focus { border-color: #059669; }
+        .toast { position: fixed; bottom: 1.5rem; right: 1.5rem; background: #1e293b; color: #fff; padding: 0.75rem 1.25rem; border-radius: 0.75rem; font-size: 0.85rem; font-weight: 600; z-index: 9999; transform: translateY(2rem); opacity: 0; transition: all 0.25s; pointer-events: none; }
+        .toast.show { transform: translateY(0); opacity: 1; }
+        .revenue-card { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #fff; border-radius: 1rem; padding: 1.25rem 1.5rem; }
+        .revenue-divider { width: 1px; background: rgba(255,255,255,0.12); align-self: stretch; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<div class="toast" id="toast"></div>
+
+<!-- NAV -->
+<nav class="bg-white border-b border-slate-200 px-6 py-3.5 sticky top-0 z-10">
+    <div class="max-w-7xl mx-auto flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <a href="/" class="flex items-center gap-2">
+                <div class="w-7 h-7 bg-emerald-600 rounded-lg flex items-center justify-center">
+                    <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                </div>
+                <span class="font-bold text-slate-800 text-sm">OrgChat Admin</span>
+            </a>
+            <span class="text-slate-300">/</span>
+            <span class="text-sm font-semibold text-slate-600">จัดการลูกค้า</span>
+        </div>
+        <div class="flex items-center gap-2">
+            <span id="org-count" class="text-xs text-slate-400"></span>
+            <a href="/admin/line-groups" class="btn-sm bg-green-50 text-green-700 hover:bg-green-100">LINE Groups</a>
+            <a href="/billing" class="btn-sm bg-slate-100 text-slate-600 hover:bg-slate-200">แพลนของฉัน</a>
+        </div>
+    </div>
+</nav>
+
+<main class="max-w-7xl mx-auto px-4 py-8">
+
+    <!-- Revenue Banner -->
+    <div class="revenue-card mb-6" id="revenue-banner">
+        <div class="flex flex-col md:flex-row md:items-center gap-5 md:gap-0">
+            <!-- MRR -->
+            <div class="flex-1 min-w-0">
+                <p class="text-xs font-bold uppercase tracking-widest text-slate-400 mb-1">MRR (รายได้ต่อเดือน)</p>
+                <div class="flex items-baseline gap-2">
+                    <span class="text-3xl font-black text-white" id="mrr-amount">—</span>
+                    <span class="text-sm text-slate-400 font-medium">บาท/เดือน</span>
+                </div>
+                <p class="text-xs text-slate-400 mt-1" id="mrr-breakdown">กำลังคำนวณ...</p>
+            </div>
+            <div class="revenue-divider hidden md:block mx-6"></div>
+            <!-- Paying -->
+            <div class="flex-1 min-w-0">
+                <p class="text-xs font-bold uppercase tracking-widest text-slate-400 mb-1">ลูกค้าจ่ายเงิน</p>
+                <p class="text-3xl font-black text-white" id="paying-count">—</p>
+                <p class="text-xs text-slate-400 mt-1" id="conversion-rate">Conversion rate —%</p>
+            </div>
+            <div class="revenue-divider hidden md:block mx-6"></div>
+            <!-- Plan breakdown -->
+            <div class="flex-1 min-w-0">
+                <p class="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">แบ่งตาม Plan</p>
+                <div class="flex items-center gap-2 mb-1.5">
+                    <span class="text-xs font-semibold text-emerald-400 w-10">Pro</span>
+                    <div class="flex-1 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                        <div id="bar-pro" class="h-full bg-emerald-400 rounded-full transition-all" style="width:0%"></div>
+                    </div>
+                    <span class="text-xs font-bold text-white w-6 text-right" id="count-pro-bar">0</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-semibold text-slate-300 w-10">Ultra</span>
+                    <div class="flex-1 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                        <div id="bar-business" class="h-full bg-slate-300 rounded-full transition-all" style="width:0%"></div>
+                    </div>
+                    <span class="text-xs font-bold text-white w-6 text-right" id="count-business-bar">0</span>
+                </div>
+            </div>
+            <div class="revenue-divider hidden md:block mx-6"></div>
+            <!-- Expiring soon -->
+            <div class="flex-1 min-w-0">
+                <p class="text-xs font-bold uppercase tracking-widest text-slate-400 mb-1">หมดอายุใน 7 วัน</p>
+                <p class="text-3xl font-black" id="expiring-count" style="color:#fbbf24">—</p>
+                <p class="text-xs text-slate-400 mt-1">ต้องต่ออายุ</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Summary cards -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8" id="summary-cards">
+        <div class="bg-white border border-slate-200 rounded-xl p-4">
+            <p class="text-xs text-slate-400 font-semibold uppercase tracking-wide mb-1">ลูกค้าทั้งหมด</p>
+            <p class="text-2xl font-black text-slate-900" id="total-orgs">—</p>
+        </div>
+        <div class="bg-white border border-slate-200 rounded-xl p-4">
+            <p class="text-xs text-slate-400 font-semibold uppercase tracking-wide mb-1">Free</p>
+            <p class="text-2xl font-black text-slate-400" id="count-free">—</p>
+        </div>
+        <div class="bg-white border border-emerald-200 rounded-xl p-4">
+            <p class="text-xs text-emerald-600 font-semibold uppercase tracking-wide mb-1">Pro</p>
+            <p class="text-2xl font-black text-emerald-600" id="count-pro">—</p>
+        </div>
+        <div class="bg-white border border-slate-800 rounded-xl p-4">
+            <p class="text-xs text-slate-600 font-semibold uppercase tracking-wide mb-1">Ultra</p>
+            <p class="text-2xl font-black text-slate-800" id="count-business">—</p>
+        </div>
+    </div>
+
+    <!-- Table -->
+    <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+            <h2 class="font-bold text-slate-800">รายชื่อลูกค้า / องค์กร</h2>
+            <span class="text-xs text-slate-400">Usage เดือนนี้</span>
+        </div>
+        <div id="loading" class="p-12 text-center text-slate-400 text-sm">กำลังโหลด...</div>
+        <div id="table-wrap" class="hidden overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="bg-slate-50 border-b border-slate-100 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                        <th class="text-left px-6 py-3">ชื่อองค์กร</th>
+                        <th class="text-left px-4 py-3">แพลน</th>
+                        <th class="text-left px-4 py-3">หมดอายุ</th>
+                        <th class="text-left px-4 py-3">สมาชิก</th>
+                        <th class="text-left px-4 py-3">AI (เดือนนี้)</th>
+                        <th class="text-left px-4 py-3">บิล (เดือนนี้)</th>
+                        <th class="text-left px-4 py-3">สมัคร</th>
+                        <th class="text-center px-4 py-3">เปลี่ยนแพลน</th>
+                    </tr>
+                </thead>
+                <tbody id="orgs-tbody"></tbody>
+            </table>
+        </div>
+        <div id="empty-state" class="hidden p-12 text-center text-slate-400 text-sm">ยังไม่มีองค์กรในระบบ</div>
+    </div>
+</main>
+
+<script>
+const PLANS = ['free', 'pro', 'business'];
+const PLAN_LABELS = { free: 'Free', pro: 'Pro', business: 'Ultra' };
+const PLAN_PRICE  = { free: 0, pro: 299, business: 599 };
+
+async function load() {
+    const res = await fetch('/api/admin/orgs');
+    const data = await res.json();
+    if (!data.ok) { document.getElementById('loading').textContent = 'โหลดข้อมูลไม่ได้'; return; }
+
+    const orgs = data.orgs;
+    document.getElementById('loading').classList.add('hidden');
+
+    if (!orgs.length) { document.getElementById('empty-state').classList.remove('hidden'); return; }
+
+    // ── Revenue calculations ──────────────────────────────────────────────
+    const countPro  = orgs.filter(o => o.plan === 'pro').length;
+    const countBiz  = orgs.filter(o => o.plan === 'business').length;
+    const countFree = orgs.filter(o => o.plan === 'free').length;
+    const paying    = countPro + countBiz;
+    const mrr       = countPro * PLAN_PRICE.pro + countBiz * PLAN_PRICE.business;
+    const convRate  = orgs.length > 0 ? Math.round(paying / orgs.length * 100) : 0;
+    const maxPaying = Math.max(countPro, countBiz, 1);
+
+    const now = new Date();
+    const in7 = new Date(now.getTime() + 7 * 86400000);
+    const expiringCount = orgs.filter(o => {
+        if (!o.plan_expires_at || o.plan === 'free') return false;
+        const exp = new Date(o.plan_expires_at);
+        return exp > now && exp <= in7;
+    }).length;
+
+    document.getElementById('mrr-amount').textContent = mrr.toLocaleString('th-TH');
+    document.getElementById('mrr-breakdown').textContent =
+        `Pro ${countPro} × ฿${PLAN_PRICE.pro} + Ultra ${countBiz} × ฿${PLAN_PRICE.business}`;
+    document.getElementById('paying-count').textContent = paying;
+    document.getElementById('conversion-rate').textContent = `Conversion rate ${convRate}%`;
+    document.getElementById('count-pro-bar').textContent  = countPro;
+    document.getElementById('count-business-bar').textContent = countBiz;
+    document.getElementById('bar-pro').style.width      = `${Math.round(countPro / maxPaying * 100)}%`;
+    document.getElementById('bar-business').style.width = `${Math.round(countBiz / maxPaying * 100)}%`;
+    document.getElementById('expiring-count').textContent = expiringCount;
+
+    // ── Plan count cards ──────────────────────────────────────────────────
+    document.getElementById('total-orgs').textContent = orgs.length;
+    document.getElementById('count-free').textContent     = countFree;
+    document.getElementById('count-pro').textContent      = countPro;
+    document.getElementById('count-business').textContent = countBiz;
+    document.getElementById('org-count').textContent = `${orgs.length} องค์กร`;
+
+    // Table
+    const tbody = document.getElementById('orgs-tbody');
+    orgs.forEach(o => {
+        const cfg = o.plan_config || {};
+        const aiLimit  = (cfg.limits || {}).ai_queries_per_month || 50;
+        const expLimit = (cfg.limits || {}).expenses_per_month || 30;
+        const aiPct  = aiLimit  === -1 ? 0 : Math.min(100, Math.round(o.ai_query_count  / aiLimit  * 100));
+        const expPct = expLimit === -1 ? 0 : Math.min(100, Math.round(o.expense_count / expLimit * 100));
+
+        const expiresTxt = o.plan_expires_at
+            ? new Date(o.plan_expires_at).toLocaleDateString('th-TH', { day:'numeric', month:'short', year:'2-digit' })
+            : (o.plan === 'free' ? '—' : 'ไม่จำกัด');
+
+        const createdTxt = o.created_at
+            ? new Date(o.created_at).toLocaleDateString('th-TH', { day:'numeric', month:'short', year:'2-digit' })
+            : '—';
+
+        const aiColor  = aiPct  > 80 ? '#ef4444' : aiPct  > 60 ? '#f59e0b' : '#10b981';
+        const expColor = expPct > 80 ? '#ef4444' : expPct > 60 ? '#f59e0b' : '#10b981';
+
+        const planOpts = PLANS.map(p =>
+            `<option value="${p}" ${p === o.plan ? 'selected' : ''}>${PLAN_LABELS[p]}</option>`
+        ).join('');
+
+        const stripeLink = o.stripe_customer_id
+            ? `<a href="https://dashboard.stripe.com/customers/${o.stripe_customer_id}" target="_blank" class="text-blue-500 hover:underline text-xs">Stripe</a>`
+            : '<span class="text-slate-300 text-xs">—</span>';
+
+        tbody.insertAdjacentHTML('beforeend', `
+            <tr class="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                <td class="px-6 py-4">
+                    <p class="font-semibold text-slate-800">${o.name}</p>
+                    <p class="text-xs text-slate-400 font-mono">${o.slug || ''}</p>
+                </td>
+                <td class="px-4 py-4">
+                    <span class="plan-badge plan-${o.plan}">${PLAN_LABELS[o.plan]}</span>
+                </td>
+                <td class="px-4 py-4 text-xs text-slate-500">${expiresTxt}</td>
+                <td class="px-4 py-4">
+                    <span class="font-semibold text-slate-700">${o.member_count}</span>
+                    <span class="text-xs text-slate-400"> / ${(cfg.limits||{}).max_users === -1 ? '∞' : (cfg.limits||{}).max_users || 1} คน</span>
+                </td>
+                <td class="px-4 py-4 min-w-[100px]">
+                    <div class="flex items-center gap-1.5 mb-1">
+                        <span class="font-semibold text-slate-700">${o.ai_query_count}</span>
+                        <span class="text-xs text-slate-400">/ ${aiLimit === -1 ? '∞' : aiLimit}</span>
+                    </div>
+                    <div class="usage-bar"><div class="usage-fill" style="width:${aiLimit===-1?0:aiPct}%;background:${aiColor}"></div></div>
+                </td>
+                <td class="px-4 py-4 min-w-[100px]">
+                    <div class="flex items-center gap-1.5 mb-1">
+                        <span class="font-semibold text-slate-700">${o.expense_count}</span>
+                        <span class="text-xs text-slate-400">/ ${expLimit === -1 ? '∞' : expLimit}</span>
+                    </div>
+                    <div class="usage-bar"><div class="usage-fill" style="width:${expLimit===-1?0:expPct}%;background:${expColor}"></div></div>
+                </td>
+                <td class="px-4 py-4 text-xs text-slate-500">
+                    ${createdTxt}<br>${stripeLink}
+                    ${PLAN_PRICE[o.plan] > 0 ? `<span class="inline-block mt-1 px-1.5 py-0.5 bg-emerald-50 text-emerald-700 rounded font-bold">฿${PLAN_PRICE[o.plan]}/ด.</span>` : ''}
+                </td>
+                <td class="px-4 py-4 text-center">
+                    <div class="flex items-center gap-1.5 justify-center">
+                        <select class="plan-select" id="plan-sel-${o.id}">${planOpts}</select>
+                        <button class="btn-sm bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                            onclick="setPlan(${o.id}, '${o.name}')">บันทึก</button>
+                    </div>
+                </td>
+            </tr>
+        `);
+    });
+
+    document.getElementById('table-wrap').classList.remove('hidden');
+}
+
+async function setPlan(orgId, orgName) {
+    const sel = document.getElementById(`plan-sel-${orgId}`);
+    const plan = sel.value;
+    const res = await fetch('/api/admin/billing/set-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ org_id: orgId, plan }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+        showToast(`✅ ${orgName} → ${PLAN_LABELS[plan]}`);
+        setTimeout(() => load(), 800);
+    } else {
+        showToast(`❌ ${data.error}`);
+    }
+}
+
+function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+load();
+</script>
+</body>
+</html>

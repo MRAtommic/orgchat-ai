@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>เริ่มต้นใช้งาน — OrgChat AI</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Sarabun:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Outfit', 'Sarabun', sans-serif; }
+        .step-done   { background: #d1fae5; border-color: #6ee7b7; }
+        .step-active { background: #fff; border-color: #059669; box-shadow: 0 0 0 3px rgba(5,150,105,0.15); }
+        .step-todo   { background: #f8fafc; border-color: #e2e8f0; }
+        .num-done   { background: #059669; color: #fff; }
+        .num-active { background: #059669; color: #fff; }
+        .num-todo   { background: #e2e8f0; color: #94a3b8; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-emerald-50 to-slate-100 min-h-screen flex items-center justify-center px-4 py-12">
+
+<div class="w-full max-w-lg">
+
+    <!-- Header -->
+    <div class="text-center mb-10">
+        <div class="w-14 h-14 bg-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        </div>
+        <h1 class="text-2xl font-extrabold text-slate-900">ยินดีต้อนรับสู่ OrgChat AI</h1>
+        <p class="text-slate-500 text-sm mt-1">ทำตาม 3 ขั้นตอนนี้ เริ่มใช้งานได้ภายใน 5 นาทีค่ะ</p>
+    </div>
+
+    <div class="space-y-4" id="steps">
+
+        <!-- Step 1: Signed up -->
+        <div class="step-done border-2 rounded-2xl p-5 flex items-start gap-4">
+            <div class="num-done w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
+            </div>
+            <div>
+                <p class="font-bold text-slate-800">สมัครสมาชิกเรียบร้อย</p>
+                <p class="text-sm text-slate-500 mt-0.5">บัญชีของคุณพร้อมใช้งานแล้วค่ะ</p>
+            </div>
+        </div>
+
+        <!-- Step 2: Choose plan -->
+        <div class="step-active border-2 rounded-2xl p-5" id="step2">
+            <div class="flex items-start gap-4">
+                <div class="num-active w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0">2</div>
+                <div class="flex-1">
+                    <p class="font-bold text-slate-800">เลือกแพลนที่ใช่</p>
+                    <p id="current-plan-text" class="text-sm text-slate-500 mt-0.5 mb-4">
+                        {% if active_plan == "business" %}
+                            ตอนนี้คุณอยู่แพลน <span class="font-bold text-emerald-600">Ultra (฿599/เดือน)</span> — พร้อมใช้งานฟีเจอร์เต็มรูปแบบแล้วค่ะ!
+                        {% elif active_plan == "pro" %}
+                            ตอนนี้คุณอยู่แพลน <span class="font-bold text-emerald-600">Pro (฿299/เดือน)</span> — พร้อมใช้งาน LINE Bot แล้วค่ะ!
+                        {% else %}
+                            ตอนนี้คุณอยู่แพลน Free — อัปเกรดเพื่อใช้ LINE Bot และฟีเจอร์ครบชุด
+                        {% endif %}
+                    </p>
+                    <div class="grid grid-cols-2 gap-3 mb-4">
+                        <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-center">
+                            <p class="text-xs font-bold text-emerald-600 uppercase mb-0.5">Pro</p>
+                            <p class="text-lg font-extrabold text-emerald-700">฿299<span class="text-xs font-normal">/เดือน</span></p>
+                            <p class="text-xs text-emerald-600 mt-0.5">ไม่จำกัด + LINE Bot</p>
+                        </div>
+                        <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-center">
+                            <p class="text-xs font-bold text-slate-500 uppercase mb-0.5">Ultra</p>
+                            <p class="text-lg font-extrabold text-slate-800">฿599<span class="text-xs font-normal">/เดือน</span></p>
+                            <p class="text-xs text-slate-500 mt-0.5">ทีม 10 คน + Export</p>
+                        </div>
+                    </div>
+                    <a href="/pricing" class="block w-full py-2.5 text-center text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition">
+                        เลือกแพลน →
+                    </a>
+                    <button onclick="skipPlan()" class="block w-full mt-2 py-2 text-center text-xs text-slate-400 hover:text-slate-600 transition">
+                        ข้ามก่อน ใช้แพลน Free ต่อไป
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 3: Add LINE Bot to group -->
+        <div class="step-todo border-2 rounded-2xl p-5" id="step3">
+            <div class="flex items-start gap-4">
+                <div class="num-todo w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0">3</div>
+                <div class="flex-1">
+                    <p class="font-bold text-slate-600">เชื่อม LINE Bot กับกลุ่มของคุณ</p>
+                    <p class="text-sm text-slate-400 mt-0.5 mb-4">เพิ่มน้องพั้นเข้ากลุ่ม LINE แล้วลงทะเบียนกลุ่ม</p>
+                    <div class="bg-white border border-slate-200 rounded-xl p-4 text-sm space-y-2 text-slate-500">
+                        <p class="flex items-center gap-2"><span class="text-slate-300 font-bold">1.</span> เพิ่ม LINE Bot เข้ากลุ่มของคุณ</p>
+                        <p class="flex items-center gap-2"><span class="text-slate-300 font-bold">2.</span> พิมพ์ <code class="bg-slate-100 px-1.5 py-0.5 rounded text-xs">/groupid</code> ในกลุ่ม</p>
+                        <p class="flex items-center gap-2"><span class="text-slate-300 font-bold">3.</span> นำ Group ID มาลงทะเบียนด้านล่าง</p>
+                    </div>
+                    <a href="/admin/line-groups" id="step3-btn" class="block w-full mt-4 py-2.5 text-center text-sm font-bold text-slate-400 bg-slate-100 rounded-xl cursor-not-allowed" aria-disabled="true">
+                        ลงทะเบียน LINE Group
+                    </a>
+                    <p class="text-xs text-slate-400 text-center mt-1" id="step3-note">ต้องใช้แพลน Pro ขึ้นไปค่ะ</p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Go to dashboard -->
+    <div class="mt-8 text-center">
+        <a href="/" class="text-sm font-semibold text-emerald-600 hover:text-emerald-700">ไปหน้าหลัก →</a>
+    </div>
+</div>
+
+<script>
+    // Check if user has paid plan (from URL param or backend template variable)
+    const params = new URLSearchParams(window.location.search);
+    const plan = params.get('plan') || '{{ active_plan }}';
+
+    if (plan && plan !== 'free') {
+        // Mark step 2 done, activate step 3
+        document.getElementById('step2').className = 'step-done border-2 rounded-2xl p-5';
+        document.getElementById('step2').querySelector('.num-active').className = 'num-done w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0';
+        document.getElementById('step2').querySelector('.num-done, .num-active').innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>';
+
+        document.getElementById('step3').className = 'step-active border-2 rounded-2xl p-5';
+        document.getElementById('step3').querySelector('.num-todo').className = 'num-active w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0';
+        document.getElementById('step3').querySelector('p.font-bold').className = 'font-bold text-slate-800';
+        document.getElementById('step3').querySelector('p.text-sm').className = 'text-sm text-slate-500 mt-0.5 mb-4';
+
+        const btn = document.getElementById('step3-btn');
+        btn.className = 'block w-full mt-4 py-2.5 text-center text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition';
+        btn.removeAttribute('aria-disabled');
+        document.getElementById('step3-note').textContent = '';
+    }
+
+    function skipPlan() {
+        window.location.href = '/';
+    }
+</script>
+</body>
+</html>

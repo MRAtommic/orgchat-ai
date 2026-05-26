@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LINE Groups — OrgChat</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Sarabun:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Outfit', 'Sarabun', sans-serif; }
+        .toast { position: fixed; bottom: 1.5rem; right: 1.5rem; background: #1e293b; color: #fff; padding: 0.75rem 1.25rem; border-radius: 0.75rem; font-size: 0.85rem; font-weight: 600; z-index: 9999; transform: translateY(2rem); opacity: 0; transition: all 0.25s; pointer-events: none; }
+        .toast.show { transform: translateY(0); opacity: 1; }
+        .toast.error { background: #dc2626; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+<div class="toast" id="toast"></div>
+
+<!-- NAV -->
+<nav class="bg-white border-b border-slate-200 px-6 py-3.5 sticky top-0 z-10">
+    <div class="max-w-3xl mx-auto flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <a href="/" class="flex items-center gap-2">
+                <div class="w-7 h-7 bg-emerald-600 rounded-lg flex items-center justify-center">
+                    <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                </div>
+                <span class="font-bold text-slate-800 text-sm">OrgChat</span>
+            </a>
+            <span class="text-slate-300">/</span>
+            <span class="text-sm font-semibold text-slate-600">LINE Groups</span>
+        </div>
+        <a href="/" class="text-xs text-slate-400 hover:text-slate-600">← กลับหน้าหลัก</a>
+    </div>
+</nav>
+
+<main class="max-w-3xl mx-auto px-4 py-8 space-y-6">
+
+    <!-- How to get Group ID -->
+    <div class="bg-amber-50 border border-amber-200 rounded-2xl p-5">
+        <h3 class="font-bold text-amber-900 mb-2">วิธีหา LINE Group ID</h3>
+        <ol class="text-sm text-amber-800 space-y-1 list-decimal list-inside">
+            <li>เพิ่ม LINE Bot เข้ากลุ่มของคุณ</li>
+            <li>พิมพ์ข้อความใดก็ได้ในกลุ่ม</li>
+            <li>ดู Group ID ในล็อกของ Server หรือพิมพ์ <code class="bg-amber-100 px-1 rounded">/groupid</code> ในกลุ่ม</li>
+            <li>Group ID จะขึ้นต้นด้วย <code class="bg-amber-100 px-1 rounded">C</code> เช่น <code class="bg-amber-100 px-1 rounded">C1234abc...</code></li>
+        </ol>
+    </div>
+
+    <!-- Register form -->
+    <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+        <h2 class="font-bold text-slate-800 mb-4">เพิ่มกลุ่ม LINE</h2>
+        <div class="space-y-3">
+            <div>
+                <label class="block text-xs font-semibold text-slate-500 mb-1">Group ID <span class="text-red-400">*</span></label>
+                <input id="inp-group-id" type="text" placeholder="C1234567890abcdef..."
+                    class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-mono focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-500 mb-1">ชื่อกลุ่ม (เพื่อความสะดวก)</label>
+                <input id="inp-group-name" type="text" placeholder="เช่น กลุ่มบัญชีร้านเรา"
+                    class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100">
+            </div>
+            <button onclick="registerGroup()"
+                class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl text-sm transition-colors">
+                เพิ่มกลุ่ม
+            </button>
+        </div>
+    </div>
+
+    <!-- Registered groups list -->
+    <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-100">
+            <h2 class="font-bold text-slate-800">กลุ่มที่ลงทะเบียนแล้ว</h2>
+        </div>
+        <div id="groups-loading" class="p-8 text-center text-slate-400 text-sm">กำลังโหลด...</div>
+        <div id="groups-empty" class="hidden p-8 text-center text-slate-400 text-sm">ยังไม่มีกลุ่มที่ลงทะเบียน</div>
+        <ul id="groups-list" class="hidden divide-y divide-slate-50"></ul>
+    </div>
+</main>
+
+<script>
+async function loadGroups() {
+    const res = await fetch('/api/org/line/groups');
+    const data = await res.json();
+    document.getElementById('groups-loading').classList.add('hidden');
+    if (!data.ok || !data.groups.length) {
+        document.getElementById('groups-empty').classList.remove('hidden');
+        return;
+    }
+    const list = document.getElementById('groups-list');
+    list.classList.remove('hidden');
+    list.innerHTML = '';
+    data.groups.forEach(g => {
+        const li = document.createElement('li');
+        li.className = 'flex items-center justify-between px-6 py-3.5 hover:bg-slate-50';
+        li.innerHTML = `
+            <div>
+                <p class="font-semibold text-slate-700 text-sm">${g.group_name || '(ไม่มีชื่อ)'}</p>
+                <p class="text-xs font-mono text-slate-400">${g.group_id}</p>
+            </div>
+            <button onclick="deleteGroup('${g.group_id}')" class="text-xs text-red-400 hover:text-red-600 font-semibold px-3 py-1 rounded-lg hover:bg-red-50 transition-colors">ลบ</button>
+        `;
+        list.appendChild(li);
+    });
+}
+
+async function registerGroup() {
+    const groupId = document.getElementById('inp-group-id').value.trim();
+    const groupName = document.getElementById('inp-group-name').value.trim();
+    if (!groupId) { showToast('กรุณาใส่ Group ID', true); return; }
+    const res = await fetch('/api/org/line/register-group', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ group_id: groupId, group_name: groupName }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+        showToast('เพิ่มกลุ่มสำเร็จค่ะ ✅');
+        document.getElementById('inp-group-id').value = '';
+        document.getElementById('inp-group-name').value = '';
+        document.getElementById('groups-empty').classList.add('hidden');
+        document.getElementById('groups-list').classList.remove('hidden');
+        loadGroups();
+    } else {
+        showToast(data.error || 'เกิดข้อผิดพลาด', true);
+    }
+}
+
+async function deleteGroup(groupId) {
+    if (!confirm(`ลบกลุ่ม ${groupId} ออกจากระบบ?`)) return;
+    const res = await fetch(`/api/org/line/groups/${groupId}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.ok) { showToast('ลบกลุ่มแล้วค่ะ'); loadGroups(); }
+    else showToast('เกิดข้อผิดพลาด', true);
+}
+
+function showToast(msg, isError = false) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast' + (isError ? ' error' : '') + ' show';
+    setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+loadGroups();
+</script>
+</body>
+</html>

@@ -6,6 +6,7 @@ logging to spreadsheets, and automated reconciliation.
 """
 
 import os
+import contextlib
 import re
 import io
 import time
@@ -86,6 +87,17 @@ def get_name_similarity(name1, name2):
     if n1 in n2 or n2 in n1: return 1.0
     return difflib.SequenceMatcher(None, n1, n2).ratio()
 
+def thread_safe(func):
+    """Decorator to serialize access to the Google Workspace APIs using an instance-level RLock."""
+    def wrapper(self, *args, **kwargs):
+        if not hasattr(self, '_instance_lock'):
+            with GoogleWorkspaceManager._lock:
+                if not hasattr(self, '_instance_lock'):
+                    self._instance_lock = threading.RLock()
+        with self._instance_lock:
+            return func(self, *args, **kwargs)
+    return wrapper
+
 class GoogleWorkspaceManager:
     """
     Singleton Manager for Google Workspace interactions.
@@ -104,24 +116,152 @@ class GoogleWorkspaceManager:
     def __init__(self):
         if self._initialized:
             return
-        
+
+        self._local = threading.local()
+        self._local.creds = None
+        self._cached_creds = None
+        self._creds_lock = threading.Lock()
+
         self.credentials_path = 'service-account.json'
         self.scopes = [
             'https://www.googleapis.com/auth/drive',
             'https://www.googleapis.com/auth/spreadsheets'
         ]
-        self.drive_service = None
-        self.sheets_service = None
-        self.parent_folder_id = os.getenv("GOOGLE_DRIVE_PARENT_ID") or os.getenv("PARENT_FOLDER_ID")
-        
-        self.spreadsheet_id = os.getenv("SPREADSHEET_ID")
-        self._initialize_services()
-        self._validate_or_create_spreadsheet()
-        try:
-            self.ensure_essential_sheets()
-        except Exception as e:
-            logger.warning(f"⚠️ Initial essential sheets check failed: {e}")
+        self._parent_folder_id = os.getenv("GOOGLE_DRIVE_PARENT_ID") or os.getenv("PARENT_FOLDER_ID")
+        self._spreadsheet_id = os.getenv("SPREADSHEET_ID")
+        # Network calls (token refresh, API build, spreadsheet validation) are lazy —
+        # triggered on first use via drive_service/sheets_service properties.
         self._initialized = True
+
+    def set_context(self, username=None, org_id=None):
+        """Dynamically set the user/org context for the current thread to route operations to their specific Drive/Sheets."""
+        self._local.username = username
+        self._local.org_id = org_id
+        # Reset cached services in the current thread to force re-initialization
+        self._local.drive_service = None
+        self._local.sheets_service = None
+        self._local.creds = None
+        with self._creds_lock:
+            self._cached_creds = None
+        logger.info(f"🎯 Switched thread context to user={username}, org={org_id}")
+
+    def clear_context(self):
+        """Resets all thread-local storage attributes at the end of a request or thread execution to prevent thread reuse pollution."""
+        if hasattr(self, '_local'):
+            self._local.username = None
+            self._local.org_id = None
+            self._local.drive_service = None
+            self._local.sheets_service = None
+            self._local.creds = None
+            logger.info("🧹 Cleared thread local Google Workspace context")
+
+    @contextlib.contextmanager
+    def secure_context(self, username=None, org_id=None):
+        """
+        Context manager to set user/org credentials context dynamically
+        and guarantee context cleanup on exit or error.
+        """
+        old_username = getattr(self._local, 'username', None)
+        old_org_id = getattr(self._local, 'org_id', None)
+        try:
+            self.set_context(username, org_id)
+            yield self
+        finally:
+            if old_username or old_org_id:
+                self.set_context(old_username, old_org_id)
+            else:
+                self.clear_context()
+
+    @property
+    def spreadsheet_id(self):
+        username = getattr(self._local, 'username', None)
+        org_id = getattr(self._local, 'org_id', None)
+        
+        if not username and not org_id:
+            try:
+                from flask import session, has_request_context
+                if has_request_context():
+                    username = session.get("user")
+                    org_id = session.get("org_id", 1)
+            except Exception:
+                pass
+                
+        if username or org_id:
+            try:
+                import database
+                token_data, source = database.resolve_google_token(username, org_id)
+                if token_data and token_data.get("spreadsheet_id"):
+                    return token_data.get("spreadsheet_id")
+            except Exception as e:
+                logger.error(f"Error resolving spreadsheet_id from database: {e}")
+                
+        return getattr(self, '_spreadsheet_id', None) or os.getenv("SPREADSHEET_ID")
+
+    @spreadsheet_id.setter
+    def spreadsheet_id(self, value):
+        self._spreadsheet_id = value
+
+    @property
+    def parent_folder_id(self):
+        username = getattr(self._local, 'username', None)
+        org_id = getattr(self._local, 'org_id', None)
+        
+        if not username and not org_id:
+            try:
+                from flask import session, has_request_context
+                if has_request_context():
+                    username = session.get("user")
+                    org_id = session.get("org_id", 1)
+            except Exception:
+                pass
+                
+        if username or org_id:
+            try:
+                import database
+                token_data, source = database.resolve_google_token(username, org_id)
+                if token_data and token_data.get("drive_folder_id"):
+                    return token_data.get("drive_folder_id")
+            except Exception as e:
+                logger.error(f"Error resolving parent_folder_id from database: {e}")
+                
+        return getattr(self, '_parent_folder_id', None) or os.getenv("GOOGLE_DRIVE_PARENT_ID") or os.getenv("PARENT_FOLDER_ID")
+
+    @parent_folder_id.setter
+    def parent_folder_id(self, value):
+        self._parent_folder_id = value
+
+    @classmethod
+    def invalidate_user_cache(cls, username):
+        """Clears the credentials cache to force re-initialization of thread services."""
+        mgr = cls()
+        if hasattr(mgr, '_creds_lock'):
+            with mgr._creds_lock:
+                mgr._cached_creds = None
+        if hasattr(mgr, '_local'):
+            mgr._local.drive_service = None
+            mgr._local.sheets_service = None
+            mgr._local.creds = None
+        logger.info(f"🔄 Invalidated Google Workspace credentials cache for user {username}")
+
+    @property
+    def drive_service(self):
+        if not hasattr(self._local, 'drive_service') or self._local.drive_service is None:
+            self._initialize_thread_services()
+        return self._local.drive_service
+
+    @drive_service.setter
+    def drive_service(self, value):
+        self._local.drive_service = value
+
+    @property
+    def sheets_service(self):
+        if not hasattr(self._local, 'sheets_service') or self._local.sheets_service is None:
+            self._initialize_thread_services()
+        return self._local.sheets_service
+
+    @sheets_service.setter
+    def sheets_service(self, value):
+        self._local.sheets_service = value
 
     def _load_sheet_schema(self):
         """Loads sheet schema configuration from json or returns built-in fallback."""
@@ -362,47 +502,88 @@ class GoogleWorkspaceManager:
         except Exception:
             return "วันที่ในเอกสาร"
 
-    def _initialize_services(self):
-        """Initializes Google API clients."""
+    def _initialize_thread_services(self):
+        """Initializes Google API clients specifically for the current thread."""
         try:
-            creds = None
-            token_path = 'token.json'
-            if os.path.exists(token_path):
-                from google.oauth2.credentials import Credentials
-                from google.auth.transport.requests import Request
-                creds = Credentials.from_authorized_user_file(token_path, self.scopes)
-                if creds and creds.expired and creds.refresh_token:
-                    creds.refresh(Request())
-                logger.info("Using token.json (OAuth2 User) for Drive services.")
+            username = getattr(self._local, 'username', None)
+            org_id = getattr(self._local, 'org_id', None)
+            
+            if not username and not org_id:
+                try:
+                    from flask import session, has_request_context
+                    if has_request_context():
+                        username = session.get("user")
+                        org_id = session.get("org_id", 1)
+                except Exception:
+                    pass
 
-            if not creds or not creds.valid:
-                g_env = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
-                if g_env:
-                    try:
-                        import json
-                        info = json.loads(g_env)
-                        creds = service_account.Credentials.from_service_account_info(
-                            info, scopes=self.scopes
-                        )
-                        logger.info("Using GOOGLE_SERVICE_ACCOUNT_JSON from environment variable for Drive/Sheets.")
-                    except Exception as e:
-                        logger.error(f"Failed to load credentials from environment variable: {e}")
+            thread_creds = getattr(self._local, 'creds', None)
+            with self._creds_lock:
+                if not thread_creds or not thread_creds.valid:
+                    creds = None
+                    
+                    # 1. Try to load dynamic credentials from database
+                    if username or org_id:
+                        try:
+                            from oauth2_service import oauth2_service
+                            creds, source = oauth2_service.build_credentials(username=username, org_id=org_id)
+                            if creds:
+                                logger.info(f"Loaded dynamic Google credentials from database ({source}) for user={username}, org={org_id}")
+                        except Exception as e:
+                            logger.error(f"Failed to load dynamic credentials from database: {e}")
+                            
+                    # 2. Fall back to local file token.json
+                    if not creds:
+                        token_path = 'token.json'
+                        if os.path.exists(token_path):
+                            from google.oauth2.credentials import Credentials
+                            from google.auth.transport.requests import Request
+                            try:
+                                creds = Credentials.from_authorized_user_file(token_path, self.scopes)
+                                if creds and creds.expired and creds.refresh_token:
+                                    creds.refresh(Request())
+                                logger.info("Using token.json (OAuth2 User) for Drive services.")
+                            except Exception as e:
+                                logger.warning(f"Could not load/refresh token.json: {e}")
 
-                if (not creds or not creds.valid) and os.path.exists(self.credentials_path):
-                    creds = service_account.Credentials.from_service_account_file(
-                        self.credentials_path, scopes=self.scopes
-                    )
-                    logger.info("Using service-account.json file for Drive services.")
+                    # 3. Fall back to service account JSON env
+                    if not creds or not creds.valid:
+                        g_env = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
+                        if g_env:
+                            try:
+                                import json
+                                info = json.loads(g_env)
+                                creds = service_account.Credentials.from_service_account_info(
+                                    info, scopes=self.scopes
+                                )
+                                logger.info("Using GOOGLE_SERVICE_ACCOUNT_JSON from environment variable for Drive/Sheets.")
+                            except Exception as e:
+                                logger.error(f"Failed to load credentials from environment variable: {e}")
+
+                        # 4. Fall back to local service-account.json
+                        if (not creds or not creds.valid) and os.path.exists(self.credentials_path):
+                            creds = service_account.Credentials.from_service_account_file(
+                                self.credentials_path, scopes=self.scopes
+                            )
+                            logger.info("Using service-account.json file for Drive services.")
+                        
+                    self._local.creds = creds
                 
-                if not creds or not creds.valid:
-                    logger.error("No valid credentials found.")
-                    return
+            thread_creds = getattr(self._local, 'creds', None)
+            if not thread_creds or not thread_creds.valid:
+                logger.error("No valid credentials found for the thread.")
+                self._local.drive_service = None
+                self._local.sheets_service = None
+                return
 
-            self.drive_service = build('drive', 'v3', credentials=creds, cache_discovery=False)
-            self.sheets_service = build('sheets', 'v4', credentials=creds, cache_discovery=False)
+            self._local.drive_service = build('drive', 'v3', credentials=thread_creds, cache_discovery=False)
+            self._local.sheets_service = build('sheets', 'v4', credentials=thread_creds, cache_discovery=False)
         except Exception as e:
-            logger.error(f"Failed to initialize services: {e}")
+            logger.error(f"Failed to initialize thread services: {e}")
+            self._local.drive_service = None
+            self._local.sheets_service = None
 
+    @thread_safe
     def _validate_or_create_spreadsheet(self):
         """Checks if the current spreadsheet exists, otherwise creates a new one."""
         if not self.sheets_service: return
@@ -506,6 +687,7 @@ class GoogleWorkspaceManager:
                 }
             })
             
+            num_cols = 20
             if not is_dashboard:
                 # Get the number of columns in the header to style
                 try:
@@ -642,11 +824,23 @@ class GoogleWorkspaceManager:
                         }
                     })
 
+            # Auto-resize columns to fit content beautifully
+            requests.append({
+                "autoResizeDimensions": {
+                    "dimensions": {
+                        "sheetId": sheet_id,
+                        "dimension": "COLUMNS",
+                        "startIndex": 0,
+                        "endIndex": num_cols
+                    }
+                }
+            })
+
             self.sheets_service.spreadsheets().batchUpdate(
                 spreadsheetId=self.spreadsheet_id, 
                 body={"requests": requests}
             ).execute()
-            logger.info(f"📌 Froze and styled sheet headers: {sheet_title}")
+            logger.info(f"📌 Froze, styled, and auto-resized sheet columns: {sheet_title}")
         except Exception as e:
             logger.warning(f"⚠️ Failed to freeze/style headers for sheet '{sheet_title}': {e}")
 
@@ -677,6 +871,7 @@ class GoogleWorkspaceManager:
             schemas = registry.get("schemas", {})
             
             essential_sheets = {
+                "บันทึกค่าใช้จ่าย": schemas.get("บันทึกค่าใช้จ่าย", {}).get("headers", []),
                 "ใบเสร็จ/ใบกำกับภาษี": schemas.get("ใบเสร็จ/ใบกำกับภาษี", {}).get("headers", []),
                 "สลิปโอนเงิน": schemas.get("สลิปโอนเงิน", {}).get("headers", []),
                 "สรุปกระทบยอด": ["วันที่ประมวลผล", "สถานะ", "วันที่เอกสาร", "ยอดเงิน", "คู่ค้า/ร้านค้า", "ลิงก์สลิป", "ลิงก์ใบกำกับ", "หมายเหตุ"],
@@ -728,15 +923,24 @@ class GoogleWorkspaceManager:
         except Exception as e:
             logger.error(f"⚠️ ensure_essential_sheets error: {e}")
 
-    def upload_file(self, file_content, filename, mimetype, folder_id=None):
-        """Uploads file with Year/Month/Day folder structure."""
-        if not self.drive_service: return None, "Service not initialized"
+    def upload_file(self, file_content, filename, mimetype, folder_id=None, org_id=None, username=None):
+        """Uploads file with [org_N/]Year/Month/Day folder structure."""
+        if org_id or username:
+            self.set_context(username=username, org_id=org_id)
+            
+        if not self.drive_service:
+            logger.error("❌ upload_file: drive_service is not initialized (Google Drive not connected)")
+            return None, "Service not initialized"
         try:
             base_p_id = folder_id or self.parent_folder_id
             now = datetime.now()
             year_str, month_str, day_str = now.strftime("%Y"), now.strftime("%m"), now.strftime("%d")
-            
+
             p_id = base_p_id
+            # When using shared Drive (no specific folder_id), prefix with org folder
+            if not folder_id and org_id:
+                p_id = self._get_or_create_folder(f"org_{org_id}", p_id)
+
             for folder_name in [year_str, month_str, day_str]:
                 p_id = self._get_or_create_folder(folder_name, p_id)
 
@@ -766,6 +970,7 @@ class GoogleWorkspaceManager:
         except Exception as e:
             return False, str(e)
 
+    @thread_safe
     def _get_or_create_folder(self, folder_name, parent_id):
         query = f"name = '{folder_name}' and '{parent_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
         results = self.drive_service.files().list(q=query, fields="files(id)", supportsAllDrives=True).execute()
@@ -785,6 +990,7 @@ class GoogleWorkspaceManager:
             return results.get('files', [])
         except: return []
 
+    @thread_safe
     def auto_reconcile_internal(self):
         """Reconciles Bank Statements (Master Reference) ↔ Payment Slips ↔ Invoices (3-Way Match)."""
         if not self.sheets_service or not self.spreadsheet_id: return
@@ -1241,11 +1447,18 @@ class GoogleWorkspaceManager:
         except Exception as e:
             logger.error(f"Dashboard update error: {e}")
 
-    def log_expense(self, data, sheet_name=None):
+    @thread_safe
+    def log_expense(self, data, sheet_name=None, org_id=None, username=None):
         """Logs data with strict Thai headers and legacy cleanup."""
-        if not self.sheets_service: return
+        if org_id or username:
+            self.set_context(username=username, org_id=org_id)
+        if not self.sheets_service:
+            logger.error("❌ log_expense: sheets_service is not initialized (Google Sheets not connected)")
+            return None
         self._validate_or_create_spreadsheet()
-        if not self.spreadsheet_id: return
+        if not self.spreadsheet_id:
+            logger.error("❌ log_expense: spreadsheet_id is missing (Spreadsheet not created/found)")
+            return None
 
         import json
         try:
@@ -1292,7 +1505,10 @@ class GoogleWorkspaceManager:
             # Load Schema Registry
             registry = self._load_sheet_schema()
             category_map = registry.get("category_map", {})
-            sheet_name = category_map.get(raw_category, raw_category).strip()
+            
+            # Use provided sheet_name if available, otherwise map from AI category
+            if not sheet_name:
+                sheet_name = category_map.get(raw_category, raw_category).strip()
 
             # Fetch existing sheet titles to avoid 400 Bad Request
             existing_sheets = []
@@ -1522,6 +1738,8 @@ class GoogleWorkspaceManager:
                     val = local_get_val(['sender', 'from', 'vendor', 'vendor_name', 'seller', 'company_name'])
                 elif src == "receiver_name_fallback":
                     val = local_get_val(['receiver', 'to', 'payee', 'buyer', 'customer', 'customer_name'])
+                elif src == "line_sender_name":
+                    val = context_data.get('line_sender_name', '-')
                 
                 # --- Custom PEAK Extraction (Image 2) ---
                 elif src == "peak_seq":
@@ -1818,6 +2036,7 @@ class GoogleWorkspaceManager:
             logger.error(f"Logging error: {e}")
             return {"ok": False, "error": str(e)}
 
+    @thread_safe
     def update_expense(self, sheet_name, row_index, column_name, new_value):
         """Updates a specific cell in the spreadsheet based on header name."""
         if not self.sheets_service or not self.spreadsheet_id: return False, "Service not initialized"
@@ -1858,6 +2077,7 @@ class GoogleWorkspaceManager:
             logger.error(f"Update error: {e}")
             return False, str(e)
 
+    @thread_safe
     def move_row_between_sheets(self, from_sheet, row_index, to_sheet):
         """Moves a specific row from one sheet to another, adjusting headers appropriately and deleting from source."""
         if not self.sheets_service or not self.spreadsheet_id:
@@ -2216,6 +2436,10 @@ class GoogleWorkspaceManager:
 
 
 google_manager = GoogleWorkspaceManager()
+
+def get_drive_service():
+    """Returns the thread-local drive_service and sheets_service from google_manager."""
+    return google_manager.drive_service, google_manager.sheets_service
 
 def rename_file(file_id, new_name): return google_manager.rename_file(file_id, new_name)
 def delete_file(file_id): return google_manager.delete_file(file_id)

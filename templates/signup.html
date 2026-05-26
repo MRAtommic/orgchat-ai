@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>สมัครใช้งาน — OrgChat AI</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Sarabun:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Outfit', 'Sarabun', sans-serif; }
+        .input-field {
+            width: 100%;
+            padding: 0.625rem 0.875rem;
+            border: 1.5px solid #e2e8f0;
+            border-radius: 0.75rem;
+            font-size: 0.9rem;
+            outline: none;
+            transition: border-color 0.15s;
+            background: #fff;
+        }
+        .input-field:focus { border-color: #059669; box-shadow: 0 0 0 3px rgba(5,150,105,0.08); }
+        .btn-submit {
+            width: 100%;
+            padding: 0.75rem;
+            background: #059669;
+            color: #fff;
+            font-weight: 700;
+            font-size: 0.95rem;
+            border-radius: 0.75rem;
+            border: none;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .btn-submit:hover { background: #047857; }
+        .btn-submit:disabled { background: #a7f3d0; cursor: not-allowed; }
+        .plan-badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 700; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen flex flex-col">
+
+    <nav class="bg-white border-b border-slate-200 px-6 py-4">
+        <div class="max-w-6xl mx-auto flex items-center justify-between">
+            <a href="/" class="flex items-center gap-2.5">
+                <div class="w-8 h-8 bg-emerald-600 rounded-xl flex items-center justify-center">
+                    <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                </div>
+                <span class="text-base font-bold text-slate-900">OrgChat AI</span>
+            </a>
+            <a href="/pricing" class="text-sm text-slate-500 hover:text-slate-700 transition">ดูแผนราคา</a>
+        </div>
+    </nav>
+
+    <main class="flex-1 flex items-center justify-center px-4 py-12">
+        <div class="w-full max-w-md">
+
+            <!-- Plan badge -->
+            <div id="plan-info" class="text-center mb-6 hidden">
+                <p class="text-sm text-slate-500 mb-1">คุณกำลังสมัคร</p>
+                <span id="plan-badge" class="plan-badge"></span>
+            </div>
+
+            <div class="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
+                <h1 class="text-2xl font-bold text-slate-900 mb-1">สร้างบัญชีใหม่</h1>
+                <p class="text-sm text-slate-500 mb-7">เริ่มใช้งาน OrgChat AI สำหรับธุรกิจของคุณ</p>
+
+                <form id="signup-form" onsubmit="handleSignup(event)" novalidate>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1.5">ชื่อร้าน / บริษัท</label>
+                            <input type="text" id="org_name" class="input-field" placeholder="เช่น ร้านสวยงามออนไลน์" required>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1.5">ชื่อผู้ใช้ (username)</label>
+                            <input type="text" id="username" class="input-field" placeholder="เช่น somchai" autocomplete="username" required>
+                            <p class="text-xs text-slate-400 mt-1">ตัวเล็ก ไม่มีช่องว่าง</p>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1.5">ชื่อแสดง</label>
+                            <input type="text" id="display_name" class="input-field" placeholder="เช่น สมชาย ใจดี">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1.5">รหัสผ่าน</label>
+                            <input type="password" id="password" class="input-field" placeholder="อย่างน้อย 6 ตัวอักษร" autocomplete="new-password" required>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1.5">ยืนยันรหัสผ่าน</label>
+                            <input type="password" id="confirm_password" class="input-field" placeholder="พิมพ์รหัสผ่านอีกครั้ง" autocomplete="new-password" required>
+                        </div>
+                    </div>
+
+                    <div id="error-msg" class="hidden mt-4 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600"></div>
+
+                    <button type="submit" id="submit-btn" class="btn-submit mt-6">
+                        <span id="btn-text">สร้างบัญชีและเริ่มใช้งาน</span>
+                    </button>
+                </form>
+
+                <p class="text-center text-sm text-slate-400 mt-5">
+                    มีบัญชีแล้ว? <a href="/" class="text-emerald-600 font-semibold hover:underline">เข้าสู่ระบบ</a>
+                </p>
+            </div>
+
+            <!-- What happens next -->
+            <div id="next-steps" class="mt-6 bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-sm text-emerald-800 hidden">
+                <p class="font-semibold mb-2">หลังสร้างบัญชี:</p>
+                <ol class="space-y-1 list-decimal list-inside text-emerald-700">
+                    <li>ระบบจะพาคุณไปหน้าชำระเงิน Stripe</li>
+                    <li>จ่ายด้วยบัตรหรือ PromptPay</li>
+                    <li>Plan จะเปิดใช้งานทันทีหลังชำระ</li>
+                </ol>
+            </div>
+        </div>
+    </main>
+
+    <footer class="py-6 text-center text-xs text-slate-400">
+        การสมัครถือว่ายอมรับ
+        <a href="/terms" class="hover:text-slate-600 underline">ข้อกำหนดการใช้งาน</a>
+        และ
+        <a href="/privacy" class="hover:text-slate-600 underline">นโยบายความเป็นส่วนตัว</a>
+    </footer>
+
+    <script>
+        const params = new URLSearchParams(location.search);
+        const plan = params.get('plan') || '';
+
+        // Show plan badge and next-steps hint if plan param present
+        if (plan === 'pro' || plan === 'business') {
+            const info = document.getElementById('plan-info');
+            const badge = document.getElementById('plan-badge');
+            const nextSteps = document.getElementById('next-steps');
+            const btnText = document.getElementById('btn-text');
+
+            info.classList.remove('hidden');
+            nextSteps.classList.remove('hidden');
+
+            if (plan === 'pro') {
+                badge.textContent = 'Pro — ฿299/เดือน';
+                badge.className = 'plan-badge bg-emerald-100 text-emerald-700';
+                btnText.textContent = 'สร้างบัญชีและชำระเงิน';
+            } else {
+                badge.textContent = 'Business — ฿699/เดือน';
+                badge.className = 'plan-badge bg-slate-800 text-white';
+                btnText.textContent = 'สร้างบัญชีและชำระเงิน';
+            }
+        }
+
+        async function handleSignup(e) {
+            e.preventDefault();
+            const btn = document.getElementById('submit-btn');
+            const errEl = document.getElementById('error-msg');
+            errEl.classList.add('hidden');
+
+            const org_name = document.getElementById('org_name').value.trim();
+            const username = document.getElementById('username').value.trim().toLowerCase();
+            const display_name = document.getElementById('display_name').value.trim();
+            const password = document.getElementById('password').value;
+            const confirm_password = document.getElementById('confirm_password').value;
+
+            if (!org_name || !username || !password) {
+                showError('กรุณากรอกข้อมูลให้ครบ');
+                return;
+            }
+            if (password !== confirm_password) {
+                showError('รหัสผ่านไม่ตรงกัน');
+                return;
+            }
+
+            btn.disabled = true;
+            document.getElementById('btn-text').textContent = 'กำลังสร้างบัญชี...';
+
+            try {
+                const res = await fetch('/api/org/signup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ org_name, username, display_name, password, confirm_password }),
+                });
+                const data = await res.json();
+                if (!data.ok) {
+                    showError(data.error || 'เกิดข้อผิดพลาด');
+                    btn.disabled = false;
+                    document.getElementById('btn-text').textContent = plan ? 'สร้างบัญชีและชำระเงิน' : 'สร้างบัญชีและเริ่มใช้งาน';
+                    return;
+                }
+
+                // Signup success
+                if (plan === 'pro' || plan === 'business') {
+                    // Go to Stripe checkout
+                    document.getElementById('btn-text').textContent = 'กำลังไปหน้าชำระเงิน...';
+                    const ckRes = await fetch('/api/billing/checkout', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ plan }),
+                    });
+                    const ckData = await ckRes.json();
+                    if (ckData.ok && ckData.url) {
+                        window.location.href = ckData.url;
+                    } else {
+                        // Checkout failed → go to billing page anyway
+                        window.location.href = '/billing';
+                    }
+                } else {
+                    window.location.href = '/onboarding';
+                }
+            } catch (err) {
+                showError('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้');
+                btn.disabled = false;
+                document.getElementById('btn-text').textContent = 'สร้างบัญชีและเริ่มใช้งาน';
+            }
+        }
+
+        function showError(msg) {
+            const el = document.getElementById('error-msg');
+            el.textContent = msg;
+            el.classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>

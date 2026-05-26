@@ -24,3 +24,4 @@ pandas>=2.0.0,<2.1.0
 google-api-python-client
 google-auth-httplib2
 google-auth-oauthlib
+stripe>=7.0.0

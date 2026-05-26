@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ราคาและแพลน — OrgChat AI</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Sarabun:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { font-family: 'Outfit', 'Sarabun', sans-serif; }
+        .plan-card { transition: box-shadow 0.2s, transform 0.2s; }
+        .plan-card:hover { box-shadow: 0 12px 40px rgba(15,23,42,0.10); transform: translateY(-3px); }
+        .plan-card.featured { box-shadow: 0 8px 32px rgba(5,150,105,0.18); }
+        .plan-card.featured:hover { box-shadow: 0 16px 48px rgba(5,150,105,0.24); transform: translateY(-4px); }
+        .check-icon { color: #059669; }
+        .cross-icon { color: #cbd5e1; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+
+    <!-- NAV -->
+    <nav class="bg-white border-b border-slate-200 px-6 py-4">
+        <div class="max-w-6xl mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 bg-emerald-600 rounded-xl flex items-center justify-center">
+                    <i data-lucide="zap" class="w-4 h-4 text-white"></i>
+                </div>
+                <span class="text-base font-bold text-slate-900">OrgChat AI</span>
+            </div>
+            <div class="flex items-center gap-3">
+                <a href="/" class="text-sm font-semibold text-slate-500 hover:text-slate-700 transition">เข้าสู่ระบบ</a>
+                <a href="/billing" class="text-sm font-semibold text-emerald-600 hover:text-emerald-700 transition">แพลนของฉัน</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-6xl mx-auto px-4 py-16 md:py-24">
+
+        <!-- HERO -->
+        <div class="text-center mb-16">
+            <span class="inline-block px-3 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold uppercase tracking-widest rounded-full mb-5">
+                Pricing
+            </span>
+            <h1 class="text-4xl md:text-5xl font-extrabold text-slate-900 leading-tight mb-4">
+                เลือกแพลนที่ใช่สำหรับ<br>ธุรกิจของคุณ
+            </h1>
+            <p class="text-lg text-slate-500 max-w-xl mx-auto">
+                เริ่มต้นฟรี ไม่ต้องใช้บัตรเครดิต อัปเกรดเมื่อพร้อม
+            </p>
+        </div>
+
+        <!-- PLAN CARDS -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+
+            <!-- FREE -->
+            <div class="plan-card bg-white border border-slate-200 rounded-2xl p-8">
+                <div class="mb-6">
+                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Free</p>
+                    <div class="flex items-baseline gap-1">
+                        <span class="text-4xl font-extrabold text-slate-900">฿0</span>
+                        <span class="text-sm text-slate-400 font-medium">/เดือน</span>
+                    </div>
+                    <p class="text-sm text-slate-500 mt-2">เริ่มต้นฟรี สำหรับทดลองใช้งาน</p>
+                </div>
+
+                <a href="/" class="block w-full py-2.5 text-center text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition mb-8">
+                    เริ่มต้นใช้งาน
+                </a>
+
+                <ul class="space-y-3.5 text-sm">
+                    <li class="flex items-start gap-2.5">
+                        <i data-lucide="check" class="w-4 h-4 check-icon flex-shrink-0 mt-0.5"></i>
+                        <span class="text-slate-600">บันทึกค่าใช้จ่าย <strong>10 รายการ</strong>/เดือน</span>
+                    </li>
+                    <li class="flex items-start gap-2.5">
+                        <i data-lucide="check" class="w-4 h-4 check-icon flex-shrink-0 mt-0.5"></i>
+                        <span class="text-slate-600">AI ถามตอบ <strong>35 ครั้ง</strong>/เดือน</span>
+                    </li>
+                    <li class="flex items-start gap-2.5">
+                        <i data-lucide="check" class="w-4 h-4 check-icon flex-shrink-0 mt-0.5"></i>
+                        <span class="text-slate-600">เอกสารใน Knowledge Base <strong>5 ไฟล์</strong></span>
+                    </li>
+                    <li class="flex items-start gap-2.5">
+                        <i data-lucide="x" class="w-4 h-4 cross-icon flex-shrink-0 mt-0.5"></i>
+                        <span class="text-slate-400">Google Sheets sync</span>
+                    </li>
+                    <li class="flex items-start gap-2.5">
+                        <i data-lucide="x" class="w-4 h-4 cross-icon flex-shrink-0 mt-0.5"></i>
+                        <span class="text-slate-400">Financial Dashboard</span>
+                    </li>
+                    <li class="flex items-start gap-2.5">
+                        <i data-lucide="x" class="w-4 h-4 cross-icon flex-shrink-0 mt-0.5"></i>
+                        <span class="text-slate-400">LINE Bot</span>
+                    </li>
+                    <li class="flex items-start gap-2.5">
+                        <i data-lucide="x" class="w-4 h-4 cross-icon flex-shrink-0 mt-0.5"></i>
+                        <span class="text-slate-400">สมาชิกในทีม</span>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- PRO (featured) -->
+            <div class="plan-card featured bg-emerald-600 border border-emerald-500 rounded-2xl p-8 text-white relative">
+                <div class="absolute -top-3.5 left-1/2 -translate-x-1/2">
+                    <span class="bg-amber-400 text-amber-900 text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full shadow-sm">
+                        ยอดนิยม
+                    </span>
+                </div>
+
+                <div class="mb-6">
+                    <p class="text-[10px] font-bold text-emerald-200 uppercase tracking-widest mb-2">Pro</p>
+                    <div class="flex items-baseline gap-1">
+                        <span class="text-4xl font-extrabold">฿299</span>
+                        <span class="text-sm text-emerald-200 font-medium">/เดือน</span>
+                    </div>
+                    <p class="text-sm text-emerald-100 mt-2">สำหรับร้านค้าออนไลน์ที่ต้องการมากกว่า</p>
+                </div>
+
+                <button onclick="checkout('pro', this)" class="block w-full py-2.5 text-center text-sm font-bold text-emerald-700 bg-white hover:bg-emerald-50 rounded-xl transition mb-2">
+                    จ่ายด้วยบัตรเครดิต
+                </button>
+                <button onclick="checkoutPromptPay('pro', this)" class="block w-full py-2.5 text-center text-sm font-bold text-emerald-100 bg-emerald-700 hover:bg-emerald-800 border border-emerald-500 rounded-xl transition mb-8 flex items-center justify-center gap-2">
+                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3M17 14h3M14 17v3"/></svg>
+                    สแกน PromptPay
+                </button>
+
+                <ul class="space-y-3.5 text-sm">
+                    <li class="flex items-start gap-2.5">
+                        <i data-lucide="check" class="w-4 h-4 text-emerald-200 flex-shrink-0 mt-0.5"></i>
+                        <span class="text-emerald-50">บันทึกค่าใช้จ่าย <strong>ไม่จำกัด</strong></span>
+                    </li>
+                    <li class="flex items-start gap-2.5">
+                        <i data-lucide="check" class="w-4 h-4 text-emerald-200 flex-shrink-0 mt-0.5"></i>
+                        <span class="text-emerald-50">AI ถามตอบ <strong>ไม่จำกัด</strong></span>
+                    </li>
+                    <li class="flex items-start gap-2.5">
+                        <i data-lucide="check" class="w-4 h-4 text-emerald-200 flex-shrink-0 mt-0.5"></i>
+                        <span class="text-emerald-50">Knowledge Base <strong>100 ไฟล์</strong></span>
+                    </li>
+                    <li class="flex items-start gap-2.5">
+                        <i data-lucide="check" class="w-4 h-4 text-emerald-200 flex-shrink-0 mt-0.5"></i>
+                        <span class="text-emerald-50"><strong>Google Sheets</strong> sync อัตโนมัติ</span>
+                    </li>
+                    <li class="flex items-start gap-2.5">
+                        <i data-lucide="check" class="w-4 h-4 text-emerald-200 flex-shrink-0 mt-0.5"></i>
+                        <span class="text-emerald-50"><strong>Financial Dashboard</strong></span>
+                    </li>
+                    <li class="flex items-start gap-2.5">
+                        <i data-lucide="check" class="w-4 h-4 text-emerald-200 flex-shrink-0 mt-0.5"></i>
+                        <span class="text-emerald-50"><strong>LINE Bot</strong> เชื่อมต่อครบ</span>
+                    </li>
+                    <li class="flex items-start gap-2.5">
+                        <i data-lucide="check" class="w-4 h-4 text-emerald-200 flex-shrink-0 mt-0.5"></i>
+                        <span class="text-emerald-50">สมาชิกในทีม <strong>3 คน</strong></span>
+                    </li>
+                    <li class="flex items-start gap-2.5">
+                        <i data-lucide="x" class="w-4 h-4 text-emerald-300/50 flex-shrink-0 mt-0.5"></i>
+                        <span class="text-emerald-200/60">Export รายงาน Excel/PDF</span>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- ULTRA -->
+            <div class="plan-card bg-white border border-slate-200 rounded-2xl p-8">
+                <div class="mb-6">
+                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Ultra</p>
+                    <div class="flex items-baseline gap-1">
+                        <span class="text-4xl font-extrabold text-slate-900">฿599</span>
+                        <span class="text-sm text-slate-400 font-medium">/เดือน</span>
+                    </div>
+                    <p class="text-sm text-slate-500 mt-2">สำหรับทีมและธุรกิจขนาดกลาง</p>
+                </div>
+
+                <button onclick="checkout('business', this)" class="block w-full py-2.5 text-center text-sm font-bold text-white bg-slate-800 hover:bg-slate-700 rounded-xl transition mb-2">
+                    จ่ายด้วยบัตรเครดิต
+                </button>
+                <button onclick="checkoutPromptPay('business', this)" class="block w-full py-2.5 text-center text-sm font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-xl transition mb-8 flex items-center justify-center gap-2">
+                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3M17 14h3M14 17v3"/></svg>
+                    สแกน PromptPay
+                </button>
+
+                <ul class="space-y-3.5 text-sm">
+                    <li class="flex items-start gap-2.5">
+                        <i data-lucide="check" class="w-4 h-4 check-icon flex-shrink-0 mt-0.5"></i>
+                        <span class="text-slate-600">ทุกอย่างใน Pro</span>
+                    </li>
+                    <li class="flex items-start gap-2.5">
+                        <i data-lucide="check" class="w-4 h-4 check-icon flex-shrink-0 mt-0.5"></i>
+                        <span class="text-slate-600">Knowledge Base <strong>ไม่จำกัด</strong></span>
+                    </li>
+                    <li class="flex items-start gap-2.5">
+                        <i data-lucide="check" class="w-4 h-4 check-icon flex-shrink-0 mt-0.5"></i>
+                        <span class="text-slate-600">สมาชิกในทีม <strong>10 คน</strong></span>
+                    </li>
+                    <li class="flex items-start gap-2.5">
+                        <i data-lucide="check" class="w-4 h-4 check-icon flex-shrink-0 mt-0.5"></i>
+                        <span class="text-slate-600"><strong>Export</strong> รายงาน Excel/PDF</span>
+                    </li>
+                    <li class="flex items-start gap-2.5">
+                        <i data-lucide="check" class="w-4 h-4 check-icon flex-shrink-0 mt-0.5"></i>
+                        <span class="text-slate-600">Priority Support</span>
+                    </li>
+                    <li class="flex items-start gap-2.5">
+                        <i data-lucide="check" class="w-4 h-4 check-icon flex-shrink-0 mt-0.5"></i>
+                        <span class="text-slate-600">ออกใบกำกับภาษีรายเดือน</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- TEST 10 THB BANNER — แสดงเฉพาะ Stripe Test Mode -->
+        {% if is_test_mode %}
+        <div class="mt-12 max-w-xl mx-auto bg-amber-50 border border-amber-200 rounded-2xl p-6 text-center">
+            <p class="text-xs font-bold text-amber-600 uppercase tracking-widest mb-1">สำหรับทดสอบระบบ (Test Mode)</p>
+            <p class="text-2xl font-extrabold text-amber-900 mb-1">฿10 <span class="text-base font-semibold">— ทดลองจ่าย</span></p>
+            <p class="text-sm text-amber-700 mb-4">ทดสอบระบบ PromptPay — ได้ Pro 30 วัน (ใช้ใน Stripe Test Mode เท่านั้น)</p>
+            <button onclick="checkoutPromptPay('test', this)"
+                class="inline-flex items-center gap-2 px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm rounded-xl transition">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3M17 14h3M14 17v3"/></svg>
+                สแกน QR PromptPay ฿10
+            </button>
+        </div>
+        {% endif %}
+
+        <!-- FAQ -->
+        <div class="mt-20 max-w-2xl mx-auto">
+            <h2 class="text-2xl font-bold text-slate-900 text-center mb-10">คำถามที่พบบ่อย</h2>
+            <div class="space-y-4">
+                <details class="bg-white border border-slate-200 rounded-xl p-5 group">
+                    <summary class="flex items-center justify-between cursor-pointer text-sm font-semibold text-slate-800 list-none">
+                        ชำระเงินผ่านช่องทางไหนได้บ้าง?
+                        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 group-open:rotate-180 transition-transform"></i>
+                    </summary>
+                    <p class="mt-3 text-sm text-slate-500 leading-relaxed">รองรับการโอนผ่าน PromptPay และบัตรเครดิต/เดบิต (Visa, Mastercard) ระบบจะส่งใบเสร็จและเปิดใช้งานอัตโนมัติหลังชำระเงิน</p>
+                </details>
+                <details class="bg-white border border-slate-200 rounded-xl p-5 group">
+                    <summary class="flex items-center justify-between cursor-pointer text-sm font-semibold text-slate-800 list-none">
+                        ข้อมูลจะหายไปไหมถ้าย้าย Plan?
+                        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 group-open:rotate-180 transition-transform"></i>
+                    </summary>
+                    <p class="mt-3 text-sm text-slate-500 leading-relaxed">ไม่หายแน่นอนค่ะ ข้อมูลทั้งหมดยังอยู่ครบ เพียงแต่ฟีเจอร์บางส่วนจะถูกปิดตาม Plan ที่เลือก</p>
+                </details>
+                <details class="bg-white border border-slate-200 rounded-xl p-5 group">
+                    <summary class="flex items-center justify-between cursor-pointer text-sm font-semibold text-slate-800 list-none">
+                        ยกเลิกได้ตอนไหน?
+                        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 group-open:rotate-180 transition-transform"></i>
+                    </summary>
+                    <p class="mt-3 text-sm text-slate-500 leading-relaxed">ยกเลิกได้ทุกเมื่อ ระบบจะยังใช้งาน Plan ปัจจุบันได้จนสิ้นสุดรอบการชำระเงิน แล้วจึงเปลี่ยนกลับเป็น Free</p>
+                </details>
+            </div>
+        </div>
+
+        <!-- CONTACT CTA -->
+        <div class="mt-16 text-center">
+            <p class="text-sm text-slate-400">
+                ต้องการ Plan พิเศษสำหรับองค์กร?
+                <a href="mailto:contact@orgchat.ai" class="text-emerald-600 font-semibold hover:underline">ติดต่อทีมงาน</a>
+            </p>
+        </div>
+
+    </main>
+
+    <script>
+        window.onload = () => lucide.createIcons();
+
+        async function checkout(plan, btn) {
+            const original = btn.innerHTML;
+            btn.disabled = true;
+            btn.textContent = 'กำลังโหลด...';
+            try {
+                const res = await fetch('/api/b/c', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plan }),
+                });
+                if (res.status === 401) {
+                    window.location.href = `/signup?plan=${plan}`;
+                    return;
+                }
+                
+                let data;
+                try {
+                    data = await res.json();
+                } catch (jsonErr) {
+                    const txt = await res.text();
+                    console.error("Non-JSON Response:", txt);
+                    alert(`ไม่สามารถเชื่อมต่อระบบชำระเงินได้ (Status: ${res.status}). รายละเอียด: ${txt.substring(0, 100)}`);
+                    btn.disabled = false;
+                    btn.innerHTML = original;
+                    return;
+                }
+
+                if (data.ok && data.url) {
+                    window.location.href = data.url;
+                } else {
+                    alert(data.error || 'เกิดข้อผิดพลาด กรุณาลองใหม่');
+                    btn.disabled = false;
+                    btn.innerHTML = original;
+                }
+            } catch (e) {
+                console.error("Fetch checkout error:", e);
+                alert(`ไม่สามารถเชื่อมต่อระบบชำระเงินได้: ${e.message}`);
+                btn.disabled = false;
+                btn.innerHTML = original;
+            }
+        }
+
+        async function checkoutPromptPay(plan, btn) {
+            const original = btn.innerHTML;
+            btn.disabled = true;
+            btn.textContent = 'กำลังสร้าง QR...';
+            try {
+                const res = await fetch('/api/b/cp', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plan }),
+                });
+                if (res.status === 401) {
+                    window.location.href = `/signup?plan=${plan}`;
+                    return;
+                }
+                
+                let data;
+                try {
+                    data = await res.json();
+                } catch (jsonErr) {
+                    const txt = await res.text();
+                    console.error("Non-JSON Response:", txt);
+                    alert(`ไม่สามารถเชื่อมต่อระบบชำระเงินได้ (Status: ${res.status}). รายละเอียด: ${txt.substring(0, 100)}`);
+                    btn.disabled = false;
+                    btn.innerHTML = original;
+                    return;
+                }
+
+                if (data.ok && data.url) {
+                    window.location.href = data.url;
+                } else {
+                    alert(data.error || 'เกิดข้อผิดพลาด กรุณาลองใหม่');
+                    btn.disabled = false;
+                    btn.innerHTML = original;
+                }
+            } catch (e) {
+                console.error("Fetch PromptPay error:", e);
+                alert(`ไม่สามารถเชื่อมต่อระบบชำระเงินได้: ${e.message}`);
+                btn.disabled = false;
+                btn.innerHTML = original;
+            }
+        }
+    </script>
+</body>
+</html>

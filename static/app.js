@@ -112,6 +112,7 @@ const apiModal = $('apiModal');
 const apiKeyInput = $('apiKeyInput');
 const apiKeyToggle = $('apiKeyToggle');
 const saveApiKeyBtn = $('saveApiKeyBtn');
+const loginPasswordToggle = $('loginPasswordToggle');
 const changeKeyBtn = $('changeKeyBtn');
 
 const navSidebar = $('navSidebar');
@@ -439,14 +440,29 @@ async function apiFetch(url, options = {}) {
     }
   }
 
-  const res = await fetch(url, options);
+  const controller = new AbortController();
+  const timeoutMs = options._timeout || 30000;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  delete options._timeout;
+  let res;
+  try {
+    res = await fetch(url, { ...options, signal: controller.signal });
+  } catch (err) {
+    clearTimeout(timer);
+    if (err.name === 'AbortError') throw new Error('คำขอใช้เวลานานเกินไป กรุณาลองใหม่อีกครั้ง');
+    throw err;
+  }
+  clearTimeout(timer);
+
   if (!res.ok) {
     const text = await res.text();
-    let errorMsg = text || res.statusText;
-    try {
-      const data = JSON.parse(text);
-      if (data && data.error) errorMsg = data.error;
-    } catch (e) {}
+    let errData = null;
+    try { errData = JSON.parse(text); } catch (e) {}
+    if (res.status === 403 && errData && (errData.error === 'upgrade_required' || errData.error === 'usage_limit_reached' || errData.error === 'feature_not_available')) {
+      if (typeof showUpgradePrompt === 'function') showUpgradePrompt(errData);
+      throw new Error('__billing_handled__');
+    }
+    const errorMsg = (errData && errData.error) || text || res.statusText;
     throw new Error(errorMsg);
   }
   return await res.json();
@@ -1020,6 +1036,9 @@ async function loadAdminSettings() {
       const chk = $('settingAllowUserEdit');
       if (chk) chk.checked = state.appSettings.allow_user_edit === '1';
     }
+    
+    // Load Whitelist Settings
+    await loadWhitelist();
   } catch (e) {
     console.error('Failed to load settings:', e);
   }
@@ -1093,6 +1112,110 @@ document.addEventListener('DOMContentLoaded', () => {
     toggle.onchange = (e) => saveAdminSetting('allow_user_edit', e.target.checked ? '1' : '0');
   }
 });
+
+// ─── Email Whitelist Logic ───────────────────
+async function loadWhitelist() {
+  try {
+    const res = await apiFetch('/api/admin/whitelist');
+    if (res && res.ok) {
+      const chk = $('settingEmailWhitelist');
+      const container = $('whitelistContainer');
+      if (chk) chk.checked = res.enabled;
+      if (container) container.classList.toggle('hidden', !res.enabled);
+      renderWhitelist(res.emails || []);
+    }
+  } catch (e) {
+    console.error('Failed to load whitelist:', e);
+  }
+}
+
+function renderWhitelist(emails) {
+  const list = $('whitelistEmailList');
+  if (!list) return;
+  if (emails.length === 0) {
+    list.innerHTML = '<li class="py-3 text-sm text-surface-500 text-center">ยังไม่มีอีเมลในระบบ</li>';
+    return;
+  }
+  list.innerHTML = emails.map(item => `
+    <li class="py-2 flex items-center justify-between group">
+      <div>
+        <div class="text-sm font-bold text-surface-900 dark:text-white">${item.email}</div>
+        <div class="text-xs text-surface-500">เพิ่มโดย: ${item.added_by} • ${new Date(item.created_at).toLocaleDateString('th-TH')}</div>
+      </div>
+      <button type="button" onclick="removeWhitelistEmail('${item.email}')" class="text-red-500 hover:text-red-700 p-2 rounded opacity-0 group-hover:opacity-100 transition-opacity">
+        <i data-lucide="trash-2" class="w-4 h-4"></i>
+      </button>
+    </li>
+  `).join('');
+  initIcons();
+}
+
+async function toggleEmailWhitelist(enabled) {
+  const container = $('whitelistContainer');
+  const chk = $('settingEmailWhitelist');
+  if (container) container.classList.toggle('hidden', !enabled);
+  try {
+    const res = await apiFetch('/api/admin/whitelist/toggle', {
+      method: 'POST',
+      body: JSON.stringify({ enabled })
+    });
+    if (res.ok) {
+      toast(enabled ? 'เปิด Whitelist แล้ว — ใช้ได้กับ Login ผ่าน Google' : 'ปิด Whitelist แล้ว', 'success');
+    } else {
+      // Revert UI on failure
+      if (chk) chk.checked = !enabled;
+      if (container) container.classList.toggle('hidden', enabled);
+      toast(res.error || 'เกิดข้อผิดพลาด', 'error');
+    }
+  } catch (e) {
+    // Revert UI on error
+    if (chk) chk.checked = !enabled;
+    if (container) container.classList.toggle('hidden', enabled);
+    toast('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้', 'error');
+  }
+}
+
+async function addWhitelistEmail() {
+  const input = $('whitelistEmailInput');
+  const email = input.value.trim();
+  if (!email || !email.includes('@')) {
+    toast('กรุณากรอกอีเมลให้ถูกต้อง', 'warning');
+    return;
+  }
+  try {
+    const res = await apiFetch('/api/admin/whitelist', {
+      method: 'POST',
+      body: JSON.stringify({ email })
+    });
+    if (res.ok) {
+      toast('เพิ่มอีเมลสำเร็จ', 'success');
+      input.value = '';
+      loadWhitelist(); // Refresh
+    } else {
+      toast(res.error || 'เกิดข้อผิดพลาด', 'error');
+    }
+  } catch (e) {
+    toast(e.message || 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้', 'error');
+  }
+}
+
+async function removeWhitelistEmail(email) {
+  if (!confirm(`คุณต้องการลบ ${email} ออกจาก Whitelist ใช่หรือไม่?`)) return;
+  try {
+    const res = await apiFetch(`/api/admin/whitelist/${encodeURIComponent(email)}`, {
+      method: 'DELETE'
+    });
+    if (res.ok) {
+      toast('ลบอีเมลสำเร็จ', 'success');
+      loadWhitelist(); // Refresh
+    } else {
+      toast(res.error || 'เกิดข้อผิดพลาด', 'error');
+    }
+  } catch (e) {
+    toast(e.message || 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้', 'error');
+  }
+}
+
 
 
 // ─── Quotation System Logic ─────────────────
@@ -1716,6 +1839,7 @@ function switchView(viewId) {
   if (viewId === 'summary') renderSummary();
   if (viewId === 'whiteboard') initWhiteboard();
   if (viewId === 'leave') loadLeaveData();
+  if (viewId === 'settings') loadGoogleDriveStatus();
 
   // ─── Feed Auto-Refresh ───────────────────────
   // Clear any existing feed poll interval when changing views
@@ -1747,6 +1871,71 @@ function showView(viewId) { switchView(viewId); }
 
 function applyProfile(profile) {
   if (!profile) return;
+
+  // Update Plan Badges & Org Info
+  const plan = profile.active_plan || 'free';
+  const planName = profile.plan_name || 'Free Plan';
+  const orgName = profile.org_name || 'Default Organization';
+
+  // Desktop badge
+  const sidebarPlanBadge = $('sidebarPlanBadge');
+  if (sidebarPlanBadge) {
+    sidebarPlanBadge.textContent = planName;
+    sidebarPlanBadge.className = 'px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase tracking-wider block mt-1 w-max';
+    if (plan === 'free') {
+      sidebarPlanBadge.classList.add('bg-surface-100', 'text-surface-600', 'dark:bg-surface-800', 'dark:text-surface-400');
+    } else if (plan === 'pro') {
+      sidebarPlanBadge.classList.add('bg-emerald-50', 'text-emerald-600', 'dark:bg-emerald-950/40', 'dark:text-emerald-400', 'border', 'border-emerald-200/50', 'dark:border-emerald-800/30');
+    } else if (plan === 'business') {
+      sidebarPlanBadge.classList.add('bg-indigo-50', 'text-indigo-600', 'dark:bg-indigo-950/40', 'dark:text-indigo-400', 'border', 'border-indigo-200/50', 'dark:border-indigo-800/30');
+    }
+    sidebarPlanBadge.classList.remove('hidden');
+  }
+
+  // Mobile badge
+  const mobilePlanBadge = $('mobilePlanBadge');
+  if (mobilePlanBadge) {
+    mobilePlanBadge.textContent = planName;
+    mobilePlanBadge.className = 'px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase tracking-wider';
+    if (plan === 'free') {
+      mobilePlanBadge.classList.add('bg-surface-100', 'text-surface-600', 'dark:bg-surface-800', 'dark:text-surface-400');
+    } else if (plan === 'pro') {
+      mobilePlanBadge.classList.add('bg-emerald-50', 'text-emerald-600', 'dark:bg-emerald-950/40', 'dark:text-emerald-400');
+    } else {
+      mobilePlanBadge.classList.add('bg-indigo-50', 'text-indigo-600', 'dark:bg-indigo-950/40', 'dark:text-indigo-400');
+    }
+    mobilePlanBadge.classList.remove('hidden');
+  }
+
+  // Pro-lock indicators on nav items for free users
+  if (plan === 'free') {
+    const proNavIds = ['nav-drive', 'nav-viz'];
+    proNavIds.forEach(navId => {
+      const btn = $(navId);
+      if (!btn || btn.querySelector('.pro-lock-tag')) return;
+      const tag = document.createElement('span');
+      tag.className = 'pro-lock-tag ml-auto px-1 py-0.5 rounded text-[8px] font-black uppercase bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 flex-shrink-0';
+      tag.textContent = 'Pro';
+      btn.appendChild(tag);
+    });
+  } else {
+    document.querySelectorAll('.pro-lock-tag').forEach(el => el.remove());
+  }
+
+  // Profile View Inputs
+  if ($('profileOrgDisplay')) $('profileOrgDisplay').value = orgName;
+  const profilePlanBadge = $('profilePlanBadge');
+  if (profilePlanBadge) {
+    profilePlanBadge.textContent = planName;
+    profilePlanBadge.className = 'px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-wider';
+    if (plan === 'free') {
+      profilePlanBadge.classList.add('bg-surface-100', 'text-surface-600', 'dark:bg-surface-800', 'dark:text-surface-400');
+    } else if (plan === 'pro') {
+      profilePlanBadge.classList.add('bg-emerald-100', 'text-emerald-700', 'dark:bg-emerald-900/30', 'dark:text-emerald-400');
+    } else {
+      profilePlanBadge.classList.add('bg-indigo-100', 'text-indigo-700', 'dark:bg-indigo-900/30', 'dark:text-indigo-400');
+    }
+  }
 
   // Update Sidebar
   if (sidebarDisplayName) sidebarDisplayName.textContent = profile.display_name || profile.username;
@@ -2224,6 +2413,17 @@ apiKeyToggle.addEventListener('click', () => {
   initIcons();
 });
 
+if (loginPasswordToggle) {
+  loginPasswordToggle.addEventListener('click', () => {
+    const pwd = $('loginPassword');
+    const type = pwd.type === 'password' ? 'text' : 'password';
+    pwd.type = type;
+    const icon = type === 'password' ? 'eye' : 'eye-off';
+    loginPasswordToggle.innerHTML = `<i data-lucide="${icon}" class="w-4 h-4"></i>`;
+    initIcons();
+  });
+}
+
 saveApiKeyBtn.addEventListener('click', async () => {
   const key = apiKeyInput.value.trim();
   if (!key) { toast('กรุณาใส่ API Key', 'error'); return; }
@@ -2502,6 +2702,14 @@ async function loadCategories() {
       const subCat = $('summaryCategorySelect');
       if (subCat) {
         subCat.innerHTML = '<option value="all">📚 ทุกหมวดหมู่</option>' +
+          '<option value="unassigned">❔ ยังไม่ได้ระบุ</option>' +
+          state.kbCategories.map(c => `<option value="${c.id}">📁 ${c.name}</option>`).join('');
+      }
+
+      // Populate bulk move dropdown from categories
+      const bulkMove = $('bulkDeptMove');
+      if (bulkMove) {
+        bulkMove.innerHTML = '<option value="">ย้ายหมวดหมู่...</option>' +
           '<option value="unassigned">❔ ยังไม่ได้ระบุ</option>' +
           state.kbCategories.map(c => `<option value="${c.id}">📁 ${c.name}</option>`).join('');
       }
@@ -3088,6 +3296,28 @@ if (bulkDeleteBtn) {
   };
 }
 
+// Bulk move to category handler
+const bulkDeptMove = $('bulkDeptMove');
+if (bulkDeptMove) {
+  bulkDeptMove.addEventListener('change', async () => {
+    const catId = bulkDeptMove.value;
+    if (!catId) return;
+    const cbs = fileList.querySelectorAll('.file-checkbox:checked');
+    if (!cbs.length) { bulkDeptMove.value = ''; return; }
+    if (!confirm(`ย้าย ${cbs.length} ไฟล์ไปยังหมวดหมู่ที่เลือก?`)) { bulkDeptMove.value = ''; return; }
+
+    for (const cb of cbs) {
+      await apiFetch(`/api/files/${cb.dataset.id}/category`, {
+        method: 'PUT',
+        body: JSON.stringify({ category_id: catId === 'unassigned' ? null : catId })
+      });
+    }
+    toast(`ย้ายไฟล์เรียบร้อย ${cbs.length} รายการ`, 'success');
+    bulkDeptMove.value = '';
+    await loadFiles();
+  });
+}
+
 async function deleteFile(fileId) {
   if (!fileId) { console.error('Delete failed: No fileId provided'); return; }
   console.log('🗑️ Attempting to delete file:', fileId);
@@ -3596,6 +3826,17 @@ async function sendMessage(text) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
+
+    // Handle plan/usage limit responses
+    if (response.status === 403) {
+      const errData = await response.json().catch(() => ({}));
+      removeTyping();
+      if (errData.error === 'usage_limit_reached' || errData.error === 'upgrade_required' || errData.error === 'feature_not_available') {
+        showUpgradePrompt(errData);
+        return;
+      }
+      throw new Error(errData.message || 'ไม่มีสิทธิ์เข้าถึง');
+    }
 
     if (!response.ok) throw new Error('Network response was not ok');
 
@@ -4112,12 +4353,18 @@ if (msgInput) {
   });
 }
 
-// Visual Viewport resize handler (works better than window.resize for mobile keyboards)
+// Visual Viewport resize handler — keeps chat input visible when mobile keyboard opens
 if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', () => {
+    const vv = window.visualViewport;
+    const chatWrap = document.getElementById('chatInputContainer');
+    if (chatWrap) {
+      // Push input up by the gap between layout bottom and visual viewport bottom
+      const offsetBottom = window.innerHeight - vv.height - vv.offsetTop;
+      chatWrap.style.paddingBottom = offsetBottom > 0 ? offsetBottom + 'px' : '';
+    }
     if (state.currentView === 'chat') {
-       // Only if already at bottom to avoid jumpy behavior
-       scrollToBottom('auto', true);
+      scrollToBottom('auto', true);
     }
   });
 }
@@ -5326,6 +5573,7 @@ function initSocket() {
 
   socket.on('connect', () => {
     console.log("✅ Socket connected!");
+    _hideConnBanner();
     // Notify backend that user is online
     if (state.user) {
       socket.emit('join', { room: 'user_' + state.user });
@@ -5337,6 +5585,21 @@ function initSocket() {
         username: state.user
       });
     }
+  });
+
+  socket.on('disconnect', (reason) => {
+    console.warn("⚠️ Socket disconnected:", reason);
+    if (reason !== 'io client disconnect') _showConnBanner();
+  });
+
+  socket.on('reconnect_attempt', (n) => {
+    const el = document.getElementById('_connBanner');
+    if (el) el.querySelector('span').textContent = `กำลังเชื่อมต่อใหม่... (${n})`;
+  });
+
+  socket.on('reconnect', () => {
+    _hideConnBanner();
+    toast('เชื่อมต่อสำเร็จแล้วค่ะ', 'success');
   });
 
   socket.on('new_message', (data) => {
@@ -7285,11 +7548,10 @@ async function handleGoogleLogin(response) {
 window.initGoogleSignIn = function () {
   const container = document.getElementById('googleSignInBtn');
   const separator = document.getElementById('googleSignInSeparator');
-  // Use a fallback dummy client_id if not provided, just so the button displays 
-  // (Note: login will fail until a real GOOGLE_CLIENT_ID is set in .env)
-  const clientId = window.GOOGLE_CLIENT_ID || "dummy-client-id.apps.googleusercontent.com";
+  const clientId = window.GOOGLE_CLIENT_ID;
 
   if (!container || typeof google === 'undefined') return;
+  if (!clientId || !clientId.endsWith('.apps.googleusercontent.com')) return;
 
   google.accounts.id.initialize({
     client_id: clientId,
@@ -7318,7 +7580,6 @@ function showLoginError(msg) {
 }
 
 logoutBtn.onclick = async () => {
-  if (!confirm('คุณต้องการออกจากระบบใช่หรือไม่?')) return;
   try {
     const res = await fetch('/api/logout', { method: 'POST' });
     if (res.ok) {
@@ -7647,16 +7908,18 @@ async function switchChat(type, id, name, avatarUrl) {
   }
 
   state.lastRendered.messages = ''; // Reset to force re-render
-  groupChatMessages.innerHTML = `
-    <div class="flex flex-col items-center justify-center py-20 animate-pulse">
-      <div class="w-12 h-12 bg-surface-100 dark:bg-surface-800 rounded-2xl flex items-center justify-center mb-4">
-        <i data-lucide="loader-2" class="w-6 h-6 text-brand-600 animate-spin"></i>
+  if (groupChatMessages) {
+    groupChatMessages.innerHTML = `
+      <div class="flex flex-col items-center justify-center py-20 animate-pulse">
+        <div class="w-12 h-12 bg-surface-100 dark:bg-surface-800 rounded-2xl flex items-center justify-center mb-4">
+          <i data-lucide="loader-2" class="w-6 h-6 text-brand-600 animate-spin"></i>
+        </div>
+        <div class="text-[10px] font-black uppercase tracking-widest opacity-50">กำลังโหลดข้อความ...</div>
       </div>
-      <div class="text-[10px] font-black uppercase tracking-widest opacity-50">กำลังโหลดข้อความ...</div>
-    </div>
-  `;
+    `;
+  }
 
-  chatHeaderName.textContent = name;
+  if (chatHeaderName) chatHeaderName.textContent = name;
   if (chatInputArea) chatInputArea.classList.remove('hidden');
 
   // Reverted mobile view logic: keep both sidebar and main area visible if layout permits
@@ -7664,12 +7927,14 @@ async function switchChat(type, id, name, avatarUrl) {
 
   // Update Avatar & Add Member Button
   if (type === 'room') {
-    if (avatarUrl) {
-      chatHeaderAvatar.innerHTML = `<img src="${avatarUrl}" class="w-full h-full object-cover">`;
-    } else {
-      chatHeaderAvatar.innerHTML = '<i data-lucide="users" class="w-5 h-5"></i>';
+    if (chatHeaderAvatar) {
+      if (avatarUrl) {
+        chatHeaderAvatar.innerHTML = `<img src="${avatarUrl}" class="w-full h-full object-cover">`;
+      } else {
+        chatHeaderAvatar.innerHTML = '<i data-lucide="users" class="w-5 h-5"></i>';
+      }
     }
-    chatHeaderStatus.classList.remove('hidden');
+    chatHeaderStatus?.classList.remove('hidden');
 
     // Show viewMembersBtn for all users in a room
     $('viewMembersBtn')?.classList.remove('hidden');
@@ -7677,11 +7942,11 @@ async function switchChat(type, id, name, avatarUrl) {
     const room = state.chatList.rooms.find(r => r.id == id);
     const deleteGroupBtn = $('deleteGroupBtn');
     if (state.isAdmin || (room && room.owner === state.user)) {
-      addMemberBtn.classList.remove('hidden');
-      editGroupBtn.classList.remove('hidden');
+      addMemberBtn?.classList.remove('hidden');
+      editGroupBtn?.classList.remove('hidden');
     } else {
-      addMemberBtn.classList.add('hidden');
-      editGroupBtn.classList.add('hidden');
+      addMemberBtn?.classList.add('hidden');
+      editGroupBtn?.classList.add('hidden');
     }
     // Delete button: admin only
     if (deleteGroupBtn) {
@@ -7692,14 +7957,16 @@ async function switchChat(type, id, name, avatarUrl) {
       }
     }
   } else {
-    if (avatarUrl) {
-      chatHeaderAvatar.innerHTML = `<img src="${avatarUrl}" class="w-full h-full object-cover">`;
-    } else {
-      chatHeaderAvatar.innerHTML = '<i data-lucide="user" class="w-5 h-5"></i>';
+    if (chatHeaderAvatar) {
+      if (avatarUrl) {
+        chatHeaderAvatar.innerHTML = `<img src="${avatarUrl}" class="w-full h-full object-cover">`;
+      } else {
+        chatHeaderAvatar.innerHTML = '<i data-lucide="user" class="w-5 h-5"></i>';
+      }
     }
-    chatHeaderStatus.classList.add('hidden');
-    addMemberBtn.classList.add('hidden');
-    editGroupBtn.classList.add('hidden');
+    chatHeaderStatus?.classList.add('hidden');
+    addMemberBtn?.classList.add('hidden');
+    editGroupBtn?.classList.add('hidden');
     $('deleteGroupBtn')?.classList.add('hidden');
     $('viewMembersBtn')?.classList.add('hidden');
 
@@ -8470,8 +8737,16 @@ function renderDmUserList(users) {
 }
 
 function startPrivateChat(username, displayName) {
-  startDmModal.classList.add('hidden');
-  startDmModal.classList.remove('flex', 'items-center', 'justify-center');
+  if (startDmModal) {
+    startDmModal.classList.add('hidden');
+    startDmModal.classList.remove('flex', 'items-center', 'justify-center');
+  }
+  
+  // Ensure we are in the chat view when starting a private chat
+  if (typeof switchView === 'function' && state.currentView !== 'chat') {
+    switchView('chat');
+  }
+  
   switchChat('dm', username, displayName);
 }
 
@@ -8499,6 +8774,11 @@ async function initAppContent() {
     // Load dashboard data (including weather) on init
     await loadDashboard();
     console.log("✅ App Content Loaded.");
+    
+    // Switch to default home dashboard view instead of showing a blank screen
+    if (typeof switchView === 'function') {
+      switchView('home');
+    }
   } catch (e) {
     console.error("Content Load Failure:", e);
   }
@@ -9084,6 +9364,20 @@ async function init() {
       const now = new Date();
       realtimeClock.textContent = now.toLocaleTimeString('th-TH', { hour12: false });
     }, 1000);
+  }
+
+  // Handle Google OAuth return
+  const _urlParams = new URLSearchParams(window.location.search);
+  if (_urlParams.has('google_connected') || _urlParams.has('google_cancelled') || _urlParams.has('google_error')) {
+    history.replaceState({}, '', '/');
+    if (_urlParams.get('google_connected') === '1') {
+      toast('เชื่อมต่อ Google สำเร็จ!', 'success');
+      if (typeof loadGoogleDriveStatus === 'function') loadGoogleDriveStatus();
+    } else if (_urlParams.get('google_cancelled') === '1') {
+      if (typeof loadGoogleDriveStatus === 'function') loadGoogleDriveStatus();
+    } else if (_urlParams.get('google_error') === '1') {
+      toast('เชื่อมต่อ Google ไม่สำเร็จ กรุณาลองใหม่', 'error');
+    }
   }
 }
 
@@ -10526,6 +10820,15 @@ ${JSON.stringify(dataSnippet)}
 async function renderHomeDashboard() {
   const nameSpan = $('dash-user-name');
   if (nameSpan && state.user) nameSpan.textContent = state.user.display_name || state.user.username;
+
+  const greetTextEl = $('dashGreetingText');
+  if (greetTextEl) {
+    const hour = new Date().getHours();
+    if (hour >= 5 && hour < 12) greetTextEl.textContent = 'สวัสดียามเช้า';
+    else if (hour >= 12 && hour < 17) greetTextEl.textContent = 'สวัสดียามบ่าย';
+    else if (hour >= 17 && hour < 21) greetTextEl.textContent = 'สวัสดียามเย็น';
+    else greetTextEl.textContent = 'สวัสดียามค่ำ';
+  }
 
   const content = $('home-digest-content');
   if (content) {
@@ -13983,6 +14286,11 @@ async function initAppContent() {
         // 3. Final UI cleanup
         initIcons();
         console.log('Dashboard initialized successfully.');
+
+        // Switch to default home dashboard view instead of showing a blank screen
+        if (typeof switchView === 'function') {
+            switchView('home');
+        }
     } catch (e) {
         console.error('Failed to initialize dashboard content:', e);
     }
@@ -14791,3 +15099,172 @@ window.deleteLunchPlace = deleteLunchPlace;
 window.showWeatherDetail = showWeatherDetail;
 window.fetchWeather = fetchWeather;
 window.updateSystemStatus = updateSystemStatus;
+
+// ═══════════════════════════════════════════════════════════════
+// Google Drive & Sheets Per-User Connection (OAuth2)
+// ═══════════════════════════════════════════════════════════════
+
+async function loadGoogleDriveStatus() {
+  const loading = $('googleConnectLoading');
+  const notConnected = $('googleNotConnected');
+  const connected = $('googleConnected');
+  const notConfigured = $('googleOAuthNotConfigured');
+
+  if (!loading) return; // Section not present
+
+  // Show loading
+  loading.classList.remove('hidden');
+  notConnected.classList.add('hidden');
+  connected.classList.add('hidden');
+
+  try {
+    const data = await apiFetch('/api/auth/google/status');
+
+    loading.classList.add('hidden');
+
+    if (data.connected) {
+      // Show connected state
+      connected.classList.remove('hidden');
+      notConnected.classList.add('hidden');
+
+      if ($('googleConnectedEmail')) {
+        $('googleConnectedEmail').textContent = data.email || '—';
+      }
+      if ($('googleSheetLink') && data.spreadsheet_url) {
+        $('googleSheetLink').href = data.spreadsheet_url;
+      }
+      if ($('googleDriveLink') && data.drive_folder_url) {
+        $('googleDriveLink').href = data.drive_folder_url;
+      }
+    } else {
+      // Show not connected state
+      notConnected.classList.remove('hidden');
+      connected.classList.add('hidden');
+
+      // Check if OAuth2 is configured
+      if (data.oauth2_available === false && notConfigured) {
+        notConfigured.classList.remove('hidden');
+        if ($('googleConnectBtn')) {
+          $('googleConnectBtn').classList.add('opacity-50', 'pointer-events-none');
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Failed to check Google connection:', err);
+    loading.classList.add('hidden');
+    notConnected.classList.remove('hidden');
+  }
+
+  lucide.createIcons();
+}
+
+async function disconnectGoogleDrive() {
+  if (!confirm('ต้องการยกเลิกการเชื่อมต่อ Google Drive & Sheets หรือไม่?\n\nข้อมูลที่บันทึกไว้ใน Google Sheets ของคุณจะยังอยู่ แต่ระบบจะไม่เขียนข้อมูลใหม่ลงไปอีก')) {
+    return;
+  }
+
+  const btn = $('googleDisconnectBtn');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> กำลังยกเลิก...';
+    lucide.createIcons();
+  }
+
+  try {
+    const res = await apiFetch('/api/auth/google/disconnect', {
+      method: 'POST'
+    });
+
+    if (res.ok) {
+      toast('ยกเลิกการเชื่อมต่อ Google สำเร็จ', 'success');
+      loadGoogleDriveStatus();
+    } else {
+      toast('เกิดข้อผิดพลาด: ' + (res.error || 'Unknown'), 'error');
+    }
+  } catch (err) {
+    toast('ไม่สามารถยกเลิกการเชื่อมต่อได้', 'error');
+    console.error('Disconnect error:', err);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i data-lucide="unplug" class="w-4 h-4"></i> ยกเลิกการเชื่อมต่อ Google';
+      lucide.createIcons();
+    }
+  }
+}
+
+window.disconnectGoogleDrive = disconnectGoogleDrive;
+window.loadGoogleDriveStatus = loadGoogleDriveStatus;
+
+// ─── Upgrade Prompt ───────────────────────────────────────────────────────────
+function showUpgradePrompt(errData) {
+  const existing = document.getElementById('upgradeModal');
+  if (existing) existing.remove();
+
+  const planLabel = { free: 'Free', pro: 'Pro', business: 'Business' };
+  const current = planLabel[errData.current_plan] || errData.current_plan || 'Free';
+  const isUsage = errData.error === 'usage_limit_reached';
+
+  const titleText  = isUsage ? 'โควต้าหมดแล้ว' : 'ฟีเจอร์นี้ต้องการ Plan สูงกว่า';
+  const bodyText   = errData.message || 'กรุณาอัปเกรด Plan เพื่อใช้งานต่อ';
+  const usageHtml  = isUsage && errData.limit > 0 ? `
+    <div class="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 mb-4">
+      <div class="flex-1">
+        <p class="text-xs text-slate-500 font-medium mb-1">การใช้งานเดือนนี้</p>
+        <div class="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+          <div class="h-full bg-rose-500 rounded-full" style="width:100%"></div>
+        </div>
+      </div>
+      <span class="text-xs font-bold text-rose-600 whitespace-nowrap">${errData.used}/${errData.limit}</span>
+    </div>` : '';
+
+  const modal = document.createElement('div');
+  modal.id = 'upgradeModal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;background:rgba(15,23,42,0.45);backdrop-filter:blur(4px)';
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:1.25rem;max-width:380px;width:100%;padding:1.75rem;box-shadow:0 20px 60px rgba(15,23,42,0.2);font-family:Outfit,Sarabun,sans-serif;">
+      <div style="display:flex;align-items:flex-start;gap:0.875rem;margin-bottom:1rem;">
+        <div style="width:2.5rem;height:2.5rem;background:#fef3c7;border:1.5px solid #fde68a;border-radius:0.75rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        </div>
+        <div>
+          <p style="font-size:0.75rem;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.25rem;">Plan ${current}</p>
+          <h3 style="font-size:1.05rem;font-weight:800;color:#0f172a;line-height:1.3;">${titleText}</h3>
+        </div>
+      </div>
+      <p style="font-size:0.875rem;color:#475569;margin-bottom:1rem;line-height:1.6;">${bodyText}</p>
+      ${usageHtml}
+      <div style="display:flex;gap:0.625rem;">
+        <a href="/pricing" style="flex:1;padding:0.625rem;text-align:center;font-size:0.875rem;font-weight:700;color:#fff;background:#059669;border-radius:0.75rem;text-decoration:none;transition:background 0.15s;" onmouseover="this.style.background='#047857'" onmouseout="this.style.background='#059669'">
+          อัปเกรด Plan
+        </a>
+        <button onclick="document.getElementById('upgradeModal').remove()" style="flex:1;padding:0.625rem;font-size:0.875rem;font-weight:600;color:#475569;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:0.75rem;cursor:pointer;">
+          ปิด
+        </button>
+      </div>
+    </div>`;
+
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+
+  // Re-enable send button
+  const sendBtn = document.getElementById('sendBtn');
+  const msgInput = document.getElementById('msgInput');
+  if (sendBtn) sendBtn.disabled = false;
+  if (msgInput) { msgInput.disabled = false; msgInput.focus(); }
+  if (typeof state !== 'undefined') state.sending = false;
+}
+
+// ─── Connection banner ────────────────────────────────────────────────────────
+function _showConnBanner() {
+  if (document.getElementById('_connBanner')) return;
+  const el = document.createElement('div');
+  el.id = '_connBanner';
+  el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#dc2626;color:#fff;text-align:center;padding:0.5rem 1rem;font-size:0.8rem;font-weight:700;display:flex;align-items:center;justify-content:center;gap:0.5rem;';
+  el.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M1 1l22 22M16.72 11.06A10.94 10.94 0 0 1 19 12.55M5 12.55a10.94 10.94 0 0 1 5.17-2.39M10.71 5.05A16 16 0 0 1 22.56 9M1.42 9a15.91 15.91 0 0 1 4.7-2.88M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/></svg><span>การเชื่อมต่อขาดหาย — กำลังเชื่อมต่อใหม่...</span>';
+  document.body.prepend(el);
+}
+function _hideConnBanner() {
+  const el = document.getElementById('_connBanner');
+  if (el) el.remove();
+}

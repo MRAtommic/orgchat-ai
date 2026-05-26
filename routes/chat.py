@@ -2189,10 +2189,10 @@ def process_line_event(event_data):
                 if not _ok:
                     now = time.time()
                     cache_key = f"limit_warn_{_org_id}_{user_id}"
-                    _cache = getattr(app, "_limit_warn_cache", {})
+                    _cache = getattr(current_app, "_limit_warn_cache", {})
                     if now - _cache.get(cache_key, 0) > 10:
                         _cache[cache_key] = now
-                        app._limit_warn_cache = _cache
+                        current_app._limit_warn_cache = _cache
                         msg = f"❌ ใช้โควต้าบันทึกบิลครบ {_limit} รายการในเดือนนี้แล้วค่ะ\nหากต้องการเพิ่มจำนวน กรุณาอัปเกรดแพ็กเกจนะคะ"
                         reply_to_line(reply_token, msg)
                     return "OK", 200
@@ -5275,7 +5275,7 @@ def chat():
             print(f"Error in chat stream: {e}")
             yield f"data: {json.dumps({'error': error_msg})}\n\n"
 
-    return app.response_class(generate(), mimetype='text/event-stream')
+    return current_app.response_class(generate(), mimetype='text/event-stream')
 
 
 @chat_bp.route("/api/chat/typing", methods=["POST"])

@@ -8,6 +8,7 @@ if hasattr(sys.stderr, 'reconfigure'):
 
 import sqlite3
 import json
+import os
 from pathlib import Path
 try:
     import bcrypt
@@ -18,7 +19,7 @@ except ImportError:
     print("❌ FATAL: bcrypt not installed — cannot start safely. Run: pip install bcrypt", file=sys.stderr)
     sys.exit(1)
 
-DB_PATH = Path("chat_history.db")
+DB_PATH = Path(os.environ.get("DB_PATH", "chat_history.db"))
 
 
 def hash_password(password: str) -> str:

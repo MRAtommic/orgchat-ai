@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>แพลนของฉัน — OrgChat AI</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Sarabun:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { font-family: 'Outfit', 'Sarabun', sans-serif; }
+        .stat-card { background:#fff; border:1px solid #e2e8f0; border-radius:1rem; }
+        .usage-bar-bg { background:#f1f5f9; border-radius:9999px; height:6px; overflow:hidden; }
+        .usage-bar-fill { height:100%; border-radius:9999px; transition: width 0.8s ease; }
+        @keyframes spin { to { transform:rotate(360deg); } }
+        .spinning { animation: spin 0.8s linear infinite; }
+        .btn-primary { background:#059669; color:#fff; border-radius:.75rem; font-weight:700; padding:.625rem 1.25rem; font-size:.875rem; transition:background .15s; border:none; cursor:pointer; }
+        .btn-primary:hover { background:#047857; }
+        .btn-primary:disabled { background:#a7f3d0; cursor:not-allowed; }
+        .btn-ghost { background:#f1f5f9; color:#475569; border-radius:.75rem; font-weight:600; padding:.625rem 1.25rem; font-size:.875rem; border:1px solid #e2e8f0; cursor:pointer; transition:background .15s; }
+        .btn-ghost:hover { background:#e2e8f0; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+    <!-- NAV -->
+    <nav class="bg-white border-b border-slate-200 px-6 py-3.5">
+        <div class="max-w-4xl mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 bg-emerald-600 rounded-xl flex items-center justify-center">
+                    <i data-lucide="zap" class="w-4 h-4 text-white"></i>
+                </div>
+                <span class="text-base font-bold text-slate-900">OrgChat AI</span>
+            </div>
+            <div class="flex items-center gap-3">
+                <a href="/" class="text-sm font-semibold text-slate-500 hover:text-slate-700 transition flex items-center gap-1.5">
+                    <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> กลับหน้าหลัก
+                </a>
+                <a href="/pricing" class="text-sm font-semibold text-emerald-600 hover:text-emerald-700 transition">ดูทุก Plan</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Payment result banner -->
+    <div id="paymentBanner" class="hidden max-w-4xl mx-auto px-4 pt-5"></div>
+
+    <main class="max-w-4xl mx-auto px-4 py-8 space-y-5" id="mainContent">
+        <div class="py-24 flex flex-col items-center gap-3">
+            <div class="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full spinning"></div>
+            <p class="text-sm text-slate-400">กำลังโหลดข้อมูลแพลน...</p>
+        </div>
+    </main>
+
+    <script>
+        const PLAN_COLOR = { free:'#64748b', pro:'#059669', business:'#0f172a' };
+        const PLAN_LABEL = { free:'Free', pro:'Pro', business:'Ultra' };
+        const PLAN_PRICE = { free:'฿0', pro:'฿299', business:'฿599' };
+
+        window.onload = function() {
+            lucide.createIcons();
+            handlePaymentReturn();
+            loadBillingStatus();
+        };
+
+        // ─── Handle redirect back from Stripe ────────────────────────────────
+        function handlePaymentReturn() {
+            const params = new URLSearchParams(location.search);
+            const result = params.get('payment');
+            const plan   = params.get('plan');
+            const banner = document.getElementById('paymentBanner');
+
+            if (result === 'success') {
+                banner.className = 'max-w-4xl mx-auto px-4 pt-5';
+                banner.innerHTML = `
+                    <div class="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-sm">
+                        <div class="w-8 h-8 bg-emerald-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <i data-lucide="check-circle" class="w-4 h-4 text-emerald-600"></i>
+                        </div>
+                        <div>
+                            <p class="font-bold text-emerald-800">ชำระเงินสำเร็จ!</p>
+                            <p class="text-emerald-600 text-xs mt-0.5">Plan ของคุณถูกอัปเกรดเป็น <strong>${PLAN_LABEL[plan] || plan}</strong> แล้วค่ะ ระบบจะอัปเดตภายใน 1-2 นาที</p>
+                        </div>
+                    </div>`;
+                lucide.createIcons();
+                history.replaceState({}, '', '/billing');
+            } else if (result === 'cancel') {
+                banner.className = 'max-w-4xl mx-auto px-4 pt-5';
+                banner.innerHTML = `
+                    <div class="flex items-center gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm">
+                        <i data-lucide="info" class="w-4 h-4 text-amber-500 flex-shrink-0"></i>
+                        <p class="text-amber-700">ยกเลิกการชำระเงินแล้วค่ะ ยังสามารถอัปเกรดได้ทุกเมื่อ</p>
+                    </div>`;
+                lucide.createIcons();
+                history.replaceState({}, '', '/billing');
+            }
+        }
+
+        // ─── Load billing data ────────────────────────────────────────────────
+        function loadBillingStatus() {
+            fetch('/api/billing/status')
+                .then(r => r.json())
+                .then(data => {
+                    if (!data.ok) { showError(data.error); return; }
+                    renderBilling(data);
+                })
+                .catch(e => showError(e.message));
+        }
+
+        function renderBilling(d) {
+            const main = document.getElementById('mainContent');
+            const plan  = d.plan;
+            const usage = d.usage;
+            const color = PLAN_COLOR[plan] || '#64748b';
+            const isPaid = plan !== 'free';
+
+            const expiresHtml = d.plan_expires_at
+                ? `<span class="text-xs text-slate-400 font-medium">ต่ออายุ: ${fmtDate(d.plan_expires_at)}</span>`
+                : (isPaid ? `<span class="text-xs text-emerald-600 font-medium">ไม่มีกำหนดหมดอายุ</span>` : '');
+
+            const expiredBadge = d.is_expired
+                ? `<span class="ml-2 text-xs text-rose-500 font-bold bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">หมดอายุ</span>` : '';
+
+            // Action buttons
+            let actionHtml = '';
+            if (plan === 'free') {
+                actionHtml = `
+                    <button onclick="checkout('pro')"   id="btn-pro"      class="btn-primary">อัปเกรดเป็น Pro — ฿299/เดือน</button>
+                    <button onclick="checkout('business')" id="btn-business" class="btn-ghost">Ultra — ฿599/เดือน</button>`;
+            } else if (plan === 'pro') {
+                actionHtml = `
+                    <button onclick="checkout('business')" id="btn-business" class="btn-primary">อัปเกรดเป็น Ultra — ฿599/เดือน</button>
+                    <button onclick="openPortal()" class="btn-ghost">จัดการ Subscription</button>`;
+            } else {
+                actionHtml = `<button onclick="openPortal()" class="btn-ghost">จัดการ Subscription</button>`;
+            }
+
+            main.innerHTML = `
+            <!-- Plan Header -->
+            <div class="stat-card p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 rounded-2xl flex items-center justify-center" style="background:${color}15;border:1.5px solid ${color}30">
+                        <i data-lucide="${plan==='business'?'building-2':plan==='pro'?'zap':'star'}" class="w-5 h-5" style="color:${color}"></i>
+                    </div>
+                    <div>
+                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">แพลนปัจจุบัน</p>
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <h1 class="text-2xl font-extrabold text-slate-900">${PLAN_LABEL[plan] || plan}</h1>
+                            ${expiredBadge}
+                        </div>
+                        ${expiresHtml}
+                    </div>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    ${actionHtml}
+                    <a href="/pricing" class="btn-ghost">ดูทุก Plan</a>
+                </div>
+            </div>
+
+            <!-- Usage -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                ${usageCard('บันทึกค่าใช้จ่าย', usage.expenses, 'receipt', 'รายการ/เดือน')}
+                ${usageCard('AI ถามตอบ', usage.ai_queries, 'message-circle', 'ครั้ง/เดือน')}
+            </div>
+
+            <!-- Features -->
+            <div class="stat-card p-6">
+                <h3 class="text-sm font-bold text-slate-700 uppercase tracking-widest mb-5">รายละเอียด Plan</h3>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    ${limitBadge('สมาชิกสูงสุด', usage.max_users)}
+                    ${limitBadge('Knowledge Base', usage.kb_files)}
+                    ${featureBadge('Google Sheets', d.features.google_sheets)}
+                    ${featureBadge('LINE Bot', d.features.line_bot)}
+                    ${featureBadge('Dashboard', d.features.financial_dashboard)}
+                    ${featureBadge('Export รายงาน', d.features.export)}
+                    ${featureBadge('Priority Support', d.features.priority_support)}
+                </div>
+            </div>
+
+            <!-- Stripe note -->
+            <div class="text-center py-2">
+                <p class="text-xs text-slate-400">
+                    ชำระเงินปลอดภัยด้วย
+                    <strong class="text-slate-600">Stripe</strong> —
+                    รองรับบัตรเครดิต Visa/Mastercard •
+                    <a href="mailto:contact@orgchat.ai" class="text-emerald-600 hover:underline font-semibold">ติดต่อทีมงาน</a>
+                    สำหรับ PromptPay หรือใบแจ้งหนี้
+                </p>
+            </div>`;
+
+            lucide.createIcons();
+        }
+
+        // ─── Checkout ────────────────────────────────────────────────────────
+        async function checkout(plan) {
+            const btn = document.getElementById(`btn-${plan}`);
+            const originalText = btn ? (btn.dataset.label || btn.textContent) : 'อัปเกรด';
+            if (btn) { btn.disabled = true; btn.textContent = 'กำลังโหลด...'; }
+
+            try {
+                const res = await fetch('/api/b/c', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plan })
+                });
+
+                if (res.status === 401) {
+                    window.location.href = `/signup?plan=${plan}`;
+                    return;
+                }
+
+                let data;
+                try {
+                    data = await res.json();
+                } catch (jsonErr) {
+                    const txt = await res.text();
+                    console.error("Non-JSON Response:", txt);
+                    alert(`ไม่สามารถเชื่อมต่อระบบชำระเงินได้ (Status: ${res.status}). รายละเอียด: ${txt.substring(0, 100)}`);
+                    if (btn) { btn.disabled = false; btn.textContent = originalText; }
+                    return;
+                }
+
+                if (data.ok && data.url) {
+                    window.location.href = data.url;
+                } else {
+                    alert('เกิดข้อผิดพลาด: ' + (data.error || 'ไม่ทราบสาเหตุ'));
+                    if (btn) { btn.disabled = false; btn.textContent = originalText; }
+                }
+            } catch (e) {
+                console.error("Checkout fetch error:", e);
+                alert('เกิดข้อผิดพลาด: ' + e.message);
+                if (btn) { btn.disabled = false; btn.textContent = originalText; }
+            }
+        }
+
+        // ─── Stripe Customer Portal ───────────────────────────────────────────
+        async function openPortal() {
+            try {
+                const res = await fetch('/api/b/p', { method: 'POST' });
+                
+                let data;
+                try {
+                    data = await res.json();
+                } catch (jsonErr) {
+                    const txt = await res.text();
+                    console.error("Non-JSON Response:", txt);
+                    alert(`ไม่สามารถเปิด Subscription Portal ได้ (Status: ${res.status}). รายละเอียด: ${txt.substring(0, 100)}`);
+                    return;
+                }
+
+                if (data.ok && data.url) {
+                    window.location.href = data.url;
+                } else {
+                    alert('ไม่สามารถเปิด Subscription Portal ได้: ' + (data.error || ''));
+                }
+            } catch (e) {
+                console.error("OpenPortal fetch error:", e);
+                alert('เกิดข้อผิดพลาด: ' + e.message);
+            }
+        }
+
+        // ─── UI helpers ──────────────────────────────────────────────────────
+        function usageCard(label, stat, icon, unit) {
+            const unlimited = stat.limit === -1;
+            const pct = unlimited ? 0 : Math.min(stat.pct, 100);
+            const barColor = pct >= 90 ? '#ef4444' : pct >= 70 ? '#f59e0b' : '#059669';
+            const limitLabel = unlimited
+                ? `<span class="text-emerald-600 font-bold text-xs">ไม่จำกัด</span>`
+                : `<span class="text-slate-400 text-xs">/ ${stat.limit.toLocaleString()} ${unit}</span>`;
+
+            return `
+            <div class="stat-card p-5">
+                <div class="flex items-center gap-2 mb-3">
+                    <i data-lucide="${icon}" class="w-4 h-4 text-slate-400"></i>
+                    <p class="text-xs font-bold text-slate-500 uppercase tracking-wider">${label}</p>
+                </div>
+                <div class="flex items-baseline gap-1.5 mb-3">
+                    <span class="text-2xl font-extrabold text-slate-900">${stat.used.toLocaleString()}</span>
+                    ${limitLabel}
+                </div>
+                <div class="usage-bar-bg">
+                    <div class="usage-bar-fill" style="width:${unlimited?100:pct}%;background:${unlimited?'#d1fae5':barColor};"></div>
+                </div>
+                <p class="text-[10px] mt-1.5 font-medium text-right ${unlimited?'text-emerald-500':'text-slate-400'}">
+                    ${unlimited ? 'Unlimited' : pct + '% ของโควต้า'}
+                </p>
+            </div>`;
+        }
+
+        function limitBadge(label, val) {
+            const display = val === -1 ? 'ไม่จำกัด' : val.toLocaleString();
+            return `
+            <div class="bg-slate-50 border border-slate-100 rounded-xl p-3 text-center">
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">${label}</p>
+                <p class="text-lg font-extrabold ${val===-1?'text-emerald-600':'text-slate-800'}">${display}</p>
+            </div>`;
+        }
+
+        function featureBadge(label, enabled) {
+            return `
+            <div class="bg-slate-50 border border-slate-100 rounded-xl p-3 text-center">
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">${label}</p>
+                ${enabled
+                    ? `<span class="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full"><i data-lucide="check" class="w-3 h-3"></i>รวมอยู่</span>`
+                    : `<span class="inline-flex items-center gap-1 text-[11px] font-bold text-slate-400 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-full"><i data-lucide="x" class="w-3 h-3"></i>ไม่รวม</span>`
+                }
+            </div>`;
+        }
+
+        function fmtDate(iso) {
+            try { return new Date(iso).toLocaleDateString('th-TH', {year:'numeric',month:'long',day:'numeric'}); }
+            catch { return iso; }
+        }
+
+        function showError(msg) {
+            document.getElementById('mainContent').innerHTML =
+                `<div class="py-24 text-center text-rose-400 text-sm">เกิดข้อผิดพลาด: ${msg}</div>`;
+        }
+    </script>
+</body>
+</html>

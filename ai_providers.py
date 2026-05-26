@@ -21,6 +21,9 @@ class AIProvider:
         raise NotImplementedError
 
 class GeminiProvider(AIProvider):
+    _cached_models = []
+    _cache_time = 0
+
     def __init__(self, api_key: str):
         self.api_key = api_key
         self.backup_key = os.environ.get("GEMINI_API_KEY_BACKUP")
@@ -28,6 +31,34 @@ class GeminiProvider(AIProvider):
             self.client = genai.Client(api_key=api_key)
         else:
             old_genai.configure(api_key=api_key)
+
+    def _get_active_models(self) -> list:
+        if not HAS_NEW_SDK or not self.client:
+            return []
+        
+        import time
+        now = time.time()
+        # Cache for 1 hour to prevent API overhead
+        if GeminiProvider._cached_models and (now - GeminiProvider._cache_time < 3600):
+            return GeminiProvider._cached_models
+
+        try:
+            models_list = list(self.client.models.list())
+            fetched_ids = []
+            for m in models_list:
+                name = getattr(m, 'name', '') or getattr(m, 'model_id', '')
+                if name:
+                    if name.startswith("models/"):
+                        name = name[len("models/"):]
+                    fetched_ids.append(name)
+            
+            if fetched_ids:
+                GeminiProvider._cached_models = fetched_ids
+                GeminiProvider._cache_time = now
+                return fetched_ids
+        except Exception as e:
+            print(f"⚠️ Gemini failed to fetch active models: {e}", flush=True)
+        return []
 
     def chat_stream(self, question: str, history: list, system_prompt: str, 
                     image_data: bytes = None, mime_type: str = "image/jpeg"):
@@ -42,12 +73,48 @@ class GeminiProvider(AIProvider):
                 contents = [types.Content(role="user", parts=parts)]
                 config = types.GenerateContentConfig(system_instruction=system_prompt, temperature=0.7)
                 
-                # 🚀 Gemini 3.x เป็นมาตรฐานความเสถียรของปี 2026
-                models = [
-                    "gemini-3.1-flash-lite", 
-                    "gemini-3.1-pro-preview", 
-                    "gemini-2.5-flash"
-                ]
+                active_ids = self._get_active_models()
+                if active_ids:
+                    dynamic_models = []
+                    # Ranking of preferred Gemini models in 2026
+                    patterns = [
+                        "gemini-3.5-flash",
+                        "gemini-3.1-flash-lite",
+                        "gemini-3.1-pro",
+                        "gemini-3-flash",
+                        "gemini-3-pro",
+                        "gemini-2.5-flash",
+                        "gemini-2.5-pro",
+                        "gemini-2.0-flash-lite",
+                        "gemini-2.0-flash",
+                        "gemini-flash-lite",
+                        "gemini-flash"
+                    ]
+                    for pattern in patterns:
+                        for m in active_ids:
+                            m_lower = m.lower()
+                            # Filter out non-text/specialized models
+                            if any(x in m_lower for x in ["embedding", "imagen", "veo", "lyria", "aqa", "audio", "tts", "image"]):
+                                continue
+                            if pattern in m_lower and m not in dynamic_models:
+                                dynamic_models.append(m)
+                    
+                    for m in active_ids:
+                        m_lower = m.lower()
+                        if any(x in m_lower for x in ["embedding", "imagen", "veo", "lyria", "aqa", "audio", "tts", "image"]):
+                            continue
+                        if m not in dynamic_models:
+                            dynamic_models.append(m)
+                    
+                    if not dynamic_models:
+                        dynamic_models = ["gemini-3.1-flash-lite", "gemini-3.1-pro-preview", "gemini-2.5-flash"]
+                    models = dynamic_models
+                else:
+                    models = [
+                        "gemini-3.1-flash-lite", 
+                        "gemini-3.1-pro-preview", 
+                        "gemini-2.5-flash"
+                    ]
                 for model in models:
                     try:
                         for chunk in self.client.models.generate_content_stream(model=model, contents=contents, config=config):
@@ -80,16 +147,37 @@ class GeminiProvider(AIProvider):
             yield from groq.chat_stream(question, history, system_prompt, image_data, mime_type)
 
 class GroqProvider(AIProvider):
+    _cached_models = []
+    _cache_time = 0
+
     def __init__(self, api_key: str):
         self.api_key = api_key
         self.url = "https://api.groq.com/openai/v1/chat/completions"
 
+    def _get_active_models(self, api_key: str) -> list:
+        import time
+        now = time.time()
+        # Cache for 1 hour to prevent API overhead
+        if GroqProvider._cached_models and (now - GroqProvider._cache_time < 3600):
+            return GroqProvider._cached_models
+
+        models_url = "https://api.groq.com/openai/v1/models"
+        headers = {"Authorization": f"Bearer {api_key}"}
+        try:
+            response = requests.get(models_url, headers=headers, timeout=5)
+            if response.status_code == 200:
+                data = response.json().get("data", [])
+                fetched_ids = [m["id"] for m in data if "id" in m]
+                if fetched_ids:
+                    GroqProvider._cached_models = fetched_ids
+                    GroqProvider._cache_time = now
+                    return fetched_ids
+        except Exception as e:
+            print(f"⚠️ Groq failed to fetch active models: {e}", flush=True)
+        return []
+
     def chat_stream(self, question: str, history: list, system_prompt: str, 
                     image_data: bytes = None, mime_type: str = "image/jpeg"):
-        if not self.api_key:
-            yield "❌ GROQ_API_KEY is missing."
-            return
-
         messages = [{"role": "system", "content": system_prompt}]
         for msg in history[-5:]:
             role = "user" if msg.get("role") == "user" else "assistant"
@@ -105,155 +193,189 @@ class GroqProvider(AIProvider):
                     {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{base64_image}"}}
                 ]
             })
-            # 🚀 โมเดล Vision ที่ผ่านการตรวจสอบ (ปี 2026)
-            models_to_try = [
-                "meta-llama/llama-4-scout-17b-16e-instruct"
-            ]
+
         else:
             messages.append({"role": "user", "content": question})
-            models_to_try = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
 
-        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
-        
-        for model in models_to_try:
-            try:
-                print(f"🌀 Attempting Groq ({model})...", flush=True)
-                payload = {"model": model, "messages": messages, "stream": True}
-                response = requests.post(self.url, headers=headers, json=payload, stream=True, timeout=30)
-                
-                if response.status_code == 200:
-                    for line in response.iter_lines():
-                        if line:
-                            line_str = line.decode('utf-8').replace('data: ', '')
-                            if line_str == '[DONE]': break
-                            try:
-                                data = json.loads(line_str)
-                                content = data['choices'][0]['delta'].get('content', '')
-                                if content: yield content
-                            except: continue
-                    return # Success
+        # Determine keys to try (support dynamic key fallback)
+        keys_to_try = []
+        if self.api_key:
+            keys_to_try.append(self.api_key)
+        backup_key = os.environ.get("GROQ_API_KEY_BACKUP")
+        if backup_key and backup_key not in keys_to_try:
+            keys_to_try.append(backup_key)
+
+        if not keys_to_try:
+            yield "❌ GROQ_API_KEY is missing."
+            return
+
+        for active_key in keys_to_try:
+            # Try to get active models dynamically from the Groq API for this key
+            active_ids = self._get_active_models(active_key)
+            
+            if active_ids:
+                if image_data:
+                    dynamic_models = []
+                    for pattern in ["llama-4-scout", "llama-3.2", "vision"]:
+                        for m in active_ids:
+                            if pattern in m.lower() and m not in dynamic_models:
+                                dynamic_models.append(m)
+                    for m in active_ids:
+                        if "vision" in m.lower() and m not in dynamic_models:
+                            dynamic_models.append(m)
+                    if not dynamic_models:
+                        dynamic_models = ["meta-llama/llama-4-scout-17b-16e-instruct"]
                 else:
-                    print(f"❌ Groq {model} Error: {response.status_code} {response.text}", flush=True)
+                    dynamic_models = []
+                    patterns = [
+                        "llama-3.3-70b", 
+                        "llama-4-70b", 
+                        "gpt-oss-120b", 
+                        "llama-3.1-70b",
+                        "llama-3.1-8b", 
+                        "llama-3.3", 
+                        "gpt-oss",
+                        "qwen3", 
+                        "qwen", 
+                        "llama", 
+                        "mixtral"
+                    ]
+                    for pattern in patterns:
+                        for m in active_ids:
+                            m_lower = m.lower()
+                            if any(x in m_lower for x in ["whisper", "guard", "saudi", "arabic", "compound"]):
+                                continue
+                            if pattern in m_lower and m not in dynamic_models:
+                                dynamic_models.append(m)
+                    for m in active_ids:
+                        m_lower = m.lower()
+                        if any(x in m_lower for x in ["whisper", "guard", "saudi", "arabic", "compound"]):
+                            continue
+                        if m not in dynamic_models:
+                            dynamic_models.append(m)
+                    if not dynamic_models:
+                        dynamic_models = ["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "llama-3.1-8b-instant"]
+                
+                models_to_try = dynamic_models
+            else:
+                if image_data:
+                    models_to_try = ["meta-llama/llama-4-scout-17b-16e-instruct"]
+                else:
+                    models_to_try = ["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "llama-3.1-8b-instant"]
+
+            headers = {"Authorization": f"Bearer {active_key}", "Content-Type": "application/json"}
+            key_worked = False
+            
+            for model in models_to_try:
+                try:
+                    print(f"🌀 Attempting Groq ({model}) with key {active_key[:10]}...", flush=True)
+                    payload = {"model": model, "messages": messages, "stream": True}
+                    response = requests.post(self.url, headers=headers, json=payload, stream=True, timeout=30)
+                    
+                    if response.status_code == 200:
+                        key_worked = True
+                        for line in response.iter_lines():
+                            if line:
+                                line_str = line.decode('utf-8').replace('data: ', '')
+                                if line_str == '[DONE]': break
+                                try:
+                                    data = json.loads(line_str)
+                                    content = data['choices'][0]['delta'].get('content', '')
+                                    if content: yield content
+                                except: continue
+                        return # Success
+                    elif response.status_code == 401:
+                        print(f"❌ Groq key {active_key[:10]} is invalid (401). Trying next key...", flush=True)
+                        break # Break inner model loop to try the next key immediately!
+                    else:
+                        print(f"❌ Groq {model} Error: {response.status_code} {response.text}", flush=True)
+                        continue
+                except Exception as e:
+                    print(f"⚠️ Groq {model} Exception: {e}", flush=True)
                     continue
-            except Exception as e:
-                print(f"⚠️ Groq {model} Exception: {e}", flush=True)
-                continue
+            
+            if key_worked:
+                return
+
         yield "⚠️ ระบบ AI สำรอง (Groq) ขัดข้อง (ทุกโมเดลถูกปิดใช้งาน)"
 
-def analyze_image_contents(image_data: bytes, mime_type: str = "image/jpeg"):
-    """ใช้ AI วิเคราะห์รูปภาพ (OCR + Smart Audit)"""
-    prompt = """
-    คุณคือ 'พั้น' ผู้ช่วยอัจฉริยะ (Professional Auditor v11.0.4)
-    ภารกิจ: สกัดข้อมูลจากเอกสารบัญชี/ภาษี ด้วยความแม่นยำสูงสุด
+def analyze_media_contents(content_data: bytes, mime_type: str = "image/jpeg"):
+    """ใช้ AI วิเคราะห์เนื้อหา (OCR สำหรับรูปภาพ หรือ STT สำหรับเสียง)"""
     
-    **Auditor Intelligence (ระดับความฉลาดสูงสุด)**:
-    - หากยอดเงินไม่ชัดเจน ให้ใช้หลักการทางบัญชี: gross_amount - discount_amount + vat_amount - wht_amount = net_amount
-    - สังเกตโลโก้ธนาคารเพื่อระบุ sender_bank/receiver_bank แม้ตัวหนังสือจะไม่ชัด
-    - ตรวจสอบ QR Code ในสลิป (ถ้ามี) เพื่อยืนยันความถูกต้องของข้อมูล
-    - หากข้อมูลบางอย่างหายไป (เช่น สาขา) ให้พยายามคาดการณ์จากที่อยู่ในเอกสารอย่างสมเหตุสมผล
+    is_audio = mime_type.startswith("audio/")
     
-    **กฎการสกัดข้อมูล**:
-    1. **Bank Slip (สลิปโอนเงิน)**:
-       - เน้น: วันที่, เวลา, ผู้โอน, ผู้รับ, ยอดเงิน (net_amount), บันทึก (memo)
-       - สำคัญ: ระบุธนาคารต้นทาง (sender_bank) และธนาคารปลายทาง (receiver_bank) เป็นชื่อเต็มภาษาอังกฤษเสมอ (เช่น Kasikornbank, Siam Commercial Bank, Bangkok Bank, Krungthai Bank, TMBThanachart Bank, Bank of Ayudhya, Government Savings Bank, United Overseas Bank, Bank for Agriculture and Agricultural Cooperatives) ห้ามใช้ภาษาไทยหรือตัวย่อเด็ดขาด
-       - ห้ามสกัด: income_type, wht_rate, tax_id (ถ้าไม่ใช่สลิปนิติบุคคล)
-    2. **Receipt/Invoice (ใบเสร็จ/ใบกำกับภาษี)**:
-       - เน้น: เลขประจำตัวผู้เสียภาษี (tax_id), ยอดก่อนภาษี (gross_amount), ส่วนลด (discount_amount), ภาษี (vat_amount), ยอดสุทธิ (net_amount)
-       - **หัก ณ ที่จ่าย (wht_amount)**: สำคัญมาก! ต้องสกัดจากคำว่า "หัก ณ ที่จ่าย", "WHT", "ภาษีหัก ณ ที่จ่าย" หรือยอดที่ติดลบก่อนรวมเป็นยอดสุทธิ
-       - **อัตราภาษี (wht_rate)**: เช่น 1%, 3%, 5%
-    3. **Statement**: สกัดรายการ transactions ในรูปแบบ List
+    if is_audio:
+        prompt = """คุณคือ 'พั้น' ผู้ช่วยอัจฉริยะ สกัดข้อมูลจากข้อความเสียงบันทึกค่าใช้จ่าย
+ฟังเสียงและ EXTRACT JSON ONLY.
+{
+  "category": "Receipt | Slip | Statement | ID_Card | Invoice | Quotation | General_Expense",
+  "smart_name": "ประเภท_วันที่_คำอธิบาย_ยอดเงิน.mp3",
+  "extracted_data": {
+    "date": "DD/MM/YYYY", "time": "HH:MM",
+    "net_amount": 0.00,
+    "memo": "สรุปสิ่งที่พูดในเสียง",
+    "receiver": "ชื่อร้านค้าหรือผู้รับเงิน (ถ้ามี)",
+    "income_type": "ประเภทค่าใช้จ่าย"
+  },
+  "summary": "Thai summary of the voice message"
+}
+RULES:
+1. If the user says "บันทึกค่า...", set category to "General_Expense" or the most relevant one.
+2. Extract exact amount mentioned.
+3. Use "-" for missing string, 0 for missing numbers. No conversational text."""
+    else:
+        prompt = """คุณคือ 'พั้น' ผู้ช่วยอัจฉริยะ สกัดข้อมูลจากเอกสารด้วยความแม่นยำ
+EXTRACT JSON ONLY.
+{
+  "category": "Receipt | Slip | Statement | ID_Card | Invoice | Quotation",
+  "smart_name": "ประเภท_วันที่_ผู้ส่ง_ยอดเงิน.jpg",
+  "extracted_data": {
+    "date": "DD/MM/YYYY", "time": "HH:MM",
+    "sender": "SENDER_NAME", "receiver": "RECEIVER_NAME",
+    "sender_bank": "Full English Bank Name (e.g. Kasikornbank, SCB)", 
+    "receiver_bank": "Full English Bank Name",
+    "gross_amount": 0.00, "discount_amount": 0.00, "vat_amount": 0.00, "wht_amount": 0.00, "net_amount": 0.00,
+    "tax_id": "13_DIGIT", "memo": "MEMO", "ref_number": "REF_NO", "appr_code": "APPROVAL_CODE",
+    "branch": "BRANCH", "sender_address": "ADDRESS", "receiver_address": "ADDRESS",
+    "income_type": "Income Type", "wht_type": "WHT Type", "is_etax": false,
+    "transactions": [{"date": "DD/MM/YYYY", "time": "HH:MM", "description": "...", "withdrawal": 0.00, "deposit": 0.00, "balance": 0.00}]
+  },
+  "summary": "Thai summary"
+}
+RULES:
+1. Bank Slip: Extract exact sender_bank/receiver_bank in English. Check logos. For Bill Payment without receiver logo, receiver_bank="-".
+2. Receipt/Invoice: `tax_id`, `gross_amount`, `vat_amount`, `wht_amount` are critical! WHT=หัก ณ ที่จ่าย/WHT/ติดลบ.
+3. Statement: Extract ALL rows into `transactions`.
+4. ID Card: Extract `id_number`, names (TH/EN), `birth_date`, `gender`, `address`, `laser_id`.
+5. ALWAYS extract `appr_code` (Auth Code/Approval Code) to prevent duplicates.
+6. Use "-" for missing string, 0 for missing numbers. No conversational text."""
     
-    EXTRACT DATA INTO JSON:
-    {
-      "category": "Receipt | Slip | Statement | ID_Card",
-      "smart_name": "ประเภท_วันที่_ผู้ส่ง_ยอดเงิน.jpg",
-      "extracted_data": {
-        "date": "DD/MM/YYYY",
-        "time": "HH:MM",
-        "sender": "SENDER_NAME",
-        "sender_bank": "BANK_NAME in full English (MUST use full name: Kasikornbank, Siam Commercial Bank, Bangkok Bank, Krungthai Bank, TMBThanachart Bank, Bank of Ayudhya, Government Savings Bank, United Overseas Bank, Bank for Agriculture and Agricultural Cooperatives, Government Housing Bank)",
-        "receiver": "RECEIVER_NAME",
-        "receiver_bank": "BANK_NAME in full English (MUST use full name: Kasikornbank, Siam Commercial Bank, Bangkok Bank, Krungthai Bank, TMBThanachart Bank, Bank of Ayudhya, Government Savings Bank, United Overseas Bank, Bank for Agriculture and Agricultural Cooperatives, Government Housing Bank)",
-        "gross_amount": 0.00,
-        "discount_amount": 0.00,
-        "vat_amount": 0.00,
-        "wht_amount": 0.00,
-        "net_amount": 0.00,
-        "tax_id": "13_DIGIT_ID",
-        "memo": "MEMO_TEXT",
-        "ref_number": "REF_NO (สำหรับสลิป POS ใช้ INV/TRACE# หรือ Transaction ID, สำหรับใบกำกับใช้เลขที่ใบกำกับ)",
-        "appr_code": "APPROVAL_CODE / Auth Code / APPR CODE (เช่น 624913 ที่ปรากฏในสลิปธนาคาร EDC และใบเสร็จจากร้านค้า คือตัวเดียวกัน ต้องสกัดให้ได้เสมอ)",
-        "branch": "BRANCH_NAME",
-        "sender_address": "ADDRESS_OF_SENDER",
-        "receiver_address": "ADDRESS_OF_RECEIVER",
-        "income_type": "ประเภทเงินได้ (เช่น ค่าบริการ, ค่าขนส่ง)",
-        "wht_type": "ประเภทภาษีหัก ณ ที่จ่าย (เช่น ค่าบริการ 3%)",
-        "contact": "ช่องทางการติดต่อ (เบอร์โทร/อีเมล)",
-        "is_etax": false,
-        "transactions": [
-          {
-            "date": "DD/MM/YYYY",
-            "time": "HH:MM",
-            "description": "รายการ",
-            "details": "รายละเอียด",
-            "withdrawal": 0.00,
-            "deposit": 0.00,
-            "fee": 0.00,
-            "balance": 0.00,
-            "channel": "ช่องทาง",
-            "ref": "เลขที่อ้างอิง",
-            "counterparty": "คู่ค้า/ผู้โอน"
-          }
-        ]
-      },
-      "summary": "สรุปสั้นๆ (ภาษาไทย)"
-    }
-    
-    RULES:
-    - **is_etax**: ให้ระบุเป็น true หากพบข้อความที่ระบุว่าเป็น e-tax, e-Tax Invoice, ใบกำกับภาษีอิเล็กทรอนิกส์, ใบเสร็จรับเงินอิเล็กทรอนิกส์, เอกสารที่จัดทำและส่งข้อมูลให้แก่กรมสรรพากรด้วยวิธีการทางอิเล็กทรอนิกส์ หรือมีการระบุว่าส่งข้อมูลสรรพากรทางอิเล็กทรอนิกส์ หรือลงลายมือชื่อดิจิทัล (digitally signed) หรือระบุว่าเป็น etax, มิฉะนั้นระบุเป็น false
-    - **สแกนบันทึกช่วยจำ (Memo)**: หากเห็นคำว่า "ExWHT" หรือ "หัก ณ ที่จ่าย" ในบันทึกช่วยจำ ต้องตีความว่ามีการหักภาษีแล้ว และสกัดยอดออกมาให้ได้
-    - **ระบุธนาคารให้แม่นยำ**: ต้องระบุธนาคารต้นทาง (sender_bank) และปลายทาง (receiver_bank) ให้ได้ โดยดูจากชื่อธนาคาร หรือ "โลโก้" ที่อยู่ใกล้ชื่อนั้นๆ
-    - **กรณี Bill Payment (ชำระบิล)**: หากเห็นคำว่า "Bill Payment", "Comp Code", หรือ "Biller ID" และไม่มีโลโก้ธนาคารที่ชัดเจนของฝั่งผู้รับ **ให้ใส่ receiver_bank เป็น "-"** ห้ามเดาเอาจากโลโก้ธนาคารที่ใช้โอน (เช่น K-BIZ, K Plus)
-    - **สกัดวันและเวลาให้แม่นยำ**: มักจะอยู่คู่กัน (เช่น 10/03/2026 15:12 หรือ 10-03-26 15:12) ต้องสกัดทั้งคู่ หากเจอเวลาต้องใส่ในช่อง `time` ห้ามทิ้งเป็น "-" หากมีข้อมูล
-    - **หัก ณ ที่จ่าย (WHT) และ ที่อยู่ (Address)**: สำคัญมาก! ต้องสกัดที่อยู่ (`sender_address`) และเลขประจำตัวผู้เสียภาษี (`tax_id`) จากใบกำกับภาษีให้ได้ครบถ้วนที่สุด หากเจอหลายที่อยู่ ให้เลือกที่อยู่ของผู้ที่ออกเอกสาร (Seller/Vendor) เป็นหลัก
-    - **หัก ณ ที่จ่าย (WHT) ต้องสกัดให้ได้**: มักจะเป็นยอดเล็กๆ ที่อยู่ท้ายบิล หรือระบุเป็น % (1%, 3%, 5%) หากเห็นคำว่า "หัก ณ ที่จ่าย", "WHT", "ภาษีหัก ณ ที่จ่าย" ต้องเอาตัวเลขนั้นมาใส่ใน `wht_amount` และระบุประเภท in `wht_type` (เช่น ค่าบริการ 3%, ค่าขนส่ง 1%) ห้ามข้ามเด็ดขาด
-    - **APPR CODE / Auth Code (สำคัญมาก! ใช้บล็อกเอกสารซ้ำข้ามประเภท)**: ต้องสกัดรหัสอนุมัติ (APPR CODE, Auth Code, Approval Code) ใส่ใน `appr_code` เสมอ รหัสนี้จะเหมือนกันทั้งบนสลิปจากเครื่อง EDC ของธนาคาร (เช่น Bangkok Bank POS Slip APPR CODE: 624913) และใบเสร็จ/ใบกำกับภาษีจากร้านค้า (เช่น CP AXTRA Tax Invoice Auth Code = 624913) เพราะเป็นธุรกรรมเดียวกัน ระบบจะใช้ `appr_code` ตรวจสอบว่าเป็นเอกสารซ้ำจากธุรกรรมเดียวกันหรือไม่ แม้ชื่อร้านหรือเลขอ้างอิงอื่นจะต่างกัน
-    - **หมวดหมู่ (Category)**: 
-        - "Slip": สลิปโอนเงินธนาคาร (รวมถึงสลิป e-Slip, สลิปโอนเงินที่มียอดชำระบิล Bill Payment, หรือรูปภาพบันทึกการโอนเงินจากแอปพลิเคชันธนาคารทุกประเภท แม้จะมีชื่อบริษัทผู้รับเงิน เช่น 'บริษัท ปังปัง คอร์ปอเรชัน จำกัด' หรือข้อความว่าชำระเงินสำเร็จอยู่ก็ตาม ห้ามจัดเป็น Receipt เด็ดขาด)
-        - "Receipt": ใบเสร็จรับเงิน/ใบกำกับภาษีที่มีการชำระเงินแล้ว (ที่เป็นกระดาษเอกสารทางการเงิน, PDF, หรือใบเสร็จที่ออกโดยบริษัทคู่ค้า ไม่ใช่สลิปจากแอปธนาคาร)
-        - "Invoice": ใบแจ้งหนี้/ใบกำกับภาษีที่ยังไม่ได้ชำระ
-        - "Statement": รายการเดินบัญชีธนาคาร (ต้องสกัดรายการเดินบัญชี "ทุกบรรทัด" ที่ปรากฏในภาพ ใส่ลงใน transactions ให้ครบถ้วนที่สุด ทั้งวันที่, เวลา, รายการ, ยอดเงิน และคู่ค้า)
-        - "ID_Card": บัตรประชาชน (ต้องสกัดให้ครบ: id_number, first_name_th, last_name_th, first_name_en, last_name_en, birth_date, gender, address, expiry_date, laser_id)
-    - ตัวอย่างโครงสร้าง ID_Card: {"id_number": "...", "first_name_th": "วีรภัทร", "last_name_th": "ชื่นชอบ", "first_name_en": "Weeraphat", "last_name_en": "Chuenchob", ...}
-        - "Quotation": ใบเสนอราคา
-    - ใช้ "-" หากไม่มีข้อมูล (ตัวเลขใช้ 0)
-    - ยอดหัก ณ ที่จ่าย (WHT) สำคัญมากสำหรับงานบัญชี
-    - ONLY JSON. NO CONVERSATIONAL TEXT.
-    """
-    
-    # 🚀 Prioritize Gemini for Vision/OCR (Better at Thai & Complex Layouts)
+    # 🚀 Prioritize Gemini for Media Analysis
     full_response = ""
     try:
         gemini = GeminiProvider(os.environ.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY_BACKUP"))
-        for chunk in gemini.chat_stream(prompt, [], "You are a professional accounting AI.", image_data=image_data, mime_type=mime_type):
+        # Using chat_stream which supports image/audio via Part.from_bytes
+        for chunk in gemini.chat_stream(prompt, [], "You are a professional accounting AI.", image_data=content_data, mime_type=mime_type):
             full_response += chunk
     except Exception as e:
         print(f"⚠️ Primary Gemini failed: {e}. Trying fallback...", flush=True)
 
-    # Robust Fallback: If Gemini failed or response doesn't look like JSON
+    # Robust Fallback
     is_valid_json = "{" in full_response and "}" in full_response
     if len(full_response) < 50 or not is_valid_json or "⚠️" in full_response:
         try:
-            # ใช้ Groq เป็นสำรอง
-            provider = get_provider() 
-            if isinstance(provider, GeminiProvider): # If already tried above, try Groq directly
-                groq_key = os.environ.get("GROQ_API_KEY")
-                if groq_key:
-                    provider = GroqProvider(groq_key)
-            
-            full_response = ""
-            for chunk in provider.chat_stream(prompt, [], "You are a professional accounting AI.", image_data=image_data, mime_type=mime_type):
-                full_response += chunk
+            # Note: Groq might not support audio via this specific call, 
+            # so we focus on Gemini for audio.
+            if not is_audio:
+                provider = get_provider() 
+                if isinstance(provider, GeminiProvider):
+                    groq_key = os.environ.get("GROQ_API_KEY")
+                    if groq_key:
+                        provider = GroqProvider(groq_key)
+                
+                full_response = ""
+                for chunk in provider.chat_stream(prompt, [], "You are a professional accounting AI.", image_data=content_data, mime_type=mime_type):
+                    full_response += chunk
         except Exception as e:
             import traceback
             print(f"❌ Fallback also failed: {e}\n{traceback.format_exc()}", flush=True)
@@ -261,7 +383,7 @@ def analyze_image_contents(image_data: bytes, mime_type: str = "image/jpeg"):
     print(f"DEBUG: AI Raw Response ({len(full_response)} chars): {full_response[:500]}...", flush=True)
     
     try:
-        # Clean response to get JSON (หาปีกกาคู่แรกและคู่สุดท้าย)
+        # Clean response to get JSON
         full_response = full_response.strip()
         start_idx = full_response.find('{')
         end_idx = full_response.rfind('}')
@@ -272,6 +394,7 @@ def analyze_image_contents(image_data: bytes, mime_type: str = "image/jpeg"):
         return {"category": "Unknown", "extracted_data": {}, "summary": full_response or "❌ No response from AI providers"}
     except Exception as e:
         return {"category": "Unknown", "extracted_data": {}, "summary": f"❌ JSON Parse Error: {str(e)} | Raw: {full_response[:100]}"}
+
 
 def get_provider():
     """Returns the configured AI provider based on environment variables."""

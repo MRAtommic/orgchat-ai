@@ -1018,14 +1018,15 @@ def admin_create_user_route():
     role = data.get("role", "user")
     display_name = data.get("display_name", "").strip()
     department = data.get("department", "General").strip()
+    email = data.get("email", "").strip().lower()
     can_view_kb = data.get("can_view_kb", True)
     can_edit_kb = data.get("can_edit_kb", False)
     can_delete_kb = data.get("can_delete_kb", False)
-    
+
     if not username or not password:
         return jsonify({"ok": False, "error": "กรุณากรอกชื่อผู้ใช้และรหัสผ่าน"}), 400
-        
-    if database.admin_create_user(username, password, role, display_name=display_name, can_view_kb=can_view_kb, can_edit_kb=can_edit_kb, can_delete_kb=can_delete_kb, department=department):
+
+    if database.admin_create_user(username, password, role, display_name=display_name, can_view_kb=can_view_kb, can_edit_kb=can_edit_kb, can_delete_kb=can_delete_kb, department=department, email=email or None):
         database.log_event(f"Created user: {username} (Role: {role})", user=session.get("user"))
         return jsonify({"ok": True})
     return jsonify({"ok": False, "error": "ชื่อผู้ใช้นี้มีอยู่ในระบบแล้ว"}), 400

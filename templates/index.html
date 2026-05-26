@@ -118,6 +118,13 @@
               class="w-4 h-4 inline-block ml-1 group-hover:translate-x-1 transition-transform"></i>
           </button>
 
+          <div class="flex items-center justify-between mt-1">
+            <a href="/forgot-password" class="text-sm text-surface-400 hover:text-brand-600 hover:underline transition-colors">ลืมรหัสผ่าน?</a>
+            <a href="/signup" class="text-sm font-bold text-brand-600 hover:text-brand-700 hover:underline transition-colors">
+              สมัครใช้งานฟรี →
+            </a>
+          </div>
+
           <div class="relative flex items-center py-2 hidden" id="googleSignInSeparator">
             <div class="flex-grow border-t border-surface-200 dark:border-surface-700"></div>
             <span class="flex-shrink-0 mx-4 text-surface-400 text-xs">หรือเข้าระบบด้วย</span>
@@ -339,7 +346,10 @@
         </div>
         <div class="flex-1 min-w-0">
           <p id="sidebarDisplayName" class="text-sm font-bold truncate">Loading...</p>
-          <p id="sidebarUserRole" class="text-[10px] text-surface-400 font-bold uppercase tracking-widest">Member</p>
+          <div class="flex items-center gap-1.5 mt-0.5">
+            <span id="sidebarUserRole" class="text-[9px] text-surface-400 font-bold uppercase tracking-widest">Member</span>
+            <span id="sidebarPlanBadge" class="hidden px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase tracking-wider">FREE</span>
+          </div>
         </div>
       </div>
       <nav class="flex-1 p-4 space-y-1 overflow-y-auto custom-scrollbar">
@@ -411,10 +421,21 @@
         <button class="nav-item w-full" data-view="stats" id="nav-stats" onclick="showView('stats')">
           <i data-lucide="bar-chart-3" class="w-4 h-4"></i> <span>สถิติองค์กร</span>
         </button>
-        <!-- Admin-only button -->
-        <button class="nav-item w-full hidden text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/10"
+        <!-- Admin-only buttons (shown only to admin role) -->
+        <button class="nav-item w-full {{ '' if is_admin else 'hidden' }} text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/10"
           data-view="admin" id="nav-admin" onclick="showView('admin')">
           <i data-lucide="shield-check" class="w-4 h-4"></i> <span>แผงควบคุม</span>
+        </button>
+        <a href="/admin/customers" class="nav-item w-full {{ '' if is_admin else 'hidden' }} text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/10" style="text-decoration:none">
+          <i data-lucide="users" class="w-4 h-4"></i> <span>จัดการลูกค้า</span>
+        </a>
+        <!-- Super Admin-only button -->
+        <a href="/admin/super" class="nav-item w-full {{ '' if is_superadmin else 'hidden' }} text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/10 font-bold" style="text-decoration:none" id="nav-super-admin">
+          <i data-lucide="crown" class="w-4 h-4"></i> <span>แผงควบคุมระบบ (Super Admin)</span>
+        </a>
+        <button class="nav-item w-full {{ '' if is_admin else 'hidden' }} text-green-600 hover:bg-green-50 dark:hover:bg-green-900/10"
+          data-view="line-groups" id="nav-line-groups" onclick="showView('line-groups'); loadLineGroups()">
+          <i data-lucide="message-square" class="w-4 h-4"></i> <span>LINE Groups</span>
         </button>
         <button class="nav-item w-full hidden text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/10"
           data-view="reconciliation" id="nav-reconciliation">
@@ -455,7 +476,7 @@
       <header
         class="mobile-header hidden items-center justify-between px-4 h-14 bg-white dark:bg-surface-900 border-b border-surface-100 dark:border-surface-800 sticky top-0 z-50">
         <button id="mobileMenuBtn"
-          class="p-2 -ml-2 hover:bg-surface-100 dark:hover:bg-surface-800 rounded-lg transition-colors">
+          class="p-2 -ml-2 hover:bg-surface-100 dark:hover:bg-surface-800 rounded-lg transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center">
           <i data-lucide="menu" class="w-6 h-6"></i>
         </button>
         <div class="flex items-center gap-2">
@@ -463,6 +484,7 @@
             <i data-lucide="sparkles" class="w-4 h-4"></i>
           </div>
           <span class="font-bold text-base tracking-tight">OrgChat</span>
+          <span id="mobilePlanBadge" class="hidden px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase tracking-wider">FREE</span>
         </div>
         <div id="statusBadgeMobile" class="scale-75 origin-right"></div>
       </header>
@@ -1828,6 +1850,21 @@
                         class="input-field w-full opacity-50 cursor-not-allowed" readonly>
                     </div>
                   </div>
+                  
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+                    <div class="space-y-2">
+                      <label class="text-[10px] font-bold text-surface-400 uppercase tracking-widest">องค์กร / บริษัท</label>
+                      <input type="text" id="profileOrgDisplay"
+                        class="input-field w-full opacity-70 cursor-not-allowed bg-surface-50 dark:bg-surface-800" readonly value="Default Organization">
+                    </div>
+                    <div class="space-y-2">
+                      <label class="text-[10px] font-bold text-surface-400 uppercase tracking-widest">แพ็กเกจปัจจุบัน</label>
+                      <div class="flex items-center gap-2">
+                        <span id="profilePlanBadge" class="px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-wider bg-surface-100 text-surface-600 dark:bg-surface-800 dark:text-surface-400">FREE PLAN</span>
+                        <a href="/onboarding" class="text-xs font-bold text-brand-600 hover:underline">จัดการแพ็กเกจ →</a>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <!-- Appearance Section -->
@@ -1955,6 +1992,100 @@
                 class="btn-primary w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-xs font-black uppercase tracking-widest shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 border-none">
                 <i data-lucide="camera" class="w-5 h-5"></i> เปิดกล้องสแกน QR Code เพื่อ Login
               </button>
+            </div>
+
+            <!-- ═══ Google Drive & Sheets Connection ═══ -->
+            <div id="googleDriveSection" class="p-6 bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl space-y-4">
+              <h3 class="font-bold text-sm mb-1 uppercase text-surface-500 flex items-center gap-2">
+                <svg class="w-4 h-4" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
+                  <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+                  <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-20.4 35.3c-.8 1.4-1.2 2.95-1.2 4.5h27.5z" fill="#00ac47"/>
+                  <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.5l5.85 13.95z" fill="#ea4335"/>
+                  <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
+                  <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
+                  <path d="m73.4 26.5-10.1-17.5c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 23.5h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
+                </svg>
+                Google Drive & Sheets
+              </h3>
+              <p class="text-xs text-surface-400">
+                เชื่อมต่อบัญชี Google ของคุณเพื่อให้ข้อมูลเอกสาร สลิป ใบกำกับภาษีทั้งหมด ถูกบันทึกลงใน Google Drive & Sheets ส่วนตัวของคุณโดยตรง
+              </p>
+
+              <!-- Connection Status Container -->
+              <div id="googleConnectContainer">
+                <!-- Loading state -->
+                <div id="googleConnectLoading" class="flex items-center justify-center py-6">
+                  <div class="animate-pulse text-xs text-surface-400">กำลังตรวจสอบสถานะการเชื่อมต่อ...</div>
+                </div>
+
+                <!-- Not Connected state -->
+                <div id="googleNotConnected" class="hidden space-y-4">
+                  <div class="p-4 bg-amber-50 dark:bg-amber-900/10 rounded-2xl border border-amber-200 dark:border-amber-800/30">
+                    <div class="flex items-center gap-2 mb-1">
+                      <div class="w-2 h-2 rounded-full bg-amber-400"></div>
+                      <span class="text-[10px] font-black uppercase tracking-wider text-amber-600">ยังไม่ได้เชื่อมต่อ</span>
+                    </div>
+                    <p class="text-[11px] text-amber-700 dark:text-amber-400">ข้อมูลเอกสารกำลังใช้ระบบส่วนกลาง (Service Account ของ Admin)</p>
+                  </div>
+                  <a href="/api/auth/google/start" id="googleConnectBtn"
+                    class="flex items-center justify-center gap-3 w-full py-4 px-6 bg-white hover:bg-gray-50 dark:bg-surface-800 dark:hover:bg-surface-700 border-2 border-surface-200 dark:border-surface-600 rounded-2xl transition-all shadow-sm hover:shadow-md group">
+                    <svg class="w-5 h-5" viewBox="0 0 24 24">
+                      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
+                      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                    </svg>
+                    <span class="text-sm font-bold text-surface-700 dark:text-surface-200 group-hover:text-brand-600 transition-colors">
+                      เชื่อมต่อ Google Drive & Sheets
+                    </span>
+                  </a>
+                  <p id="googleOAuthNotConfigured" class="hidden text-[10px] text-red-500 text-center">
+                    ⚠️ ระบบ OAuth2 ยังไม่ได้ตั้งค่า กรุณาติดต่อผู้ดูแลระบบ
+                  </p>
+                </div>
+
+                <!-- Connected state -->
+                <div id="googleConnected" class="hidden space-y-4">
+                  <div class="p-4 bg-emerald-50 dark:bg-emerald-900/10 rounded-2xl border border-emerald-200 dark:border-emerald-800/30">
+                    <div class="flex items-center gap-2 mb-1">
+                      <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
+                      <span class="text-[10px] font-black uppercase tracking-wider text-emerald-600">เชื่อมต่อแล้ว</span>
+                    </div>
+                    <p class="text-sm font-bold text-emerald-700 dark:text-emerald-400" id="googleConnectedEmail">—</p>
+                    <p class="text-[10px] text-emerald-600 mt-1">ข้อมูลเอกสารทั้งหมดจะถูกบันทึกลงใน Google Drive & Sheets ส่วนตัวของคุณ</p>
+                  </div>
+
+                  <!-- Quick Links -->
+                  <div class="grid grid-cols-2 gap-3">
+                    <a id="googleSheetLink" href="#" target="_blank"
+                      class="flex items-center gap-2 p-3 bg-surface-50 dark:bg-surface-800/50 rounded-xl border border-surface-100 dark:border-surface-700 hover:border-brand-300 dark:hover:border-brand-700 transition-all group">
+                      <div class="w-8 h-8 rounded-lg bg-green-50 dark:bg-green-900/30 flex items-center justify-center text-green-600 group-hover:scale-110 transition-transform">
+                        <i data-lucide="table-2" class="w-4 h-4"></i>
+                      </div>
+                      <div>
+                        <p class="text-[10px] font-black uppercase tracking-wider text-surface-400">Google Sheets</p>
+                        <p class="text-[10px] text-brand-600 font-bold">เปิดชีตของฉัน →</p>
+                      </div>
+                    </a>
+                    <a id="googleDriveLink" href="#" target="_blank"
+                      class="flex items-center gap-2 p-3 bg-surface-50 dark:bg-surface-800/50 rounded-xl border border-surface-100 dark:border-surface-700 hover:border-brand-300 dark:hover:border-brand-700 transition-all group">
+                      <div class="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 group-hover:scale-110 transition-transform">
+                        <i data-lucide="hard-drive" class="w-4 h-4"></i>
+                      </div>
+                      <div>
+                        <p class="text-[10px] font-black uppercase tracking-wider text-surface-400">Google Drive</p>
+                        <p class="text-[10px] text-brand-600 font-bold">เปิดไดรฟ์ของฉัน →</p>
+                      </div>
+                    </a>
+                  </div>
+
+                  <!-- Disconnect Button -->
+                  <button id="googleDisconnectBtn" onclick="disconnectGoogleDrive()"
+                    class="w-full py-3 px-4 bg-surface-50 hover:bg-red-50 dark:bg-surface-800 dark:hover:bg-red-900/20 border border-surface-200 dark:border-surface-700 hover:border-red-300 dark:hover:border-red-800 rounded-xl text-xs font-bold text-surface-500 hover:text-red-600 transition-all flex items-center justify-center gap-2">
+                    <i data-lucide="unplug" class="w-4 h-4"></i> ยกเลิกการเชื่อมต่อ Google
+                  </button>
+                </div>
+              </div>
             </div>
 
             <!-- App Installation Section -->
@@ -2378,6 +2509,39 @@
                       class="w-11 h-6 bg-surface-200 peer-focus:outline-none rounded-full peer dark:bg-surface-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-brand-600">
                     </div>
                   </label>
+                </div>
+                </div>
+
+              <!-- Email Whitelist Setting -->
+              <div class="p-6 border-t border-surface-100 dark:border-surface-700">
+                <div class="flex items-center justify-between mb-4">
+                  <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                      <i data-lucide="mail" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                      <h4 class="text-sm font-bold">จำกัดการเข้าถึงด้วยอีเมล (Email Whitelist)</h4>
+                      <p class="text-[11px] text-surface-500 font-medium">ใช้ได้กับการ Login ผ่าน Google เท่านั้น — เฉพาะอีเมลที่กำหนดไว้จึงจะเข้าสู่ระบบผ่าน Google ได้</p>
+                    </div>
+                  </div>
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="settingEmailWhitelist" onchange="toggleEmailWhitelist(this.checked)" class="sr-only peer">
+                    <div class="w-11 h-6 bg-surface-200 peer-focus:outline-none rounded-full peer dark:bg-surface-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                  </label>
+                </div>
+
+                <div id="whitelistContainer" class="hidden mt-4 pl-14">
+                  <div class="flex gap-2 mb-3">
+                    <input type="email" id="whitelistEmailInput" placeholder="กรอกอีเมลเพื่อเพิ่มเข้าระบบ..." class="input-field flex-1 text-sm py-2">
+                    <button onclick="addWhitelistEmail()" class="btn-primary py-2 px-4 whitespace-nowrap text-xs shadow-none">
+                      <i data-lucide="plus" class="w-4 h-4 mr-1"></i> เพิ่มอีเมล
+                    </button>
+                  </div>
+                  <div class="bg-surface-50 dark:bg-surface-800/50 rounded-xl border border-surface-200 dark:border-surface-700 max-h-[200px] overflow-y-auto">
+                    <ul id="whitelistEmailList" class="divide-y divide-surface-200 dark:divide-surface-700">
+                      <!-- Whitelist items will be loaded here -->
+                    </ul>
+                  </div>
                 </div>
               </div>
             </div>
@@ -2918,6 +3082,283 @@
                 </div>
               </div>
 
+              <!-- LINE Group Enterprise Mapping Card -->
+              <div class="glass bg-white/40 dark:bg-surface-900/40 border border-surface-200/50 dark:border-surface-700/50 rounded-3xl p-6 shadow-sm">
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                  <div class="flex items-center gap-2.5">
+                    <div class="w-10 h-10 bg-[#00B900]/10 rounded-2xl flex items-center justify-center text-[#00B900]">
+                      <i data-lucide="network" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                      <h3 class="font-black text-sm uppercase tracking-widest text-surface-900 dark:text-white">เชื่อมต่อแชทกลุ่ม LINE องค์กร (B2B Group Mapping)</h3>
+                      <p class="text-[10px] text-surface-450 dark:text-surface-400 font-bold uppercase tracking-widest mt-0.5">เชื่อมแชทกลุ่ม LINE เข้ากับระบบจัดเก็บและวิเคราะห์บัญชีอัตโนมัติ</p>
+                    </div>
+                  </div>
+                  <button onclick="refreshGroupMappings()" class="px-3 py-1.5 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 hover:border-[#00B900]/50 hover:text-[#00B900] rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm flex items-center gap-1.5">
+                    <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> โหลดรายการใหม่
+                  </button>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <!-- Form side -->
+                  <div class="lg:col-span-1 space-y-4 pr-0 lg:pr-6 border-r-0 lg:border-r border-surface-200/50 dark:border-surface-700/50">
+                    <h4 class="text-xs font-black uppercase tracking-widest text-[#00B900] mb-2 ml-1">➕ ผูกแชทกลุ่มใหม่</h4>
+                    
+                    <div class="space-y-3">
+                      <div>
+                        <label class="block text-[10px] font-black uppercase tracking-widest text-surface-400 mb-1.5 ml-1">LINE Group ID</label>
+                        <input type="text" id="lineGroupBindId" class="w-full bg-white dark:bg-surface-950 border border-surface-200 dark:border-surface-700 rounded-xl p-3 text-xs focus:ring-2 focus:ring-[#00B900]/50 focus:border-[#00B900] transition-all outline-none placeholder-surface-300 dark:placeholder-surface-650" placeholder="ตัวอย่างเช่น Cdf123abc...">
+                        <p class="text-[9px] text-surface-400 font-medium mt-1 leading-normal pl-1">พิมพ์คำว่า <strong class="text-brand-600">รหัสกลุ่ม</strong> ในห้องแชทกลุ่ม LINE เพื่อเรียกดูไอดีกลุ่ม</p>
+                      </div>
+
+                      <div>
+                        <label class="block text-[10px] font-black uppercase tracking-widest text-surface-400 mb-1.5 ml-1">ชื่อกลุ่ม LINE (สำหรับแสดงในระบบ)</label>
+                        <input type="text" id="lineGroupBindName" class="w-full bg-white dark:bg-surface-950 border border-surface-200 dark:border-surface-700 rounded-xl p-3 text-xs focus:ring-2 focus:ring-[#00B900]/50 focus:border-[#00B900] transition-all outline-none placeholder-surface-300 dark:placeholder-surface-650" placeholder="ระบุชื่อเพื่อให้จำได้ง่าย เช่น บัญชี/การเงิน">
+                      </div>
+
+                      <div>
+                        <label class="block text-[10px] font-black uppercase tracking-widest text-surface-400 mb-1.5 ml-1">โฟลเดอร์ปลายทาง (Folder Selection Bypass)</label>
+                        <select id="lineGroupBindFolder" class="w-full bg-white dark:bg-surface-950 border border-surface-200 dark:border-surface-700 rounded-xl p-3 text-xs focus:ring-2 focus:ring-[#00B900]/50 focus:border-[#00B900] transition-all outline-none cursor-pointer text-surface-750 dark:text-surface-300">
+                          <option value="">-- แสดงปุ่มเลือกโฟลเดอร์บน LINE --</option>
+                        </select>
+                        <p class="text-[9px] text-surface-400 font-medium mt-1 leading-normal pl-1">หากเลือกโฟลเดอร์ไว้ บอทจะนำเข้าโฟลเดอร์นี้โดยตรงในพื้นหลังทันทีโดยข้ามปุ่มตัวเลือก</p>
+                      </div>
+
+                      <button id="lineGroupBindBtn" onclick="submitGroupBinding()" class="w-full py-3 bg-[#00B900] hover:bg-[#009900] text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#00B900]/20 active:scale-98 mt-2">
+                        <i data-lucide="link" class="w-4 h-4"></i> ผูกแชทกลุ่ม LINE
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- List side -->
+                  <div class="lg:col-span-2 space-y-4">
+                    <h4 class="text-xs font-black uppercase tracking-widest text-surface-400 mb-2 ml-1 flex items-center gap-2">
+                      <i data-lucide="list" class="w-4 h-4"></i> รายการแชทกลุ่มที่ผูกไว้ในระบบ
+                    </h4>
+
+                    <div class="overflow-x-auto rounded-2xl border border-surface-200/50 dark:border-surface-700/50 bg-white/20 dark:bg-surface-950/20">
+                      <table class="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr class="bg-surface-100/50 dark:bg-surface-800/50 border-b border-surface-200/50 dark:border-surface-700/50 text-[10px] font-black uppercase tracking-widest text-surface-400">
+                            <th class="p-3 pl-4">ชื่อกลุ่ม LINE</th>
+                            <th class="p-3">Group ID (LINE)</th>
+                            <th class="p-3">โฟลเดอร์จัดเก็บอัตโนมัติ</th>
+                            <th class="p-3 text-center">จัดการ</th>
+                          </tr>
+                        </thead>
+                        <tbody id="lineGroupMappingsList" class="divide-y divide-surface-100/50 dark:divide-surface-800/50">
+                          <tr>
+                            <td colspan="4" class="p-8 text-center text-surface-450 italic">
+                              <i data-lucide="loader-2" class="w-5 h-5 animate-spin mx-auto mb-2 opacity-50 text-[#00B900]"></i>
+                              กำลังโหลดข้อมูลแชทกลุ่ม...
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <script>
+                // LINE Group mapping handlers
+                async function refreshGroupMappings() {
+                    const listBody = document.getElementById('lineGroupMappingsList');
+                    if (!listBody) return;
+                    
+                    listBody.innerHTML = `
+                      <tr>
+                        <td colspan="4" class="p-8 text-center text-surface-450 italic">
+                          <i data-lucide="loader-2" class="w-5 h-5 animate-spin mx-auto mb-2 opacity-50 text-[#00B900]"></i>
+                          กำลังดึงข้อมูลแชทกลุ่ม...
+                        </td>
+                      </tr>
+                    `;
+                    
+                    try {
+                        const res = await fetch('/api/line/groups');
+                        const data = await res.json();
+                        
+                        if (!data.ok) {
+                            listBody.innerHTML = `
+                              <tr>
+                                <td colspan="4" class="p-8 text-center text-red-500 font-bold">
+                                  ❌ ดึงข้อมูลล้มเหลว: ${data.error || 'Unknown error'}
+                                </td>
+                              </tr>
+                            `;
+                            return;
+                        }
+                        
+                        const mappings = data.mappings || [];
+                        if (mappings.length === 0) {
+                            listBody.innerHTML = `
+                              <tr>
+                                <td colspan="4" class="p-12 text-center text-surface-400 font-medium">
+                                  <i data-lucide="users" class="w-12 h-12 mx-auto mb-3 opacity-20 text-[#00B900]"></i>
+                                  ยังไม่มีการเชื่อมต่อแชทกลุ่ม LINE เลยค่ะพี่ 
+                                  <p class="text-[10px] text-surface-400 mt-1 uppercase font-black">พิมพ์ "รหัสกลุ่ม" ในกลุ่มแล้วนำมาผูกเพื่อเริ่มใช้งานได้เลยค่ะ!</p>
+                                </td>
+                              </tr>
+                            `;
+                            if (window.lucide) window.lucide.createIcons();
+                            return;
+                        }
+                        
+                        listBody.innerHTML = mappings.map(m => `
+                          <tr class="hover:bg-surface-50/50 dark:hover:bg-surface-800/30 transition-all border-b border-surface-100/50 dark:border-surface-800/50">
+                            <td class="p-3 pl-4 font-bold text-surface-900 dark:text-white">${escapeHtml(m.group_name || 'แชทกลุ่ม LINE')}</td>
+                            <td class="p-3 font-mono text-[10px] select-all">${escapeHtml(m.group_id)}</td>
+                            <td class="p-3">
+                              ${m.default_folder_id ? `
+                                <span class="px-2.5 py-1 bg-[#00B900]/10 text-[#00B900] text-[10px] font-bold rounded-lg border border-[#00B900]/20 flex items-center gap-1.5 w-max">
+                                  <i data-lucide="folder" class="w-3.5 h-3.5"></i>
+                                  ${escapeHtml(m.default_folder_name || 'โฟลเดอร์เริ่มต้น')}
+                                </span>
+                              ` : `
+                                <span class="px-2.5 py-1 bg-surface-100 dark:bg-surface-800 text-surface-450 text-[10px] font-bold rounded-lg border border-surface-200 dark:border-surface-700 flex items-center gap-1.5 w-max">
+                                  <i data-lucide="help-circle" class="w-3.5 h-3.5"></i>
+                                  ถามผ่าน LINE ทุกครั้ง
+                                </span>
+                              `}
+                            </td>
+                            <td class="p-3 text-center">
+                              <button onclick="unbindGroup('${m.group_id}')" class="p-2 bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-900/10 dark:hover:bg-rose-900/20 rounded-lg border border-rose-100 dark:border-rose-900/30 transition-all hover:scale-105 active:scale-95" title="ยกเลิกเชื่อมต่อ">
+                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                              </button>
+                            </td>
+                          </tr>
+                        `).join('');
+                        
+                        if (window.lucide) window.lucide.createIcons();
+                    } catch (err) {
+                        listBody.innerHTML = `
+                          <tr>
+                            <td colspan="4" class="p-8 text-center text-red-500 font-bold">
+                              ❌ เกิดข้อผิดพลาดในการดึงข้อมูล: ${err.message}
+                            </td>
+                          </tr>
+                        `;
+                    }
+                }
+
+                async function loadGoogleFoldersForGroup() {
+                    const select = document.getElementById('lineGroupBindFolder');
+                    if (!select) return;
+                    
+                    try {
+                        const res = await fetch('/api/google/folders');
+                        const data = await res.json();
+                        
+                        if (data.ok) {
+                            const folders = data.folders || [];
+                            select.innerHTML = '<option value="">-- แสดงปุ่มเลือกโฟลเดอร์บน LINE --</option>' + 
+                              folders.map(f => `<option value="${f.id}">${escapeHtml(f.name)}</option>`).join('');
+                        }
+                    } catch (err) {
+                        console.error("Failed to load Google Drive folders for group mapping dropdown:", err);
+                    }
+                }
+
+                async function submitGroupBinding() {
+                    const groupIdInput = document.getElementById('lineGroupBindId');
+                    const groupNameInput = document.getElementById('lineGroupBindName');
+                    const folderSelect = document.getElementById('lineGroupBindFolder');
+                    const btn = document.getElementById('lineGroupBindBtn');
+                    
+                    if (!groupIdInput || !groupNameInput || !folderSelect || !btn) return;
+                    
+                    const group_id = groupIdInput.value.trim();
+                    const group_name = groupNameInput.value.trim();
+                    
+                    if (!group_id) {
+                        toast('กรุณากรอก Group ID ของ LINE แชทกลุ่มด้วยนะคะพี่ 😊', 'warning');
+                        return;
+                    }
+                    
+                    const default_folder_id = folderSelect.value;
+                    const default_folder_name = default_folder_id ? folderSelect.options[folderSelect.selectedIndex].text : '';
+                    
+                    btn.disabled = true;
+                    const originalText = btn.innerHTML;
+                    btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> กำลังบันทึกข้อมูล...`;
+                    if (window.lucide) window.lucide.createIcons();
+                    
+                    try {
+                        const res = await fetch('/api/line/groups/bind', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                group_id,
+                                group_name,
+                                default_folder_id,
+                                default_folder_name
+                            })
+                        });
+                        
+                        const data = await res.json();
+                        if (data.ok) {
+                            toast('เชื่อมโยงแชทกลุ่ม LINE สำเร็จเรียบร้อยค่ะ ✨💖', 'success');
+                            groupIdInput.value = '';
+                            groupNameInput.value = '';
+                            folderSelect.value = '';
+                            refreshGroupMappings();
+                        } else {
+                            toast('ผูกบัญชีแชทกลุ่มไม่สำเร็จค่ะ: ' + (data.error || 'Unknown error'), 'error');
+                        }
+                    } catch (err) {
+                        toast('เกิดข้อผิดพลาดในการบันทึกข้อมูล: ' + err.message, 'error');
+                    } finally {
+                        btn.disabled = false;
+                        btn.innerHTML = originalText;
+                        if (window.lucide) window.lucide.createIcons();
+                    }
+                }
+
+                async function unbindGroup(groupId) {
+                    if (!confirm('พี่แน่ใจนะคะว่าต้องการยกเลิกการผูกแชทกลุ่ม LINE นี้?')) return;
+                    
+                    try {
+                        const res = await fetch(`/api/line/groups/unbind/${groupId}`, {
+                            method: 'DELETE'
+                        });
+                        const data = await res.json();
+                        
+                        if (data.ok) {
+                            toast('ยกเลิกการผูกแชทกลุ่มเรียบร้อยแล้วค่ะ ✨', 'success');
+                            refreshGroupMappings();
+                        } else {
+                            toast('ยกเลิกไม่สำเร็จค่ะ: ' + (data.error || 'Unknown error'), 'error');
+                        }
+                    } catch (err) {
+                        toast('เกิดข้อผิดพลาดในการทำงาน: ' + err.message, 'error');
+                    }
+                }
+
+                // Escape HTML utility
+                function escapeHtml(text) {
+                    if (!text) return '';
+                    return text
+                        .replace(/&/g, "&amp;")
+                        .replace(/</g, "&lt;")
+                        .replace(/>/g, "&gt;")
+                        .replace(/"/g, "&quot;")
+                        .replace(/'/g, "&#039;");
+                }
+
+                // Intercept showView once line-manager is loaded
+                if (typeof window.originalShowView === 'undefined') {
+                    window.originalShowView = window.showView;
+                    window.showView = function(viewId) {
+                        if (window.originalShowView) window.originalShowView(viewId);
+                        if (viewId === 'line-manager') {
+                            refreshGroupMappings();
+                            loadGoogleFoldersForGroup();
+                        }
+                    };
+                }
+              </script>
+
               <!-- Main Dashboard Area -->
               <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <!-- Left Col: Broadcast -->
@@ -3195,6 +3636,70 @@
                 </div>
               </div>
             </div>
+          </div>
+        </section>
+
+        <!-- LINE Groups View -->
+        <section id="view-line-groups" class="view hidden flex-1 flex flex-col overflow-y-auto animate-in fade-in duration-300 bg-surface-50/50 dark:bg-surface-950/50">
+          <header class="h-16 border-b border-surface-200/50 dark:border-surface-800/50 flex items-center justify-between px-6 bg-white/80 dark:bg-surface-900/80 sticky top-0 z-20 backdrop-blur-xl shadow-sm">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 bg-[#00B900]/10 rounded-xl flex items-center justify-center">
+                <i data-lucide="message-square" class="w-4 h-4 text-[#00B900]"></i>
+              </div>
+              <h1 class="font-black text-sm uppercase tracking-widest text-surface-900 dark:text-white">LINE Groups</h1>
+            </div>
+          </header>
+
+          <div class="max-w-2xl mx-auto w-full px-4 py-8 space-y-6">
+
+            <!-- วิธีหา Group ID -->
+            <div class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-2xl p-5">
+              <h3 class="font-bold text-amber-900 dark:text-amber-300 mb-2 text-sm">วิธีหา LINE Group ID</h3>
+              <ol class="text-sm text-amber-800 dark:text-amber-400 space-y-1 list-decimal list-inside">
+                <li>เพิ่ม LINE Bot เข้ากลุ่มของคุณ</li>
+                <li>พิมพ์ข้อความใดก็ได้ในกลุ่ม</li>
+                <li>พิมพ์ <code class="bg-amber-100 dark:bg-amber-900 px-1 rounded font-mono">/groupid</code> ในกลุ่มเพื่อดู Group ID</li>
+                <li>Group ID จะขึ้นต้นด้วย <code class="bg-amber-100 dark:bg-amber-900 px-1 rounded font-mono">C</code> เช่น <code class="bg-amber-100 dark:bg-amber-900 px-1 rounded font-mono">C1234abc...</code></li>
+              </ol>
+            </div>
+
+            <!-- ฟอร์มเพิ่มกลุ่ม -->
+            <div class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-2xl p-6 shadow-sm">
+              <h2 class="font-bold text-surface-800 dark:text-white mb-4 text-sm uppercase tracking-widest">เพิ่มกลุ่ม LINE</h2>
+              <div class="space-y-3">
+                <div>
+                  <label class="block text-xs font-semibold text-surface-500 mb-1">Group ID <span class="text-red-400">*</span></label>
+                  <input id="lg-group-id" type="text" placeholder="C1234567890abcdef..."
+                    class="w-full border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-950 rounded-xl px-3 py-2.5 text-sm font-mono focus:outline-none focus:border-[#00B900] focus:ring-2 focus:ring-[#00B900]/20 text-surface-800 dark:text-white">
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-surface-500 mb-1">ชื่อกลุ่ม (เพื่อความสะดวก)</label>
+                  <input id="lg-group-name" type="text" placeholder="เช่น กลุ่มบัญชีร้านเรา"
+                    class="w-full border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-950 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#00B900] focus:ring-2 focus:ring-[#00B900]/20 text-surface-800 dark:text-white">
+                </div>
+                <button onclick="registerLineGroup()"
+                  class="w-full bg-[#00B900] hover:bg-[#009900] text-white font-bold py-2.5 rounded-xl text-sm transition-colors flex items-center justify-center gap-2">
+                  <i data-lucide="plus-circle" class="w-4 h-4"></i> เพิ่มกลุ่ม
+                </button>
+              </div>
+            </div>
+
+            <!-- รายการกลุ่มที่ลงทะเบียน -->
+            <div class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-2xl shadow-sm overflow-hidden">
+              <div class="px-6 py-4 border-b border-surface-100 dark:border-surface-800">
+                <h2 class="font-bold text-surface-800 dark:text-white text-sm uppercase tracking-widest">กลุ่มที่ลงทะเบียนแล้ว</h2>
+              </div>
+              <div id="lg-loading" class="p-8 text-center text-surface-400 text-sm">
+                <i data-lucide="loader-2" class="w-5 h-5 animate-spin mx-auto mb-2 opacity-50 text-[#00B900]"></i>
+                กำลังโหลด...
+              </div>
+              <div id="lg-empty" class="hidden p-8 text-center text-surface-400 text-sm">
+                <i data-lucide="inbox" class="w-10 h-10 mx-auto mb-3 opacity-20"></i>
+                <p class="text-xs font-bold uppercase tracking-widest">ยังไม่มีกลุ่มที่ลงทะเบียน</p>
+              </div>
+              <ul id="lg-list" class="hidden divide-y divide-surface-100 dark:divide-surface-800"></ul>
+            </div>
+
           </div>
         </section>
 
@@ -4592,6 +5097,11 @@
         class="mobile-menu-row hidden">
         <i data-lucide="shield-check" class="w-5 h-5 text-purple-600"></i><span>แผงควบคุม (Admin)</span>
       </button>
+      <!-- Super Admin mobile button -->
+      <a id="nav-superadmin-mobile" href="/admin/super"
+        class="mobile-menu-row {{ '' if is_superadmin else 'hidden' }}" style="text-decoration:none">
+        <i data-lucide="crown" class="w-5 h-5 text-rose-600"></i><span>แผงควบคุมระบบ (Super Admin)</span>
+      </a>
       <div class="pt-2 border-t border-surface-100 dark:border-surface-800">
         <button onclick="document.getElementById('mobileMenuModal').classList.add('hidden')"
           class="w-full py-3 text-center text-sm font-semibold text-surface-400">ปิด</button>
@@ -5035,7 +5545,7 @@
              
              <div id="modalLunchResultArea" class="space-y-4">
                 <div class="w-20 h-20 bg-orange-100 dark:bg-orange-900/30 text-orange-600 rounded-3xl flex items-center justify-center mx-auto mb-4">
-                   <i data-lucide="utensils-crosses" class="w-10 h-10"></i>
+                   <i data-lucide="utensils" class="w-10 h-10"></i>
                 </div>
                 <h3 id="modalLunchPlaceName" class="text-3xl font-black text-surface-900 dark:text-white leading-tight">ยังไม่มีการสุ่ม</h3>
                 <p id="modalLunchPlaceType" class="text-sm font-bold text-orange-600 uppercase tracking-widest">กดปุ่มสุ่มได้เลยครับ</p>
@@ -5070,7 +5580,7 @@
     </div>
     </div>
 
-  <script src="/static/app.js?v=15.0"></script>
+  <script src="/static/app.js?v=16.0"></script>
   <!-- 🌩️ Weather Detail Modal -->
   <div id="weatherDetailModal" class="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-xl hidden flex items-center justify-center animate-in fade-in duration-500 p-0 sm:p-4">
     <div class="bg-white dark:bg-surface-900 w-full h-full sm:w-[95%] sm:max-w-xl sm:h-auto flex flex-col sm:rounded-[3rem] shadow-[0_0_100px_rgba(0,0,0,0.5)] overflow-hidden border border-white/20">
@@ -5233,6 +5743,91 @@
       <img id="imageViewerContent" src="" class="max-w-full max-h-full object-contain rounded-2xl shadow-2xl ring-1 ring-white/20 border border-white/5">
     </div>
   </div>
+
+<script>
+// ── LINE Groups ──────────────────────────────────────
+let _lgLoaded = false;
+
+async function loadLineGroups(force = false) {
+  if (_lgLoaded && !force) return;
+  document.getElementById('lg-loading').classList.remove('hidden');
+  document.getElementById('lg-empty').classList.add('hidden');
+  document.getElementById('lg-list').classList.add('hidden');
+  try {
+    const res = await fetch('/api/org/line/groups');
+    const data = await res.json();
+    document.getElementById('lg-loading').classList.add('hidden');
+    const list = document.getElementById('lg-list');
+    if (!data.ok || !data.groups || !data.groups.length) {
+      document.getElementById('lg-empty').classList.remove('hidden');
+    } else {
+      list.classList.remove('hidden');
+      list.innerHTML = '';
+      data.groups.forEach(g => {
+        const li = document.createElement('li');
+        li.className = 'flex items-center justify-between px-6 py-4 hover:bg-surface-50 dark:hover:bg-surface-800/50';
+        li.innerHTML = `
+          <div>
+            <p class="font-semibold text-surface-700 dark:text-surface-200 text-sm">${g.group_name || '(ไม่มีชื่อ)'}</p>
+            <p class="text-xs font-mono text-surface-400 mt-0.5">${g.group_id}</p>
+          </div>
+          <button onclick="deleteLineGroup('${g.group_id}')" class="text-xs text-red-400 hover:text-red-600 font-semibold px-3 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">ลบ</button>
+        `;
+        list.appendChild(li);
+      });
+    }
+    _lgLoaded = true;
+  } catch (e) {
+    document.getElementById('lg-loading').classList.add('hidden');
+    document.getElementById('lg-empty').classList.remove('hidden');
+  }
+}
+
+async function registerLineGroup() {
+  const groupId = document.getElementById('lg-group-id').value.trim();
+  const groupName = document.getElementById('lg-group-name').value.trim();
+  if (!groupId) { showLineGroupToast('กรุณาใส่ Group ID', true); return; }
+  const res = await fetch('/api/org/line/register-group', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ group_id: groupId, group_name: groupName }),
+  });
+  const data = await res.json();
+  if (data.ok) {
+    showLineGroupToast('เพิ่มกลุ่มสำเร็จ ✅');
+    document.getElementById('lg-group-id').value = '';
+    document.getElementById('lg-group-name').value = '';
+    loadLineGroups(true);
+  } else {
+    showLineGroupToast(data.error || 'เกิดข้อผิดพลาด', true);
+  }
+}
+
+async function deleteLineGroup(groupId) {
+  if (!confirm('ลบกลุ่ม ' + groupId + ' ออกจากระบบ?')) return;
+  const res = await fetch('/api/org/line/groups/' + groupId, { method: 'DELETE' });
+  const data = await res.json();
+  if (data.ok) { showLineGroupToast('ลบกลุ่มแล้ว'); loadLineGroups(true); }
+  else showLineGroupToast('เกิดข้อผิดพลาด', true);
+}
+
+function showLineGroupToast(msg, isError = false) {
+  if (typeof showToast === 'function') { showToast(msg, isError ? 'error' : 'success'); return; }
+  let t = document.getElementById('lg-toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'lg-toast';
+    t.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;padding:0.75rem 1.25rem;border-radius:0.75rem;font-size:0.85rem;font-weight:600;z-index:9999;transition:all 0.25s;pointer-events:none;opacity:0;transform:translateY(2rem)';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.background = isError ? '#dc2626' : '#00B900';
+  t.style.color = '#fff';
+  t.style.opacity = '1';
+  t.style.transform = 'translateY(0)';
+  setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translateY(2rem)'; }, 3000);
+}
+</script>
 
 </body>
 

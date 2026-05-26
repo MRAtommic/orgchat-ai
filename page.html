@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>OrgChat — Corporate AI Assistant</title>
   <script src="https://cdn.tailwindcss.com/3.4.1"></script>
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>
   <script>
     window.onerror = function (m, u, l) { console.error("Early Error:", m, u, l); };
     if (typeof tailwind === 'undefined') {
@@ -41,11 +41,11 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sarabun:wght@400;500;600&display=swap"
     rel="stylesheet" />
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" defer></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js" defer></script>
 </head>
 
 <body class="h-full overflow-hidden dark:bg-surface-950 dark:text-surface-100">
@@ -73,10 +73,14 @@
           </div>
           <div class="space-y-1.5">
             <label
-              class="text-[10px] font-black uppercase tracking-widest text-surface-400 px-1">รหัสผ่านพื้นฐาน</label>
+              class="text-[10px] font-black uppercase tracking-widest text-surface-400 px-1">รหัสผ่าน</label>
             <div class="relative">
               <i data-lucide="lock" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400"></i>
-              <input id="loginPassword" type="password" placeholder="••••••••" class="input-field w-full pl-11 py-3" />
+              <input id="loginPassword" type="password" placeholder="••••••••" class="input-field w-full pl-11 pr-11 py-3" />
+              <button type="button" id="loginPasswordToggle"
+                class="absolute right-4 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 transition-colors">
+                <i data-lucide="eye" class="w-4 h-4"></i>
+              </button>
             </div>
           </div>
           <div id="loginError"
@@ -253,10 +257,12 @@
         </div>
       </div>
       <nav class="flex-1 p-4 space-y-1 overflow-y-auto custom-scrollbar">
+        <!-- หลัก -->
+        <div class="pb-1 text-[10px] font-bold text-surface-400 uppercase tracking-widest px-3">หลัก</div>
         <button class="nav-item w-full active relative" data-view="home" id="nav-home">
           <i data-lucide="home" class="w-4 h-4"></i> <span>หน้าหลัก</span>
         </button>
-        <button class="nav-item w-full" data-view="chat" id="nav-chat">
+        <button class="nav-item w-full relative" data-view="chat" id="nav-chat">
           <i data-lucide="message-square" class="w-4 h-4"></i> <span>แชทผู้ช่วย AI</span>
           <span id="sidebarChatBadge"
             class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 bg-red-500 text-white text-[9px] font-black rounded-full flex items-center justify-center hidden border-2 border-white dark:border-surface-900">0</span>
@@ -264,6 +270,16 @@
         <button class="nav-item w-full" data-view="kb" id="nav-kb">
           <i data-lucide="folder-open" class="w-4 h-4"></i> <span>คลังข้อมูล</span>
         </button>
+        <button id="nav-kanban" data-view="kanban" class="nav-item w-full" onclick="showView('kanban')">
+          <i data-lucide="layout-grid" class="w-4 h-4"></i>
+          <span>กระดานคัมบัง</span>
+          <div class="ml-auto hidden" id="mobileKanbanBadge">
+            <span class="w-1.5 h-1.5 bg-brand-600 rounded-full animate-pulse block"></span>
+          </div>
+        </button>
+
+        <!-- เครื่องมือ -->
+        <div class="pt-3 pb-1 text-[10px] font-bold text-surface-400 uppercase tracking-widest px-3">เครื่องมือ</div>
         <button class="nav-item w-full" data-view="calendar" id="nav-calendar">
           <i data-lucide="calendar" class="w-4 h-4"></i> <span>ปฏิทินกิจกรรม</span>
         </button>
@@ -279,9 +295,9 @@
         <button class="nav-item w-full" data-view="feed" id="nav-feed">
           <i data-lucide="layout-list" class="w-4 h-4"></i> <span>ฟีดกิจกรรม</span>
         </button>
-        <!-- Removed redundant sidebar entry for group chat -->
-        <!-- Redundant Profile Link Removed -->
-        <div class="pt-4 pb-2 text-[10px] font-bold text-surface-400 uppercase tracking-widest px-4">ระบบ</div>
+
+        <!-- ระบบ -->
+        <div class="pt-3 pb-1 text-[10px] font-bold text-surface-400 uppercase tracking-widest px-3">ระบบ</div>
         <button class="nav-item w-full" data-view="settings" id="nav-settings">
           <i data-lucide="settings" class="w-4 h-4"></i> <span>การตั้งค่า</span>
         </button>
@@ -293,20 +309,15 @@
           data-view="admin" id="nav-admin">
           <i data-lucide="shield-check" class="w-4 h-4"></i> <span>แผงควบคุม</span>
         </button>
-        <button id="logoutBtn" class="nav-item w-full text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10">
-          <i data-lucide="log-out" class="w-4 h-4"></i> <span>ออกจากระบบ</span>
-        </button>
+
+        <!-- Logout — แยกชัดเจน -->
+        <div class="mt-3 pt-3 border-t border-surface-100 dark:border-surface-800">
+          <button id="logoutBtn" class="nav-item w-full text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10">
+            <i data-lucide="log-out" class="w-4 h-4"></i> <span>ออกจากระบบ</span>
+          </button>
+        </div>
       </nav>
       <div class="p-4 border-t border-surface-100 dark:border-surface-800">
-        <button id="nav-kanban" data-view="kanban" class="nav-item group" onclick="showView('kanban')">
-          <div class="relative">
-            <i data-lucide="layout-grid" class="w-4 h-4 nav-icon group-hover:scale-110 transition-transform"></i>
-          </div>
-          <span class="font-bold">คัมบัง (Board)</span>
-          <div class="ml-auto flex items-center gap-1.5 hidden" id="mobileKanbanBadge">
-            <span class="w-1.5 h-1.5 bg-brand-600 rounded-full animate-pulse"></span>
-          </div>
-        </button>
         <button id="themeToggle" class="nav-item w-full text-sm">
           <i data-lucide="moon" id="themeIcon" class="w-4 h-4"></i>
           <span id="themeText">โหมดกลางคืน</span>
@@ -430,7 +441,7 @@
                 <i data-lucide="sparkles" class="w-12 h-12 text-white"></i>
               </div>
               <div class="flex-1 text-center md:text-left space-y-2">
-                <h1 class="text-4xl font-black tracking-tight leading-tight">สวัสดียามบ่าย, <span
+                <h1 class="text-4xl font-black tracking-tight leading-tight"><span id="dashGreetingText">สวัสดี</span>, <span
                     id="dash-user-name">คุณ</span>!</h1>
                 <p class="text-white/80 text-lg font-medium">วันนี้ AI มีสรุปข้อมูลสำคัญที่น่าสนใจให้คุณแล้ว</p>
               </div>
@@ -735,12 +746,8 @@
                   </div>
                   <div class="flex items-center gap-2">
                     <select id="bulkDeptMove"
-                      class="text-[10px] font-bold bg-white dark:bg-surface-800 border-surface-200 dark:border-surface-700 rounded-lg focus:ring-brand-600">
-                      <option value="">ย้ายแผนก...</option>
-                      <option value="General">General</option>
-                      <option value="HR">HR</option>
-                      <option value="IT">IT</option>
-                      <option value="Sales">Sales</option>
+                      class="text-[10px] font-bold bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg focus:ring-brand-600 px-2 py-1.5">
+                      <option value="">ย้ายหมวดหมู่...</option>
                     </select>
                     <button id="bulkCompareBtn"
                       class="bg-purple-600 hover:bg-purple-700 text-white py-1.5 px-3 rounded-lg text-[10px] uppercase font-bold shadow-sm flex items-center gap-1 transition-all">
@@ -2413,7 +2420,7 @@
       </div>
     </div>
 
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js" defer></script>
 </body>
 
 </html>

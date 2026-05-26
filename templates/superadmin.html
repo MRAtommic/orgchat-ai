@@ -1,0 +1,1438 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Super Admin — OrgChat</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --bg: #070c16;
+      --surface: #0d1424;
+      --surface2: #111827;
+      --border: #1e293b;
+      --border2: #243044;
+      --text: #e2e8f0;
+      --muted: #64748b;
+      --accent: #6366f1;
+    }
+    * { box-sizing: border-box; }
+    body { font-family: 'Outfit', sans-serif; background: var(--bg); color: var(--text); margin: 0; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2d3f58; border-radius: 3px; }
+
+    /* ── Sidebar ── */
+    .nav-item {
+      display: flex; align-items: center; gap: 10px;
+      width: 100%; padding: 8px 12px; border-radius: 10px;
+      font-size: 13px; font-weight: 600; color: #64748b;
+      border: none; background: none; cursor: pointer;
+      transition: all .15s; text-align: left;
+    }
+    .nav-item:hover { background: #111827; color: #cbd5e1; }
+    .nav-item.active { background: #1e1b4b; color: #a5b4fc; border: 1px solid #312e81; }
+    .nav-section { font-size: 10px; font-weight: 800; letter-spacing: .1em; color: #334155; padding: 12px 12px 4px; text-transform: uppercase; }
+    .nav-badge { margin-left: auto; background: #1e293b; color: #64748b; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 20px; }
+    .nav-item.active .nav-badge { background: #312e81; color: #a5b4fc; }
+
+    /* ── Cards ── */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; }
+    .card-sm { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; }
+    .section-label { font-size: 10px; font-weight: 800; letter-spacing: .12em; color: #475569; text-transform: uppercase; margin-bottom: 14px; }
+
+    /* ── KPI Cards ── */
+    .kpi { background: linear-gradient(135deg, #0d1424, #0a1020); border: 1px solid var(--border); border-radius: 14px; padding: 18px 22px; position: relative; overflow: hidden; }
+    .kpi::before { content: ''; position: absolute; inset: 0; opacity: .03; background: radial-gradient(circle at 80% 20%, white, transparent 60%); }
+    .kpi-val { font-size: 28px; font-weight: 900; line-height: 1; }
+    .kpi-label { font-size: 10px; font-weight: 800; letter-spacing: .1em; color: #475569; text-transform: uppercase; margin-bottom: 6px; }
+    .kpi-sub { font-size: 11px; color: #475569; margin-top: 4px; }
+
+    /* ── Badges ── */
+    .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+    .badge-free     { background: #1e293b; color: #64748b; border: 1px solid #334155; }
+    .badge-pro      { background: #064e3b; color: #34d399; border: 1px solid #065f46; }
+    .badge-business { background: #2e1065; color: #c4b5fd; border: 1px solid #4c1d95; }
+    .badge-admin    { background: #1e1b4b; color: #a5b4fc; border: 1px solid #312e81; }
+    .badge-user     { background: #0f172a; color: #475569; border: 1px solid #1e293b; }
+    .badge-active   { background: #052e16; color: #34d399; border: 1px solid #065f46; }
+    .badge-suspended{ background: #450a0a; color: #f87171; border: 1px solid #7f1d1d; }
+    .badge-info     { background: #0c1a3a; color: #93c5fd; border: 1px solid #1d4ed8; }
+
+    /* ── Table ── */
+    .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .data-table thead tr { border-bottom: 1px solid var(--border); }
+    .data-table th { padding: 10px 14px; font-size: 10px; font-weight: 800; color: #475569; text-transform: uppercase; letter-spacing: .08em; text-align: left; white-space: nowrap; }
+    .data-table th.r { text-align: right; }
+    .data-table tbody tr { border-bottom: 1px solid #0f172a; transition: background .1s; }
+    .data-table tbody tr:hover { background: #0a0f1a; }
+    .data-table tbody tr:last-child { border-bottom: none; }
+    .data-table td { padding: 10px 14px; vertical-align: middle; }
+    .data-table td.r { text-align: right; }
+
+    /* ── Inputs ── */
+    .inp { background: #0d1424; border: 1px solid #1e293b; border-radius: 8px; padding: 8px 12px; color: #e2e8f0; font-size: 13px; width: 100%; outline: none; font-family: 'Outfit', sans-serif; }
+    .inp:focus { border-color: #6366f1; box-shadow: 0 0 0 3px #6366f122; }
+    select.inp option { background: #0d1424; }
+    .inp-sm { background: #111827; border: 1px solid #1e293b; border-radius: 8px; padding: 6px 10px; color: #e2e8f0; font-size: 12px; outline: none; font-family: 'Outfit', sans-serif; }
+    .inp-sm:focus { border-color: #6366f1; }
+    .search-wrap { position: relative; }
+    .search-wrap svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 15px; height: 15px; color: #475569; pointer-events: none; }
+    .search-wrap .inp { padding-left: 32px; }
+
+    /* ── Buttons ── */
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; border: 1px solid transparent; transition: all .15s; white-space: nowrap; }
+    .btn svg { width: 13px; height: 13px; flex-shrink: 0; }
+    .btn-primary { background: #4338ca; color: white; border-color: #6366f1; }
+    .btn-primary:hover { background: #4f46e5; }
+    .btn-ghost  { background: #111827; color: #94a3b8; border-color: #1e293b; }
+    .btn-ghost:hover { background: #1e293b; color: #e2e8f0; }
+    .btn-danger { background: #450a0a22; color: #f87171; border-color: #7f1d1d55; }
+    .btn-danger:hover { background: #450a0a44; }
+    .btn-warning{ background: #451a0322; color: #fbbf24; border-color: #78350f55; }
+    .btn-warning:hover { background: #451a0344; }
+    .btn-success{ background: #05966922; color: #34d399; border-color: #065f4655; }
+    .btn-success:hover { background: #05966944; }
+    .btn-info   { background: #1d4ed822; color: #93c5fd; border-color: #1d4ed855; }
+    .btn-info:hover { background: #1d4ed844; }
+    .btn-xs { padding: 4px 9px; font-size: 11px; border-radius: 6px; gap: 4px; }
+
+    /* ── Dot status ── */
+    .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+    .dot-green { background: #10b981; box-shadow: 0 0 6px #10b98188; }
+    .dot-red   { background: #ef4444; box-shadow: 0 0 6px #ef444488; }
+    .dot-pulse { animation: pulse-glow 1.5s ease-in-out infinite; }
+    @keyframes pulse-glow { 0%,100% { opacity:1; } 50% { opacity:.4; } }
+
+    /* ── Modal ── */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.75); backdrop-filter: blur(6px); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .modal-box { background: #0d1424; border: 1px solid #243044; border-radius: 18px; width: 100%; max-width: 580px; max-height: 90vh; overflow-y: auto; position: relative; }
+    .modal-header { padding: 22px 24px 16px; border-bottom: 1px solid #1e293b; position: sticky; top: 0; background: #0d1424; z-index: 1; border-radius: 18px 18px 0 0; }
+    .modal-body { padding: 20px 24px; }
+    .modal-footer { padding: 14px 24px; border-top: 1px solid #1e293b; display: flex; justify-content: flex-end; gap: 8px; }
+    .modal-close { position: absolute; top: 16px; right: 16px; background: none; border: none; color: #64748b; cursor: pointer; font-size: 18px; line-height: 1; padding: 4px; }
+    .modal-close:hover { color: #e2e8f0; }
+
+    /* ── Toast ── */
+    .toast-zone { position: fixed; bottom: 20px; right: 20px; z-index: 999; display: flex; flex-direction: column; gap: 8px; }
+    .toast { background: #111827; border: 1px solid #243044; color: #e2e8f0; padding: 10px 16px; border-radius: 10px; font-size: 13px; font-weight: 600; transform: translateX(20px); opacity: 0; transition: all .2s; pointer-events: none; }
+    .toast.in { transform: translateX(0); opacity: 1; }
+    .toast.success { border-color: #065f46; color: #34d399; }
+    .toast.error   { border-color: #7f1d1d; color: #f87171; }
+    .toast.info    { border-color: #1d4ed8; color: #93c5fd; }
+
+    /* ── Tab content ── */
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    /* ── Progress bar ── */
+    .prog-track { height: 6px; background: #1e293b; border-radius: 99px; overflow: hidden; }
+    .prog-fill { height: 100%; border-radius: 99px; transition: width .4s; }
+
+    /* ── Env chip ── */
+    .env-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: #070c16; border: 1px solid #1e293b; border-radius: 8px; gap: 12px; }
+    .env-row.ok { border-color: #064e3b44; }
+    .env-row.miss { border-color: #7f1d1d44; }
+    .env-key { color: #818cf8; font-size: 11px; font-weight: 700; font-family: monospace; }
+    .env-val { color: #64748b; font-size: 11px; font-family: monospace; }
+
+    /* ── Log row ── */
+    .log-row { display: flex; align-items: flex-start; gap: 12px; padding: 8px 14px; border-bottom: 1px solid #0a0f1a; }
+    .log-row:hover { background: #070c16; }
+    .log-row:last-child { border-bottom: none; }
+    .log-time { font-size: 10px; color: #334155; font-family: monospace; width: 120px; flex-shrink: 0; margin-top: 1px; }
+    .log-user { font-size: 11px; font-weight: 700; color: #475569; width: 100px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .log-text { font-size: 12px; color: #94a3b8; flex: 1; }
+    .log-text.super { color: #fbbf24; }
+    .log-text.broadcast { color: #34d399; }
+
+    /* ── Avatar ── */
+    .avatar { width: 32px; height: 32px; border-radius: 10px; object-fit: cover; flex-shrink: 0; }
+    .avatar-placeholder { width: 32px; height: 32px; border-radius: 10px; background: #1e1b4b; border: 1px solid #312e81; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; color: #818cf8; flex-shrink: 0; }
+
+    /* ── Revenue bar ── */
+    .rev-card { background: #070c16; border: 1px solid #1e293b; border-radius: 12px; padding: 14px 18px; }
+
+    /* ── Tooltip ── */
+    [title] { cursor: help; }
+
+    /* ── Page header ── */
+    .page-title { font-size: 20px; font-weight: 800; color: white; }
+    .page-sub { font-size: 12px; color: #475569; margin-top: 2px; }
+  </style>
+</head>
+<body>
+
+<div class="toast-zone" id="toastZone"></div>
+<div id="modalRoot"></div>
+
+<div style="display:flex; height:100vh; overflow:hidden;">
+
+  <!-- ══ SIDEBAR ══ -->
+  <aside style="width:220px; flex-shrink:0; background:#070c16; border-right:1px solid #111827; display:flex; flex-direction:column; overflow:hidden;">
+    <!-- Brand -->
+    <div style="padding:18px 14px 14px; border-bottom:1px solid #111827;">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <div style="width:34px; height:34px; background:linear-gradient(135deg,#4338ca,#7c3aed); border-radius:10px; display:flex; align-items:center; justify-content:center; font-weight:900; font-size:14px; color:white;">S</div>
+        <div>
+          <div style="font-weight:800; font-size:13px; color:white;">Super Admin</div>
+          <div style="font-size:9px; color:#334155; font-weight:700; letter-spacing:.1em; text-transform:uppercase;">OrgChat Console</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Nav -->
+    <nav style="flex:1; padding:10px 8px; overflow-y:auto; display:flex; flex-direction:column; gap:1px;">
+      <div class="nav-section">ระบบ</div>
+      <button class="nav-item active" data-tab="overview" onclick="showTab('overview')">
+        <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+        ภาพรวม
+      </button>
+      <button class="nav-item" data-tab="billing" onclick="showTab('billing')">
+        <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        รายได้ & Billing
+      </button>
+      <button class="nav-item" data-tab="analytics" onclick="showTab('analytics')">
+        <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+        Analytics
+      </button>
+
+      <div class="nav-section" style="margin-top:8px;">จัดการ</div>
+      <button class="nav-item" data-tab="orgs" onclick="showTab('orgs')">
+        <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+        องค์กร
+        <span class="nav-badge" id="nb-orgs">—</span>
+      </button>
+      <button class="nav-item" data-tab="users" onclick="showTab('users')">
+        <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        ผู้ใช้งาน
+        <span class="nav-badge" id="nb-users">—</span>
+      </button>
+
+      <div class="nav-section" style="margin-top:8px;">เครื่องมือ</div>
+      <button class="nav-item" data-tab="broadcast" onclick="showTab('broadcast')">
+        <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"/></svg>
+        Broadcast
+      </button>
+      <button class="nav-item" data-tab="system" onclick="showTab('system')">
+        <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3"/></svg>
+        ระบบ & Config
+      </button>
+      <button class="nav-item" data-tab="logs" onclick="showTab('logs')">
+        <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        Event Logs
+      </button>
+    </nav>
+
+    <!-- Bottom -->
+    <div style="padding:12px 10px; border-top:1px solid #111827;">
+      <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px;">
+        <span class="dot dot-green dot-pulse"></span>
+        <span style="font-size:10px; font-weight:700; color:#334155; letter-spacing:.08em; text-transform:uppercase;">LIVE</span>
+        <span style="font-size:10px; color:#334155; margin-left:auto;" id="sb-uptime">—</span>
+      </div>
+      <a href="/" style="display:flex; align-items:center; gap:6px; font-size:12px; color:#475569; text-decoration:none; padding:6px 8px; border-radius:8px; transition:all .15s;" onmouseover="this.style.background='#111827';this.style.color='#94a3b8'" onmouseout="this.style.background='';this.style.color='#475569'">
+        <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+        กลับหน้าหลัก
+      </a>
+    </div>
+  </aside>
+
+  <!-- ══ MAIN ══ -->
+  <main style="flex:1; overflow-y:auto; display:flex; flex-direction:column;">
+
+    <!-- Topbar -->
+    <div style="position:sticky; top:0; z-index:10; background:#070c1699; backdrop-filter:blur(12px); border-bottom:1px solid #111827; padding:10px 24px; display:flex; align-items:center; justify-content:space-between;">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <span class="mono" style="font-size:11px; color:#334155;" id="tb-version">—</span>
+        <span style="color:#1e293b;">|</span>
+        <span style="font-size:11px; color:#475569;">Python <span class="mono" id="tb-python">—</span></span>
+        <span style="color:#1e293b;">|</span>
+        <span style="font-size:11px; color:#475569;">Provider: <span style="color:#818cf8; font-weight:700;" id="tb-provider">—</span></span>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="font-size:11px; color:#334155;">Uptime: <span class="mono" style="color:#475569;" id="tb-uptime">—</span></span>
+        <button class="btn btn-ghost" onclick="refreshAll()" style="padding:5px 10px; font-size:11px;">
+          <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          Refresh
+        </button>
+      </div>
+    </div>
+
+    <!-- Content -->
+    <div style="padding:24px; flex:1;">
+
+      <!-- ══ OVERVIEW ══ -->
+      <div id="tab-overview" class="tab-pane active">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+          <div>
+            <div class="page-title">ภาพรวมระบบ</div>
+            <div class="page-sub">สถิติและ KPI แบบ real-time</div>
+          </div>
+        </div>
+
+        <!-- KPIs -->
+        <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:16px;" id="kpi-grid">
+          <div class="kpi"><p class="kpi-label">MRR</p><p class="kpi-val" style="color:#34d399;" id="k-mrr">—</p><p class="kpi-sub">บาท/เดือน</p></div>
+          <div class="kpi"><p class="kpi-label">จ่ายเงินแล้ว</p><p class="kpi-val" style="color:#fbbf24;" id="k-paying">—</p><p class="kpi-sub" id="k-paying-sub">จาก — org</p></div>
+          <div class="kpi"><p class="kpi-label">AI Queries / เดือน</p><p class="kpi-val" style="color:#818cf8;" id="k-ai-month">—</p><p class="kpi-sub" id="k-ai-total">รวม — ครั้ง</p></div>
+          <div class="kpi"><p class="kpi-label">ผู้ใช้ทั้งหมด</p><p class="kpi-val" style="color:#f472b6;" id="k-users">—</p><p class="kpi-sub">accounts</p></div>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:20px;">
+          <div class="kpi"><p class="kpi-label">องค์กรทั้งหมด</p><p class="kpi-val" style="color:#60a5fa;" id="k-orgs">—</p><p class="kpi-sub">organizations</p></div>
+          <div class="kpi"><p class="kpi-label">ข้อความทั้งหมด</p><p class="kpi-val" style="color:#a78bfa;" id="k-msgs">—</p><p class="kpi-sub">messages</p></div>
+          <div class="kpi"><p class="kpi-label">DB Size</p><p class="kpi-val" style="color:#fb923c;" id="k-db">—</p><p class="kpi-sub">ฐานข้อมูล</p></div>
+          <div class="kpi"><p class="kpi-label">KB Files</p><p class="kpi-val" style="color:#2dd4bf;" id="k-kb">—</p><p class="kpi-sub">knowledge base</p></div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+          <!-- Plan distribution -->
+          <div class="card-sm">
+            <p class="section-label">Plan Distribution</p>
+            <div id="plan-dist" style="display:flex; flex-direction:column; gap:10px;"></div>
+          </div>
+          <!-- Quick Stats -->
+          <div class="card-sm">
+            <p class="section-label">สถิติรวม</p>
+            <div id="quick-stats" style="display:flex; flex-direction:column; gap:0;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ BILLING ══ -->
+      <div id="tab-billing" class="tab-pane">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+          <div>
+            <div class="page-title">รายได้ & Billing</div>
+            <div class="page-sub">MRR, plan distribution, รายละเอียดลูกค้าจ่ายเงิน</div>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:20px;">
+          <div class="kpi"><p class="kpi-label">MRR</p><p class="kpi-val" style="color:#34d399;" id="b-mrr">—</p><p class="kpi-sub">บาท/เดือน</p></div>
+          <div class="kpi"><p class="kpi-label">ARR (ประมาณการ)</p><p class="kpi-val" style="color:#60a5fa;" id="b-arr">—</p><p class="kpi-sub">บาท/ปี</p></div>
+          <div class="kpi"><p class="kpi-label">Paying Orgs</p><p class="kpi-val" style="color:#fbbf24;" id="b-paying">—</p><p class="kpi-sub">องค์กรจ่ายเงิน</p></div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
+          <div class="card-sm">
+            <p class="section-label">รายได้แยกตาม Plan</p>
+            <div id="rev-by-plan" style="display:flex; flex-direction:column; gap:10px;"></div>
+          </div>
+          <div class="card-sm">
+            <p class="section-label">Conversion Rate</p>
+            <div id="conversion-stats" style="display:flex; flex-direction:column; gap:8px;"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div style="padding:16px 18px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+            <p class="section-label" style="margin:0;">องค์กรที่จ่ายเงิน</p>
+          </div>
+          <table class="data-table">
+            <thead><tr>
+              <th>องค์กร</th><th>Plan</th><th class="r">สมาชิก</th><th class="r">ราคา/เดือน</th><th class="r">หมดอายุ</th><th></th>
+            </tr></thead>
+            <tbody id="paying-tbody"><tr><td colspan="6" style="text-align:center;padding:30px;color:#334155;">กำลังโหลด...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ══ ANALYTICS ══ -->
+      <div id="tab-analytics" class="tab-pane">
+        <div style="margin-bottom:20px;">
+          <div class="page-title">Analytics</div>
+          <div class="page-sub">การใช้งาน AI และสถิติองค์กร</div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+          <div class="card-sm">
+            <p class="section-label">Top องค์กร — AI Usage</p>
+            <div id="top-orgs-ai" style="display:flex; flex-direction:column; gap:8px;"></div>
+          </div>
+          <div class="card-sm">
+            <p class="section-label">Top องค์กร — สมาชิก</p>
+            <div id="top-orgs-member" style="display:flex; flex-direction:column; gap:8px;"></div>
+          </div>
+          <div class="card-sm">
+            <p class="section-label">สถิติผู้ใช้ตาม Role</p>
+            <div id="user-role-dist" style="display:flex; flex-direction:column; gap:10px;"></div>
+          </div>
+          <div class="card-sm">
+            <p class="section-label">สถิติผู้ใช้ตามสถานะ</p>
+            <div id="user-status-dist" style="display:flex; flex-direction:column; gap:10px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ ORGANIZATIONS ══ -->
+      <div id="tab-orgs" class="tab-pane">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+          <div>
+            <div class="page-title">องค์กรทั้งหมด</div>
+            <div class="page-sub" id="orgs-count-sub">—</div>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <div class="search-wrap">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+              <input class="inp inp-sm" id="orgs-q" placeholder="ค้นหาองค์กร..." oninput="filterOrgs()" style="width:180px;">
+            </div>
+            <select class="inp-sm" id="orgs-plan-f" onchange="filterOrgs()" style="width:120px;">
+              <option value="">ทุก Plan</option>
+              <option value="free">Free</option>
+              <option value="pro">Pro</option>
+              <option value="business">Ultra/Business</option>
+            </select>
+            <button class="btn btn-ghost btn-xs" onclick="exportCSV('orgs')">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+              Export CSV
+            </button>
+            <button class="btn btn-primary btn-xs" onclick="openCreateOrgModal()">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+              สร้างองค์กร
+            </button>
+          </div>
+        </div>
+
+        <div class="card">
+          <table class="data-table">
+            <thead><tr>
+              <th style="width:50px;">ID</th>
+              <th>ชื่อองค์กร</th>
+              <th>Plan</th>
+              <th class="r">สมาชิก</th>
+              <th class="r">AI Queries</th>
+              <th class="r">Expenses</th>
+              <th class="r">สร้างเมื่อ</th>
+              <th style="width:100px;"></th>
+            </tr></thead>
+            <tbody id="orgs-tbody"><tr><td colspan="8" style="text-align:center;padding:40px;color:#334155;">กำลังโหลด...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ══ USERS ══ -->
+      <div id="tab-users" class="tab-pane">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+          <div>
+            <div class="page-title">ผู้ใช้งานทั้งหมด</div>
+            <div class="page-sub" id="users-count-sub">—</div>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <div class="search-wrap">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+              <input class="inp inp-sm" id="users-q" placeholder="ค้นหา username..." oninput="filterUsers()" style="width:180px;">
+            </div>
+            <select class="inp-sm" id="users-role-f" onchange="filterUsers()" style="width:110px;">
+              <option value="">ทุก Role</option>
+              <option value="admin">Admin</option>
+              <option value="user">User</option>
+            </select>
+            <select class="inp-sm" id="users-status-f" onchange="filterUsers()" style="width:110px;">
+              <option value="">ทุกสถานะ</option>
+              <option value="active">Active</option>
+              <option value="suspended">Suspended</option>
+            </select>
+            <button class="btn btn-ghost btn-xs" onclick="exportCSV('users')">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+              Export CSV
+            </button>
+            <button class="btn btn-primary btn-xs" onclick="openCreateUserModal()">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/></svg>
+              เพิ่มผู้ใช้
+            </button>
+          </div>
+        </div>
+
+        <div class="card">
+          <table class="data-table">
+            <thead><tr>
+              <th>ผู้ใช้งาน</th>
+              <th>Role</th>
+              <th>สถานะ</th>
+              <th>สังกัด</th>
+              <th>แผนก</th>
+              <th class="r">สมัครเมื่อ</th>
+              <th style="width:80px;"></th>
+            </tr></thead>
+            <tbody id="users-tbody"><tr><td colspan="7" style="text-align:center;padding:40px;color:#334155;">กำลังโหลด...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ══ BROADCAST ══ -->
+      <div id="tab-broadcast" class="tab-pane">
+        <div style="margin-bottom:20px;">
+          <div class="page-title">Broadcast</div>
+          <div class="page-sub">ส่งประกาศถึงผู้ใช้ทั้งหมดในระบบ</div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1.2fr; gap:16px;">
+          <!-- Compose -->
+          <div class="card-sm">
+            <p class="section-label">ส่งประกาศใหม่</p>
+            <div style="display:flex; flex-direction:column; gap:12px;">
+              <div>
+                <label style="font-size:11px; color:#64748b; font-weight:700; display:block; margin-bottom:4px;">หัวข้อ</label>
+                <input class="inp" id="bc-title" placeholder="ประกาศจากผู้ดูแลระบบ" value="ประกาศจากผู้ดูแลระบบ">
+              </div>
+              <div>
+                <label style="font-size:11px; color:#64748b; font-weight:700; display:block; margin-bottom:4px;">ข้อความ</label>
+                <textarea class="inp" id="bc-msg" rows="5" placeholder="พิมพ์ข้อความประกาศ..." style="resize:vertical;"></textarea>
+              </div>
+              <div style="display:flex; gap:8px;">
+                <button class="btn btn-primary" onclick="sendBroadcast()" style="flex:1;">
+                  <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+                  ส่งประกาศ
+                </button>
+              </div>
+              <div style="background:#111827; border:1px solid #1e293b; border-radius:8px; padding:10px 12px;">
+                <p style="font-size:11px; color:#475569; line-height:1.6; margin:0;">
+                  ⚠️ ประกาศจะถูกบันทึกไว้ใน Event Log และแสดงในหน้า Broadcast History ด้านขวา
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- History -->
+          <div class="card">
+            <div style="padding:14px 18px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+              <p class="section-label" style="margin:0;">ประวัติประกาศ</p>
+              <button class="btn btn-ghost btn-xs" onclick="loadBroadcasts()">Refresh</button>
+            </div>
+            <div id="bc-history" style="max-height:500px; overflow-y:auto;">
+              <div style="padding:30px; text-align:center; color:#334155; font-size:13px;">กำลังโหลด...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ SYSTEM ══ -->
+      <div id="tab-system" class="tab-pane">
+        <div style="margin-bottom:20px;">
+          <div class="page-title">ระบบ & Configuration</div>
+          <div class="page-sub">ตรวจสอบ environment, system info, และ maintenance actions</div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
+          <!-- Env Vars -->
+          <div class="card-sm">
+            <p class="section-label">Environment Variables</p>
+            <div id="env-list" style="display:flex; flex-direction:column; gap:6px;"></div>
+          </div>
+          <!-- System Info -->
+          <div class="card-sm">
+            <p class="section-label">System Info</p>
+            <div id="sys-info" style="display:flex; flex-direction:column; gap:0; margin-bottom:16px;"></div>
+
+            <p class="section-label">Maintenance Actions</p>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:#070c16; border:1px solid #1e293b; border-radius:10px;">
+                <div>
+                  <div style="font-size:13px; font-weight:700; color:#e2e8f0;">Clear RAG / KB Cache</div>
+                  <div style="font-size:11px; color:#475569; margin-top:1px;">ล้าง cache ของ Knowledge Base engine</div>
+                </div>
+                <button class="btn btn-warning btn-xs" onclick="clearCache()">ล้าง Cache</button>
+              </div>
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:#070c16; border:1px solid #1e293b; border-radius:10px;">
+                <div>
+                  <div style="font-size:13px; font-weight:700; color:#e2e8f0;">Export Event Logs</div>
+                  <div style="font-size:11px; color:#475569; margin-top:1px;">ดาวน์โหลด event log เป็น CSV</div>
+                </div>
+                <button class="btn btn-info btn-xs" onclick="exportLogsCSV()">Export</button>
+              </div>
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:#070c16; border:1px solid #7f1d1d44; border-radius:10px;">
+                <div>
+                  <div style="font-size:13px; font-weight:700; color:#f87171;">Danger Zone</div>
+                  <div style="font-size:11px; color:#475569; margin-top:1px;">Actions ที่ไม่สามารถยกเลิกได้</div>
+                </div>
+                <span style="font-size:10px; color:#475569;">ระวัง</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ LOGS ══ -->
+      <div id="tab-logs" class="tab-pane">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+          <div>
+            <div class="page-title">Event Logs</div>
+            <div class="page-sub">ประวัติการกระทำทั้งหมดในระบบ</div>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <div class="search-wrap">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+              <input class="inp-sm" id="log-q" placeholder="ค้นหา..." oninput="filterLogs()" style="width:180px;padding-left:32px;background:#111827;border:1px solid #1e293b;border-radius:8px;color:#e2e8f0;outline:none;">
+            </div>
+            <select class="inp-sm" id="log-type" onchange="filterLogs()" style="width:140px;">
+              <option value="">ทุกประเภท</option>
+              <option value="superadmin">[SuperAdmin]</option>
+              <option value="broadcast">[BROADCAST]</option>
+            </select>
+            <select class="inp-sm" id="log-limit" onchange="loadLogs()" style="width:100px;">
+              <option value="50">50 รายการ</option>
+              <option value="100" selected>100 รายการ</option>
+              <option value="200">200 รายการ</option>
+            </select>
+            <button class="btn btn-ghost btn-xs" onclick="loadLogs()">Refresh</button>
+          </div>
+        </div>
+
+        <div class="card" id="logs-wrap">
+          <div style="padding:40px; text-align:center; color:#334155; font-size:13px;">กำลังโหลด...</div>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </main>
+</div><!-- /layout -->
+
+
+<script>
+/* ═══════════════════════════════════════════════════════════
+   STATE
+   ═══════════════════════════════════════════════════════════ */
+let _orgs = [], _users = [], _logs = [];
+
+/* ═══════════════════════════════════════════════════════════
+   TAB NAVIGATION
+   ═══════════════════════════════════════════════════════════ */
+function showTab(name) {
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  document.querySelector(`[data-tab="${name}"]`).classList.add('active');
+
+  if (name === 'orgs'      && !_orgs.length)  loadOrgs();
+  if (name === 'users'     && !_users.length) loadUsers();
+  if (name === 'billing')   loadBilling();
+  if (name === 'analytics') loadAnalytics();
+  if (name === 'system')    loadSystem();
+  if (name === 'logs')      loadLogs();
+  if (name === 'broadcast') loadBroadcasts();
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TOAST
+   ═══════════════════════════════════════════════════════════ */
+function toast(msg, type = '') {
+  const zone = document.getElementById('toastZone');
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  zone.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('in'));
+  setTimeout(() => { el.classList.remove('in'); setTimeout(() => el.remove(), 250); }, 3200);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MODAL
+   ═══════════════════════════════════════════════════════════ */
+function showModal(title, bodyHtml, footerHtml = '') {
+  document.getElementById('modalRoot').innerHTML = `
+    <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+      <div class="modal-box">
+        <div class="modal-header">
+          <button class="modal-close" onclick="closeModal()">✕</button>
+          <h3 style="font-size:16px;font-weight:800;color:white;margin:0;">${title}</h3>
+        </div>
+        <div class="modal-body">${bodyHtml}</div>
+        ${footerHtml ? `<div class="modal-footer">${footerHtml}</div>` : ''}
+      </div>
+    </div>`;
+}
+function closeModal() { document.getElementById('modalRoot').innerHTML = ''; }
+
+/* ═══════════════════════════════════════════════════════════
+   HELPERS
+   ═══════════════════════════════════════════════════════════ */
+function fmtBytes(b) {
+  if (!b) return '0 B';
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  return (b/1048576).toFixed(2) + ' MB';
+}
+function fmtDate(s) {
+  if (!s) return '—';
+  try { return new Date(s).toLocaleDateString('th-TH', { day:'numeric', month:'short', year:'2-digit' }); }
+  catch { return s.substring(0,10); }
+}
+function fmtUptime(s) {
+  const d = Math.floor(s/86400), h = Math.floor((s%86400)/3600), m = Math.floor((s%3600)/60);
+  if (d > 0) return `${d}d ${h}h`;
+  return `${h}h ${m}m`;
+}
+function planBadge(p) {
+  const cls = p==='pro'?'badge-pro':p==='business'?'badge-business':'badge-free';
+  const lbl = p==='business'?'Ultra':(p||'free');
+  return `<span class="badge ${cls}">${lbl}</span>`;
+}
+function roleBadge(r) {
+  return `<span class="badge ${r==='admin'?'badge-admin':'badge-user'}">${r||'user'}</span>`;
+}
+function statusBadge(active) {
+  return active
+    ? `<span class="badge badge-active"><span class="dot dot-green" style="width:5px;height:5px;margin-right:4px;"></span>Active</span>`
+    : `<span class="badge badge-suspended"><span class="dot dot-red" style="width:5px;height:5px;margin-right:4px;"></span>Suspended</span>`;
+}
+function avatar(u, size=32) {
+  const sz = `width:${size}px;height:${size}px;`;
+  if (u.avatar_url) return `<img src="${u.avatar_url}" style="${sz}border-radius:${size>24?10:6}px;object-fit:cover;flex-shrink:0;">`;
+  const letter = (u.username||u.name||'?')[0].toUpperCase();
+  return `<div style="${sz}border-radius:${size>24?10:6}px;background:#1e1b4b;border:1px solid #312e81;display:flex;align-items:center;justify-content:center;font-size:${size>24?12:9}px;font-weight:800;color:#818cf8;flex-shrink:0;">${letter}</div>`;
+}
+function statRow(label, value, color='#94a3b8') {
+  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #0f172a;">
+    <span style="font-size:12px;color:#64748b;">${label}</span>
+    <span style="font-size:13px;font-weight:700;color:${color};">${value}</span>
+  </div>`;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   OVERVIEW
+   ═══════════════════════════════════════════════════════════ */
+async function loadOverview() {
+  try {
+    const [ovR, orgsR] = await Promise.all([
+      fetch('/api/superadmin/overview'),
+      fetch('/api/superadmin/orgs'),
+    ]);
+    const ov = await ovR.json();
+    const orgsD = await orgsR.json();
+    if (!ov.ok) return;
+
+    // topbar
+    document.getElementById('tb-version').textContent = 'v' + ov.version;
+    document.getElementById('tb-python').textContent = (ov.python_version||'').split(' ')[0];
+    document.getElementById('tb-provider').textContent = ov.ai_provider || '—';
+    document.getElementById('tb-uptime').textContent = fmtUptime(ov.uptime_seconds);
+    document.getElementById('sb-uptime').textContent = fmtUptime(ov.uptime_seconds);
+
+    // KPIs
+    document.getElementById('k-mrr').textContent = '฿' + (ov.mrr||0).toLocaleString();
+    document.getElementById('k-paying').textContent = ov.paying_orgs||0;
+    document.getElementById('k-paying-sub').textContent = `จาก ${ov.total_orgs||0} org`;
+    document.getElementById('k-ai-month').textContent = (ov.stats?.ai_queries_this_month||0).toLocaleString();
+    document.getElementById('k-ai-total').textContent = `รวม ${(ov.stats?.total_ai_queries||0).toLocaleString()} ครั้ง`;
+    document.getElementById('k-users').textContent = (ov.stats?.total_users||0).toLocaleString();
+    document.getElementById('k-orgs').textContent = (ov.total_orgs||0).toLocaleString();
+    document.getElementById('k-msgs').textContent = (ov.stats?.total_messages||0).toLocaleString();
+    document.getElementById('k-db').textContent = fmtBytes(ov.stats?.db_size_bytes||0);
+    document.getElementById('k-kb').textContent = (ov.stats?.kb_total_files||0).toLocaleString();
+
+    // nav badges
+    document.getElementById('nb-orgs').textContent = ov.total_orgs||0;
+    document.getElementById('nb-users').textContent = ov.stats?.total_users||0;
+
+    // plan dist
+    if (orgsD.ok) {
+      _orgs = orgsD.orgs;
+      const counts = {free:0, pro:0, business:0};
+      orgsD.orgs.forEach(o => { const p=o.plan||'free'; counts[p]=(counts[p]||0)+1; });
+      const total = orgsD.orgs.length || 1;
+      const colors = {pro:'#34d399', business:'#a78bfa', free:'#334155'};
+      document.getElementById('plan-dist').innerHTML = ['pro','business','free'].map(p => {
+        const pct = Math.round((counts[p]||0)/total*100);
+        return `<div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+            ${planBadge(p)}
+            <span style="font-size:12px;font-weight:700;color:#94a3b8;">${counts[p]||0} org &nbsp;<span style="color:#475569;">(${pct}%)</span></span>
+          </div>
+          <div class="prog-track"><div class="prog-fill" style="width:${pct}%;background:${colors[p]};"></div></div>
+        </div>`;
+      }).join('');
+    }
+
+    // quick stats
+    document.getElementById('quick-stats').innerHTML = [
+      statRow('องค์กรทั้งหมด', ov.total_orgs||0, '#60a5fa'),
+      statRow('ผู้ใช้ทั้งหมด', ov.stats?.total_users||0, '#f472b6'),
+      statRow('ข้อความทั้งหมด', (ov.stats?.total_messages||0).toLocaleString(), '#a78bfa'),
+      statRow('AI Queries รวม', (ov.stats?.total_ai_queries||0).toLocaleString(), '#818cf8'),
+      statRow('KB Files', ov.stats?.kb_total_files||0, '#2dd4bf'),
+      statRow('MRR', '฿'+(ov.mrr||0).toLocaleString(), '#34d399'),
+      statRow('AI Provider', `<span class="mono" style="font-size:11px;">${ov.ai_provider||'—'}</span>`, '#818cf8'),
+      statRow('Version', `<span class="mono" style="font-size:11px;">v${ov.version}</span>`, '#94a3b8'),
+    ].join('');
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   BILLING
+   ═══════════════════════════════════════════════════════════ */
+async function loadBilling() {
+  const r = await fetch('/api/superadmin/billing');
+  const d = await r.json();
+  if (!d.ok) return;
+
+  document.getElementById('b-mrr').textContent = '฿' + (d.mrr||0).toLocaleString();
+  document.getElementById('b-arr').textContent = '฿' + ((d.mrr||0)*12).toLocaleString();
+  document.getElementById('b-paying').textContent = (d.paying_orgs||[]).length;
+
+  // Revenue by plan
+  const rbp = d.revenue_by_plan || {};
+  const planColors = {free:'#334155', pro:'#34d399', business:'#a78bfa'};
+  const totalRev = Object.values(rbp).reduce((s,v)=>s+(v.total||0),0);
+  document.getElementById('rev-by-plan').innerHTML = Object.entries(rbp).map(([p, v]) => {
+    const pct = totalRev > 0 ? Math.round((v.total||0)/totalRev*100) : 0;
+    return `<div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+        ${planBadge(p)}
+        <span style="font-size:12px;color:#94a3b8;font-weight:700;">${v.count} org × ฿${(v.price_thb||0).toLocaleString()} = <span style="color:${planColors[p]};">฿${(v.total||0).toLocaleString()}</span></span>
+      </div>
+      <div class="prog-track"><div class="prog-fill" style="width:${pct}%;background:${planColors[p]||'#334155'};"></div></div>
+    </div>`;
+  }).join('');
+
+  // Conversion
+  const totalOrgs = Object.values(rbp).reduce((s,v)=>s+(v.count||0),0);
+  const payingCount = (d.paying_orgs||[]).length;
+  const freeCount = totalOrgs - payingCount;
+  const convRate = totalOrgs > 0 ? ((payingCount/totalOrgs)*100).toFixed(1) : '0';
+  document.getElementById('conversion-stats').innerHTML = `
+    ${statRow('จำนวนองค์กรทั้งหมด', totalOrgs, '#60a5fa')}
+    ${statRow('Paying orgs', payingCount, '#34d399')}
+    ${statRow('Free orgs', freeCount, '#64748b')}
+    ${statRow('Conversion rate', convRate + '%', '#fbbf24')}
+    ${statRow('ARPU (ต่อ paying org)', payingCount>0?'฿'+Math.round((d.mrr||0)/payingCount).toLocaleString():'—', '#f472b6')}
+  `;
+
+  // Paying orgs table
+  const paying = d.paying_orgs || [];
+  document.getElementById('paying-tbody').innerHTML = paying.length
+    ? paying.map(o => `<tr>
+        <td>
+          <div style="font-weight:700;color:white;font-size:13px;">${o.name}</div>
+          <div style="font-size:10px;color:#475569;">ID: ${o.id}</div>
+        </td>
+        <td>${planBadge(o.plan)}</td>
+        <td class="r" style="color:#94a3b8;">${o.member_count||0}</td>
+        <td class="r" style="color:#34d399;font-weight:700;">฿${(o.price_thb||0).toLocaleString()}</td>
+        <td class="r" style="color:#475569;font-size:12px;">${fmtDate(o.plan_expires_at)||'ตลอดไป'}</td>
+        <td class="r"><button class="btn btn-ghost btn-xs" onclick="showTab('orgs');setTimeout(()=>openOrgModal(${o.id}),300)">จัดการ</button></td>
+      </tr>`).join('')
+    : '<tr><td colspan="6" style="text-align:center;padding:30px;color:#334155;">ไม่มีองค์กรที่จ่ายเงิน</td></tr>';
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ANALYTICS
+   ═══════════════════════════════════════════════════════════ */
+async function loadAnalytics() {
+  if (!_orgs.length) { const r = await fetch('/api/superadmin/orgs'); const d = await r.json(); if(d.ok) _orgs=d.orgs; }
+  if (!_users.length) { const r = await fetch('/api/superadmin/users'); const d = await r.json(); if(d.ok) _users=d.users; }
+
+  // Top orgs by AI
+  const topAI = [..._orgs].sort((a,b)=>(b.ai_query_count||0)-(a.ai_query_count||0)).slice(0,8);
+  const maxAI = topAI[0]?.ai_query_count || 1;
+  document.getElementById('top-orgs-ai').innerHTML = topAI.map(o => `
+    <div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+        <span style="font-size:12px;color:#94a3b8;font-weight:600;">${o.name}</span>
+        <span style="font-size:11px;color:#818cf8;font-weight:700;">${(o.ai_query_count||0).toLocaleString()}</span>
+      </div>
+      <div class="prog-track"><div class="prog-fill" style="width:${Math.round((o.ai_query_count||0)/maxAI*100)}%;background:#6366f1;"></div></div>
+    </div>`).join('') || '<p style="color:#334155;font-size:13px;">ไม่มีข้อมูล</p>';
+
+  // Top orgs by members
+  const topMem = [..._orgs].sort((a,b)=>(b.member_count||0)-(a.member_count||0)).slice(0,8);
+  const maxMem = topMem[0]?.member_count || 1;
+  document.getElementById('top-orgs-member').innerHTML = topMem.map(o => `
+    <div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+        <span style="font-size:12px;color:#94a3b8;font-weight:600;">${o.name}</span>
+        <span style="font-size:11px;color:#60a5fa;font-weight:700;">${o.member_count||0} คน</span>
+      </div>
+      <div class="prog-track"><div class="prog-fill" style="width:${Math.round((o.member_count||0)/maxMem*100)}%;background:#3b82f6;"></div></div>
+    </div>`).join('') || '<p style="color:#334155;font-size:13px;">ไม่มีข้อมูล</p>';
+
+  // User role dist
+  const admins = _users.filter(u => u.role==='admin').length;
+  const normalUsers = _users.length - admins;
+  const total = _users.length || 1;
+  document.getElementById('user-role-dist').innerHTML = [
+    {label:'Admin', count:admins, color:'#818cf8'},
+    {label:'User', count:normalUsers, color:'#64748b'},
+  ].map(({label,count,color}) => `
+    <div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:5px;">
+        <span style="font-size:12px;color:#94a3b8;">${label}</span>
+        <span style="font-size:12px;font-weight:700;color:${color};">${count} (${Math.round(count/total*100)}%)</span>
+      </div>
+      <div class="prog-track"><div class="prog-fill" style="width:${Math.round(count/total*100)}%;background:${color};"></div></div>
+    </div>`).join('');
+
+  // User status dist
+  const active = _users.filter(u => u.is_active!==0).length;
+  const suspended = _users.length - active;
+  document.getElementById('user-status-dist').innerHTML = [
+    {label:'Active', count:active, color:'#34d399'},
+    {label:'Suspended', count:suspended, color:'#f87171'},
+  ].map(({label,count,color}) => `
+    <div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:5px;">
+        <span style="font-size:12px;color:#94a3b8;">${label}</span>
+        <span style="font-size:12px;font-weight:700;color:${color};">${count} (${Math.round(count/total*100)}%)</span>
+      </div>
+      <div class="prog-track"><div class="prog-fill" style="width:${Math.round(count/total*100)}%;background:${color};"></div></div>
+    </div>`).join('');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ORGANIZATIONS
+   ═══════════════════════════════════════════════════════════ */
+async function loadOrgs() {
+  const r = await fetch('/api/superadmin/orgs');
+  const d = await r.json();
+  if (!d.ok) return;
+  _orgs = d.orgs;
+  document.getElementById('nb-orgs').textContent = _orgs.length;
+  filterOrgs();
+}
+function filterOrgs() {
+  const q = (document.getElementById('orgs-q').value||'').toLowerCase();
+  const planF = document.getElementById('orgs-plan-f').value;
+  let list = _orgs.filter(o => {
+    const mQ = !q || o.name.toLowerCase().includes(q) || String(o.id).includes(q) || (o.slug||'').toLowerCase().includes(q);
+    const mP = !planF || (o.plan||'free') === planF;
+    return mQ && mP;
+  });
+  document.getElementById('orgs-count-sub').textContent = `แสดง ${list.length} จาก ${_orgs.length} องค์กร`;
+  renderOrgs(list);
+}
+function renderOrgs(list) {
+  const tbody = document.getElementById('orgs-tbody');
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:#334155;">ไม่พบองค์กร</td></tr>';
+    return;
+  }
+  tbody.innerHTML = list.map(o => {
+    const ep = o.effective_plan || o.plan || 'free';
+    return `<tr>
+      <td style="color:#334155;" class="mono" style="font-size:11px;">${o.id}</td>
+      <td>
+        <div style="font-weight:700;color:white;font-size:13px;">${o.name}</div>
+        <div style="font-size:10px;color:#475569;" class="mono">${o.slug||''}</div>
+      </td>
+      <td>
+        ${planBadge(ep)}
+        ${o.plan_expires_at?`<br><span style="font-size:9px;color:#475569;">หมด ${fmtDate(o.plan_expires_at)}</span>`:''}
+      </td>
+      <td class="r" style="color:#94a3b8;">${o.member_count||0}</td>
+      <td class="r" style="color:#818cf8;">${(o.ai_query_count||0).toLocaleString()}</td>
+      <td class="r" style="color:#64748b;">${(o.expense_count||0).toLocaleString()}</td>
+      <td class="r" style="color:#475569;font-size:11px;">${fmtDate(o.created_at)}</td>
+      <td class="r">
+        <div style="display:flex;gap:4px;justify-content:flex-end;">
+          <button class="btn btn-info btn-xs" onclick="openOrgModal(${o.id})">จัดการ</button>
+          ${o.id!==1?`<button class="btn btn-danger btn-xs" onclick="confirmDeleteOrg(${o.id},'${o.name.replace(/'/g,"\\'")}')">ลบ</button>`:''}
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function openOrgModal(orgId) {
+  const org = _orgs.find(o => o.id === orgId);
+  if (!org) return;
+  const ep = org.effective_plan || org.plan || 'free';
+  const mr = await fetch(`/api/superadmin/org/${orgId}/members`);
+  const md = await mr.json();
+  const members = md.ok ? md.members : [];
+  const expVal = org.plan_expires_at ? org.plan_expires_at.substring(0,10) : '';
+
+  const membHtml = members.map(m => `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #0f172a;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        ${avatar(m, 26)}
+        <div>
+          <span style="font-size:13px;color:white;font-weight:600;">${m.display_name||m.username}</span>
+          <span style="font-size:10px;color:#475569;margin-left:4px;">@${m.username}</span>
+        </div>
+      </div>
+      ${roleBadge(m.org_role||m.role)}
+    </div>`).join('') || '<p style="color:#334155;font-size:12px;padding:8px 0;">ไม่มีสมาชิก</p>';
+
+  showModal(`องค์กร: ${org.name}`,`
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+      ${planBadge(ep)}
+      <span style="font-size:11px;color:#475569;" class="mono">ID: ${org.id} · ${org.slug||'—'}</span>
+    </div>
+
+    <!-- Plan management -->
+    <div style="background:#070c16;border:1px solid #1e293b;border-radius:12px;padding:14px;margin:16px 0;">
+      <p style="font-size:10px;font-weight:800;color:#475569;letter-spacing:.1em;text-transform:uppercase;margin:0 0 12px;">เปลี่ยน Plan</p>
+      <div style="display:flex;gap:8px;align-items:flex-end;">
+        <div style="flex:1;">
+          <label style="font-size:11px;color:#64748b;font-weight:700;display:block;margin-bottom:4px;">Plan</label>
+          <select id="mp-plan-${orgId}" class="inp">
+            <option value="free" ${ep==='free'?'selected':''}>Free</option>
+            <option value="pro" ${ep==='pro'?'selected':''}>Pro (฿299)</option>
+            <option value="business" ${ep==='business'?'selected':''}>Ultra (฿599)</option>
+          </select>
+        </div>
+        <div style="flex:1;">
+          <label style="font-size:11px;color:#64748b;font-weight:700;display:block;margin-bottom:4px;">หมดอายุ (ว่าง = ตลอดไป)</label>
+          <input type="date" id="mp-exp-${orgId}" class="inp" value="${expVal}">
+        </div>
+        <button class="btn btn-success" onclick="setPlan(${orgId})">บันทึก</button>
+      </div>
+    </div>
+
+    <!-- Members -->
+    <div style="background:#070c16;border:1px solid #1e293b;border-radius:12px;padding:14px;margin-bottom:12px;">
+      <p style="font-size:10px;font-weight:800;color:#475569;letter-spacing:.1em;text-transform:uppercase;margin:0 0 8px;">สมาชิก (${members.length} คน)</p>
+      <div style="max-height:200px;overflow-y:auto;">${membHtml}</div>
+    </div>
+
+    <!-- Stats -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+      <div style="background:#070c16;border:1px solid #1e293b;border-radius:10px;padding:12px;text-align:center;">
+        <p style="font-size:22px;font-weight:900;color:white;margin:0;">${org.member_count||0}</p>
+        <p style="font-size:9px;color:#475569;text-transform:uppercase;letter-spacing:.08em;margin:2px 0 0;">สมาชิก</p>
+      </div>
+      <div style="background:#070c16;border:1px solid #1e293b;border-radius:10px;padding:12px;text-align:center;">
+        <p style="font-size:22px;font-weight:900;color:#818cf8;margin:0;">${(org.ai_query_count||0).toLocaleString()}</p>
+        <p style="font-size:9px;color:#475569;text-transform:uppercase;letter-spacing:.08em;margin:2px 0 0;">AI Queries</p>
+      </div>
+      <div style="background:#070c16;border:1px solid #1e293b;border-radius:10px;padding:12px;text-align:center;">
+        <p style="font-size:22px;font-weight:900;color:#fbbf24;margin:0;">${fmtDate(org.created_at)}</p>
+        <p style="font-size:9px;color:#475569;text-transform:uppercase;letter-spacing:.08em;margin:2px 0 0;">สร้างเมื่อ</p>
+      </div>
+    </div>
+  `);
+}
+
+async function setPlan(orgId) {
+  const plan = document.getElementById(`mp-plan-${orgId}`).value;
+  const exp = document.getElementById(`mp-exp-${orgId}`).value;
+  const expiresAt = exp ? new Date(exp + 'T23:59:59Z').toISOString() : null;
+  const r = await fetch(`/api/superadmin/org/${orgId}/set-plan`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ plan, expires_at: expiresAt })
+  });
+  const d = await r.json();
+  if (d.ok) { toast(`อัปเดต Plan เป็น "${plan}" แล้ว`, 'success'); closeModal(); loadOrgs(); loadOverview(); }
+  else toast(d.error || 'Error', 'error');
+}
+
+async function confirmDeleteOrg(orgId, orgName) {
+  if (!confirm(`⚠️ ลบองค์กร "${orgName}" (ID: ${orgId}) ?\n\nสมาชิกจะถูกนำออกจากองค์กร (ตัว user ยังอยู่)\nไม่สามารถยกเลิกได้!`)) return;
+  const r = await fetch(`/api/superadmin/org/${orgId}`, { method: 'DELETE' });
+  const d = await r.json();
+  if (d.ok) { toast(`ลบ org "${orgName}" แล้ว`, 'success'); _orgs=[]; loadOrgs(); loadOverview(); }
+  else toast(d.error || 'Error', 'error');
+}
+
+function openCreateOrgModal() {
+  showModal('สร้างองค์กรใหม่', `
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div>
+        <label style="font-size:11px;color:#64748b;font-weight:700;display:block;margin-bottom:5px;">ชื่อองค์กร *</label>
+        <input class="inp" id="co-name" placeholder="เช่น บริษัท ABC จำกัด">
+      </div>
+      <div>
+        <label style="font-size:11px;color:#64748b;font-weight:700;display:block;margin-bottom:5px;">Plan เริ่มต้น</label>
+        <select class="inp" id="co-plan">
+          <option value="free">Free</option>
+          <option value="pro">Pro (฿299/เดือน)</option>
+          <option value="business">Ultra (฿599/เดือน)</option>
+        </select>
+      </div>
+    </div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">ยกเลิก</button>
+     <button class="btn btn-primary" onclick="createOrg()">สร้างองค์กร</button>`
+  );
+  setTimeout(() => document.getElementById('co-name')?.focus(), 100);
+}
+
+async function createOrg() {
+  const name = document.getElementById('co-name').value.trim();
+  const plan = document.getElementById('co-plan').value;
+  if (!name) { toast('กรุณากรอกชื่อองค์กร', 'error'); return; }
+  const r = await fetch('/api/superadmin/org/create', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ name, plan })
+  });
+  const d = await r.json();
+  if (d.ok) { toast(`สร้าง org "${name}" แล้ว (ID: ${d.org_id})`, 'success'); closeModal(); _orgs=[]; loadOrgs(); loadOverview(); }
+  else toast(d.error || 'Error', 'error');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   USERS
+   ═══════════════════════════════════════════════════════════ */
+async function loadUsers() {
+  const r = await fetch('/api/superadmin/users');
+  const d = await r.json();
+  if (!d.ok) return;
+  _users = d.users;
+  document.getElementById('nb-users').textContent = _users.length;
+  filterUsers();
+}
+function filterUsers() {
+  const q = (document.getElementById('users-q').value||'').toLowerCase();
+  const roleF = document.getElementById('users-role-f').value;
+  const statusF = document.getElementById('users-status-f').value;
+  let list = _users.filter(u => {
+    const mQ = !q || u.username.toLowerCase().includes(q) || (u.display_name||'').toLowerCase().includes(q);
+    const mR = !roleF || u.role === roleF;
+    const isActive = u.is_active !== 0;
+    const mS = !statusF || (statusF==='active'?isActive:!isActive);
+    return mQ && mR && mS;
+  });
+  document.getElementById('users-count-sub').textContent = `แสดง ${list.length} จาก ${_users.length} ผู้ใช้`;
+  renderUsers(list);
+}
+function renderUsers(list) {
+  const tbody = document.getElementById('users-tbody');
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:#334155;">ไม่พบผู้ใช้</td></tr>';
+    return;
+  }
+  tbody.innerHTML = list.map(u => {
+    const isActive = u.is_active !== 0;
+    const orgTags = (u.orgs||[]).slice(0,2).map(o=>
+      `<span style="font-size:10px;background:#111827;border:1px solid #1e293b;color:#64748b;padding:1px 6px;border-radius:5px;">${o.name}</span>`
+    ).join('');
+    const moreOrgs = (u.orgs||[]).length > 2 ? `<span style="font-size:10px;color:#475569;">+${(u.orgs||[]).length-2}</span>` : '';
+    return `<tr>
+      <td>
+        <div style="display:flex;align-items:center;gap:10px;">
+          ${avatar(u, 32)}
+          <div>
+            <div style="font-weight:700;color:white;font-size:13px;">${u.display_name||u.username}</div>
+            <div style="font-size:10px;color:#475569;" class="mono">@${u.username}</div>
+          </div>
+        </div>
+      </td>
+      <td>${roleBadge(u.role)}</td>
+      <td>${statusBadge(isActive)}</td>
+      <td><div style="display:flex;gap:3px;flex-wrap:wrap;">${orgTags||'<span style="color:#334155;font-size:11px;">—</span>'}${moreOrgs}</div></td>
+      <td style="font-size:12px;color:#64748b;">${u.department||'—'}</td>
+      <td class="r" style="font-size:11px;color:#475569;">${fmtDate(u.profile_created||u.created_at)}</td>
+      <td class="r">
+        <button class="btn btn-info btn-xs" onclick="openUserModal('${u.username.replace(/'/g,"\\'")}')">จัดการ</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openUserModal(username) {
+  const u = _users.find(x => x.username === username);
+  if (!u) return;
+  const isActive = u.is_active !== 0;
+  const orgLines = (u.orgs||[]).map(o =>
+    `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid #0f172a;">
+      <span style="font-size:12px;color:#94a3b8;">${o.name}</span>
+      <div style="display:flex;gap:4px;">${roleBadge(o.role||'member')} ${planBadge(o.plan)}</div>
+    </div>`
+  ).join('') || '<p style="color:#334155;font-size:12px;margin:8px 0;">ไม่ได้อยู่ใน org ใด</p>';
+
+  showModal(`จัดการผู้ใช้: @${username}`, `
+    <!-- Profile -->
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+      ${avatar(u, 44)}
+      <div style="flex:1;">
+        <div style="font-weight:800;color:white;font-size:15px;">${u.display_name||u.username}</div>
+        <div style="font-size:11px;color:#475569;" class="mono">@${u.username}</div>
+        <div style="margin-top:4px;display:flex;gap:4px;">${roleBadge(u.role)} ${statusBadge(isActive)}</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:10px;color:#475569;">สมัครเมื่อ</div>
+        <div style="font-size:11px;color:#64748b;">${fmtDate(u.profile_created||u.created_at)}</div>
+        ${u.department?`<div style="font-size:10px;color:#475569;margin-top:2px;">แผนก: ${u.department}</div>`:''}
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div style="display:flex;flex-wrap:wrap;gap:6px;padding:12px;background:#070c16;border:1px solid #1e293b;border-radius:10px;margin-bottom:14px;">
+      <button class="btn ${isActive?'btn-warning':'btn-success'} btn-xs" onclick="toggleActive('${username}',${isActive})">
+        ${isActive?'⏸ ระงับบัญชี':'▶ เปิดบัญชี'}
+      </button>
+      <button class="btn btn-info btn-xs" onclick="changeRole('${username}','${u.role}')">
+        ${u.role==='admin'?'↓ เปลี่ยนเป็น User':'↑ เปลี่ยนเป็น Admin'}
+      </button>
+      <button class="btn btn-ghost btn-xs" onclick="resetPw('${username}')">
+        🔑 Reset รหัสผ่าน
+      </button>
+      ${username!=='Admin'?`<button class="btn btn-danger btn-xs" onclick="confirmDeleteUser('${username}')">🗑 ลบ User</button>`:''}
+    </div>
+
+    <!-- Orgs -->
+    <div style="background:#070c16;border:1px solid #1e293b;border-radius:10px;padding:12px;margin-bottom:12px;">
+      <p style="font-size:10px;font-weight:800;color:#475569;letter-spacing:.1em;text-transform:uppercase;margin:0 0 4px;">สังกัดองค์กร</p>
+      ${orgLines}
+    </div>
+
+    <!-- Notes -->
+    <div style="background:#070c16;border:1px solid #1e293b;border-radius:10px;padding:12px;">
+      <p style="font-size:10px;font-weight:800;color:#475569;letter-spacing:.1em;text-transform:uppercase;margin:0 0 8px;">หมายเหตุ (Admin)</p>
+      <textarea id="notes-${username}" class="inp" rows="2" style="resize:vertical;" placeholder="บันทึกข้อมูลเพิ่มเติม...">${u.notes||''}</textarea>
+      <button class="btn btn-ghost btn-xs" style="margin-top:6px;" onclick="saveNotes('${username}')">บันทึกหมายเหตุ</button>
+    </div>
+  `);
+}
+
+async function toggleActive(username, cur) {
+  const r = await fetch(`/api/superadmin/user/${encodeURIComponent(username)}/toggle-active`, { method:'POST' });
+  const d = await r.json();
+  if (d.ok) { toast(`${d.is_active?'เปิด':'ระงับ'} @${username} แล้ว`, 'success'); closeModal(); _users=[]; loadUsers(); }
+  else toast(d.error||'Error','error');
+}
+async function changeRole(username, cur) {
+  const nr = cur==='admin'?'user':'admin';
+  if (!confirm(`เปลี่ยน role @${username} เป็น "${nr}" ?`)) return;
+  const r = await fetch(`/api/superadmin/user/${encodeURIComponent(username)}/set-role`, {
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({role:nr})
+  });
+  const d = await r.json();
+  if (d.ok) { toast(`เปลี่ยน role เป็น ${nr} แล้ว`,'success'); closeModal(); _users=[]; loadUsers(); }
+  else toast(d.error||'Error','error');
+}
+async function resetPw(username) {
+  const pw = prompt(`รหัสผ่านใหม่ของ @${username} (อย่างน้อย 6 ตัวอักษร):`);
+  if (!pw) return;
+  if (pw.length < 6) { toast('รหัสผ่านสั้นเกินไป','error'); return; }
+  const r = await fetch(`/api/superadmin/user/${encodeURIComponent(username)}/reset-password`, {
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({password:pw})
+  });
+  const d = await r.json();
+  if (d.ok) toast(`รีเซ็ตรหัสผ่าน @${username} เรียบร้อย`,'success');
+  else toast(d.error||'Error','error');
+}
+async function confirmDeleteUser(username) {
+  if (!confirm(`⚠️ ลบ user "@${username}" ทั้งหมด?\n\nข้อมูลทุกอย่างของ user นี้จะหายไป\nไม่สามารถยกเลิกได้!`)) return;
+  const r = await fetch(`/api/superadmin/user/${encodeURIComponent(username)}`, { method:'DELETE' });
+  const d = await r.json();
+  if (d.ok) { toast(`ลบ @${username} เรียบร้อย`,'success'); closeModal(); _users=[]; loadUsers(); loadOverview(); }
+  else toast(d.error||'Error','error');
+}
+async function saveNotes(username) {
+  const notes = document.getElementById(`notes-${username}`).value;
+  const r = await fetch(`/api/superadmin/user/${encodeURIComponent(username)}/notes`, {
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({notes})
+  });
+  const d = await r.json();
+  if (d.ok) toast('บันทึกหมายเหตุแล้ว','success');
+  else toast('Error','error');
+}
+
+function openCreateUserModal() {
+  showModal('เพิ่มผู้ใช้ใหม่', `
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div>
+          <label style="font-size:11px;color:#64748b;font-weight:700;display:block;margin-bottom:5px;">Username *</label>
+          <input class="inp" id="cu-user" placeholder="username">
+        </div>
+        <div>
+          <label style="font-size:11px;color:#64748b;font-weight:700;display:block;margin-bottom:5px;">ชื่อที่แสดง</label>
+          <input class="inp" id="cu-name" placeholder="ชื่อ-นามสกุล">
+        </div>
+      </div>
+      <div>
+        <label style="font-size:11px;color:#64748b;font-weight:700;display:block;margin-bottom:5px;">รหัสผ่าน * (อย่างน้อย 6 ตัวอักษร)</label>
+        <input class="inp" id="cu-pw" type="password" placeholder="••••••••">
+      </div>
+      <div>
+        <label style="font-size:11px;color:#64748b;font-weight:700;display:block;margin-bottom:5px;">Role</label>
+        <select class="inp" id="cu-role">
+          <option value="user">User (ทั่วไป)</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+    </div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">ยกเลิก</button>
+     <button class="btn btn-primary" onclick="createUser()">สร้างผู้ใช้</button>`
+  );
+  setTimeout(() => document.getElementById('cu-user')?.focus(), 100);
+}
+
+async function createUser() {
+  const username = document.getElementById('cu-user').value.trim();
+  const password = document.getElementById('cu-pw').value.trim();
+  const display_name = document.getElementById('cu-name').value.trim() || username;
+  const role = document.getElementById('cu-role').value;
+  if (!username || !password) { toast('กรุณากรอก username และ password','error'); return; }
+  if (password.length < 6) { toast('รหัสผ่านสั้นเกินไป','error'); return; }
+  const r = await fetch('/api/superadmin/user/create', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({username, password, display_name, role})
+  });
+  const d = await r.json();
+  if (d.ok) { toast(`สร้าง user "@${username}" สำเร็จ`,'success'); closeModal(); _users=[]; loadUsers(); loadOverview(); }
+  else toast(d.error||'Error','error');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   BROADCAST
+   ═══════════════════════════════════════════════════════════ */
+async function sendBroadcast() {
+  const title = document.getElementById('bc-title').value.trim();
+  const message = document.getElementById('bc-msg').value.trim();
+  if (!message) { toast('กรุณาพิมพ์ข้อความก่อน','error'); return; }
+  const r = await fetch('/api/superadmin/broadcast', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({title, message})
+  });
+  const d = await r.json();
+  if (d.ok) {
+    toast('ส่งประกาศสำเร็จ','success');
+    document.getElementById('bc-msg').value = '';
+    loadBroadcasts();
+  } else toast(d.error||'Error','error');
+}
+
+async function loadBroadcasts() {
+  const r = await fetch('/api/superadmin/broadcasts');
+  const d = await r.json();
+  const el = document.getElementById('bc-history');
+  if (!d.ok || !d.broadcasts.length) {
+    el.innerHTML = '<div style="padding:40px;text-align:center;color:#334155;font-size:13px;">ยังไม่มีประกาศ</div>';
+    return;
+  }
+  el.innerHTML = d.broadcasts.map(b => `
+    <div style="padding:14px 16px;border-bottom:1px solid #0f172a;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
+        <span style="font-size:13px;font-weight:700;color:white;">${b.title||'ประกาศ'}</span>
+        <span style="font-size:10px;color:#475569;" class="mono">${(b.time||'').substring(0,16).replace('T',' ')}</span>
+      </div>
+      <p style="font-size:12px;color:#94a3b8;margin:0;line-height:1.5;">${b.message}</p>
+      <div style="margin-top:6px;font-size:10px;color:#475569;">โดย: ${b.user||'—'}</div>
+    </div>`).join('');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SYSTEM
+   ═══════════════════════════════════════════════════════════ */
+async function loadSystem() {
+  const r = await fetch('/api/superadmin/system');
+  const d = await r.json();
+  if (!d.ok) return;
+
+  document.getElementById('env-list').innerHTML = Object.entries(d.env||{}).map(([k,v]) => {
+    const ok = !v.includes('ไม่ได้ตั้งค่า');
+    return `<div class="env-row ${ok?'ok':'miss'}">
+      <span class="env-key">${k}</span>
+      <span class="env-val">${v}</span>
+    </div>`;
+  }).join('');
+
+  document.getElementById('sys-info').innerHTML = [
+    statRow('Version', `<span class="mono">${d.version}</span>`, '#94a3b8'),
+    statRow('Python', `<span class="mono" style="font-size:11px;">${(d.python_version||'').split(' ')[0]}</span>`, '#64748b'),
+    statRow('Uptime', fmtUptime(d.uptime_seconds||0), '#34d399'),
+    statRow('KB Files', d.kb_total_files||0, '#2dd4bf'),
+  ].join('');
+}
+
+async function clearCache() {
+  if (!confirm('ล้าง RAG/KB Cache จริงๆ ใช่ไหม?')) return;
+  const r = await fetch('/api/superadmin/system/clear-cache', { method:'POST' });
+  const d = await r.json();
+  if (d.ok) toast('ล้าง cache เรียบร้อย','success');
+  else toast('Error','error');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   LOGS
+   ═══════════════════════════════════════════════════════════ */
+async function loadLogs() {
+  const limit = document.getElementById('log-limit')?.value || 100;
+  const r = await fetch(`/api/superadmin/logs?limit=${limit}`);
+  const d = await r.json();
+  _logs = d.ok ? d.events : [];
+  filterLogs();
+}
+function filterLogs() {
+  const q = (document.getElementById('log-q')?.value||'').toLowerCase();
+  const typeF = document.getElementById('log-type')?.value||'';
+  let list = _logs.filter(e => {
+    const text = e.event || e.event_text || '';
+    const mQ = !q || text.toLowerCase().includes(q) || (e.user||'').toLowerCase().includes(q);
+    const mT = !typeF
+      || (typeF==='superadmin' && text.includes('[SuperAdmin]'))
+      || (typeF==='broadcast' && text.includes('[BROADCAST]'));
+    return mQ && mT;
+  });
+  renderLogs(list);
+}
+function renderLogs(list) {
+  const wrap = document.getElementById('logs-wrap');
+  if (!list.length) {
+    wrap.innerHTML = '<div style="padding:40px;text-align:center;color:#334155;font-size:13px;">ไม่มี event logs</div>';
+    return;
+  }
+  wrap.innerHTML = list.map(e => {
+    const text = e.event || e.event_text || '';
+    const isSA = text.includes('[SuperAdmin]');
+    const isBC = text.includes('[BROADCAST]');
+    return `<div class="log-row">
+      <span class="log-time">${(e.time||e.timestamp||'').substring(0,16).replace('T',' ')}</span>
+      <span class="log-user">${e.user||'—'}</span>
+      <span class="log-text ${isSA?'super':isBC?'broadcast':''}">${text}</span>
+    </div>`;
+  }).join('');
+}
+
+function exportLogsCSV() {
+  const rows = [['time','user','event'], ..._logs.map(e => [e.time||e.timestamp||'', e.user||'', e.event||e.event_text||''])];
+  downloadCSV(rows, 'event_logs.csv');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   EXPORT CSV
+   ═══════════════════════════════════════════════════════════ */
+function exportCSV(type) {
+  let rows, filename;
+  if (type === 'orgs') {
+    rows = [['id','name','slug','plan','member_count','ai_queries','created_at'],
+      ..._orgs.map(o=>[o.id,o.name,o.slug||'',o.plan||'free',o.member_count||0,o.ai_query_count||0,o.created_at||''])];
+    filename = 'organizations.csv';
+  } else {
+    rows = [['username','display_name','role','is_active','department','created_at'],
+      ..._users.map(u=>[u.username,u.display_name||'',u.role||'user',u.is_active!==0?'1':'0',u.department||'',u.profile_created||u.created_at||''])];
+    filename = 'users.csv';
+  }
+  downloadCSV(rows, filename);
+}
+function downloadCSV(rows, filename) {
+  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob(['﻿'+csv], { type:'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  toast(`ดาวน์โหลด ${filename} แล้ว`,'success');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   REFRESH ALL
+   ═══════════════════════════════════════════════════════════ */
+function refreshAll() {
+  _orgs=[]; _users=[]; _logs=[];
+  loadOverview();
+  const active = document.querySelector('.tab-pane.active')?.id?.replace('tab-','');
+  if (active==='orgs')      loadOrgs();
+  if (active==='users')     loadUsers();
+  if (active==='system')    loadSystem();
+  if (active==='logs')      loadLogs();
+  if (active==='billing')   loadBilling();
+  if (active==='analytics') loadAnalytics();
+  if (active==='broadcast') loadBroadcasts();
+  toast('รีเฟรชข้อมูลแล้ว');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   INIT
+   ═══════════════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', () => {
+  loadOverview();
+});
+</script>
+</body>
+</html>

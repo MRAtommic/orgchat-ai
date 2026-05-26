@@ -142,6 +142,18 @@ if (themeToggle) {
     toast(`เปลี่ยนธีมเป็น: ${state.theme}`, 'info');
   };
 }
+
+const profileThemeToggle = $('profileThemeToggle');
+if (profileThemeToggle) {
+  profileThemeToggle.onclick = () => {
+    if (state.theme === 'auto') state.theme = 'dark';
+    else if (state.theme === 'dark') state.theme = 'light';
+    else state.theme = 'auto';
+    localStorage.setItem('theme', state.theme);
+    updateTheme();
+    toast(`เปลี่ยนธีมเป็น: ${state.theme}`, 'info');
+  };
+}
 const navSettings = document.getElementById("nav-settings");
 const navStats = document.getElementById("nav-stats");
 const navNotifications = document.getElementById("nav-notifications");
@@ -959,6 +971,26 @@ function applyProfile(profile) {
       if (profileCoverPreview) profileCoverPreview.style.background = profile.background_url;
     }
   }
+
+  // Update Plan Badges
+  const planName = profile.plan_name || 'FREE';
+  const planClass = planName.toLowerCase().includes('pro') 
+    ? 'bg-gradient-to-r from-amber-200 to-yellow-400 text-amber-900 shadow-lg shadow-yellow-500/20' 
+    : 'bg-surface-100 text-surface-600 dark:bg-surface-800 dark:text-surface-400';
+    
+  const updateBadge = (id) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.textContent = planName;
+      el.className = id === 'sidebarPlanBadge' 
+        ? `px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase tracking-wider ${planClass}`
+        : `px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-wider ${planClass}`;
+      el.classList.remove('hidden');
+    }
+  };
+  
+  updateBadge('sidebarPlanBadge');
+  updateBadge('profilePlanBadge');
 }
 
 async function loadProfile() {
@@ -3799,15 +3831,23 @@ function initSocket() {
 function updateTheme() {
   const isDark = state.theme === 'dark' ||
     (state.theme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-  if (isDark) {
-    document.documentElement.classList.add('dark');
-    if ($('themeIcon')) $('themeIcon').setAttribute('data-lucide', 'sun');
-    if ($('themeText')) $('themeText').innerText = 'โหมดกลางวัน';
-  } else {
-    document.documentElement.classList.remove('dark');
-    if ($('themeIcon')) $('themeIcon').setAttribute('data-lucide', 'moon');
-    if ($('themeText')) $('themeText').innerText = 'โหมดกลางคืน';
-  }
+
+  document.documentElement.classList.toggle('dark', isDark);
+  
+  // Sync all theme elements (icons & text)
+  document.querySelectorAll('.themeIcon').forEach(el => {
+    el.setAttribute('data-lucide', isDark ? 'sun' : 'moon');
+  });
+  document.querySelectorAll('.themeText').forEach(el => {
+    el.innerText = isDark ? 'โหมดกลางวัน' : 'โหมดกลางคืน';
+  });
+
+  // Backward compatibility for old IDs
+  const oldIcon = $('themeIcon');
+  const oldText = $('themeText');
+  if (oldIcon) oldIcon.setAttribute('data-lucide', isDark ? 'sun' : 'moon');
+  if (oldText) oldText.innerText = isDark ? 'โหมดกลางวัน' : 'โหมดกลางคืน';
+
   if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
@@ -5182,7 +5222,6 @@ function showLoginError(msg) {
 }
 
 logoutBtn.onclick = async () => {
-  if (!confirm('คุณต้องการออกจากระบบใช่หรือไม่?')) return;
   try {
     const res = await fetch('/api/logout', { method: 'POST' });
     if (res.ok) {
@@ -8530,15 +8569,22 @@ function updateTheme() {
   const isDark = state.theme === 'dark' ||
     (state.theme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
 
-  if (isDark) {
-    document.documentElement.classList.add('dark');
-    if ($('themeIcon')) $('themeIcon').setAttribute('data-lucide', 'sun');
-    if ($('themeText')) $('themeText').innerText = 'โหมดกลางวัน';
-  } else {
-    document.documentElement.classList.remove('dark');
-    if ($('themeIcon')) $('themeIcon').setAttribute('data-lucide', 'moon');
-    if ($('themeText')) $('themeText').innerText = 'โหมดกลางคืน';
-  }
+  document.documentElement.classList.toggle('dark', isDark);
+  
+  // Sync all theme elements (icons & text)
+  document.querySelectorAll('.themeIcon').forEach(el => {
+    el.setAttribute('data-lucide', isDark ? 'sun' : 'moon');
+  });
+  document.querySelectorAll('.themeText').forEach(el => {
+    el.innerText = isDark ? 'โหมดกลางวัน' : 'โหมดกลางคืน';
+  });
+
+  // Backward compatibility for old IDs
+  const oldIcon = $('themeIcon');
+  const oldText = $('themeText');
+  if (oldIcon) oldIcon.setAttribute('data-lucide', isDark ? 'sun' : 'moon');
+  if (oldText) oldText.innerText = isDark ? 'โหมดกลางวัน' : 'โหมดกลางคืน';
+
   if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
