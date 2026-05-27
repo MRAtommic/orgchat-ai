@@ -951,8 +951,11 @@
                         </td>
                         <td class="px-6 py-4 text-xs font-extrabold text-slate-900 whitespace-nowrap tabular-nums">฿${formatNum(item.net_amount)}</td>
                         <td class="px-6 py-4 text-right whitespace-nowrap" onclick="event.stopPropagation()">
+                            <button onclick="openEditModalFromRow(${JSON.stringify(item).replace(/"/g, '&quot;')})" class="p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition mr-1.5" title="ดูรายละเอียด/แก้ไข">
+                                <i data-lucide="edit-3" class="w-4.5 h-4.5"></i>
+                            </button>
                             <button onclick="deleteRowDirect('${escAttr(item.sheet_name)}', ${item.row_index})" class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition">
-                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                <i data-lucide="trash-2" class="w-4.5 h-4.5"></i>
                             </button>
                         </td>
                     </tr>`;
@@ -1043,8 +1046,11 @@
                     <td class="px-6 py-4 text-xs font-bold text-amber-600 tabular-nums">฿${formatNum(item.wht_amount)}</td>
                     <td class="px-6 py-4 text-xs font-extrabold text-slate-900 tabular-nums">฿${formatNum(item.net_amount)}</td>
                     <td class="px-6 py-4 text-right whitespace-nowrap" onclick="event.stopPropagation()">
+                        <button onclick="openEditModalFromRow(${JSON.stringify(item).replace(/"/g, '&quot;')})" class="p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition mr-1.5" title="ดูรายละเอียด/แก้ไข">
+                            <i data-lucide="edit-3" class="w-4.5 h-4.5"></i>
+                        </button>
                         <button onclick="deleteRowDirect('${escAttr(item.sheet_name)}', ${item.row_index})" class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition">
-                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                            <i data-lucide="trash-2" class="w-4.5 h-4.5"></i>
                         </button>
                     </td>
                 </tr>`;
