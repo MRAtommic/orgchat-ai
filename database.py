@@ -922,11 +922,18 @@ def init_db():
             summary TEXT,
             file_link TEXT,
             user_id TEXT,
+            org_id INTEGER DEFAULT 1,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    # Migration: add org_id to drive_logs if missing
+    try:
+        cursor.execute("ALTER TABLE drive_logs ADD COLUMN org_id INTEGER DEFAULT 1")
+    except Exception:
+        pass
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_drive_logs_created_at ON drive_logs(created_at)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_drive_logs_filename ON drive_logs(filename)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_drive_logs_org_id ON drive_logs(org_id)")
 
     # --- Per-User Google OAuth2 Token Storage (personal / no-org users) ---
     cursor.execute("""
@@ -1368,15 +1375,15 @@ def set_whitelist_status(org_id: int, enabled: bool):
     conn.close()
 
 
-def add_drive_log(filename, category=None, amount=None, doc_date=None, summary=None, file_link=None, user_id=None):
+def add_drive_log(filename, category=None, amount=None, doc_date=None, summary=None, file_link=None, user_id=None, org_id=1):
     """Log a file upload/analysis event to the database."""
     try:
         conn = _get_conn()
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO drive_logs (filename, category, amount, doc_date, summary, file_link, user_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (filename, category, amount, doc_date, summary, file_link, user_id))
+            INSERT INTO drive_logs (filename, category, amount, doc_date, summary, file_link, user_id, org_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (filename, category, amount, doc_date, summary, file_link, user_id, org_id or 1))
         log_id = cursor.lastrowid
         conn.commit()
         conn.close()
@@ -1385,19 +1392,24 @@ def add_drive_log(filename, category=None, amount=None, doc_date=None, summary=N
         print(f"❌ Error adding drive log: {e}")
         return None
 
-def get_drive_logs(limit=50, offset=0, user_id=None):
-    """Retrieve recent drive logs."""
+def get_drive_logs(limit=50, offset=0, user_id=None, org_id=None):
+    """Retrieve recent drive logs filtered by org."""
     try:
         conn = _get_conn()
         cursor = conn.cursor()
-        query = "SELECT * FROM drive_logs"
+        where_clauses = []
         params = []
+        if org_id is not None:
+            where_clauses.append("org_id = ?")
+            params.append(org_id)
         if user_id:
-            query += " WHERE user_id = ?"
+            where_clauses.append("user_id = ?")
             params.append(user_id)
+        query = "SELECT * FROM drive_logs"
+        if where_clauses:
+            query += " WHERE " + " AND ".join(where_clauses)
         query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
-        
         cursor.execute(query, params)
         columns = [col[0] for col in cursor.description]
         rows = cursor.fetchall()
@@ -1427,28 +1439,30 @@ def search_drive_logs(search_query, limit=20):
         print(f"❌ Error searching drive logs: {e}")
         return []
 
-def get_drive_stats():
-    """Get statistics for the dashboard."""
+def get_drive_stats(org_id=None):
+    """Get statistics for the dashboard, scoped to a specific org."""
     try:
         conn = _get_conn()
         cursor = conn.cursor()
-        
-        # Total files
-        cursor.execute("SELECT COUNT(*) FROM drive_logs")
+        where = "WHERE org_id = ?" if org_id is not None else ""
+        base_params = (org_id,) if org_id is not None else ()
+
+        cursor.execute(f"SELECT COUNT(*) FROM drive_logs {where}", base_params)
         total_files = cursor.fetchone()[0]
-        
-        # Total amount (if available)
-        cursor.execute("SELECT SUM(amount) FROM drive_logs WHERE amount IS NOT NULL")
+
+        amt_where = "WHERE org_id = ? AND amount IS NOT NULL" if org_id is not None else "WHERE amount IS NOT NULL"
+        amt_params = (org_id,) if org_id is not None else ()
+        cursor.execute(f"SELECT SUM(amount) FROM drive_logs {amt_where}", amt_params)
         total_amount = cursor.fetchone()[0] or 0
-        
-        # Files by category
-        cursor.execute("SELECT category, COUNT(*) as count FROM drive_logs GROUP BY category")
+
+        cat_where = "WHERE org_id = ?" if org_id is not None else ""
+        cursor.execute(f"SELECT category, COUNT(*) as count FROM drive_logs {cat_where} GROUP BY category", base_params)
         categories = dict(cursor.fetchall())
-        
-        # Recent activity (last 24h)
-        cursor.execute("SELECT COUNT(*) FROM drive_logs WHERE created_at > datetime('now', '-1 day')")
+
+        recent_where = "WHERE org_id = ? AND created_at > datetime('now', '-1 day')" if org_id is not None else "WHERE created_at > datetime('now', '-1 day')"
+        cursor.execute(f"SELECT COUNT(*) FROM drive_logs {recent_where}", base_params)
         recent_count = cursor.fetchone()[0]
-        
+
         conn.close()
         return {
             "total_files": total_files,

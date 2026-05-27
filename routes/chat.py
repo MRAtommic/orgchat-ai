@@ -2040,13 +2040,41 @@ def get_folder_flex_message(user_id=None, uploader_id=None, pending_id=None):
 
         folders = mgr.list_subfolders()
         if not folders:
-            try:
-                p_id = mgr.parent_folder_id
-                default_folder_id = mgr._get_or_create_folder("ทั่วไป", p_id)
-                folders = [{'id': default_folder_id, 'name': 'ทั่วไป'}]
-            except Exception as create_err:
-                logger.error(f"Error auto-creating default folder 'ทั่วไป': {create_err}")
-                return None
+            # Drive connected but parent folder missing or inaccessible
+            if not mgr.drive_service:
+                err_msg = "Google Drive ยังไม่ได้เชื่อมต่อค่ะ\nกรุณาให้ Admin เชื่อมต่อ Drive ก่อนนะคะ 🔗"
+            else:
+                err_msg = "ไม่พบโฟลเดอร์ใน Google Drive ค่ะ\nอาจถูกลบหรือสิทธิ์ไม่เพียงพอ\nกรุณาให้ Admin ตรวจสอบการตั้งค่า Drive นะคะ ⚙️"
+            return {
+                "_drive_unavailable": True,
+                "type": "flex",
+                "altText": "ไม่พบโฟลเดอร์ Google Drive",
+                "contents": {
+                    "type": "bubble",
+                    "size": "kilo",
+                    "body": {
+                        "type": "box",
+                        "layout": "vertical",
+                        "spacing": "md",
+                        "contents": [
+                            {
+                                "type": "text",
+                                "text": "⚠️ Drive ไม่พร้อมใช้งาน",
+                                "weight": "bold",
+                                "size": "md",
+                                "color": "#b45309"
+                            },
+                            {
+                                "type": "text",
+                                "text": err_msg,
+                                "size": "sm",
+                                "color": "#64748b",
+                                "wrap": True
+                            }
+                        ]
+                    }
+                }
+            }
         
         buttons = []
         for f in folders[:10]:
@@ -2286,16 +2314,24 @@ def process_line_event(event_data):
                         threading.Thread(target=process_pending_uploads, args=(pending_id, did, f_id, f_name, reply_tok), daemon=True).start()
                     else:
                         folder_flex = get_folder_flex_message(did, uploader_id=uid, pending_id=pending_id)
-                        
+                        drive_error = isinstance(folder_flex, dict) and folder_flex.pop("_drive_unavailable", False)
+
                         sender_name = get_line_sender_name(did if did.startswith("C") else None, uid)
                         name_prefix = f"พี่ {sender_name} คะ " if sender_name and sender_name != "Unknown" else "พี่คะ "
-                        
-                        if len(pending_for_dest) == 1:
-                            f_name = pending_for_dest[0]['name']
-                            msg = f"📥 {name_prefix}น้องพั้นได้รับไฟล์ '{f_name}' แล้วนะคะ\nกำลังอัปโหลดให้อยู่ค่ะ~ เลือกโฟลเดอร์ที่จะเก็บด้วยนะคะ:"
+
+                        if drive_error:
+                            if len(pending_for_dest) == 1:
+                                f_name = pending_for_dest[0]['name']
+                                msg = f"📥 {name_prefix}น้องพั้นได้รับไฟล์ '{f_name}' แล้วนะคะ\nแต่ยังอัปโหลดไม่ได้เพราะ Drive มีปัญหาค่ะ:"
+                            else:
+                                msg = f"📥 {name_prefix}น้องพั้นได้รับไฟล์ {len(pending_for_dest)} รายการแล้วนะคะ\nแต่ยังอัปโหลดไม่ได้เพราะ Drive มีปัญหาค่ะ:"
                         else:
-                            msg = f"📥 {name_prefix}น้องพั้นได้รับไฟล์ {len(pending_for_dest)} รายการแล้วนะคะ\nกำลังอัปโหลดให้อยู่ค่ะ~ เลือกโฟลเดอร์ที่จะเก็บด้วยนะคะ:"
-                            
+                            if len(pending_for_dest) == 1:
+                                f_name = pending_for_dest[0]['name']
+                                msg = f"📥 {name_prefix}น้องพั้นได้รับไฟล์ '{f_name}' แล้วนะคะ\nกำลังอัปโหลดให้อยู่ค่ะ~ เลือกโฟลเดอร์ที่จะเก็บด้วยนะคะ:"
+                            else:
+                                msg = f"📥 {name_prefix}น้องพั้นได้รับไฟล์ {len(pending_for_dest)} รายการแล้วนะคะ\nกำลังอัปโหลดให้อยู่ค่ะ~ เลือกโฟลเดอร์ที่จะเก็บด้วยนะคะ:"
+
                         if folder_flex:
                             reply_to_line(reply_tok, [{"type": "text", "text": msg}, folder_flex])
                         else:
@@ -2664,7 +2700,8 @@ def process_pending_uploads(b_key, did, folder_id, folder_name, reply_tok):
                     doc_date=sanitized_ext.get("date"),
                     summary=analysis.get("summary") if analysis else f"Auto-upload: {real_original_name}",
                     file_link=link,
-                    user_id=sender_id
+                    user_id=sender_id,
+                    org_id=_upload_org_id
                 )
             except Exception as dbe:
                 logger.error(f"❌ Database Log Error: {dbe}")
@@ -4085,15 +4122,16 @@ def dashboard_data():
         completed_tasks_count = len([s for s in user_schedules if s.get("status") == "done"])
      
      
-        # 10. Drive Logs Stats
-        drive_stats = database.get_drive_stats()
+        # 10. Drive Logs Stats — filter by current org so stats reflect only this org's data
+        _dash_org_id = get_current_org_id()
+        drive_stats = database.get_drive_stats(org_id=_dash_org_id)
     finally:
         conn.close()
-    
+
     return jsonify({
         "ok": True,
         "stats": {
-            "files": len(filtered_recent), # Show only visible file count to user
+            "files": len(filtered_recent),
             "chats": chat_count,
             "users": user_count,
             "total_files": len(filtered_recent),
@@ -4108,11 +4146,11 @@ def dashboard_data():
         },
         "recent_chats": recent_chats,
         "recent_files": recent_files,
-        "upcoming": pending_tasks[:3], 
+        "upcoming": pending_tasks[:3],
         "pending_tasks": pending_tasks,
         "logs": [{"event": l[0], "time": l[1]} for l in logs],
         "drive_categories": drive_stats.get("categories", {}),
-        "recent_drive_logs": database.get_drive_logs(limit=5)
+        "recent_drive_logs": database.get_drive_logs(limit=5, org_id=_dash_org_id)
     })
 
 

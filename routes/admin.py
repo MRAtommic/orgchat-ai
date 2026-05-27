@@ -2253,3 +2253,244 @@ def api_admin_remove_whitelist(email):
     database.remove_whitelist_email(org_id, email)
     return jsonify({"ok": True})
 
+
+@admin_bp.route("/api/dashboard/all-expenses", methods=["GET"])
+@login_required
+@billing.require_feature("financial_dashboard")
+def api_dashboard_all_expenses():
+    """Fetches and standardizes all expense records from Google Sheets."""
+    try:
+        from google_drive_service import google_manager
+        username = session.get("user")
+        org_id = session.get("org_id")
+        google_manager.set_context(username, org_id)
+
+        spreadsheet = google_manager.sheets_service.spreadsheets().get(spreadsheetId=google_manager.spreadsheet_id).execute()
+        sheet_titles = [s['properties']['title'] for s in spreadsheet.get('sheets', [])]
+
+        all_expenses = []
+        target_sheets = ["ใบเสร็จ/ใบกำกับภาษี", "สลิปโอนเงิน", "ใบหัก ณ ที่จ่าย", "บันทึกค่าใช้จ่าย", "peak"]
+
+        def clean_float_val(v):
+            if not v or str(v).strip() == '-': return 0.0
+            try: return float(str(v).replace(',', '').replace('฿', '').strip())
+            except: return 0.0
+
+        for sheet_name in target_sheets:
+            if sheet_name not in sheet_titles:
+                continue
+
+            try:
+                res = google_manager.sheets_service.spreadsheets().values().get(
+                    spreadsheetId=google_manager.spreadsheet_id, range=f"'{sheet_name}'!A1:Z"
+                ).execute()
+                vals = res.get('values', [])
+                if not vals or len(vals) <= 1:
+                    continue
+
+                header = vals[0]
+                h_map = {h.strip().lower(): i for i, h in enumerate(header)}
+
+                def get_col_val(row, name_keys, default=''):
+                    for k in name_keys:
+                        idx = h_map.get(k.lower())
+                        if idx is not None and idx < len(row):
+                            val = str(row[idx]).strip()
+                            if val != '-':
+                                return val
+                    return default
+
+                for r_idx, row in enumerate(vals[1:], start=2):
+                    date_val = get_col_val(row, ["วันที่ในเอกสาร", "วันที่", "วันที่เอกสาร", "วันที่ใบกำกับฯ (ถ้ามี)", "วันที่บันทึกภาษีซื้อ (ถ้ามี)"], default='-')
+                    net_amt = get_col_val(row, ["จำนวนเงินสุทธิ", "จำนวนเงิน", "ยอดชำระ", "ยอดรวมสุทธิ", "สุทธิ", "ยอดรวม", "จำนวนเงินที่ชำระ"], default='0')
+                    gross_amt = get_col_val(row, ["ยอดก่อนภาษี", "ก่อนภาษี", "ยอดก่อน vat", "gross_amount", "ราคาต่อหน่วย"], default='0')
+                    vat_amt = get_col_val(row, ["VAT", "ภาษีมูลค่าเพิ่ม", "vat_amount", "อัตราภาษี"], default='0')
+                    wht_amt = get_col_val(row, ["หัก ณ ที่จ่าย", "ภาษีหัก ณ ที่จ่าย", "จำนวนภาษีที่หัก", "wht_amount", "หัก ณ ที่จ่าย (ถ้ามี)"], default='0')
+                    wht_type = get_col_val(row, ["ประเภท หัก ณ ที่จ่าย", "ประเภทเงินได้", "wht_type", "income_type", "ภ.ง.ด. (ถ้ามี)"], default='-')
+                    ref_num = get_col_val(row, ["เลขที่อ้างอิง", "อ้างอิงถึง", "ref_number", "เลขที่ใบกำกับฯ (ถ้ามี)"], default='-')
+                    merchant = get_col_val(row, ["ผู้ส่ง/ร้านค้า", "ผู้รับเงิน", "ผู้มีหน้าที่หักภาษี (ผู้จ่ายเงิน)", "ผู้ส่ง", "ร้านค้า", "คู่ค้า", "ผู้รับเงิน/คู่ค้า"], default='-')
+                    receiver = get_col_val(row, ["ผู้รับ", "ผู้ถูกหักภาษี (ผู้รับเงิน)", "ลูกค้า", "payee"], default='-')
+                    details = get_col_val(row, ["รายละเอียด/บันทึกช่วยจำ", "คำอธิบาย", "บันทึกช่วยจำ", "รายละเอียด", "หมายเหตุ", "สรุปจาก AI", "สรุปข้อมูล", "สรุป"], default='-')
+                    tax_id = get_col_val(row, ["เลขผู้เสียภาษี", "เลขประจำตัวผู้เสียภาษี", "tax_id", "เลขทะเบียน 13 หลัก"], default='-')
+                    address = get_col_val(row, ["ที่อยู่คู่ค้า", "ที่อยู่", "ที่อยู่ผู้ขาย", "address"], default='-')
+                    branch = get_col_val(row, ["รหัสสาขา", "สาขา", "branch", "เลขสาขา 5 หลัก"], default='-')
+                    link_val = get_col_val(row, ["ลิงก์ไฟล์", "ลิงก์ drive", "file_link"], default='')
+                    original_file = get_col_val(row, ["ไฟล์ต้นฉบับ", "ไฟล์อ้างอิง", "original_filename"], default='-')
+                    sender_name = get_col_val(row, ["ผู้ส่ง (LINE User)", "line_sender_name"], default='-')
+                    status = get_col_val(row, ["สถานะการจ่าย", "สถานะการจ่ายเงิน", "สถานะ", "status"], default='จ่ายแล้ว')
+
+                    all_expenses.append({
+                        "sheet_name": sheet_name,
+                        "row_index": r_idx,
+                        "date": date_val,
+                        "doc_type": sheet_name,
+                        "merchant": merchant,
+                        "receiver": receiver,
+                        "net_amount": clean_float_val(net_amt),
+                        "gross_amount": clean_float_val(gross_amt),
+                        "vat_amount": clean_float_val(vat_amt),
+                        "wht_amount": clean_float_val(wht_amt),
+                        "wht_type": wht_type,
+                        "ref_number": ref_num,
+                        "details": details,
+                        "tax_id": tax_id,
+                        "address": address,
+                        "branch": branch,
+                        "link": link_val,
+                        "original_filename": original_file,
+                        "line_sender_name": sender_name,
+                        "status": status
+                    })
+            except Exception as se:
+                logger.error(f"Error parsing sheet {sheet_name}: {se}")
+
+        return jsonify({"ok": True, "expenses": all_expenses})
+    except Exception as e:
+        logger.error(f"Error listing all expenses: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@admin_bp.route("/api/dashboard/update-expense", methods=["POST"])
+@login_required
+@billing.require_feature("financial_dashboard")
+def api_dashboard_update_expense():
+    """Updates a set of fields in a specific Google Sheet row dynamically."""
+    try:
+        from google_drive_service import google_manager
+        username = session.get("user")
+        org_id = session.get("org_id")
+        google_manager.set_context(username, org_id)
+
+        data = request.get_json() or {}
+        sheet_name = data.get("sheet_name", "").strip()
+        row_index = int(data.get("row_index", 0))
+        fields_to_update = data.get("fields", {})
+
+        if not sheet_name or not row_index or not fields_to_update:
+            return jsonify({"ok": False, "error": "ข้อมูลไม่ครบถ้วน"}), 400
+
+        # Get current sheet headers
+        res = google_manager.sheets_service.spreadsheets().values().get(
+            spreadsheetId=google_manager.spreadsheet_id, range=f"'{sheet_name}'!A1:Z1"
+        ).execute()
+        headers = res.get('values', [[]])[0]
+
+        # Field key to sheet header possibilities mapping
+        mapping = {
+            "date": ["วันที่ในเอกสาร", "วันที่", "วันที่เอกสาร", "วันที่ใบกำกับฯ (ถ้ามี)", "วันที่บันทึกภาษีซื้อ (ถ้ามี)"],
+            "merchant": ["ผู้ส่ง/ร้านค้า", "ผู้รับเงิน", "ผู้มีหน้าที่หักภาษี (ผู้จ่ายเงิน)", "ผู้ส่ง", "ร้านค้า", "คู่ค้า", "ผู้รับเงิน/คู่ค้า"],
+            "details": ["รายละเอียด/บันทึกช่วยจำ", "คำอธิบาย", "บันทึกช่วยจำ", "รายละเอียด", "หมายเหตุ", "สรุปจาก AI", "สรุปข้อมูล", "สรุป"],
+            "net_amount": ["จำนวนเงินสุทธิ", "จำนวนเงิน", "ยอดชำระ", "ยอดรวมสุทธิ", "สุทธิ", "ยอดรวม", "จำนวนเงินที่ชำระ"],
+            "gross_amount": ["ยอดก่อนภาษี", "ก่อนภาษี", "ยอดก่อน vat", "gross_amount", "ราคาต่อหน่วย"],
+            "vat_amount": ["VAT", "ภาษีมูลค่าเพิ่ม", "vat_amount", "อัตราภาษี"],
+            "wht_amount": ["หัก ณ ที่จ่าย", "ภาษีหัก ณ ที่จ่าย", "จำนวนภาษีที่หัก", "wht_amount", "หัก ณ ที่จ่าย (ถ้ามี)"],
+            "wht_type": ["ประเภท หัก ณ ที่จ่าย", "ประเภทเงินได้", "wht_type", "income_type", "ภ.ง.ด. (ถ้ามี)"],
+            "ref_number": ["เลขที่อ้างอิง", "อ้างอิงถึง", "ref_number", "เลขที่ใบกำกับฯ (ถ้ามี)"],
+            "tax_id": ["เลขผู้เสียภาษี", "เลขประจำตัวผู้เสียภาษี", "tax_id", "เลขทะเบียน 13 หลัก"],
+            "address": ["ที่อยู่คู่ค้า", "ที่อยู่", "ที่อยู่ผู้ขาย", "address"],
+            "branch": ["รหัสสาขา", "สาขา", "branch", "เลขสาขา 5 หลัก"],
+            "line_sender_name": ["ผู้ส่ง (LINE User)", "line_sender_name"],
+            "status": ["สถานะการจ่าย", "สถานะการจ่ายเงิน", "สถานะ", "status"]
+        }
+
+        # Build cells to update
+        data_to_update = []
+        for key, new_val in fields_to_update.items():
+            candidates = mapping.get(key, [])
+            matched_header_idx = -1
+            
+            for c in candidates:
+                for idx, h in enumerate(headers):
+                    if c.strip().lower() in h.strip().lower() or h.strip().lower() in c.strip().lower():
+                        matched_header_idx = idx
+                        break
+                if matched_header_idx != -1:
+                    break
+
+            if matched_header_idx != -1:
+                col_letter = chr(65 + matched_header_idx) if matched_header_idx < 26 else f"A{chr(65 + (matched_header_idx - 26))}"
+                cell_range = f"'{sheet_name}'!{col_letter}{row_index}"
+                data_to_update.append({
+                    'range': cell_range,
+                    'values': [[new_val]]
+                })
+
+        if not data_to_update:
+            return jsonify({"ok": False, "error": "ไม่พบฟิลด์ที่ตรงกับคอลัมน์ของชีตนี้"}), 400
+
+        body = {
+            'valueInputOption': 'USER_ENTERED',
+            'data': data_to_update
+        }
+        google_manager.sheets_service.spreadsheets().values().batchUpdate(
+            spreadsheetId=google_manager.spreadsheet_id,
+            body=body
+        ).execute()
+
+        # Re-run reconciliation
+        google_manager.auto_reconcile_internal()
+
+        return jsonify({"ok": True})
+    except Exception as e:
+        logger.error(f"Error in api_dashboard_update_expense: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@admin_bp.route("/api/dashboard/delete-expense", methods=["POST"])
+@login_required
+@billing.require_feature("financial_dashboard")
+def api_dashboard_delete_expense():
+    """Deletes a specific row in Google Sheets."""
+    try:
+        from google_drive_service import google_manager
+        username = session.get("user")
+        org_id = session.get("org_id")
+        google_manager.set_context(username, org_id)
+
+        data = request.get_json() or {}
+        sheet_name = data.get("sheet_name", "").strip()
+        row_index = int(data.get("row_index", 0))
+
+        if not sheet_name or not row_index:
+            return jsonify({"ok": False, "error": "ข้อมูลไม่ครบถ้วน"}), 400
+
+        # Get sheetId
+        spreadsheet = google_manager.sheets_service.spreadsheets().get(spreadsheetId=google_manager.spreadsheet_id).execute()
+        sheet_id = None
+        for s in spreadsheet.get('sheets', []):
+            if s['properties']['title'] == sheet_name:
+                sheet_id = s['properties']['sheetId']
+                break
+
+        if sheet_id is None:
+            return jsonify({"ok": False, "error": f"ไม่พบชีต '{sheet_name}'"}), 404
+
+        # Delete row using batchUpdate deleteDimension
+        body = {
+            "requests": [
+                {
+                    "deleteDimension": {
+                        "range": {
+                            "sheetId": sheet_id,
+                            "dimension": "ROWS",
+                            "startIndex": row_index - 1,
+                            "endIndex": row_index
+                        }
+                    }
+                }
+            ]
+        }
+        google_manager.sheets_service.spreadsheets().batchUpdate(
+            spreadsheetId=google_manager.spreadsheet_id,
+            body=body
+        ).execute()
+
+        # Re-run reconciliation
+        google_manager.auto_reconcile_internal()
+
+        return jsonify({"ok": True})
+    except Exception as e:
+        logger.error(f"Error in api_dashboard_delete_expense: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+

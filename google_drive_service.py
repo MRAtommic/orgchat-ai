@@ -141,6 +141,7 @@ class GoogleWorkspaceManager:
         self._local.drive_service = None
         self._local.sheets_service = None
         self._local.creds = None
+        self._local.spreadsheet_id_override = None  # clear any post-creation override
         with self._creds_lock:
             self._cached_creds = None
         logger.info(f"🎯 Switched thread context to user={username}, org={org_id}")
@@ -153,6 +154,7 @@ class GoogleWorkspaceManager:
             self._local.drive_service = None
             self._local.sheets_service = None
             self._local.creds = None
+            self._local.spreadsheet_id_override = None  # clear any post-creation override
             logger.info("🧹 Cleared thread local Google Workspace context")
 
     @contextlib.contextmanager
@@ -174,9 +176,15 @@ class GoogleWorkspaceManager:
 
     @property
     def spreadsheet_id(self):
+        # Thread-local override: set immediately after auto-recreation to avoid 404 loops
+        # within the same request before DB write propagates to the correct table
+        override = getattr(self._local, 'spreadsheet_id_override', None)
+        if override:
+            return override
+
         username = getattr(self._local, 'username', None)
         org_id = getattr(self._local, 'org_id', None)
-        
+
         if not username and not org_id:
             try:
                 from flask import session, has_request_context
@@ -185,7 +193,7 @@ class GoogleWorkspaceManager:
                     org_id = session.get("org_id", 1)
             except Exception:
                 pass
-                
+
         if username or org_id:
             try:
                 import database
@@ -194,7 +202,7 @@ class GoogleWorkspaceManager:
                     return token_data.get("spreadsheet_id")
             except Exception as e:
                 logger.error(f"Error resolving spreadsheet_id from database: {e}")
-                
+
         return getattr(self, '_spreadsheet_id', None) or os.getenv("SPREADSHEET_ID")
 
     @spreadsheet_id.setter
@@ -370,7 +378,7 @@ class GoogleWorkspaceManager:
                         {"source": "ai_keys:discount_amount", "cleaner": "float"},
                         {"source": "ai_keys:vat_amount", "cleaner": "float"},
                         {"source": "ai_keys:wht_amount", "cleaner": "float"},
-                        {"source": "ai_keys:wht_type,wht_category,wht_rate,wht_percent"},
+                        {"source": "wht_type_smart"},
                         {"source": "ai_keys:ref_number"},
                         {"source": "invoice_follow_up"},
                         {"source": "summary"},
@@ -442,10 +450,10 @@ class GoogleWorkspaceManager:
                 },
                 "peak": {
                     "headers": [
-                        "ลำดับที่*", "วันที่เอกสาร", "อ้างอิงถึง", "ผู้รับเงิน/คู่ค้า", "เลขทะเบียน 13 หลัก", 
-                        "เลขสาขา 5 หลัก", "เลขที่ใบกำกับฯ (ถ้ามี)", "วันที่ใบกำกับฯ (ถ้ามี)", "วันที่บันทึกภาษีซื้อ (ถ้ามี)", 
-                        "ประเภทราคา", "บัญชี", "คำอธิบาย", "จำนวน", "ราคาต่อหน่วย", "อัตราภาษี", 
-                        "หัก ณ ที่จ่าย (ถ้ามี)", "ชำระโดย", "จำนวนเงินที่ชำระ", "ภ.ง.ด. (ถ้ามี)", "หมายเหตุ", "กลุ่มจัดประเภท", "ไฟล์ต้นฉบับ", "ลิงก์ drive"
+                        "ลำดับที่*", "วันที่เอกสาร", "อ้างอิงถึง", "ผู้รับเงิน/คู่ค้า", "เลขทะเบียน 13 หลัก",
+                        "เลขสาขา 5 หลัก", "เลขที่ใบกำกับฯ (ถ้ามี)", "วันที่ใบกำกับฯ (ถ้ามี)", "วันที่บันทึกภาษีซื้อ (ถ้ามี)",
+                        "ประเภทราคา", "บัญชี", "คำอธิบาย", "จำนวน", "ราคาต่อหน่วย", "อัตราภาษี",
+                        "หัก ณ ที่จ่าย (ถ้ามี)", "ชำระโดย", "จำนวนเงินที่ชำระ", "ภ.ง.ด. (ถ้ามี)", "หมายเหตุ", "กลุ่มจัดประเภท", "ไฟล์ต้นฉบับ", "ลิงก์ drive", "ผู้ส่ง (LINE User)"
                     ],
                     "columns": [
                         {"source": "peak_seq"},
@@ -467,10 +475,11 @@ class GoogleWorkspaceManager:
                         {"source": "peak_payment_channel"},
                         {"source": "ai_keys:net_amount", "cleaner": "float"},
                         {"source": "peak_wht_type"},
-                        {"source": "file_link"},
+                        {"source": "ai_keys:memo,note,remark,หมายเหตุ"},
                         {"source": "const:-"},
                         {"source": "original_filename"},
-                        {"source": "file_link"}
+                        {"source": "file_link"},
+                        {"source": "line_sender_name"}
                     ]
                 },
                 "default": {
@@ -615,6 +624,17 @@ class GoogleWorkspaceManager:
         if not valid:
             self._create_new_spreadsheet()
 
+    def _sheet_exec(self, build_request_fn):
+        """Execute a Sheets API request. If 404 (spreadsheet deleted/trashed) → recreate immediately and retry once."""
+        try:
+            return build_request_fn().execute()
+        except HttpError as e:
+            if e.resp.status == 404:
+                logger.warning("⚠️ Spreadsheet 404 — recreating and retrying")
+                self._create_new_spreadsheet()
+                return build_request_fn().execute()
+            raise
+
     def _create_new_spreadsheet(self):
         """Creates a new spreadsheet with Thai headers."""
         try:
@@ -654,7 +674,38 @@ class GoogleWorkspaceManager:
             
             os.environ["SPREADSHEET_ID"] = new_id
             self.spreadsheet_id = new_id
-            logger.info(f"🚀 Created new Spreadsheet: {new_id}")
+
+            # Set thread-local override immediately so spreadsheet_id property returns new_id
+            # for all subsequent calls in this request, before any DB write propagates
+            self._local.spreadsheet_id_override = new_id
+
+            # Persist to DB — update the CORRECT table based on which token is actually in use
+            import database as _db
+            username = getattr(self._local, 'username', None)
+            org_id = getattr(self._local, 'org_id', None)
+
+            try:
+                _, source = _db.resolve_google_token(username, org_id)
+            except Exception:
+                source = "none"
+
+            if source == "org_admin_personal" and org_id:
+                # org_google_tokens has no refresh_token → resolve falls to admin's user_google_tokens
+                # Must update the admin's personal row, not org table
+                admin_token = _db.get_org_admin_google_token(org_id)
+                if admin_token and admin_token.get('username'):
+                    _db.set_user_spreadsheet_id(admin_token['username'], new_id)
+                    logger.info(f"💾 Updated admin user '{admin_token['username']}' spreadsheet_id → {new_id}")
+            elif source == "personal" and username:
+                _db.set_user_spreadsheet_id(username, new_id)
+            elif username:
+                _db.set_user_spreadsheet_id(username, new_id)
+
+            # Always also write to org table as safety net (for when org connects directly later)
+            if org_id:
+                _db.set_org_spreadsheet_id(org_id, new_id)
+
+            logger.info(f"🚀 Created new Spreadsheet: {new_id} (source={source}, org={org_id}, user={username})")
         except Exception as e:
             logger.error(f"❌ Failed to create new spreadsheet: {e}")
 
@@ -932,7 +983,7 @@ class GoogleWorkspaceManager:
             logger.error("❌ upload_file: drive_service is not initialized (Google Drive not connected)")
             return None, "Service not initialized"
         try:
-            base_p_id = folder_id or self.parent_folder_id
+            base_p_id = self._safe_folder_id(folder_id or self.parent_folder_id)
             now = datetime.now()
             year_str, month_str, day_str = now.strftime("%Y"), now.strftime("%m"), now.strftime("%d")
 
@@ -970,6 +1021,78 @@ class GoogleWorkspaceManager:
         except Exception as e:
             return False, str(e)
 
+    def _safe_folder_id(self, folder_id) -> str:
+        """Return a valid, non-trashed folder ID.
+        Rule: never interact with trashed items — if a folder is trashed or gone, fall back to parent immediately."""
+        if not folder_id:
+            return self._verify_or_recreate_parent(self.parent_folder_id or "")
+        try:
+            meta = self.drive_service.files().get(
+                fileId=folder_id, fields='id,trashed', supportsAllDrives=True
+            ).execute()
+            if not meta.get('trashed'):
+                return folder_id  # Valid and not trashed — use as-is
+            logger.info(f"⚠️ Folder {folder_id} is in trash — ignoring, falling back to parent")
+        except Exception:
+            pass  # Folder permanently deleted
+        # Trash or gone — use verified parent instead
+        return self._verify_or_recreate_parent(self.parent_folder_id or folder_id)
+
+    def _verify_or_recreate_parent(self, p_id) -> str:
+        """Verify parent folder exists and is NOT trashed; recreate if missing/trashed. Returns valid folder ID."""
+        if p_id:
+            try:
+                result = self.drive_service.files().get(
+                    fileId=p_id, fields='id,trashed', supportsAllDrives=True
+                ).execute()
+                if not result.get('trashed'):
+                    return p_id  # Still alive and clean
+                logger.info(f"⚠️ Parent folder {p_id} is in trash — ignoring, will recreate")
+            except Exception:
+                pass  # 404 or permission error — folder is gone
+
+        # Rebuild parent folder name from context
+        username = getattr(self._local, 'username', None)
+        org_id = getattr(self._local, 'org_id', None)
+
+        import database as _db
+        if org_id:
+            try:
+                conn = _db._get_conn()
+                row = conn.execute("SELECT name FROM organizations WHERE id = ?", (org_id,)).fetchone()
+                conn.close()
+                org_name = row[0] if row else f"org_{org_id}"
+            except Exception:
+                org_name = f"org_{org_id}"
+            folder_name = f'OrgChat AI — {org_name}'
+        else:
+            folder_name = 'OrgChat AI — เอกสารบัญชี'
+
+        # Search for existing folder with same name before creating
+        query = f"name = '{folder_name}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+        results = self.drive_service.files().list(q=query, fields="files(id)", pageSize=1).execute()
+        files = results.get('files', [])
+        if files:
+            new_id = files[0]['id']
+        else:
+            folder_meta = {'name': folder_name, 'mimeType': 'application/vnd.google-apps.folder'}
+            folder = self.drive_service.files().create(body=folder_meta, fields='id').execute()
+            new_id = folder.get('id')
+
+        # Persist new folder ID to DB and thread-local cache
+        if org_id:
+            _db.set_org_drive_folder_id(org_id, new_id)
+        elif username:
+            _db.set_user_drive_folder_id(username, new_id)
+        self._parent_folder_id = new_id
+        # Invalidate subfolder cache so next list_subfolders re-fetches with new parent
+        GoogleWorkspaceManager._subfolder_cache = {
+            k: v for k, v in GoogleWorkspaceManager._subfolder_cache.items()
+            if not k.startswith(f"{org_id}:{username}:")
+        }
+        logger.info(f"♻️ Recreated parent Drive folder '{folder_name}' → {new_id} (org={org_id}, user={username})")
+        return new_id
+
     @thread_safe
     def _get_or_create_folder(self, folder_name, parent_id):
         query = f"name = '{folder_name}' and '{parent_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
@@ -981,14 +1104,42 @@ class GoogleWorkspaceManager:
         folder = self.drive_service.files().create(body=metadata, fields='id', supportsAllDrives=True).execute()
         return folder.get('id')
 
+    # Short-lived cache: {cache_key: {"folders": [...], "ts": float}}
+    # Avoids redundant Drive API calls when multiple uploads arrive close together
+    _subfolder_cache: dict = {}
+    _SUBFOLDER_CACHE_TTL = 60  # seconds
+
     def list_subfolders(self, parent_id=None):
         if not self.drive_service: return []
         p_id = parent_id or self.parent_folder_id
         if not p_id: return []
+
+        org_id = getattr(self._local, 'org_id', None)
+        username = getattr(self._local, 'username', None)
+        cache_key = f"{org_id}:{username}:{p_id}"
+
+        # Return from cache if fresh — skip Drive API round-trip
+        cached = GoogleWorkspaceManager._subfolder_cache.get(cache_key)
+        if cached and (time.time() - cached['ts']) < GoogleWorkspaceManager._SUBFOLDER_CACHE_TTL:
+            return cached['folders']
+
         try:
-            # 1. Fetch existing subfolders
+            # 1. Try list directly — skip proactive parent verification on every call.
+            #    If parent was deleted Google returns 400/404; we catch and recover below.
             query = f"'{p_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
-            results = self.drive_service.files().list(q=query, fields="files(id, name)", supportsAllDrives=True).execute()
+            try:
+                results = self.drive_service.files().list(q=query, fields="files(id, name)", supportsAllDrives=True).execute()
+            except HttpError as he:
+                if he.resp.status in (400, 404):
+                    # Parent gone or invalid — verify/recreate and retry once
+                    logger.info(f"⚠️ list_subfolders parent {p_id} returned {he.resp.status} — recreating")
+                    p_id = self._verify_or_recreate_parent(p_id)
+                    results = self.drive_service.files().list(
+                        q=f"'{p_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+                        fields="files(id, name)", supportsAllDrives=True
+                    ).execute()
+                else:
+                    raise
             existing_folders = results.get('files', [])
             existing_names = {f['name'] for f in existing_folders}
             
@@ -1005,21 +1156,20 @@ class GoogleWorkspaceManager:
                 "อื่นๆ"
             ]
             
-            # 3. Auto-create any missing folders
-            created_any = False
-            for folder_name in essential_folders:
-                if folder_name not in existing_names:
+            # If no folders exist yet, create only the essential set as first-time setup
+            if not existing_folders:
+                new_folders = []
+                for folder_name in essential_folders:
                     try:
-                        self._get_or_create_folder(folder_name, p_id)
-                        created_any = True
+                        fid = self._get_or_create_folder(folder_name, p_id)
+                        new_folders.append({'id': fid, 'name': folder_name})
                     except Exception as ce:
-                        logger.error(f"Error pre-creating essential folder {folder_name}: {ce}")
-            
-            # 4. Refetch if we created new folders to return the complete list
-            if created_any:
-                results = self.drive_service.files().list(q=query, fields="files(id, name)", supportsAllDrives=True).execute()
-                existing_folders = results.get('files', [])
-                
+                        logger.error(f"Error creating essential folder {folder_name}: {ce}")
+                # Don't cache first-time setup result; let next request re-verify
+                return new_folders
+
+            # Store in cache before returning
+            GoogleWorkspaceManager._subfolder_cache[cache_key] = {"folders": existing_folders, "ts": time.time()}
             return existing_folders
         except Exception as e:
             logger.error(f"Error in list_subfolders: {e}")
@@ -1550,6 +1700,18 @@ class GoogleWorkspaceManager:
             try:
                 spreadsheet = self.sheets_service.spreadsheets().get(spreadsheetId=self.spreadsheet_id).execute()
                 existing_sheets = [s['properties']['title'] for s in spreadsheet.get('sheets', [])]
+            except HttpError as _he:
+                if _he.resp.status == 404:
+                    # Spreadsheet gone mid-execution — recreate and use new ID immediately
+                    logger.warning(f"⚠️ Spreadsheet 404 in log_expense — recreating now")
+                    self._create_new_spreadsheet()
+                    try:
+                        spreadsheet = self.sheets_service.spreadsheets().get(spreadsheetId=self.spreadsheet_id).execute()
+                        existing_sheets = [s['properties']['title'] for s in spreadsheet.get('sheets', [])]
+                    except Exception:
+                        pass
+                else:
+                    logger.warning(f"⚠️ Could not fetch spreadsheet metadata: {_he}")
             except Exception as e:
                 logger.warning(f"⚠️ Could not fetch spreadsheet metadata: {e}")
 
@@ -1614,19 +1776,23 @@ class GoogleWorkspaceManager:
                 return f"'{int(s_digits):05d}"
 
             # Custom Value Extractor based on source string
-            def extract_field_value(col_def, context_ext=None, context_data=None, col_idx=None):
+            def extract_field_value(col_def, context_ext=None, context_data=None, col_idx=None, target_sheet_name=None):
                 if context_ext is None: context_ext = ext
                 if context_data is None: context_data = data
+                if target_sheet_name is None: target_sheet_name = sheet_name
                 
                 src = col_def.get("source", "")
                 cleaner = col_def.get("cleaner", "")
                 
                 # Custom WHT column override: If header name contains WHT related keywords (excluding "peak" sheet which requires numeric/rate values)
                 is_wht_col = False
-                if col_idx is not None and col_idx < len(headers) and sheet_name != "peak":
-                    h_name = headers[col_idx]
-                    if any(x in h_name for x in ["หัก ณ ที่จ่าย", "จำนวนภาษีที่หัก"]):
-                        is_wht_col = True
+                if col_idx is not None and target_sheet_name != "peak":
+                    target_schema = schemas.get(target_sheet_name, schemas.get("default", {}))
+                    target_headers = target_schema.get("headers", [])
+                    if col_idx < len(target_headers):
+                        h_name = target_headers[col_idx]
+                        if any(x in h_name for x in ["หัก ณ ที่จ่าย", "จำนวนภาษีที่หัก"]):
+                            is_wht_col = True
                 
                 if is_wht_col:
                     has_wht = False
@@ -1639,7 +1805,7 @@ class GoogleWorkspaceManager:
                             if v is not None and str(v).strip() != '-': return v
                         return default
                     
-                    if sheet_name == "สลิปโอนเงิน":
+                    if target_sheet_name == "สลิปโอนเงิน":
                         slip_wht_amt = clean_val(wht_local_get_val(['wht_amount', 'wht']))
                         memo_str = str(wht_local_get_val('memo')).upper()
                         # If slip itself has WHT
@@ -1684,14 +1850,14 @@ class GoogleWorkspaceManager:
                             if invoice_has_wht:
                                 has_wht = True
                                 
-                    elif sheet_name == "ใบเสร็จ/ใบกำกับภาษี":
+                    elif target_sheet_name == "ใบเสร็จ/ใบกำกับภาษี":
                         inv_wht_amt = clean_val(wht_local_get_val(['wht_amount', 'wht']))
                         wht_rate_val = str(wht_local_get_val(['wht_rate', 'wht_percent', 'อัตราภาษี'])).strip()
                         wht_type_val = str(wht_local_get_val(['wht_type', 'income_type'])).strip()
                         if (inv_wht_amt > 0) or (wht_rate_val not in ['-', '', '0', '0%']) or ("หัก" in wht_type_val or "WHT" in wht_type_val.upper()):
                             has_wht = True
                             
-                    elif sheet_name == "ใบหัก ณ ที่จ่าย":
+                    elif target_sheet_name == "ใบหัก ณ ที่จ่าย":
                         has_wht = True
                         
                     return "หัก ณ ที่จ่าย" if has_wht else "-"
@@ -1747,7 +1913,7 @@ class GoogleWorkspaceManager:
                 elif src == "summary":
                     val = context_data.get('summary', '-')
                 elif src == "sheet_name":
-                    val = sheet_name
+                    val = target_sheet_name
                 elif src == "original_filename":
                     val = context_data.get('original_filename', context_data.get('original_name', '-'))
                     if val == '-':
@@ -1778,7 +1944,7 @@ class GoogleWorkspaceManager:
                 
                 # --- Custom PEAK Extraction (Image 2) ---
                 elif src == "peak_seq":
-                    val = "1"
+                    val = str(context_data.get('peak_next_seq', 1))
                 elif src == "peak_doc_date":
                     doc_d = local_get_val(['date', 'doc_date', 'document_date', 'billing_date', 'invoice_date'])
                     val = parse_to_yyyymmdd(doc_d)
@@ -1790,18 +1956,32 @@ class GoogleWorkspaceManager:
                         val = parse_to_yyyymmdd(inv_d)
                 elif src == "peak_price_type":
                     vat_val = clean_val(local_get_val(['vat_amount', 'vat', 'tax_amount', 'tax']))
+                    wht_check = clean_val(local_get_val(['wht_amount', 'wht']))
+                    if wht_check > 0 and abs(vat_val - wht_check) < 1.0:
+                        vat_val = 0
                     vat_rate_val = local_get_val(['vat_rate', 'vat_percent', 'อัตราภาษี'])
-                    has_vat = (vat_val > 0) or (str(vat_rate_val).strip() not in ['-', '', '0', '0%', 'NO', 'no', 'No'])
+                    _vrate_str = str(vat_rate_val).strip().lower()
+                    _is_wht = any(kw in _vrate_str for kw in ('หัก', 'wht', 'withhold', 'ณ ที่จ่าย'))
+                    has_vat = (vat_val > 0) or (not _is_wht and _vrate_str not in ['-', '', '0', '0%', 'no', 'no vat', 'none'])
                     val = "1" if has_vat else "3"
                 elif src == "peak_account_code":
                     val = local_get_val(['account_code', 'account_number', 'account_id', 'code'], "")
                     if val == '-': val = ""
                 elif src == "peak_price_unit":
                     vat_val = clean_val(local_get_val(['vat_amount', 'vat', 'tax_amount', 'tax']))
+                    wht_check = clean_val(local_get_val(['wht_amount', 'wht']))
+                    # If tax_amount equals WHT amount, AI confused WHT with VAT — clear it
+                    if wht_check > 0 and abs(vat_val - wht_check) < 1.0:
+                        vat_val = 0
                     vat_rate_val = local_get_val(['vat_rate', 'vat_percent', 'อัตราภาษี'])
-                    has_vat = (vat_val > 0) or (str(vat_rate_val).strip() not in ['-', '', '0', '0%', 'NO', 'no', 'No'])
+                    _vrate_str = str(vat_rate_val).strip().lower()
+                    _is_wht = any(kw in _vrate_str for kw in ('หัก', 'wht', 'withhold', 'ณ ที่จ่าย'))
+                    has_vat = (vat_val > 0) or (not _is_wht and _vrate_str not in ['-', '', '0', '0%', 'no', 'no vat', 'none'])
                     gross_val = clean_val(local_get_val(['gross_amount', 'amount_before_vat', 'before_vat']))
                     net_val = clean_val(local_get_val(['net_amount', 'total_amount', 'amount']))
+                    # Sanity check: if gross looks wrong (e.g. AI put WHT amount there), ignore it
+                    if has_vat and gross_val > 0 and net_val > 0 and (gross_val < net_val * 0.5 or gross_val > net_val * 1.5):
+                        gross_val = 0
                     if has_vat:
                         if gross_val > 0:
                             val = gross_val
@@ -1811,8 +1991,14 @@ class GoogleWorkspaceManager:
                         val = net_val if net_val > 0 else gross_val
                 elif src == "peak_vat_rate":
                     vat_val = clean_val(local_get_val(['vat_amount', 'vat', 'tax_amount', 'tax']))
+                    wht_check = clean_val(local_get_val(['wht_amount', 'wht']))
+                    # If tax_amount equals WHT amount, AI confused WHT with VAT — clear it
+                    if wht_check > 0 and abs(vat_val - wht_check) < 1.0:
+                        vat_val = 0
                     vat_rate_val = local_get_val(['vat_rate', 'vat_percent', 'อัตราภาษี'])
-                    has_vat = (vat_val > 0) or (str(vat_rate_val).strip() not in ['-', '', '0', '0%', 'NO', 'no', 'No'])
+                    _vrate_str = str(vat_rate_val).strip().lower()
+                    _is_wht = any(kw in _vrate_str for kw in ('หัก', 'wht', 'withhold', 'ณ ที่จ่าย'))
+                    has_vat = (vat_val > 0) or (not _is_wht and _vrate_str not in ['-', '', '0', '0%', 'no', 'no vat', 'none'])
                     val = "7%" if has_vat else "NO"
                 elif src == "peak_wht_rate":
                     wht_rate_val = local_get_val(['wht_rate', 'wht_percent', 'wht_percent_rate'])
@@ -1839,9 +2025,9 @@ class GoogleWorkspaceManager:
                     val = local_get_val(['payment_channel', 'payment_method', 'channel'], "")
                     if val == '-': val = ""
                 elif src == "peak_wht_type":
-                    wht_rate_str = extract_field_value({"source": "peak_wht_rate"}, context_ext, context_data)
+                    wht_rate_str = extract_field_value({"source": "peak_wht_rate"}, context_ext, context_data, target_sheet_name=target_sheet_name)
                     if wht_rate_str == "0":
-                        val = "ไม่ระบุ"
+                        val = ""  # blank = no WHT; PEAK accepts blank for column S
                     else:
                         vendor_name = str(local_get_val(['sender', 'from', 'vendor', 'vendor_name', 'seller', 'company_name'])).strip()
                         tax_id = str(local_get_val(['tax_id', 'tax_number', 'เลขผู้เสียภาษี'])).strip()
@@ -1858,6 +2044,50 @@ class GoogleWorkspaceManager:
                             val = "53"
                         else:
                             val = "3"
+                elif src == "wht_type_smart":
+                    # Thai WHT rate → income type description mapping
+                    _WHT_RATE_MAP = {
+                        0.75: "ค่าจ้างแรงงาน",
+                        1.0:  "ค่าขนส่ง",
+                        1.5:  "ดอกเบี้ย",
+                        2.0:  "ค่าโฆษณา",
+                        3.0:  "ค่าบริการ/ค่าจ้าง",
+                        5.0:  "ค่าเช่า",
+                        10.0: "วิชาชีพอิสระ",
+                        15.0: "เงินปันผล",
+                    }
+                    # Step 1: try to get rate from AI keys
+                    wht_rate_raw = local_get_val(['wht_rate', 'wht_percent', 'wht_percent_rate'])
+                    wht_rate_num = None
+                    if wht_rate_raw and str(wht_rate_raw).strip() not in ['-', '']:
+                        try:
+                            wht_rate_num = float(str(wht_rate_raw).replace('%', '').strip())
+                        except:
+                            wht_rate_num = None
+                    # Step 2: if AI returned generic text or no rate, compute from amounts
+                    if not wht_rate_num or wht_rate_num <= 0:
+                        wht_amt = clean_val(local_get_val(['wht_amount', 'wht']))
+                        gross_amt = clean_val(local_get_val(['gross_amount', 'amount_before_vat', 'before_vat']))
+                        net_amt = clean_val(local_get_val(['net_amount', 'total_amount', 'amount']))
+                        base_amt = gross_amt if gross_amt > 0 else net_amt
+                        if wht_amt > 0 and base_amt > 0:
+                            computed = round(wht_amt / base_amt * 100, 2)
+                            # snap to nearest known rate within 0.3% tolerance
+                            for known in sorted(_WHT_RATE_MAP.keys()):
+                                if abs(computed - known) <= 0.3:
+                                    wht_rate_num = known
+                                    break
+                            if not wht_rate_num:
+                                wht_rate_num = round(computed, 2)
+                        elif wht_amt > 0:
+                            wht_rate_num = 3.0  # default to 3% ค่าบริการ when amount exists but no base
+                    # Step 3: format output
+                    if not wht_rate_num or wht_rate_num <= 0:
+                        val = "-"
+                    else:
+                        income_type = _WHT_RATE_MAP.get(wht_rate_num, "")
+                        rate_str = f"{int(wht_rate_num)}%" if float(wht_rate_num).is_integer() else f"{wht_rate_num}%"
+                        val = f"{rate_str} {income_type}".strip() if income_type else rate_str
                 
                 # Special cases for ID card split
                 elif src == "id_card_first_name_th":
@@ -1960,11 +2190,17 @@ class GoogleWorkspaceManager:
             else:
                 logger.info(f"Sheet {sheet_name} does not exist. Creating new sheet and initializing headers...")
                 try:
-                    self.sheets_service.spreadsheets().batchUpdate(spreadsheetId=self.spreadsheet_id, body={'requests': [{'addSheet': {'properties': {'title': sheet_name}}}]}).execute()
+                    self._sheet_exec(lambda: self.sheets_service.spreadsheets().batchUpdate(
+                        spreadsheetId=self.spreadsheet_id,
+                        body={'requests': [{'addSheet': {'properties': {'title': sheet_name}}}]}
+                    ))
                 except Exception as ce:
                     logger.error(f"Failed to create sheet {sheet_name}: {ce}")
                 try:
-                    self.sheets_service.spreadsheets().values().update(spreadsheetId=self.spreadsheet_id, range=f"'{sheet_name}'!A1", valueInputOption="RAW", body={"values": [headers]}).execute()
+                    self._sheet_exec(lambda: self.sheets_service.spreadsheets().values().update(
+                        spreadsheetId=self.spreadsheet_id, range=f"'{sheet_name}'!A1",
+                        valueInputOption="RAW", body={"values": [headers]}
+                    ))
                 except Exception as ue:
                     logger.error(f"Failed to update headers for new sheet {sheet_name}: {ue}")
 
@@ -1977,12 +2213,12 @@ class GoogleWorkspaceManager:
             # Append the data
             try:
                 logger.info(f"📝 Appending row to {sheet_name} (Length: {len(rows[0])}): {rows[0][:10]}...")
-                result = self.sheets_service.spreadsheets().values().append(
-                    spreadsheetId=self.spreadsheet_id, 
-                    range=f"'{sheet_name}'!A2", 
-                    valueInputOption="USER_ENTERED", 
+                result = self._sheet_exec(lambda: self.sheets_service.spreadsheets().values().append(
+                    spreadsheetId=self.spreadsheet_id,
+                    range=f"'{sheet_name}'!A2",
+                    valueInputOption="USER_ENTERED",
                     body={"values": rows}
-                ).execute()
+                ))
                 
                 # Extract row index from updatedRange (e.g., "'Sheet1'!A5:S5")
                 updated_range = result.get('updates', {}).get('updatedRange', '')
@@ -2005,9 +2241,27 @@ class GoogleWorkspaceManager:
                         peak_cols = peak_schema.get("columns", [])
                         peak_headers = peak_schema.get("headers", [])
                         
+                        # Determine next sequential number for PEAK import
+                        peak_next_seq = 1
+                        if "peak" in existing_sheets:
+                            try:
+                                _seq_result = self.sheets_service.spreadsheets().values().get(
+                                    spreadsheetId=self.spreadsheet_id,
+                                    range="'peak'!A:A"
+                                ).execute()
+                                _seq_vals = _seq_result.get('values', [])
+                                if len(_seq_vals) > 1:
+                                    try:
+                                        peak_next_seq = int(str(_seq_vals[-1][0]).strip()) + 1
+                                    except (ValueError, IndexError):
+                                        peak_next_seq = len(_seq_vals)
+                            except Exception as _seq_err:
+                                logger.warning(f"Could not read peak seq: {_seq_err}")
+                        data_for_peak = {**data, 'peak_next_seq': peak_next_seq} if isinstance(data, dict) else data
+
                         peak_row = []
                         for col_idx, col in enumerate(peak_cols):
-                            peak_row.append(extract_field_value(col, context_ext=ext, context_data=data, col_idx=col_idx))
+                            peak_row.append(extract_field_value(col, context_ext=ext, context_data=data_for_peak, col_idx=col_idx, target_sheet_name="peak"))
                         
                         # Ensure "peak" sheet exists
                         if "peak" not in existing_sheets:
