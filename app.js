@@ -915,6 +915,9 @@ function switchView(viewId) {
   if (viewId === 'kb') loadFiles();
   if (viewId === 'summary') renderSummary();
   if (viewId === 'whiteboard') initWhiteboard();
+  if (viewId === 'dashboard') {
+    if (typeof loadDashboardData === 'function') loadDashboardData();
+  }
 
   // ─── Feed Auto-Refresh ───────────────────────
   // Clear any existing feed poll interval when changing views
