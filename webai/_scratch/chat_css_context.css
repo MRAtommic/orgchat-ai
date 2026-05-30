@@ -1,0 +1,192 @@
+=== MATCH AT LINE 796 ===
+787:     flex-direction: column !important;
+788:     overflow: hidden !important;
+789:   }
+790: 
+791:   .dark #groupChatModal:not(.hidden) {
+792:     background: #0f172a !important;
+793:   }
+794: 
+795:   /* Navigation Pattern: List vs Detail */
+796:   #chatSidebarPanel {
+797:     width: 100% !important;
+798:     /* Full width list on mobile */
+799:     height: 100% !important;
+800:     display: flex !important;
+801:     flex-direction: column !important;
+802:     opacity: 1 !important;
+803:     background: #ffffff !important;
+804:     border: none !important;
+805:     position: relative !important;
+806:     z-index: 10 !important;
+807:     transform: none !important;
+808:     transition: opacity 0.3s ease;
+809:   }
+810: 
+811:   .dark #chatSidebarPanel {
+812:     background: #0f172a !important;
+813:   }
+814: 
+815:   /* When a chat is open, hide the list entirely */
+816:   #groupChatModal.chat-open #chatSidebarPanel {
+
+=== MATCH AT LINE 811 ===
+802:     opacity: 1 !important;
+803:     background: #ffffff !important;
+804:     border: none !important;
+805:     position: relative !important;
+806:     z-index: 10 !important;
+807:     transform: none !important;
+808:     transition: opacity 0.3s ease;
+809:   }
+810: 
+811:   .dark #chatSidebarPanel {
+812:     background: #0f172a !important;
+813:   }
+814: 
+815:   /* When a chat is open, hide the list entirely */
+816:   #groupChatModal.chat-open #chatSidebarPanel {
+817:     display: none !important;
+818:   }
+819: 
+820:   /* Main Chat Area slides in from the right */
+821:   #chatMainArea {
+822:     position: absolute !important;
+823:     inset: 0 !important;
+824:     width: 100% !important;
+825:     height: 100% !important;
+826:     background: #ffffff !important;
+827:     z-index: 20 !important;
+828:     display: flex !important;
+829:     transform: translateX(100%);
+830:     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+831:     visibility: hidden;
+
+=== MATCH AT LINE 816 ===
+807:     transform: none !important;
+808:     transition: opacity 0.3s ease;
+809:   }
+810: 
+811:   .dark #chatSidebarPanel {
+812:     background: #0f172a !important;
+813:   }
+814: 
+815:   /* When a chat is open, hide the list entirely */
+816:   #groupChatModal.chat-open #chatSidebarPanel {
+817:     display: none !important;
+818:   }
+819: 
+820:   /* Main Chat Area slides in from the right */
+821:   #chatMainArea {
+822:     position: absolute !important;
+823:     inset: 0 !important;
+824:     width: 100% !important;
+825:     height: 100% !important;
+826:     background: #ffffff !important;
+827:     z-index: 20 !important;
+828:     display: flex !important;
+829:     transform: translateX(100%);
+830:     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+831:     visibility: hidden;
+832:   }
+833: 
+834:   /* Show Detail View only when chat-open is active */
+835:   #groupChatModal.chat-open #chatMainArea {
+836:     transform: translateX(0);
+
+=== MATCH AT LINE 1202 ===
+1193:   background-color: #1d4ed8;
+1194: }
+1195: 
+1196: /* --- Unified Chat Styling --- */
+1197: #groupChatModal {
+1198:   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+1199:   box-shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.4), 0 18px 36px -18px rgba(0, 0, 0, 0.3);
+1200: }
+1201: 
+1202: #chatSidebarPanel {
+1203:   border-right: 1px solid rgba(0, 0, 0, 0.08) !important;
+1204:   background: rgba(248, 250, 252, 0.4);
+1205: }
+1206: 
+1207: .dark #chatSidebarPanel {
+1208:   border-right-color: rgba(255, 255, 255, 0.08) !important;
+1209:   background: rgba(15, 23, 42, 0.4);
+1210: }
+1211: 
+1212: 
+1213: .chat-sidebar-item {
+1214:   display: flex;
+1215:   align-items: center;
+1216:   gap: 12px;
+1217:   padding: 12px 16px;
+1218:   border-radius: 12px;
+1219:   cursor: pointer;
+1220:   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+1221:   border: 1px solid transparent;
+1222:   position: relative;
+
+=== MATCH AT LINE 1207 ===
+1198:   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+1199:   box-shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.4), 0 18px 36px -18px rgba(0, 0, 0, 0.3);
+1200: }
+1201: 
+1202: #chatSidebarPanel {
+1203:   border-right: 1px solid rgba(0, 0, 0, 0.08) !important;
+1204:   background: rgba(248, 250, 252, 0.4);
+1205: }
+1206: 
+1207: .dark #chatSidebarPanel {
+1208:   border-right-color: rgba(255, 255, 255, 0.08) !important;
+1209:   background: rgba(15, 23, 42, 0.4);
+1210: }
+1211: 
+1212: 
+1213: .chat-sidebar-item {
+1214:   display: flex;
+1215:   align-items: center;
+1216:   gap: 12px;
+1217:   padding: 12px 16px;
+1218:   border-radius: 12px;
+1219:   cursor: pointer;
+1220:   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+1221:   border: 1px solid transparent;
+1222:   position: relative;
+1223:   margin: 2px 8px;
+1224: }
+1225: 
+1226: .chat-sidebar-item:hover {
+1227:   background: rgba(37, 99, 235, 0.04);
+
+=== MATCH AT LINE 1502 ===
+1493:     max-height: 100% !important;
+1494:     border-radius: 0 !important;
+1495:     /* Leave room for mobile bottom nav */
+1496:     padding-bottom: 0 !important;
+1497:     /* Managed by safe area and mobile-nav-height internally */
+1498:   }
+1499: 
+1500:   /* Sidebar: icon-only strip (48px) on mobile */
+1501:   /* Sidebar: full width on mobile unless item open */
+1502:   #groupChatModal aside#chatSidebarPanel {
+1503:     width: 100% !important;
+1504:     min-width: 100% !important;
+1505:     flex-shrink: 0;
+1506:     padding: 0 !important;
+1507:     overflow: hidden !important;
+1508:     /* Internal containers handle scrolling */
+1509:     display: flex !important;
+1510:   }
+1511: 
+1512:   /* Hide text labels in sidebar */
+1513:   /* Show text labels in sidebar on mobile */
+1514:   #groupChatModal .chat-item-info,
+1515:   #groupChatModal aside h2,
+1516:   #groupChatModal aside h3,
+1517:   #groupChatModal .chat-item-name,
+1518:   #groupChatModal aside header h1,
+1519:   #groupChatModal aside header h2,
+1520:   #groupChatModal aside header button span {
+1521:     display: block !important;
+1522:   }
+

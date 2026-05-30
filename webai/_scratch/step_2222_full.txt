@@ -1,0 +1,59 @@
+Created At: 2026-05-20T09:15:28Z
+Completed At: 2026-05-20T09:15:28Z
+File Path: `file:///c:/Users/KC_Ketwilai/Downloads/orgchat-ai-main/orgchat-ai-main/webai/app_server.py`
+Total Lines: 9454
+Total Bytes: 457485
+Showing lines 780 to 830
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+780:         # Update user profile with Google info if they have no avatar/display name
+781:         profile = database.get_user_profile(username)
+782:         display_name = profile.get("display_name") if profile.get("display_name") else idinfo.get("name")
+783:         avatar_url = profile.get("avatar_url") if profile.get("avatar_url") else idinfo.get("picture")
+784:         
+785:         database.update_user_profile(username, display_name=display_name, avatar_url=avatar_url)
+786: 
+787:         session.permanent = True
+788:         session["user"] = username
+789:         return jsonify({"ok": True, "user": username})
+790: 
+791:     except Exception as e:
+792:         print(f"Google Login Error: {e}")
+793:         return jsondef _get_item_flex_block(idx, r, folder_name, base_url):
+794:     status = r.get("status", "success")
+795:     name = r.get("name", "ไฟล์")
+796:     sheet_name = r.get("sheet", "ทั่วไป")
+797:     row_num = r.get("row", 1)
+798:     file_link = r.get("link", "#")
+799:     
+800:     sheet_name_str = str(sheet_name)
+801:     folder_name_str = str(folder_name or "ทั่วไป")
+802:     
+803:     block_contents = []
+804:     
+805:     # Header of item: "ITEM 01" and filename - ultra minimal
+806:     block_contents.append({
+807:         "type": "box",
+808:         "layout": "horizontal",
+809:         "contents": [
+810:             {
+811:                 "type": "text",
+812:                 "text": f"ITEM {idx:02d}",
+813:                 "weight": "bold",
+814:                 "size": "xxs",
+815:                 "color": "#10B981" if status == "success" else "#EF4444",
+816:                 "letterSpacing": "md",
+817:                 "flex": 2
+818:             },
+819:             {
+820:                 "type": "text",
+821:                 "text": name[:28],
+822:                 "size": "xs",
+823:                 "color": "#0F172A",
+824:                 "weight": "medium",
+825:                 "flex": 8,
+826:                 "wrap": False
+827:             }
+828:         ]
+829:     })
+830:     
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

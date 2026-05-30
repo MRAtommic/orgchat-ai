@@ -1,0 +1,47 @@
+Line 767: @app.route("/api/login", methods=["POST"])
+  762: })
+  763: except Exception as e:
+  764: return jsonify({"ok": False, "error": str(e)}), 500
+  765: 
+  766: 
+  767: @app.route("/api/login", methods=["POST"])
+  768: def api_login():
+  769: data = request.json
+  770: username_raw = data.get("username", "").strip()
+  771: username_lower = username_raw.lower()
+  772: password = data.get("password", "")
+  773: 
+  774: # 1. Check Database first (Dynamic Users) — supports bcrypt hashed passwords
+  775: settings = database.get_user_setting(username_raw)
+  776: 
+  777: if settings.get("custom_password") and database.check_password(password, settings["custom_password"]):
+  778: if not settings.get("is_active", 1):
+  779: return jsonify({"ok": False, "error": "บัญชีนี้ถูกระงับโดยผู้ดูแลระบบ"}), 403
+  780: session.permanent = True
+  781: session["user"] = settings.get("username_original", username_raw)
+  782: return jsonify({"ok": True, "user": session["user"]})
+  783: 
+  784: # 2. Fallback to Hardcoded (plain text)
+  785: if username_lower in USERS and USERS[username_lower] == password:
+  786: user_to_session = username_raw.capitalize()
+  787: if not settings.get("is_active", 1):
+  788: return jsonify({"ok": False, "error": "บัญชีนี้ถูกระงับโดยผู้ดูแลระบบ"}), 403
+  789: session.permanent = True
+  790: session["user"] = user_to_session
+  791: return jsonify({"ok": True, "user": user_to_session})
+  792: 
+  793: return jsonify({"ok": False, "error": "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง"}), 401
+  794: 
+  795: # ─── QR Code Login System ─────────────────────────────────
+  796: import uuid
+  797: _qr_tokens = {}  # token -> {"status": "pending"|"approved", "user": None, "created": timestamp}
+  798: 
+  799: @app.route("/api/qr/generate", methods=["POST"])
+  800: def qr_generate():
+  801: """Generate a unique QR login token for desktop."""
+  802: token = str(uuid.uuid4())
+  803: _qr_tokens[token] = {
+  804: "status": "pending",
+  805: "user": None,
+  806: "created": time.time()
+========================================

@@ -1,0 +1,160 @@
+3291:                 _send_messages(messages, "Batch")
+3292:             except Exception as e:
+3293:                 logger.error(f"❌ [LINE Push Flex Batch] HTTP Error: {e}")
+3294: 
+3295:         else:
+3296:             messages = []
+3297:             for r in uploaded_results:
+3298:                 sheet_name = r.get("sheet", "ทั่วไป")
+3299:                 row_num = r.get("row", 1)
+3300:                 file_link = r.get("link", "#")
+3301:                 
+3302:                 sheet_id = mgr.spreadsheet_id
+3303:                 sheet_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit" if sheet_id else "#"
+3304:                 
+3305:                 status = r.get("status", "success")
+3306:                 
+3307:                 if status == "duplicate":
+3308:                     ext = r.get('analysis', {}).get('extracted_data', {}) if r.get('analysis') else {}
+3309:                     net_amt = ext.get('net_amount')
+3310:                     if not net_amt or net_amt in [0, '0', 'None', '']:
+3311:                         net_amt = "-"
+3312:                     
+3313:                     ref_num = r.get("ref_number", "-")
+3314:                     
+3315:                     flex_bubble = create_duplicate_warning_flex_bubble(
+3316:                         sheet_name=sheet_name,
+3317:                         row_num=row_num,
+3318:                         ref_number=ref_num,
+3319:                         net_amount=net_amt,
+3320:                         sheet_url=sheet_url
+3321:                     )
+3322:                     
+3323:                     messages.append({
+3324:                         "type": "flex",
+3325:                         "altText": "⚠️ ตรวจพบการอัปโหลดสลิปซ้ำซ้อน",
+3326:                         "contents": flex_bubble
+3327:                     })
+3328:                 else:
+3329:                     ext = r.get('analysis', {}).get('extracted_data', {}) if r.get('analysis') else {}
+3330:                     net_amt = ext.get('net_amount')
+3331:                     if not net_amt or net_amt in [0, '0', 'None', '']:
+3332:                         net_amt = "-"
+3333:                     
+3334:                     date_val = ext.get('date') or datetime.now().strftime("%d/%m/%Y")
+3335:                     memo_val = ext.get('memo') or ext.get('summary') or r.get('name')
+3336:                     
+3337:                     vendor_val = ext.get('receiver') or ext.get('sender') or ext.get('merchant_name') or ext.get('supplier_name') or "-"
+3338:                     
+3339:                     edit_data_postback = f"action=edit_prompt&sheet={sheet_name}&row={row_num}"
+3340:                     
+3341:                     flex_bubble = create_expense_flex_bubble(
+3342:                         sheet_name=sheet_name,
+3343:                         folder_name=folder_name,
+3344:                         net_amount=net_amt,
+3345:                         date_str=date_val,
+3346:                         memo=memo_val,
+3347:                         vendor=vendor_val,
+3348:                         file_link=file_link,
+3349:                         sheet_url=sheet_url,
+3350:                         edit_data_postback=edit_data_postback
+3351:                     )
+3352:                     
+3353:                     messages.append({
+3354:                         "type": "flex",
+3355:                         "altText": "✅ บันทึกค่าใช้จ่ายสำเร็จ",
+3356:                         "contents": flex_bubble
+3357:                     })
+3358:                 
+3359:                 # Limit to 5 messages per push as per LINE API rules
+3360:                 if len(messages) == 5:
+3361:                     try:
+3362:                         _send_messages(messages, "Batch")
+3363:                     except Exception as e:
+3364:                         logger.error(f"❌ [LINE Push Flex] Batch HTTP Error: {e}")
+3365:                     messages = []
+3366:                     
+3367:             if messages:
+3368:                 # Full quick reply shortcuts on the last message
+3369:                 _sheet_url_qr = f"https://docs.google.com/spreadsheets/d/{mgr.spreadsheet_id}/edit" if mgr.spreadsheet_id else "https://sheets.google.com"
+3370:                 _p_id = os.getenv("GOOGLE_DRIVE_PARENT_ID") or os.getenv("PARENT_FOLDER_ID")
+3371:                 _drive_url = f"https://drive.google.com/drive/folders/{_p_id}" if _p_id else "https://drive.google.com"
+3372:                 quick_reply = {
+3373:                     "items": [
+3374:                         {"type": "action", "action": {"type": "message", "label": "ส่งสลิปเพิ่ม", "text": "ส่งสลิประบบจะจัดเก็บให้อัตโนมัติค่ะ"}},
+3375:                         {"type": "action", "action": {"type": "message", "label": "สรุปรายจ่าย", "text": "สรุปรายจ่ายวันนี้"}},
+3376:                         {"type": "action", "action": {"type": "message", "label": "สรุปยอดวันนี้", "text": "สรุปยอดวันนี้"}},
+3377:                         {"type": "action", "action": {"type": "message", "label": "กระทบยอด", "text": "กระทบยอด"}},
+3378:                         {"type": "action", "action": {"type": "message", "label": "หาไฟล์", "text": "ค้นหา "}},
+3379:                         {"type": "action", "action": {"type": "uri", "label": "ดูบัญชี", "uri": _sheet_url_qr}},
+3380:                         {"type": "action", "action": {"type": "uri", "label": "Google Drive", "uri": _drive_url}}
+3381:                     ]
+3382:                 }
+3383:                 messages[-1]["quickReply"] = quick_reply
+3384:                 try:
+3385:                     _send_messages(messages)
+3386:                 except Exception as e:
+3387:                     logger.error(f"❌ [LINE Push Flex] HTTP Error: {e}")
+3388: 
+3389:     else:
+3390:         send_line_push_notification(uid, "เกิดข้อผิดพลาด", "❌ ขออภัยค่ะ พั้นไม่สามารถจัดเก็บไฟล์ได้ในขณะนี้")
+3391: 
+3392: def verify_line_signature(body_bytes, signature):
+3393:     """Verifies the LINE webhook signature using LINE_CHANNEL_SECRET."""
+3394:     channel_secret = os.environ.get("LINE_CHANNEL_SECRET", "").strip()
+3395:     if not channel_secret:
+3396:         logger.warning("⚠️ LINE_CHANNEL_SECRET is not set. Bypassing verification.")
+3397:         return True
+3398:     hash_obj = hmac.new(channel_secret.encode('utf-8'), body_bytes, hashlib.sha256).digest()
+3399:     calc_signature = base64.b64encode(hash_obj).decode('utf-8')
+3400:     return calc_signature == signature
+3401: 
+3402: @app.route("/api/line/webhook", methods=['POST'])
+3403: def line_webhook():
+3404:     """Primary LINE Webhook Entry Point"""
+3405:     signature = request.headers.get('X-Line-Signature')
+3406:     # Get raw bytes for signature verification
+3407:     body_bytes = request.get_data()
+3408:     
+3409:     if not signature or not verify_line_signature(body_bytes, signature):
+3410:         return abort(400)
+3411:     
+3412:     # After reading get_data(), we can still get json if it's parsed
+3413:     data = request.get_json()
+3414:     events = data.get('events', []) if data else []
+3415:     
+3416:     for event in events:
+3417:         threading.Thread(target=process_line_event, args=(event,), daemon=True).start()
+3418:     return 'OK'
+3419: 
+3420: 
+3421: def process_line_command(text, user_id, reply_token):
+3422:     """Ultimate Command Processor with AI integration"""
+3423:     
+3424:     import secrets
+3425:     import time
+3426:     mgr = google_manager
+3427:     username = database.get_username_by_line_id(user_id)
+3428:     if username:
+3429:         user_mgr = GoogleWorkspaceManager.for_user(username)
+3430:         if user_mgr:
+3431:             mgr = user_mgr
+3432:     
+3433:     # 📝 Handle Active Edit Session
+3434:     if user_id in ACTIVE_EDIT_SESSIONS:
+3435:         session_data = ACTIVE_EDIT_SESSIONS.pop(user_id)
+3436:         # Check timeout (5 minutes = 300 seconds)
+3437:         if time.time() - session_data["timestamp"] < 300:
+3438:             sheet = session_data["sheet"]
+3439:             row = session_data["row"]
+3440:             field = session_data["field"]
+3441:             display = session_data["display"]
+3442:             new_value = text.strip()
+3443:             
+3444:             # Update spreadsheet
+3445:             ok, err = mgr.update_expense(sheet, row, field, new_value)
+3446:             if ok:
+3447:                 msg = f"✅ แก้ไขข้อมูลเรียบร้อยแล้วค่ะพี่!\n\n📊 ชีต: '{sheet}' แถวที่ {row}\n✏️ หัวข้อ: '{display}'\n📝 เปลี่ยนเป็น: '{new_value}'\n\nพั้นดำเนินการอัปเดตและกระทบยอดบัญชีใหม่ให้อัตโนมัติเรียบร้อยค่ะ ✨"
+3448:                 
+3449:                 # Persistent Quick Reply
+3450:                 p_id = os.getenv("GOOGLE_DRIVE_PARENT_ID") or os.getenv("PARENT_FOLDER_ID")

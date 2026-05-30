@@ -1,0 +1,29 @@
+Created At: 2026-05-20T09:15:09Z
+Completed At: 2026-05-20T09:15:09Z
+File Path: `file:///c:/Users/KC_Ketwilai/Downloads/orgchat-ai-main/orgchat-ai-main/webai/app_server.py`
+Total Lines: 9432
+Total Bytes: 458360
+Showing lines 1160 to 1180
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1160:                             "weight": "bold"
+1161:                         }
+1162:                     ]
+1163:                 }
+1164:             ]
+1165:         })
+1166:         
+1167:     return {
+1168:         "type": "box",
+1169:         "layout": "vertical",
+1170:         "contents": block_contents
+1171:     }
+1172: 
+1173: def create_paired_expense_flex_bubble(item1, idx1, item2, idx2, folder_name, base_url, sheet_url):
+1174:     """Creates a premium and highly-compact LINE Flex bubble representing 2 receipts to fit in a single carousel slide."""
+1175:     body_contents = []
+1176:     
+1177:     # 1. First Item Box
+1178:     box1 = _get_item_flex_block(idx1, item1, folder_name, base_url)
+1179:     body_contents.append(box1)
+1180:     
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

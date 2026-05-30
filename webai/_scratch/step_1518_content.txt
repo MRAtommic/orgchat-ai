@@ -1,0 +1,64 @@
+Created At: 2026-05-20T05:02:32Z
+Completed At: 2026-05-20T05:02:32Z
+File Path: `file:///c:/Users/KC_Ketwilai/Downloads/orgchat-ai-main/orgchat-ai-main/webai/app_server.py`
+Total Lines: 8779
+Total Bytes: 430793
+Showing lines 878 to 1050
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+878: def create_expense_flex_bubble(sheet_name, folder_name, net_amount, date_str, memo, vendor, file_link, sheet_url, edit_data_postback):
+879:     """Creates a beautiful, high-fidelity LINE Flex Message matching the user request."""
+880:     # Extract row_num from edit_data_postback safely
+881:     row_num = 1
+882:     if edit_data_postback:
+883:         try:
+884:             for part in str(edit_data_postback).split("&"):
+885:                 if part.startswith("row="):
+886:                     row_num = int(part.split("=")[1])
+887:         except:
+888:             pass
+889: 
+890:     # Robust date formatter
+891:     formatted_date = date_str
+892:     initial_date = datetime.now().strftime("%Y-%m-%d")
+893:     if date_str and str(date_str).strip() != '-':
+894:         try:
+895:             date_str_clean = str(date_str).strip().replace("-", "/")
+896:             parts = date_str_clean.split("/")
+897:             thai_months = [
+898:                 "", "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
+899:                 "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
+900:             ]
+901:             if len(parts) == 3:
+902:                 if len(parts[0]) == 4: # YYYY/MM/DD
+903:                     year = int(parts[0])
+904:                     month = int(parts[1])
+905:                     day = int(parts[
+<truncated 5552 bytes>
+ะเภทเอกสาร", "color": "#1E7E34", "size": "sm", "weight": "bold", "flex": 4},
+1025:                                 {"type": "text", "text": sheet_name_str, "color": "#000000", "size": "sm", "flex": 6, "wrap": True}
+1026:                             ]
+1027:                         },
+1028:                         {
+1029:                             "type": "box",
+1030:                             "layout": "horizontal",
+1031:                             "contents": [
+1032:                                 {"type": "text", "text": "ประเภทค่าใช้จ่าย", "color": "#64748B", "size": "sm", "flex": 4},
+1033:                                 {"type": "text", "text": f"{folder_emoji} {folder_name_str}", "color": "#000000", "size": "sm", "flex": 6, "wrap": True}
+1034:                             ]
+1035:                         },
+1036:                         {
+1037:                             "type": "box",
+1038:                             "layout": "horizontal",
+1039:                             "action": {
+1040:                                 "type": "datetimepicker",
+1041:                                 "data": f"action=edit_date_picker&sheet={sheet_name_str}&row={row_num}",
+1042:                                 "mode": "date",
+1043:                                 "initial": initial_date
+1044:                             },
+1045:                             "contents": [
+1046:                                 {"type": "text", "text": "วันที่", "color": "#1E7E34", "size": "sm", "weight": "bold", "flex": 4},
+1047:                                 {"type": "text", "text": formatted_date_str, "color": "#000000", "size": "sm", "flex": 6, "wrap": True}
+1048:                             ]
+1049:                         },
+1050:                         {
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

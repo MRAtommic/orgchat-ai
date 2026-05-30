@@ -1,0 +1,24 @@
+1104: def _check_whitelist(uname):
+1105: """Return error string if whitelist blocks this user, else None."""
+1108: return None  # ยังไม่ได้อยู่ org ไหน → ไม่มี whitelist ที่ต้องตรวจ
+1110: if not database.is_whitelist_enabled(org_id):
+1112: # สมาชิกที่มีอยู่แล้วในองค์กรผ่านได้เสมอ — whitelist กันแค่คนใหม่
+1116: if not email or not database.is_email_allowed(org_id, email):
+1123: wl_err = _check_whitelist(username_raw)
+1266: # Check if the user has no organization yet, but their email is whitelisted in any organization
+1268: allowed_orgs = []
+1270: allowed_orgs = database.get_email_whitelisted_organizations(email)
+1272: logger.error(f"Error checking email whitelisted organizations: {e}")
+1274: if allowed_orgs:
+1275: first_org = allowed_orgs[0]
+1311: if target_org_id and database.is_whitelist_enabled(target_org_id):
+1313: if not database.is_org_member(target_org_id, username) and not database.is_email_allowed(target_org_id, email):
+1889: """Org admin whitelists a Gmail address and marks it as invited."""
+1917: # Add to allowed emails (whitelist) with role
+1918: success = database.add_whitelist_email(org_id, email, me, role=role)
+1921: # Check if already whitelisted in this organization
+1922: if database.is_email_allowed(org_id, email):
+1930: "UPDATE organization_allowed_emails SET role = ?, added_by = ? WHERE organization_id = ? AND email = ?",
+1936: logger.error(f"Failed to update existing whitelist role: {e}")
+1940: # Automatically ensure whitelist is enabled for this organization
+1941: database.set_whitelist_status(org_id, True)

@@ -1,0 +1,230 @@
+3421: def process_line_command(text, user_id, reply_token):
+3422:     """Ultimate Command Processor with AI integration"""
+3423:     
+3424:     import secrets
+3425:     import time
+3426:     mgr = google_manager
+3427:     username = database.get_username_by_line_id(user_id)
+3428:     if username:
+3429:         user_mgr = GoogleWorkspaceManager.for_user(username)
+3430:         if user_mgr:
+3431:             mgr = user_mgr
+3432:     
+3433:     # 📝 Handle Active Edit Session
+3434:     if user_id in ACTIVE_EDIT_SESSIONS:
+3435:         session_data = ACTIVE_EDIT_SESSIONS.pop(user_id)
+3436:         # Check timeout (5 minutes = 300 seconds)
+3437:         if time.time() - session_data["timestamp"] < 300:
+3438:             sheet = session_data["sheet"]
+3439:             row = session_data["row"]
+3440:             field = session_data["field"]
+3441:             display = session_data["display"]
+3442:             new_value = text.strip()
+3443:             
+3444:             # Update spreadsheet
+3445:             ok, err = mgr.update_expense(sheet, row, field, new_value)
+3446:             if ok:
+3447:                 msg = f"✅ แก้ไขข้อมูลเรียบร้อยแล้วค่ะพี่!\n\n📊 ชีต: '{sheet}' แถวที่ {row}\n✏️ หัวข้อ: '{display}'\n📝 เปลี่ยนเป็น: '{new_value}'\n\nพั้นดำเนินการอัปเดตและกระทบยอดบัญชีใหม่ให้อัตโนมัติเรียบร้อยค่ะ ✨"
+3448:                 
+3449:                 # Persistent Quick Reply
+3450:                 p_id = os.getenv("GOOGLE_DRIVE_PARENT_ID") or os.getenv("PARENT_FOLDER_ID")
+3451:                 drive_url = f"https://drive.google.com/drive/folders/{p_id}"
+3452:                 quick_reply = {
+3453:                     "items": [{
+3454:                         "type": "action",
+3455:                         "action": {
+3456:                             "type": "uri",
+3457:                             "label": "🌐 เปิด Google Drive",
+3458:                             "uri": drive_url
+3459:                         }
+3460:                     }]
+3461:                 }
+3462:                 if mgr.spreadsheet_id:
+3463:                     quick_reply["items"].insert(0, {
+3464:                         "type": "action",
+3465:                         "action": {
+3466:                             "type": "uri",
+3467:                             "label": "📊 เปิด Google Sheets",
+3468:                             "uri": f"https://docs.google.com/spreadsheets/d/{mgr.spreadsheet_id}/edit"
+3469:                         }
+3470:                     })
+3471:                 reply_to_line(reply_token, msg, quick_reply=quick_reply)
+3472:             else:
+3473:                 reply_to_line(reply_token, f"❌ เกิดข้อผิดพลาดในการแก้ไขข้อมูล: {err}\nพี่ลองพิมพ์รายการที่จะอัปเดตใหม่อีกครั้งนะคะ")
+3474:             return
+3475: 
+3476:     text_lower = text.lower().strip()
+3477:     try:
+3478:         with open('scratch/debug_log.txt', 'a', encoding='utf-8') as df:
+3479:             df.write(f"Received text: '{text}'\n")
+3480:             df.write(f"text_lower: '{text_lower}'\n")
+3481:             df.write(f"Match condition: {text_lower.startswith('/link') or 'ผูกบัญชี' in text_lower}\n")
+3482:             df.write(f"Username: '{username}'\n")
+3483:     except Exception as e:
+3484:         pass
+3485: 
+3486:     
+3487:     # Persistent Quick Reply — shown after every bot text response (max 13 items)
+3488:     p_id = os.getenv("GOOGLE_DRIVE_PARENT_ID") or os.getenv("PARENT_FOLDER_ID")
+3489:     drive_url = f"https://drive.google.com/drive/folders/{p_id}" if p_id else "https://drive.google.com"
+3490:     sheet_url_qr = f"https://docs.google.com/spreadsheets/d/{mgr.spreadsheet_id}/edit" if mgr.spreadsheet_id else "https://sheets.google.com"
+3491: 
+3492:     # Dynamic Quick Replies based on linked status
+3493:     quick_reply_items = [
+3494:         {"type": "action", "action": {"type": "message", "label": "📊 สรุปรายจ่ายวันนี้", "text": "สรุปรายจ่ายวันนี้"}},
+3495:         {"type": "action", "action": {"type": "message", "label": "💰 สรุปยอดวันนี้", "text": "สรุปยอดวันนี้"}},
+3496:         {"type": "action", "action": {"type": "message", "label": "🔄 เริ่มกระทบยอด", "text": "กระทบยอด"}},
+3497:         {"type": "action", "action": {"type": "message", "label": "🔍 ค้นหาไฟล์", "text": "ค้นหา "}},
+3498:         {"type": "action", "action": {"type": "message", "label": "📂 เลือกโฟลเดอร์", "text": "เลือกโฟลเดอร์"}},
+3499:         {"type": "action", "action": {"type": "message", "label": "📝 บันทึกวันลา", "text": "ลางาน"}},
+3500:     ]
+3501:     
+3502:     if not username:
+3503:         quick_reply_items.insert(0, {"type": "action", "action": {"type": "message", "label": "🔗 ผูกบัญชีระบบ", "text": "ผูกบัญชี"}})
+3504:     else:
+3505:         quick_reply_items.append({"type": "action", "action": {"type": "message", "label": "🔗 ขอลิงก์ระบบ", "text": "ขอลิงก์"}})
+3506:         
+3507:     quick_reply_items.append({"type": "action", "action": {"type": "uri", "label": "🟢 ดู Google Sheet", "uri": sheet_url_qr}})
+3508:     quick_reply_items.append({"type": "action", "action": {"type": "uri", "label": "🔵 Google Drive", "uri": drive_url}})
+3509:     
+3510:     quick_reply = {"items": quick_reply_items}
+3511: 
+3512:     
+3513:     try:
+3514:         # 1. Account Linking (/link or ผูกบัญชี)
+3515:         if text_lower.startswith("/link") or "ผูกบัญชี" in text_lower:
+3516:             if not username:
+3517:                 import secrets
+3518:                 import time
+3519:                 token = secrets.token_urlsafe(32)
+3520:                 PENDING_LINE_LINKS[token] = {
+3521:                     "line_user_id": user_id,
+3522:                     "timestamp": time.time()
+3523:                 }
+3524:                 
+3525:                 base_url = "http://localhost:5005"
+3526:                 webhook_url = os.environ.get("ACTIVE_PUBLIC_URL")
+3527:                 if webhook_url:
+3528:                     if "/api/line/webhook" in webhook_url:
+3529:                         base_url = webhook_url.split("/api/line/webhook")[0]
+3530:                     else:
+3531:                         base_url = webhook_url.rstrip('/')
+3532:                 else:
+3533:                     env_url = os.environ.get("BASE_URL") or os.environ.get("PUBLIC_URL")
+3534:                     if env_url:
+3535:                         base_url = env_url.rstrip('/')
+3536:                 
+3537:                 magic_url = f"{base_url}/line/link_magic?token={token}"
+3538:                 
+3539:                 magic_bubble = create_magic_link_flex_bubble(magic_url)
+3540:                 reply_to_line(reply_token, {
+3541:                     "type": "flex",
+3542:                     "altText": "🔗 เชื่อมต่อบัญชี OrgChat AI",
+3543:                     "contents": magic_bubble
+3544:                 }, quick_reply=quick_reply)
+3545:             else:
+3546:                 reply_to_line(reply_token, f"✅ พี่ {username} ผูกบัญชีไว้เรียบร้อยแล้วค่ะ!", quick_reply=quick_reply)
+3547:             return
+3548: 
+3549:         # 🔗 Workspace Links Request
+3550:         if any(k in text_lower for k in ["ขอลิงค์", "ขอลิ้งค์", "ขอลิงก์", "ขอลิ้ง", "ขอลิงค์หน่อย"]):
+3551:             sheet_id = mgr.spreadsheet_id
+3552:             sheet_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit" if sheet_id else "https://sheets.google.com"
+3553:             p_id = os.getenv("GOOGLE_DRIVE_PARENT_ID") or os.getenv("PARENT_FOLDER_ID")
+3554:             drive_url = f"https://drive.google.com/drive/folders/{p_id}" if p_id else "https://drive.google.com"
+3555:             
+3556:             links_bubble = create_links_flex_bubble(sheet_url, drive_url)
+3557:             reply_to_line(reply_token, {
+3558:                 "type": "flex",
+3559:                 "altText": "🔗 ลิงก์ระบบบัญชีและเอกสารของพี่ค่ะ",
+3560:                 "contents": links_bubble
+3561:             }, quick_reply=quick_reply)
+3562:             return
+3563: 
+3564:         # 2. Expense Reporting
+3565:         if any(k in text_lower for k in ["สรุปรายจ่าย", "ยอดรายจ่าย", "รายจ่าย", "วันนี้"]):
+3566:             summary = mgr.get_monthly_summary()
+3567:             
+3568:             # --- 📊 Stunning Donut Chart Generation & Integration ---
+3569:             try:
+3570:                 raw_data = mgr.get_monthly_summary(return_raw=True)
+3571:                 if isinstance(raw_data, tuple) and len(raw_data) == 3:
+3572:                     total_expense, total_count, categories_breakdown = raw_data
+3573:                     if total_count > 0 and categories_breakdown:
+3574:                         from chart_generator import generate_monthly_expense_chart
+3575:                         
+3576:                         # Determine base URL dynamically
+3577:                         base_url = "http://localhost:5005"
+3578:                         webhook_url = os.environ.get("ACTIVE_PUBLIC_URL")
+3579:                         if webhook_url:
+3580:                             if "/api/line/webhook" in webhook_url:
+3581:                                 base_url = webhook_url.split("/api/line/webhook")[0]
+3582:                             else:
+3583:                                 base_url = webhook_url.rstrip('/')
+3584:                         else:
+3585:                             env_url = os.environ.get("BASE_URL") or os.environ.get("PUBLIC_URL")
+3586:                             if env_url:
+3587:                                 base_url = env_url.rstrip('/')
+3588:                         
+3589:                         # Generate the beautiful donut chart
+3590:                         chart_filename = generate_monthly_expense_chart(categories_breakdown)
+3591:                         chart_url = f"{base_url}/uploads/social_feed/{chart_filename}"
+3592:                         
+3593:                         # Construct a multi-message response containing both the Flex summary and the chart image!
+3594:                         messages = []
+3595:                         if isinstance(summary, dict):
+3596:                             messages.append(summary)
+3597:                         else:
+3598:                             messages.append({"type": "text", "text": str(summary)})
+3599:                             
+3600:                         messages.append({
+3601:                             "type": "image",
+3602:                             "originalContentUrl": chart_url,
+3603:                             "previewImageUrl": chart_url
+3604:                         })
+3605:                         
+3606:                         reply_to_line(reply_token, messages, quick_reply=quick_reply)
+3607:                         return
+3608:             except Exception as chart_err:
+3609:                 logger.error(f"⚠️ Failed to generate and attach expense chart: {chart_err}")
+3610:                 
+3611:             reply_to_line(reply_token, summary, quick_reply=quick_reply)
+3612:             return
+3613: 
+3614:         # 3. Enhanced File Retrieval (Drive + Database Logs)
+3615:         if text_lower.startswith(("หาไฟล์", "ค้นหา", "search")):
+3616:             query = text.replace("หาไฟล์", "").replace("ค้นหา", "").replace("search", "").strip()
+3617:             if not query:
+3618:                 reply_to_line(reply_token, "พี่ต้องการหาไฟล์อะไรคะ? ระบุชื่อมาได้เลยค่ะ 😊")
+3619:                 return
+3620: 
+3621:             db_logs = database.search_drive_logs(query, limit=5)
+3622:             drive_files = []
+3623:             if hasattr(google_drive_service, 'search_files'):
+3624:                 drive_files = google_drive_service.search_files(query)
+3625:             
+3626:             if drive_files or db_logs:
+3627:                 resp = f"🔍 น้องพั้นพบไฟล์ที่พี่ต้องการแล้วค่ะ ({len(drive_files) + len(db_logs)} รายการ):\n\n"
+3628:                 seen = set()
+3629:                 for log in db_logs:
+3630:                     if log.get('file_link'):
+3631:                         seen.add(log['file_link'])
+3632:                         resp += f"📄 {log['filename']}\n📂 {log.get('category', 'ทั่วไป')}\n🔗 {log['file_link']}\n\n"
+3633:                 for f in drive_files:
+3634:                     if f.get('webViewLink') and f['webViewLink'] not in seen:
+3635:                         resp += f"📄 {f['name']}\n🔗 {f['webViewLink']}\n\n"
+3636:                 reply_to_line(reply_token, resp, quick_reply=quick_reply)
+3637:             else:
+3638:                 reply_to_line(reply_token, f"❌ ไม่พบไฟล์ที่ชื่อ '{query}' เลยค่ะพี่", quick_reply=quick_reply)
+3639:             return
+3640: 
+3641:         # 4. Background Reconciliation
+3642:         if any(k in text_lower for k in ["กระทบยอด", "reconcile"]):
+3643:             reply_to_line(reply_token, "⏳ น้องพั้นกำลังเริ่มจับคู่สลิปกับใบกำกับภาษีให้พี่อยู่นะคะ... เมื่อเสร็จแล้วจะแจ้งเตือนไปค่ะ ✨")
+3644:             def run_recon():
+3645:                 try:
+3646:                     if hasattr(google_drive_service, 'perform_auto_reconciliation'):
+3647:                         google_drive_service.perform_auto_reconciliation(mgr.sheets_service, mgr.spreadsheet_id)
+3648:                         push_msg = f"✅ กระทบยอดข้อมูลเสร็จเรียบร้อยแล้วค่ะพี่!\n🌐 https://docs.google.com/spreadsheets/d/{mgr.spreadsheet_id}"
+3649:                     else:
+3650:                         push_msg = "⚠️ ระบบกระทบยอดยังไม่พร้อมใช้งานในตอนนี้ค่ะพี่"

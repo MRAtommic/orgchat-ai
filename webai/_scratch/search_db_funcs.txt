@@ -1,0 +1,60 @@
+def set_user_online(username, room=None):
+def set_user_offline(username):
+def set_user_typing(username, room_id):
+def clear_user_typing(username):
+def get_user_status(username):
+def get_online_users():
+def mark_message_as_read(message_id, username, room_id=None):
+def mark_room_read(room_id, username, max_id):
+def save_message(role, text, sources=None, username="Admin"):
+def get_history(username="Admin", limit=50):
+def clear_history(username="Admin"):
+def delete_message(msg_id, username="Admin"):
+def admin_clear_ai_chat(username=None):
+def delete_room_message(msg_id, username=None, is_admin=False):
+def delete_private_message(msg_id, username=None, is_admin=False):
+def save_feedback(username="Admin", feedback_val=0):
+def update_schedule_status(sched_id, status, username="Admin"):
+def get_stats(username="Admin"):
+def add_push_subscription(username, subscription_json):
+def get_push_subscriptions(username):
+def remove_push_subscription(username, subscription_json):
+def add_schedule(username, title, start_date, description="", category="General", start_time="09:00", is_public=0, status="todo", target_departments=None, target_users=None):
+def get_schedules(username="Admin"):
+def delete_schedule(schedule_id, username=None, is_admin=False):
+def delete_past_schedules(username):
+def archive_past_schedules(username):
+def delete_post(post_id, username=None, is_admin=False):
+def delete_comment(comment_id, username=None, is_admin=False):
+def vote_poll(poll_id, option_id, username):
+def get_user_vote(poll_id, username):
+def get_user_profile(username):
+def update_user_profile(username, display_name=None, avatar_url=None, background_url=None, department=None, position=None, manager_username=None):
+def add_room_members(room_id, usernames):
+def remove_room_member(room_id, username):
+def link_line_user(username, line_user_id):
+def get_line_id_by_username(username):
+def add_room_message(room_id, username, text, attachments=None, reply_to_id=None):
+def get_rooms_for_user(username):
+def update_room_last_read(room_id, username):
+def get_unread_counts(username):
+def get_all_usernames():
+def get_user_setting(username):
+def check_circular_reporting(username, new_manager_username):
+def admin_update_user(username, display_name=None, role=None, is_active=None, notes=None, can_view_kb=None, can_edit_kb=None, can_delete_kb=None, department=None, position=None, manager_username=None):
+def admin_reset_user_password(username, new_password):
+def admin_create_user(username, password, role="user", display_name=None, can_view_kb=False, can_edit_kb=False, can_delete_kb=False, department="General", position=None, manager_username=None):
+def admin_delete_user_complete(username):
+def get_categories(username=None):
+def create_leave_request(username, leave_type, start_date, end_date, reason):
+def get_user_leaves(username):
+def get_user_category_access(username):
+def set_user_category_access(username, category_ids):
+def record_post_view(post_id, username):
+def edit_room_message(msg_id, new_text, username, is_admin_user=False):
+def edit_private_message(msg_id, new_text, username, is_admin_user=False):
+def global_search(query: str, username: str, limit: int = 30):
+def log_search(query: str, username: str):
+def add_leave_comment(leave_id, username, comment):
+def link_line_user(username, line_user_id):
+def get_line_id_by_username(username):

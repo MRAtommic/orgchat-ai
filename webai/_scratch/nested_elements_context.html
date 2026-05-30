@@ -1,0 +1,130 @@
+4851:         class="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-black rounded-full flex items-center justify-center border-2 border-white dark:border-surface-900 hidden">
+4852:         0</div>
+4853:       <span
+4854:         class="absolute right-16 px-3 py-1.5 bg-surface-900 text-white text-[10px] rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none shadow-xl font-bold">ห้องแชทกลุ่ม</span>
+4855:     </button>
+4856: 
+4857:     <!-- 💬 Unified Messenger Modal -->
+4858:     <div id="groupChatModal"
+4859:       class="fixed inset-0 z-[1200] flex items-center justify-center p-0 md:p-6 bg-surface-950/40 backdrop-blur-md hidden animate-in fade-in duration-300">
+4860:       
+4861:       <div class="bg-white dark:bg-surface-900 w-full h-full max-w-6xl md:h-[85vh] md:rounded-[40px] shadow-2xl border border-surface-200 dark:border-surface-800 overflow-hidden flex flex-col md:flex-row relative">
+4862:         
+4863:         <!-- 🗂️ Messenger Sidebar (Left) -->
+4864:         <aside id="chatSidebarPanel" class="w-full md:w-80 border-r border-surface-100 dark:border-surface-800 flex flex-col flex-shrink-0 bg-white dark:bg-surface-900 z-10">
+4865:           <header class="px-6 py-6 border-b border-surface-50 dark:border-surface-800">
+4866:             <div class="flex items-center justify-between mb-4">
+4867:               <h1 class="text-3xl font-black text-surface-900 dark:text-white">แชท</h1>
+4868:               <div class="flex items-center gap-2">
+4869:                 <button id="openStartDmModal" class="w-10 h-10 flex items-center justify-center bg-surface-100 dark:bg-surface-800 rounded-2xl text-surface-600 dark:text-surface-300 hover:bg-brand-50 transition-colors">
+4870:                   <i data-lucide="edit-3" class="w-5 h-5"></i>
+4871:                 </button>
+4872:                 <button onclick="state.groupChat.isOpen=false; $('groupChatModal').classList.add('hidden')" class="md:hidden w-10 h-10 flex items-center justify-center bg-red-50 dark:bg-red-900/20 rounded-2xl text-red-600">
+4873:                   <i data-lucide="x" class="w-5 h-5"></i>
+4874:                 </button>
+4875:               </div>
+4876:             </div>
+4877:             <div class="relative">
+4878:               <i data-lucide="search" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400"></i>
+4879:               <input type="text" placeholder="ค้นหา Messenger" class="w-full pl-10 pr-4 py-2.5 bg-surface-50 dark:bg-surface-800 border-none rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all">
+4880:             </div>
+4881:           </header>
+4882:           <div class="flex-1 overflow-y-auto custom-scrollbar px-2 space-y-1" id="chatRoomList"></div>
+4883:           <div class="p-4 border-t border-surface-50 dark:border-surface-800">
+4884:              <button id="openCreateGroupModal" class="w-full py-3 bg-brand-50 dark:bg-brand-900/20 text-brand-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-brand-100 transition-all">+ สร้างกลุ่มใหม่</button>
+4885:           </div>
+4886:         </aside>
+4887: 
+4888:         <!-- 🔵 Main Chat Area (Right) -->
+4889:         <main id="chatMainArea" class="flex-1 flex flex-col bg-surface-50/20 dark:bg-surface-950/20 min-w-0 relative">
+4890:           <!-- Chat Header -->
+4891:           <header class="h-20 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between px-6 bg-white/80 dark:bg-surface-900/80 backdrop-blur-md shrink-0">
+4892:             <div class="flex items-center gap-3">
+4893:               <div id="chatHeaderAvatar" class="w-12 h-12 rounded-2xl bg-brand-100 flex items-center justify-center text-brand-600 font-black overflow-hidden shadow-sm">?</div>
+4894:               <div>
+4895:                 <h2 id="chatHeaderName" class="font-black text-base truncate max-w-[200px]">เลือกบทสนทนา</h2>
+4896:                 <div id="chatHeaderStatus" class="flex items-center gap-2">
+4897:                    <span class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+4898:                    <span class="text-[10px] font-bold text-surface-400 uppercase tracking-widest">Active Now</span>
+4899:                 </div>
+4900:               </div>
+4901:             </div>
+4902:             <div class="flex items-center gap-2">
+4903:               <button id="voiceCallBtn" title="โทรเสียง" class="p-3 hover:bg-brand-50 text-brand-600 rounded-2xl transition-all"><i data-lucide="phone" class="w-5 h-5"></i></button>
+4904:               <button id="videoCallBtn" title="วิดีโอคอล" class="p-3 hover:bg-brand-50 text-brand-600 rounded-2xl transition-all"><i data-lucide="video" class="w-5 h-5"></i></button>
+4905:               <button id="viewMembersBtn" title="สมาชิก" class="p-3 hover:bg-surface-100 text-surface-500 rounded-2xl transition-all"><i data-lucide="users" class="w-5 h-5"></i></button>
+4906:               <button onclick="state.groupChat.isOpen=false; $('groupChatModal').classList.add('hidden')" class="p-3 hover:bg-red-50 text-red-500 rounded-2xl transition-all ml-2"><i data-lucide="x" class="w-5 h-5"></i></button>
+4907:             </div>
+4908:           </header>
+4909: 
+4910:           <!-- Pinned Messages -->
+4911:           <div id="pinnedMessagesContainer" class="bg-brand-50/50 dark:bg-brand-900/10 border-b border-surface-100 dark:border-surface-800 hidden px-4 py-2 animate-in slide-in-from-top duration-300">
+4912:              <div id="pinnedMessagesList"></div>
+4913:           </div>
+4914: 
+4915:           <!-- Messages Container -->
+4916:           <div id="groupChatMessages" class="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar relative bg-white dark:bg-surface-900">
+4917:              <div class="flex-1 flex flex-col items-center justify-center text-center p-12 opacity-30">
+4918:                 <div class="w-24 h-24 bg-brand-100 dark:bg-brand-900/30 rounded-[40px] flex items-center justify-center mb-6">
+4919:                    <i data-lucide="messages-square" class="w-10 h-10 text-brand-600"></i>
+4920:                 </div>
+4921:                 <h3 class="text-xl font-black text-surface-900 dark:text-white">แชทและแชร์ข้อมูล</h3>
+4922:                 <p class="text-xs text-surface-500 mt-2 max-w-[240px]">เลือกคนหรือกลุ่มที่คุณต้องการสื่อสารด้วยจากรายการทางซ้ายมือ</p>
+4923:              </div>
+4924:           </div>
+4925: 
+4926:           <!-- Indicators -->
+4927:           <div id="unifiedTypingIndicator" class="px-6 py-2 hidden animate-fade-in">
+4928:              <div class="flex items-center gap-2 text-[10px] italic text-surface-400 font-bold">
+4929:                 <div class="meta-typing"><span></span><span></span><span></span></div>
+4930:                 <span id="unifiedTypingText">ใครบางคนกำลังพิมพ์...</span>
+4931:              </div>
+4932:           </div>
+4933: 
+4934:           <!-- Input Footer -->
+4935:           <footer class="p-6 bg-white dark:bg-surface-900 border-t border-surface-100 dark:border-surface-800">
+4936:             <div id="replyPreview" class="bg-surface-50 dark:bg-surface-800 p-3 rounded-2xl mb-4 border-l-4 border-brand-600 hidden flex items-center justify-between">
+4937:                <div class="truncate mr-4">
+4938:                   <p class="text-[9px] font-black text-brand-600 uppercase tracking-widest">Replying to <span id="replyToUser"></span></p>
+4939:                   <p id="replyToText" class="text-xs text-surface-400 italic truncate"></p>
+4940:                </div>
+4941:                <button onclick="cancelReply()" class="p-1 hover:bg-red-50 text-red-500 rounded-full"><i data-lucide="x" class="w-4 h-4"></i></button>
+4942:             </div>
+4943:             <div id="chatAttachmentPreview" class="flex flex-wrap gap-2 mb-4"></div>
+4944: 
+4945:             <div class="flex items-end gap-3">
+4946:                <div class="flex gap-1">
+4947:                   <button id="attachFileBtn" title="แนบไฟล์" class="w-11 h-11 flex items-center justify-center bg-surface-50 dark:bg-surface-800 text-surface-500 rounded-2xl hover:bg-brand-50 hover:text-brand-600 transition-all border border-transparent">
+4948:                      <i data-lucide="paperclip" class="w-5 h-5"></i>
+4949:                   </button>
+4950:                   <button id="voiceBtn" title="ส่งเสียง" class="w-11 h-11 flex items-center justify-center bg-surface-50 dark:bg-surface-800 text-brand-600 rounded-2xl hover:bg-brand-50 transition-all border border-transparent">
+4951:                      <i data-lucide="mic" class="w-5 h-5"></i>
+4952:                   </button>
+4953:                </div>
+4954:                
+4955:                <div class="flex-1 bg-surface-50 dark:bg-surface-800/80 rounded-[28px] px-5 py-3.5 border-2 border-transparent focus-within:border-brand-600/30 transition-all">
+4956:                   <textarea id="groupChatInput" rows="1" placeholder="พิมพ์ข้อความของคุณที่นี่..." 
+4957:                             class="w-full bg-transparent border-none focus:ring-0 text-sm p-0 resize-none max-h-40 outline-none leading-relaxed"></textarea>
+4958:                   
+4959:                   <div id="recordingUI" class="hidden flex items-center justify-between gap-4">
+4960:                      <div class="flex items-center gap-2"><div class="w-2 h-2 bg-red-600 rounded-full animate-pulse"></div><span id="recordingTimer" class="text-xs font-black text-red-600">00:00</span></div>
+4961:                      <canvas id="recordingVisualizer" class="h-6 flex-1"></canvas>
+4962:                      <button id="cancelRecordingBtn" class="text-surface-400 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+4963:                   </div>
+4964:                </div>
+4965: 
+4966:                <button id="sendGroupChatBtn" class="w-11 h-11 flex items-center justify-center bg-brand-600 text-white rounded-2xl shadow-xl shadow-brand-600/20 hover:bg-brand-700 transition-all active:scale-90">
+4967:                   <i data-lucide="send" class="w-5 h-5"></i>
+4968:                </button>
+4969:             </div>
+4970:           </footer>
+4971:         </main>
+4972:       </div>
+4973:     </div>
+4974: 
+4975:     <!-- 👥 Room Members Panel -->
+4976:     <div id="roomMembersPanel"
+4977:       class="fixed inset-0 z-[1500] flex items-end sm:items-center justify-center p-4 bg-surface-950/60 backdrop-blur-sm hidden animate-in fade-in duration-200">
+4978:       <div
+4979:         class="bg-white dark:bg-surface-900 w-full max-w-sm rounded-3xl shadow-2xl border border-surface-200 dark:border-surface-800 overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-4 duration-300">
+4980:         <!-- Header -->

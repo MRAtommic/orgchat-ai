@@ -1,0 +1,42 @@
+=== Searching database.py ===
+35: def init_db():
+39: CREATE TABLE IF NOT EXISTS messages (
+50: CREATE TABLE IF NOT EXISTS schedules (
+63: CREATE TABLE IF NOT EXISTS posts (
+76: CREATE TABLE IF NOT EXISTS post_views (
+104: CREATE TABLE IF NOT EXISTS comments (
+114: CREATE TABLE IF NOT EXISTS likes (
+122: CREATE TABLE IF NOT EXISTS user_profiles (
+131: CREATE TABLE IF NOT EXISTS group_messages (
+203: CREATE TABLE IF NOT EXISTS private_messages (
+218: CREATE TABLE IF NOT EXISTS chat_rooms (
+227: CREATE TABLE IF NOT EXISTS leave_requests (
+241: CREATE TABLE IF NOT EXISTS expense_claims (
+254: CREATE TABLE IF NOT EXISTS room_members (
+264: CREATE TABLE IF NOT EXISTS room_messages (
+283: CREATE TABLE IF NOT EXISTS kb_categories (
+299: CREATE TABLE IF NOT EXISTS user_category_access (
+307: CREATE TABLE IF NOT EXISTS ai_personas (
+321: CREATE TABLE IF NOT EXISTS user_settings (
+334: CREATE TABLE IF NOT EXISTS app_settings (
+341: CREATE TABLE IF NOT EXISTS pending_edits (
+402: CREATE TABLE IF NOT EXISTS push_subscriptions (
+412: CREATE TABLE IF NOT EXISTS notifications (
+426: CREATE TABLE IF NOT EXISTS polls (
+434: CREATE TABLE IF NOT EXISTS poll_options (
+442: CREATE TABLE IF NOT EXISTS poll_votes (
+465: CREATE TABLE IF NOT EXISTS search_history (
+475: CREATE TABLE IF NOT EXISTS user_status (
+487: CREATE TABLE IF NOT EXISTS message_read_receipts (
+499: CREATE TABLE IF NOT EXISTS private_message_read_status (
+510: CREATE TABLE IF NOT EXISTS wiki_pages (
+534: CREATE TABLE IF NOT EXISTS leave_requests (
+548: CREATE TABLE IF NOT EXISTS leave_comments (
+558: CREATE TABLE IF NOT EXISTS events (
+567: CREATE TABLE IF NOT EXISTS lunch_places (
+590: CREATE TABLE IF NOT EXISTS drive_logs (
+607: CREATE TABLE IF NOT EXISTS user_google_tokens (
+2950: CREATE TABLE IF NOT EXISTS kanban_columns (
+2960: CREATE TABLE IF NOT EXISTS kanban_cards (
+Found 39 matches.
+

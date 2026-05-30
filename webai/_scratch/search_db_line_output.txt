@@ -1,0 +1,37 @@
+160: line_user_id TEXT,
+321: is_online INTEGER DEFAULT 0,
+411: add_column_if_missing("user_profiles", "line_user_id", "TEXT")
+445: cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_status_online ON user_status(is_online)")
+473: def set_user_online(username, room=None):
+474: """Mark user as online."""
+479: """INSERT OR REPLACE INTO user_status (username, is_online, current_room, last_activity, updated_at)
+487: print(f"[ERROR] set_user_online: {e}")
+490: def set_user_offline(username):
+491: """Mark user as offline."""
+496: "UPDATE user_status SET is_online = 0, updated_at = CURRENT_TIMESTAMP WHERE username = ?",
+503: print(f"[ERROR] set_user_offline: {e}")
+544: "SELECT is_online, current_room, typing_in_room, last_activity FROM user_status WHERE username = ?",
+553: "is_online": bool(row[0]),
+558: return {"username": username, "is_online": False}
+561: return {"username": username, "is_online": False}
+563: def get_online_users():
+564: """Get list of all online users."""
+568: cursor.execute("SELECT username, current_room, typing_in_room FROM user_status WHERE is_online = 1")
+574: print(f"[ERROR] get_online_users: {e}")
+1638: def link_line_user(username, line_user_id):
+1639: """Link a LINE user ID to an OrgChat username."""
+1643: # Remove any existing link for this LINE user ID first to ensure 1-to-1 mapping
+1644: cursor.execute("UPDATE user_profiles SET line_user_id = NULL WHERE line_user_id = ?", (line_user_id,))
+1646: cursor.execute("UPDATE user_profiles SET line_user_id = ? WHERE username = ? COLLATE NOCASE", (line_user_id, username))
+1652: print(f"Error linking LINE user: {e}")
+1655: def get_line_id_by_username(username):
+1656: """Get the linked LINE ID for a specific OrgChat user."""
+1660: cursor.execute("SELECT line_user_id FROM user_profiles WHERE username = ? COLLATE NOCASE", (username,))
+1665: print(f"Error getting LINE ID for {username}: {e}")
+3120: def link_line_user(username, line_user_id):
+3121: """Link a LINE account ID to an existing OrgChat user."""
+3126: SET line_user_id = ?
+3128: """, (line_user_id, username))
+3134: def get_line_id_by_username(username):
+3135: """Retrieve the LINE user ID associated with an OrgChat username."""
+3138: cursor.execute("SELECT line_user_id FROM user_profiles WHERE username = ? COLLATE NOCASE", (username,))

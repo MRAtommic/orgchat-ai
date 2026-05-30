@@ -1,0 +1,25 @@
+Tables: [('messages',), ('sqlite_sequence',), ('schedules',), ('posts',), ('post_views',), ('comments',), ('likes',), ('user_profiles',), ('group_messages',), ('private_messages',), ('chat_rooms',), ('room_members',), ('room_messages',), ('kb_categories',), ('user_category_access',), ('ai_personas',), ('user_settings',), ('app_settings',), ('push_subscriptions',), ('notifications',), ('polls',), ('poll_options',), ('poll_votes',), ('search_history',), ('user_status',), ('message_read_receipts',), ('private_message_read_status',), ('wiki_pages',), ('leave_requests',), ('events',), ('lunch_places',), ('kanban_columns',), ('kanban_cards',), ('leave_comments',), ('drive_logs',), ('expense_claims',), ('pending_edits',), ('user_google_tokens',), ('line_group_mappings',), ('organizations',), ('organization_members',)]
+
+--- Latest 5 from messages ---
+(34, 'Admin', 'bot', 'พี่สวัสดีนะคะ น้องพั้นยังอยู่นี่ค่ะ 🙋', None, 0, '2026-05-14 08:36:30', 1)
+(33, 'Admin', 'user', 'สวัสดี', None, 0, '2026-05-14 08:36:28', 1)
+(32, 'Admin', 'bot', 'สวัสดีค่ะ น้องพั้นยินดีที่ได้คุยกับพี่นะคะ', None, 0, '2026-05-14 07:48:02', 1)
+(31, 'Admin', 'user', 'สวัสดี', None, 0, '2026-05-14 07:48:01', 1)
+(30, 'Admin', 'bot', 'ไม่มีปัญหาครับ คุณสามารถถามคำถาม或สร้างนัดหมายได้ทุกเมื่อครับ 📅 เป็นอย่างไรครับวันนี้ครับ', '[{"file_id": "eb5af6047617f5d40dd2c3c9ac135f2043fe8f6f63a6de08a6d50cb130f3884e", "name": "69110631_c6a73680_name (1).txt", "location": "Document", "department": "General", "type": "file"}, {"file_id": "4a437fde05fe5264e1701a7387ac6fb75393772ba38bb2c9c566405af5af4bd7", "name": "titanic.csv", "location": "Rows 676-690", "department": "General", "type": "file"}, {"file_id": "4a437fde05fe5264e1701a7387ac6fb75393772ba38bb2c9c566405af5af4bd7", "name": "titanic.csv", "location": "Rows 661-675", "department": "General", "type": "file"}, {"file_id": "4a437fde05fe5264e1701a7387ac6fb75393772ba38bb2c9c566405af5af4bd7", "name": "titanic.csv", "location": "Rows 721-735", "department": "General", "type": "file"}]', 0, '2026-05-14 07:42:18', 1)
+
+--- Latest 5 from group_messages ---
+
+--- Latest 5 from private_messages ---
+
+--- Latest 5 from room_messages ---
+
+--- Latest 5 from message_read_receipts ---
+
+--- Latest 5 from private_message_read_status ---
+
+--- Latest 5 from drive_logs ---
+(83, 'line_upload_615116536171987031', 'ใบเสร็จ_ใบกำกับ', 66.0, '20/05/2026', 'รายการโอนเงินจาก นาย วีรภัทร ไปยัง นาย ธัมมพล พิทักษ์ศักดิ์เสรี เพื่อเติมเงิน G-Wallet จำนวน 66.00 บาท เมื่อวันที่ 20 พฤษภาคม 2569', 'https://drive.google.com/file/d/1gOt5LsXR0finARAsBzxKEyfYAQXoRkxc/view?usp=drivesdk', 'Ub19ad21bc539d39089b367de20de417b', '2026-05-22 17:02:45')
+(82, 'line_upload_615116274145952069', 'สลิปโอนเงิน', 44.5, '22/05/2026', 'โอนเงินจากนาย วีรภัทร ไปยัง น.ส. กัญจนพร จตุรพร จำนวน 44.50 บาท ผ่านธนาคารกรุงเทพและพร้อมเพย์ เมื่อวันที่ 22 พฤษภาคม 2569', 'https://drive.google.com/file/d/1osrl3pliEruK88yT5IUqmFtQWUc0RWuG/view?usp=drivesdk', 'Ub19ad21bc539d39089b367de20de417b', '2026-05-22 17:00:33')
+(81, 'line_upload_615116273289789509', 'สลิปโอนเงิน', 15.0, '22/05/2026', 'การโอนเงินจากนายวีรภัทร ไปยัง น.ส.จรรยพร ตาปัญโญ จำนวน 15.00 บาท ผ่านธนาคารกรุงเทพ', 'https://drive.google.com/file/d/1rb2yCJlAGDqHEk1ClB3PSqzhvLzpQyup/view?usp=drivesdk', 'Ub19ad21bc539d39089b367de20de417b', '2026-05-22 17:00:25')
+(80, 'line_upload_615116275001065541', 'สลิปโอนเงิน', 30.0, '22/05/2026', 'โอนเงินจากนายวีรภัทร ไปยัง TUNGNGERN (JAKRAPONG) จำนวน 30.00 บาท เมื่อวันที่ 22 พ.ค. 2569', 'https://drive.google.com/file/d/1B2gBWMzbfyh5RDu_ZDgqyz7ab76xZTHw/view?usp=drivesdk', 'Ub19ad21bc539d39089b367de20de417b', '2026-05-22 17:00:17')
+(79, 'line_upload_615115439479718077', 'สลิปโอนเงิน', 57980.0, '30/03/2026', 'รายการชำระเงินผ่าน Bill Payment จาก HEARTWARMING CO.,L++ ไปยัง NCC MANAGEMENT AND DEVELOPMENT ยอดเงิน 57,980.00 บาท เมื่อวันที่ 30 มีนาคม 2569', 'https://drive.google.com/file/d/1oOC_JMpgZxh5N-cygSTS9p110YsAecav/view?usp=drivesdk', 'Ub19ad21bc539d39089b367de20de417b', '2026-05-22 16:51:54')

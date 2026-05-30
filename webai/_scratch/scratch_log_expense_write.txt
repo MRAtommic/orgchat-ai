@@ -1,0 +1,120 @@
+1571:                             has_wht = True
+1572:                             
+1573:                     elif sheet_name == "ใบหัก ณ ที่จ่าย":
+1574:                         has_wht = True
+1575:                         
+1576:                     return "หัก ณ ที่จ่าย" if has_wht else "-"
+1577:                 
+1578:                 # Built-in fallback helper inside extract_field_value
+1579:                 def local_get_val(keys, default='-'):
+1580:                     if isinstance(keys, str): keys = [keys]
+1581:                     for k in keys:
+1582:                         v = context_ext.get(k)
+1583:                         if v is not None and str(v).strip() != '-': return v
+1584:                         
+1585:                     if any(k in keys for k in ['sender', 'from']):
+1586:                         for k in ['sender_name', 'from_name', 'vendor', 'name']:
+1587:                             v = context_ext.get(k)
+1588:                             if v is not None and str(v).strip() != '-': return v
+1589:                     if any(k in keys for k in ['receiver', 'to']):
+1590:                         for k in ['receiver_name', 'to_name', 'customer', 'payee']:
+1591:                             v = context_ext.get(k)
+1592:                             if v is not None and str(v).strip() != '-': return v
+1593:                     if any(k in keys for k in ['address', 'ที่อยู่']):
+1594:                         for k in ['sender_address', 'vendor_address', 'address_of_sender', 'address', 'receiver_address', 'full_address']:
+1595:                             v = context_ext.get(k)
+1596:                             if v is not None and str(v).strip() != '-': return v
+1597:                     if any(k in keys for k in ['branch', 'สาขา']):
+1598:                         for k in ['sender_branch', 'receiver_branch', 'branch_code', 'branch']:
+1599:                             v = context_ext.get(k)
+1600:                             if v is not None and str(v).strip() != '-': return v
+1601:                     if any(k in keys for k in ['withdrawal', 'deposit', 'balance', 'fee']):
+1602:                         for k in keys:
+1603:                             v = context_ext.get(k)
+1604:                             if v is not None and str(v).strip() != '-': return v
+1605:                     if any(k in keys for k in ['sender_bank', 'bank_from']):
+1606:                         for k in ['sender_bank', 'bank_from', 'from_bank', 'bank_sender', 'sender_bank_name']:
+1607:                             v = context_ext.get(k)
+1608:                             if v is not None and str(v).strip() != '-': return v
+1609:                     if any(k in keys for k in ['receiver_bank', 'bank_to']):
+1610:                         for k in ['receiver_bank', 'bank_to', 'to_bank', 'bank_receiver', 'receiver_bank_name']:
+1611:                             v = context_ext.get(k)
+1612:                             if v is not None and str(v).strip() != '-': return v
+1613:                     return default
+1614: 
+1615:                 val = "-"
+1616:                 if src == "current_datetime":
+1617:                     val = datetime.now().strftime("%d/%m/%Y %H:%M")
+1618:                 elif src == "current_date":
+1619:                     val = datetime.now().strftime("%d/%m/%Y")
+1620:                 elif src == "current_time":
+1621:                     val = datetime.now().strftime("%H:%M")
+1622:                 elif src == "ai_model":
+1623:                     val = context_data.get('ai_model', '-')
+1624:                 elif src == "file_link":
+1625:                     val = context_data.get('file_link', '-')
+1626:                 elif src == "summary":
+1627:                     val = context_data.get('summary', '-')
+1628:                 elif src == "sheet_name":
+1629:                     val = sheet_name
+1630:                 elif src == "original_filename":
+1631:                     val = context_data.get('original_filename', context_data.get('original_name', '-'))
+1632:                     if val == '-':
+1633:                         val = context_ext.get('original_filename', context_ext.get('original_name', '-'))
+1634:                     if val == '-':
+1635:                         summary_val = context_data.get('summary', '')
+1636:                         if 'Auto-upload: ' in summary_val:
+1637:                             val = summary_val.replace('Auto-upload: ', '').strip()
+1638:                 elif src == "invoice_follow_up":
+1639:                     is_et = context_ext.get("is_etax")
+1640:                     if isinstance(is_et, str):
+1641:                         is_et = is_et.strip().lower() in ['true', 'yes', '1']
+1642:                     if is_et is True:
+1643:                         val = "ไม่ต้องตาม"
+1644:                     else:
+1645:                         val = "ต้องตาม"
+1646:                 elif src.startswith("const:"):
+1647:                     val = src.replace("const:", "")
+1648:                 elif src.startswith("ai_keys:"):
+1649:                     keys_list = src.replace("ai_keys:", "").split(",")
+1650:                     val = local_get_val(keys_list)
+1651:                 elif src == "sender_name_fallback":
+1652:                     val = local_get_val(['sender', 'from', 'vendor', 'vendor_name', 'seller', 'company_name'])
+1653:                 elif src == "receiver_name_fallback":
+1654:                     val = local_get_val(['receiver', 'to', 'payee', 'buyer', 'customer', 'customer_name'])
+1655:                 
+1656:                 # --- Custom PEAK Extraction (Image 2) ---
+1657:                 elif src == "peak_seq":
+1658:                     val = "1"
+1659:                 elif src == "peak_doc_date":
+1660:                     doc_d = local_get_val(['date', 'doc_date', 'document_date', 'billing_date', 'invoice_date'])
+1661:                     val = parse_to_yyyymmdd(doc_d)
+1662:                 elif src == "peak_invoice_date":
+1663:                     inv_d = local_get_val(['invoice_date', 'tax_date', 'billing_date', 'receipt_date', 'date'], None)
+1664:                     if not inv_d or str(inv_d).strip() in ['-', '']:
+1665:                         val = ""
+1666:                     else:
+1667:                         val = parse_to_yyyymmdd(inv_d)
+1668:                 elif src == "peak_price_type":
+1669:                     vat_val = clean_val(local_get_val(['vat_amount', 'vat', 'tax_amount', 'tax']))
+1670:                     vat_rate_val = local_get_val(['vat_rate', 'vat_percent', 'อัตราภาษี'])
+1671:                     has_vat = (vat_val > 0) or (str(vat_rate_val).strip() not in ['-', '', '0', '0%', 'NO', 'no', 'No'])
+1672:                     val = "1" if has_vat else "3"
+1673:                 elif src == "peak_account_code":
+1674:                     val = local_get_val(['account_code', 'account_number', 'account_id', 'code'], "")
+1675:                     if val == '-': val = ""
+1676:                 elif src == "peak_price_unit":
+1677:                     vat_val = clean_val(local_get_val(['vat_amount', 'vat', 'tax_amount', 'tax']))
+1678:                     vat_rate_val = local_get_val(['vat_rate', 'vat_percent', 'อัตราภาษี'])
+1679:                     has_vat = (vat_val > 0) or (str(vat_rate_val).strip() not in ['-', '', '0', '0%', 'NO', 'no', 'No'])
+1680:                     gross_val = clean_val(local_get_val(['gross_amount', 'amount_before_vat', 'before_vat']))
+1681:                     net_val = clean_val(local_get_val(['net_amount', 'total_amount', 'amount']))
+1682:                     if has_vat:
+1683:                         if gross_val > 0:
+1684:                             val = gross_val
+1685:                         else:
+1686:                             val = round(net_val / 1.07, 2)
+1687:                     else:
+1688:                         val = net_val if net_val > 0 else gross_val
+1689:                 elif src == "peak_vat_rate":
+1690:                     vat_val = clean_val(local_get_val(['vat_amount', 'vat', 'tax_amount', 'tax']))

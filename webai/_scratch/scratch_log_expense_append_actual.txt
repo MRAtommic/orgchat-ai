@@ -1,0 +1,120 @@
+1801:                     val = clean_branch(val)
+1802:                     
+1803:                 return val
+1804: 
+1805:             # Populate row(s) dynamically
+1806:             if sheet_name == "สเตตเมนต์":
+1807:                 transactions = ext.get('transactions', [])
+1808:                 if transactions and isinstance(transactions, list):
+1809:                     rows = []
+1810:                     for t in transactions:
+1811:                         row_vals = []
+1812:                         for col_idx, col in enumerate(columns_def):
+1813:                             row_vals.append(extract_field_value(col, context_ext=t, col_idx=col_idx))
+1814:                         rows.append(row_vals)
+1815:                 else:
+1816:                     row_vals = []
+1817:                     for col_idx, col in enumerate(columns_def):
+1818:                         row_vals.append(extract_field_value(col, col_idx=col_idx))
+1819:                     rows = [row_vals]
+1820:             else:
+1821:                 row_vals = []
+1822:                 for col_idx, col in enumerate(columns_def):
+1823:                     row_vals.append(extract_field_value(col, col_idx=col_idx))
+1824:                 rows = [row_vals]
+1825: 
+1826:             # Check if sheet exists and update headers if they don't match our strict format
+1827:             if sheet_name in existing_sheets:
+1828:                 try:
+1829:                     res = self.sheets_service.spreadsheets().values().get(spreadsheetId=self.spreadsheet_id, range=f"'{sheet_name}'!A1:Z1").execute()
+1830:                     current_headers = res.get('values', [[]])[0]
+1831:                     # Force update if headers are English, empty, or too short (missing columns)
+1832:                     if not current_headers or len(current_headers) < (len(headers) - 2) or any(x in str(current_headers) for x in ["Log Time", "Category", "Doc Date"]):
+1833:                         logger.info(f"🔄 Updating headers for {sheet_name} to match system standards...")
+1834:                         self.sheets_service.spreadsheets().values().update(spreadsheetId=self.spreadsheet_id, range=f"'{sheet_name}'!A1", valueInputOption="RAW", body={"values": [headers]}).execute()
+1835:                 except Exception as e:
+1836:                     logger.warning(f"⚠️ Header check failed: {e}")
+1837:             else:
+1838:                 logger.info(f"Sheet {sheet_name} does not exist. Creating new sheet and initializing headers...")
+1839:                 try:
+1840:                     self.sheets_service.spreadsheets().batchUpdate(spreadsheetId=self.spreadsheet_id, body={'requests': [{'addSheet': {'properties': {'title': sheet_name}}}]}).execute()
+1841:                 except Exception as ce:
+1842:                     logger.error(f"Failed to create sheet {sheet_name}: {ce}")
+1843:                 try:
+1844:                     self.sheets_service.spreadsheets().values().update(spreadsheetId=self.spreadsheet_id, range=f"'{sheet_name}'!A1", valueInputOption="RAW", body={"values": [headers]}).execute()
+1845:                 except Exception as ue:
+1846:                     logger.error(f"Failed to update headers for new sheet {sheet_name}: {ue}")
+1847: 
+1848:             # Lock headers (freeze first row)
+1849:             try:
+1850:                 self.freeze_sheet(sheet_name)
+1851:             except Exception as fe:
+1852:                 logger.warning(f"⚠️ Failed to freeze headers: {fe}")
+1853: 
+1854:             # Append the data
+1855:             try:
+1856:                 logger.info(f"📝 Appending row to {sheet_name} (Length: {len(rows[0])}): {rows[0][:10]}...")
+1857:                 result = self.sheets_service.spreadsheets().values().append(
+1858:                     spreadsheetId=self.spreadsheet_id, 
+1859:                     range=f"'{sheet_name}'!A2", 
+1860:                     valueInputOption="USER_ENTERED", 
+1861:                     body={"values": rows}
+1862:                 ).execute()
+1863:                 
+1864:                 # Extract row index from updatedRange (e.g., "'Sheet1'!A5:S5")
+1865:                 updated_range = result.get('updates', {}).get('updatedRange', '')
+1866:                 row_idx = 1
+1867:                 if '!' in updated_range:
+1868:                     range_part = updated_range.split('!')[1]
+1869:                     # Extract the first number found in the range string
+1870:                     match = re.search(r'\d+', range_part)
+1871:                     if match:
+1872:                         row_idx = int(match.group())
+1873:                 
+1874:                 # --- Trigger Reconciliation ---
+1875:                 import threading
+1876:                 threading.Thread(target=self.auto_reconcile_internal, daemon=True).start()
+1877:                 
+1878:                 # If the logged sheet is an expense document, duplicate the record to "peak" sheet!
+1879:                 if sheet_name in ["ใบเสร็จ/ใบกำกับภาษี", "สลิปโอนเงิน", "ใบหัก ณ ที่จ่าย"]:
+1880:                     try:
+1881:                         logger.info("🔄 Duplicating record to 'peak' sheet...")
+1882:                         peak_schema = registry.get("schemas", {}).get("peak", {})
+1883:                         peak_cols = peak_schema.get("columns", [])
+1884:                         peak_headers = peak_schema.get("headers", [])
+1885:                         
+1886:                         peak_row = []
+1887:                         for col_idx, col in enumerate(peak_cols):
+1888:                             peak_row.append(extract_field_value(col, context_ext=ext, context_data=data, col_idx=col_idx))
+1889:                         
+1890:                         # Ensure "peak" sheet exists
+1891:                         if "peak" not in existing_sheets:
+1892:                             logger.info("Sheet 'peak' does not exist. Creating new sheet and initializing headers...")
+1893:                             try:
+1894:                                 self.sheets_service.spreadsheets().batchUpdate(
+1895:                                     spreadsheetId=self.spreadsheet_id, 
+1896:                                     body={'requests': [{'addSheet': {'properties': {'title': 'peak'}}}]}
+1897:                                 ).execute()
+1898:                                 existing_sheets.append("peak")
+1899:                             except Exception as ce:
+1900:                                 logger.error(f"Failed to create sheet 'peak': {ce}")
+1901:                             try:
+1902:                                 self.sheets_service.spreadsheets().values().update(
+1903:                                     spreadsheetId=self.spreadsheet_id, 
+1904:                                     range="'peak'!A1", 
+1905:                                     valueInputOption="RAW", 
+1906:                                     body={"values": [peak_headers]}
+1907:                                 ).execute()
+1908:                             except Exception as ue:
+1909:                                 logger.error(f"Failed to update headers for new sheet 'peak': {ue}")
+1910:                         
+1911:                         # Lock headers and style them
+1912:                         try:
+1913:                             self.freeze_sheet("peak")
+1914:                         except Exception as fe:
+1915:                             logger.warning(f"⚠️ Failed to freeze/style headers for 'peak': {fe}")
+1916:                             
+1917:                         # Append to peak
+1918:                         self.sheets_service.spreadsheets().values().append(
+1919:                             spreadsheetId=self.spreadsheet_id,
+1920:                             range="'peak'!A2",

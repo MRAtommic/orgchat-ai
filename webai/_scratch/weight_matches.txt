@@ -1,0 +1,36 @@
+681:   h1 { font-size:1.3rem; font-weight:800; color:#1e293b; margin-bottom:.5rem; }
+683:   .user-badge { background:linear-gradient(135deg,#667eea,#764ba2); color:white; padding:.5rem 1.5rem; border-radius:999px; font-weight:700; font-size:.9rem; display:inline-block; margin-bottom:1.5rem; }
+684:   .btn { display:block; width:100%; padding:1rem; border-radius:1rem; border:none; font-size:1rem; font-weight:800; cursor:pointer; transition:all .2s; }
+875:                             "weight": "bold",
+882:                             "weight": "bold",
+922:                                 {"type": "text", "text": "BOOKSHEET", "color": "#94A3B8", "size": "xxs", "weight": "bold", "flex": 4, "align": "start"},
+923:                                 {"type": "text", "text": sheet_name_str, "color": "#334155", "size": "xs", "weight": "regular", "flex": 8, "wrap": True, "align": "end"}
+930:                                 {"type": "text", "text": "CLASSIFICATION", "color": "#94A3B8", "size": "xxs", "weight": "bold", "flex": 4, "align": "start"},
+931:                                 {"type": "text", "text": folder_name_str, "color": "#334155", "size": "xs", "weight": "regular", "flex": 8, "wrap": True, "align": "end"}
+944:                                 {"type": "text", "text": "TRANSACTION DATE", "color": "#94A3B8", "size": "xxs", "weight": "bold", "flex": 4, "align": "start"},
+945:                                 {"type": "text", "text": formatted_date_str, "color": "#334155", "size": "xs", "weight": "regular", "flex": 8, "wrap": True, "align": "end"}
+957:                                 {"type": "text", "text": "VENDOR / MERCHANT", "color": "#94A3B8", "size": "xxs", "weight": "bold", "flex": 4, "align": "start"},
+958:                                 {"type": "text", "text": vendor_str, "color": "#334155", "size": "xs", "weight": "regular", "flex": 8, "wrap": True, "align": "end"}
+975:                                 {"type": "text", "text": "MEMO / DESCRIPTION", "color": "#94A3B8", "size": "xxs", "weight": "bold", "margin": "xs"},
+1144:                 "weight": "bold",
+1154:                 "weight": "bold",
+1172:                 "weight": "bold",
+1180:                 "weight": "regular",
+1194:             "weight": "bold",
+1208:         "weight": "bold",
+1274:                             "weight": "bold",
+1281:                             "weight": "bold",
+1365:                             "weight": "bold",
+1372:                             "weight": "bold",
+1402:                                 {"type": "text", "text": "TRANSACTION ID", "color": "#94A3B8", "size": "xxs", "weight": "bold", "flex": 4, "align": "start"},
+1403:                                 {"type": "text", "text": ref_str, "color": "#334155", "size": "xs", "weight": "regular", "flex": 8, "wrap": True, "align": "end"}
+1410:                                 {"type": "text", "text": "EXISTING RECORD", "color": "#94A3B8", "size": "xxs", "weight": "bold", "flex": 4, "align": "start"},
+1411:                                 {"type": "text", "text": f"{sheet_name_str} แถวที่ {row_num}", "color": "#334155", "size": "xs", "weight": "regular", "flex": 8, "wrap": True, "align": "end"}
+1507:                     "weight": "bold" if status == "success" else "regular",
+1568:                             "weight": "bold",
+1575:                             "weight": "bold",
+1600:                                 {"type": "text", "text": "TOTAL BATCH VALUE", "color": "#94A3B8", "size": "xxs", "weight": "bold"},
+1601:                                 {"type": "text", "text": total_str, "color": "#0F172A", "size": "md", "weight": "bold", "margin": "xs"}
+1609:                                 {"type": "text", "text": "STATUS METRICS", "color": "#94A3B8", "size": "xxs", "weight": "bold", "align": "end"},
+1610:                                 {"type": "text", "text": f"{success_count} บันทึก | {duplicate_count} ซ้ำ", "color": "#0F172A", "size": "xs", "weight": "regular", "margin": "xs", "align": "end"}
+1780:                 { "type": "text", "text": "ประกาศจากน้องพั้นค่ะ 📢", "size": "xs", "color": "#059669", "weight": "bold", "margin": "none" },

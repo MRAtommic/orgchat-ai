@@ -1,0 +1,120 @@
+1451:                                     if cell_val:
+1452:                                         cleaned_cell = str(cell_val).replace('-', '').replace(' ', '').replace("'", "").strip()
+1453:                                         if cleaned_cell == cleaned_ref:
+1454:                                             logger.warning(f"⚠️ Duplicate slip detected! Ref: {ref_val} at row {r_idx + 1}")
+1455:                                             return {
+1456:                                                 "ok": False, 
+1457:                                                 "error": "duplicate", 
+1458:                                                 "sheet": sheet_name, 
+1459:                                                 "row": r_idx + 1, 
+1460:                                                 "ref_number": ref_val,
+1461:                                                 "data": row_data
+1462:                                             }
+1463:                         except Exception as e:
+1464:                             logger.error(f"Failed to check duplicate: {e}")
+1465:             
+1466:             # Retrieve schema config for this sheet
+1467:             schemas = registry.get("schemas", {})
+1468:             schema_config = schemas.get(sheet_name, schemas.get("default", {}))
+1469:             
+1470:             headers = schema_config.get("headers", [])
+1471:             columns_def = schema_config.get("columns", [])
+1472:             
+1473:             def clean_val(v):
+1474:                 if v is None or v == '-': return 0.0
+1475:                 try: return float(str(v).replace(',', '').strip())
+1476:                 except: return 0.0
+1477:                 
+1478:             def clean_id(v):
+1479:                 if v is None: return '-'
+1480:                 s = str(v).replace('-', '').replace(' ', '').strip()
+1481:                 if not s or s == '-': return '-'
+1482:                 s_digits = re.sub(r'\D', '', s)
+1483:                 if len(s_digits) in [10, 13]:
+1484:                     return f"'{s_digits}"
+1485:                 return s
+1486: 
+1487:             def clean_branch(v):
+1488:                 if v is None: return "00000"
+1489:                 s = str(v).replace('-', '').replace(' ', '').strip()
+1490:                 if not s or s == '-': return "00000"
+1491:                 s_digits = re.sub(r'\D', '', s)
+1492:                 if not s_digits: return "00000"
+1493:                 return f"'{int(s_digits):05d}"
+1494: 
+1495:             # Custom Value Extractor based on source string
+1496:             def extract_field_value(col_def, context_ext=None, context_data=None, col_idx=None):
+1497:                 if context_ext is None: context_ext = ext
+1498:                 if context_data is None: context_data = data
+1499:                 
+1500:                 src = col_def.get("source", "")
+1501:                 cleaner = col_def.get("cleaner", "")
+1502:                 
+1503:                 # Custom WHT column override: If header name contains WHT related keywords (excluding "peak" sheet which requires numeric/rate values)
+1504:                 is_wht_col = False
+1505:                 if col_idx is not None and col_idx < len(headers) and sheet_name != "peak":
+1506:                     h_name = headers[col_idx].strip().replace(" ", "").upper()
+1507:                     if any(x in h_name for x in ["หักณที่จ่าย", "จำนวนภาษีที่หัก", "WHT", "TAX"]):
+1508:                         is_wht_col = True
+1509:                 
+1510:                 if is_wht_col:
+1511:                     has_wht = False
+1512:                     
+1513:                     # Sub-helper to get values with multiple key possibilities
+1514:                     def wht_local_get_val(keys, default='-'):
+1515:                         if isinstance(keys, str): keys = [keys]
+1516:                         for k in keys:
+1517:                             v = context_ext.get(k)
+1518:                             if v is not None and str(v).strip() != '-': return v
+1519:                         return default
+1520:                     
+1521:                     if sheet_name == "สลิปโอนเงิน":
+1522:                         slip_wht_amt = clean_val(wht_local_get_val(['wht_amount', 'wht']))
+1523:                         memo_str = str(wht_local_get_val('memo')).upper()
+1524:                         # If slip itself has WHT
+1525:                         if (slip_wht_amt > 0) or ("EXWHT" in memo_str) or ("หัก ณ ที่จ่าย" in memo_str) or ("WHT" in memo_str):
+1526:                             has_wht = True
+1527:                         else:
+1528:                             # 3-Way check: Look up from "ใบเสร็จ/ใบกำกับภาษี" sheet
+1529:                             invoice_has_wht = False
+1530:                             if "ใบเสร็จ/ใบกำกับภาษี" in existing_sheets:
+1531:                                 try:
+1532:                                     res_val = self.sheets_service.spreadsheets().values().get(
+1533:                                         spreadsheetId=self.spreadsheet_id, 
+1534:                                         range="'ใบเสร็จ/ใบกำกับภาษี'!A1:Z1000"
+1535:                                     ).execute()
+1536:                                     inv_rows = res_val.get('values', [])
+1537:                                     if inv_rows and len(inv_rows) > 1:
+1538:                                         inv_hdr = inv_rows[0]
+1539:                                         idx_amt = next((i for i, h in enumerate(inv_hdr) if "สุทธิ" in h), 9)
+1540:                                         idx_vend = next((i for i, h in enumerate(inv_hdr) if "ผู้ส่ง" in h or "ร้านค้า" in h or "คู่ค้า" in h), 3)
+1541:                                         idx_wht = next((i for i, h in enumerate(inv_hdr) if "หัก ณ ที่จ่าย" in h), 13)
+1542:                                         
+1543:                                         slip_amt = clean_val(wht_local_get_val(['net_amount', 'amount']))
+1544:                                         slip_receiver = str(wht_local_get_val(['receiver', 'to', 'payee'])).strip()
+1545:                                         
+1546:                                         for r in inv_rows[1:]:
+1547:                                             if len(r) <= max(idx_amt, idx_vend): continue
+1548:                                             try:
+1549:                                                 r_amt = clean_val(r[idx_amt])
+1550:                                                 r_vend = str(r[idx_vend]).strip()
+1551:                                                 if abs(r_amt - slip_amt) < 5.0:
+1552:                                                     name_match = (get_name_similarity(r_vend, slip_receiver) > 0.7) or (r_vend in slip_receiver) or (slip_receiver in r_vend)
+1553:                                                     if name_match:
+1554:                                                         r_wht = str(r[idx_wht]).strip() if len(r) > idx_wht else "-"
+1555:                                                         if r_wht == "หัก ณ ที่จ่าย" or clean_val(r_wht) > 0:
+1556:                                                             invoice_has_wht = True
+1557:                                                             break
+1558:                                             except Exception as ex:
+1559:                                                 logger.warning(f"Error checking invoice matching WHT: {ex}")
+1560:                                 except Exception as e:
+1561:                                     logger.warning(f"Error checking invoices: {e}")
+1562:                             
+1563:                             if invoice_has_wht:
+1564:                                 has_wht = True
+1565:                                 
+1566:                     elif sheet_name == "ใบเสร็จ/ใบกำกับภาษี":
+1567:                         inv_wht_amt = clean_val(wht_local_get_val(['wht_amount', 'wht']))
+1568:                         wht_rate_val = str(wht_local_get_val(['wht_rate', 'wht_percent', 'อัตราภาษี'])).strip()
+1569:                         wht_type_val = str(wht_local_get_val(['wht_type', 'income_type'])).strip()
+1570:                         if (inv_wht_amt > 0) or (wht_rate_val not in ['-', '', '0', '0%']) or ("หัก" in wht_type_val or "WHT" in wht_type_val.upper()):

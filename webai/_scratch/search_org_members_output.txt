@@ -1,0 +1,28 @@
+1029: CREATE TABLE IF NOT EXISTS organization_members (
+1106: cursor.execute("CREATE INDEX IF NOT EXISTS idx_org_members_username ON organization_members(username)")
+1155: cursor.execute("SELECT 1 FROM organization_members WHERE username = ? COLLATE NOCASE", (uname,))
+1158: INSERT OR IGNORE INTO organization_members (organization_id, username, role)
+1164: cursor.execute("SELECT 1 FROM organization_members WHERE username = ? COLLATE NOCASE", (uname,))
+1167: INSERT OR IGNORE INTO organization_members (organization_id, username, role)
+1291: JOIN organization_members om ON o.id = om.organization_id
+1343: cursor.execute("SELECT COUNT(*) FROM organization_members WHERE organization_id = ?", (org_id,))
+1367: LEFT JOIN organization_members om ON om.organization_id = o.id
+1410: "SELECT organization_id FROM organization_members WHERE username = ? COLLATE NOCASE ORDER BY organization_id LIMIT 1",
+1496: "INSERT OR IGNORE INTO organization_members (organization_id, username, role) VALUES (?, ?, 'admin')",
+1524: INSERT OR IGNORE INTO organization_members (organization_id, username, role)
+1543: INSERT OR IGNORE INTO organization_members (organization_id, username, role, invited_by)
+1568: "SELECT COUNT(*) FROM organization_members WHERE organization_id = ?", (org_id,)
+1574: "INSERT OR IGNORE INTO organization_members (organization_id, username, role, invited_by) VALUES (?, ?, ?, ?)",
+1609: FROM organization_members om
+1632: cursor.execute("SELECT role FROM organization_members WHERE organization_id = ? AND username = ? COLLATE NOCASE", (org_id, username))
+1641: cursor.execute("SELECT 1 FROM organization_members WHERE organization_id = ? AND username = ? COLLATE NOCASE", (org_id, username))
+1650: cursor.execute("DELETE FROM organization_members WHERE organization_id = ? AND username = ? COLLATE NOCASE", (org_id, username))
+1664: "UPDATE organization_members SET role = ? WHERE organization_id = ? AND username = ? COLLATE NOCASE",
+1735: "SELECT COUNT(*) FROM organization_members WHERE organization_id = ? AND role = 'admin'",
+3357: JOIN organization_members om ON p.username = om.username COLLATE NOCASE
+3546: JOIN organization_members om ON p.username = om.username COLLATE NOCASE
+3710: "posts", "comments", "private_messages", "organization_members",
+3772: LEFT JOIN organization_members om ON p.username = om.username COLLATE NOCASE
+3844: ("organization_members", "organization_id"),
+5156: JOIN organization_members om ON om.username = ugt.username
+5554: "SELECT 1 FROM organization_members WHERE organization_id=? AND username=? COLLATE NOCASE",

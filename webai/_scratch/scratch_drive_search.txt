@@ -1,0 +1,10 @@
+=== Searching google_drive_service.py ===
+282: "เวลาที่บันทึก", "หมวดหมู่", "วันที่ในเอกสาร", "ผู้ส่ง/ร้านค้า", "รหัสสาขา",
+313: "เวลาที่บันทึก", "หมวดหมู่", "วันที่ในเอกสาร", "เวลาในเอกสาร", "ผู้ส่ง/ร้านค้า",
+383: {"source": "ai_keys:sender_name,sender,vendor,merchant,payee_name,ผู้รับเงิน,ร้านค้า,ผู้ส่ง"},
+515: "เวลาที่บันทึก", "หมวดหมู่", "วันที่ในเอกสาร", "เวลาในเอกสาร", "ผู้ส่ง/ร้านค้า",
+984: i_idx_vend = next((i for i, h in enumerate(inv_header) if "ผู้ส่ง" in h or "ร้านค้า" in h or "คู่ค้า" in h), 3)
+1374: def log_expense(self, data, sheet_name=None):
+1540: idx_vend = next((i for i, h in enumerate(inv_hdr) if "ผู้ส่ง" in h or "ร้านค้า" in h or "คู่ค้า" in h), 3)
+Found 7 matches.
+

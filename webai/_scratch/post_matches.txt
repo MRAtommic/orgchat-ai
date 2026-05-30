@@ -1,0 +1,12 @@
+1677:     url = "https://api.line.me/v2/bot/message/push"
+1687:         requests.post(url, headers=headers, json={"to": line_id, "messages": [msg]}, timeout=10)
+1758:         res = requests.post(
+1759:             "https://api.line.me/v2/bot/message/reply",
+1773:     url = "https://api.line.me/v2/bot/message/broadcast"
+1791:         res = requests.post(url, headers=headers, json={"messages": [{"type": "flex", "altText": f"📢 {title}", "contents": flex_contents}]}, timeout=20)
+2044:     requests.post("https://api.line.me/v2/bot/message/push", headers=headers, 
+2119:         url = "https://api.line.me/v2/bot/message/push"
+2204:                 res = requests.post(url, headers=headers, json={"to": uid, "messages": messages}, timeout=20)
+2275:                         res = requests.post(url, headers=headers, json={"to": uid, "messages": messages}, timeout=15)
+2283:                     res = requests.post(url, headers=headers, json={"to": uid, "messages": messages}, timeout=15)
+2437:                     requests.post("https://api.line.me/v2/bot/message/push", 

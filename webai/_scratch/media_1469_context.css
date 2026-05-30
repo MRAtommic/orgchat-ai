@@ -1,0 +1,80 @@
+1461: 
+1462: /* Safe area insets for iPhone notch / home indicator */
+1463: :root {
+1464:   --safe-area-bottom: env(safe-area-inset-bottom, 16px);
+1465:   --mobile-nav-height: 64px;
+1466: }
+1467: 
+1468: /* Bottom padding for all content on mobile to avoid being covered by bottom nav  */
+1469: @media (max-width: 1023px) {
+1470:   .view {
+1471:     padding-bottom: calc(var(--mobile-nav-height) + var(--safe-area-bottom) + 20px) !important;
+1472:   }
+1473: 
+1474:   /* Hide floating chat head on mobile - replaced by bottom nav */
+1475:   #groupChatHead {
+1476:     display: none !important;
+1477:   }
+1478: 
+1479:   /* Fix main content area to start below mobile header */
+1480:   #mainContent {
+1481:     padding-top: 0;
+1482:   }
+1483: 
+1484:   /* Chat modal full-screen on mobile */
+1485:   #groupChatModal {
+1486:     top: 0 !important;
+1487:     left: 0 !important;
+1488:     right: 0 !important;
+1489:     bottom: 0 !important;
+1490:     width: 100% !important;
+1491:     max-width: 100% !important;
+1492:     height: 100% !important;
+1493:     max-height: 100% !important;
+1494:     border-radius: 0 !important;
+1495:     /* Leave room for mobile bottom nav */
+1496:     padding-bottom: 0 !important;
+1497:     /* Managed by safe area and mobile-nav-height internally */
+1498:   }
+1499: 
+1500:   /* Sidebar: icon-only strip (48px) on mobile */
+1501:   /* Sidebar: full width on mobile unless item open */
+1502:   #groupChatModal aside#chatSidebarPanel {
+1503:     width: 100% !important;
+1504:     min-width: 100% !important;
+1505:     flex-shrink: 0;
+1506:     padding: 0 !important;
+1507:     overflow: hidden !important;
+1508:     /* Internal containers handle scrolling */
+1509:     display: flex !important;
+1510:   }
+1511: 
+1512:   /* Hide text labels in sidebar */
+1513:   /* Show text labels in sidebar on mobile */
+1514:   #groupChatModal .chat-item-info,
+1515:   #groupChatModal aside h2,
+1516:   #groupChatModal aside h3,
+1517:   #groupChatModal .chat-item-name,
+1518:   #groupChatModal aside header h1,
+1519:   #groupChatModal aside header h2,
+1520:   #groupChatModal aside header button span {
+1521:     display: block !important;
+1522:   }
+1523: 
+1524:   /* Sidebar header: only show + button, centered */
+1525:   #groupChatModal aside header {
+1526:     padding: 8px 4px !important;
+1527:     justify-content: center !important;
+1528:   }
+1529: 
+1530:   /* Chat item row: center avatar only */
+1531:   #groupChatModal .chat-sidebar-item {
+1532:     justify-content: center;
+1533:     padding: 8px 4px;
+1534:     border-radius: 12px;
+1535:   }
+1536: 
+1537:   /* Main chat area header: compact */
+1538:   #groupChatModal article>header {
+1539:     padding: 8px 12px !important;
+1540:   }

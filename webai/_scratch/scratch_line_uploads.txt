@@ -1,0 +1,190 @@
+3111:                 
+3112:                 # มาตรฐานคอลัมน์ของปี 2026 (ป้องกันคอลัมน์งอก)
+3113:                 # Preserve all AI data but ensure critical fields exist
+3114:                 sanitized_ext = raw_ext.copy()
+3115:                 if "date" not in sanitized_ext or not sanitized_ext["date"]:
+3116:                     sanitized_ext["date"] = datetime.now().strftime("%d/%m/%Y")
+3117:                 sanitized_ext["category"] = folder_name
+3118:                 
+3119:                 # Ensure defaults for common fields if they don't exist
+3120:                 for field in ["time", "sender", "receiver", "memo", "ref_number"]:
+3121:                     if field not in sanitized_ext: sanitized_ext[field] = "-"
+3122:                 
+3123:                 log_data = {
+3124:                     "file_link": link,
+3125:                     "summary": analysis.get("summary", f"Auto-upload: {original_name}") if analysis else f"Auto-upload: {original_name}",
+3126:                     "original_filename": original_name,
+3127:                     "extracted_data": sanitized_ext
+3128:                 }
+3129:                     
+3130:                 log_res = mgr.log_expense(log_data)
+3131:                 if log_res:
+3132:                     if log_res.get("ok"):
+3133:                         uploaded_results.append({
+3134:                             "status": "success",
+3135:                             "name": original_name,
+3136:                             "link": link,
+3137:                             "analysis": analysis,
+3138:                             "sheet": log_res.get("sheet"),
+3139:                             "row": log_res.get("row")
+3140:                         })
+3141:                     elif log_res.get("error") == "duplicate":
+3142:                         uploaded_results.append({
+3143:                             "status": "duplicate",
+3144:                             "name": original_name,
+3145:                             "link": link,
+3146:                             "analysis": analysis,
+3147:                             "sheet": log_res.get("sheet"),
+3148:                             "row": log_res.get("row"),
+3149:                             "ref_number": log_res.get("ref_number")
+3150:                         })
+3151:         except Exception as e:
+3152:             logger.error(f"Pending upload failed: {e}")
+3153: 
+3154:     if uploaded_results:
+3155:         token = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "").strip()
+3156:         push_url = "https://api.line.me/v2/bot/message/push"
+3157:         reply_url = "https://api.line.me/v2/bot/message/reply"
+3158:         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
+3159:         _flex_reply_used = [False]  # mutable flag
+3160: 
+3161:         def _send_messages(msgs, label=""):
+3162:             """Try push; if 429 quota exceeded, fall back to reply token (free, expires in 30s)."""
+3163:             res = requests.post(push_url, headers=headers, json={"to": uid, "messages": msgs}, timeout=20)
+3164:             logger.info(f"\U0001f4e4 [LINE Push Flex{' ' + label if label else ''}] Status: {res.status_code}, Response: {res.text}")
+3165:             if res.status_code == 429 and reply_tok and not _flex_reply_used[0]:
+3166:                 logger.warning("\u26a0\ufe0f Push quota exceeded (429). Falling back to reply token for Flex card.")
+3167:                 _flex_reply_used[0] = True
+3168:                 reply_msgs = msgs[:5]  # reply API supports max 5 messages
+3169:                 r2 = requests.post(reply_url, headers=headers,
+3170:                                    json={"replyToken": reply_tok, "messages": reply_msgs}, timeout=20)
+3171:                 logger.info(f"\U0001f4e4 [LINE Reply Flex Fallback] Status: {r2.status_code}, Response: {r2.text}")
+3172:                 if r2.status_code != 200:
+3173:                     # Reply token expired or invalid — send best-effort plain-text summary
+3174:                     logger.warning(f"\u26a0\ufe0f Reply also failed ({r2.status_code}). Sending plain-text summary as last resort.")
+3175:                     summary_lines = []
+3176:                     for m in msgs:
+3177:                         if m.get("type") == "flex":
+3178:                             alt = m.get("altText", "")
+3179:                             if alt:
+3180:                                 summary_lines.append(alt)
+3181:                     if summary_lines:
+3182:                         summary_text = "\n".join(summary_lines)
+3183:                         try:
+3184:                             requests.post(push_url, headers=headers,
+3185:                                           json={"to": uid, "messages": [{"type": "text", "text": summary_text}]}, timeout=10)
+3186:                         except Exception:
+3187:                             pass
+3188: 
+3189: 
+3190:         if len(uploaded_results) >= 5:
+3191: 
+3192:             # Generate Base URL
+3193:             base_url = "http://localhost:5005"
+3194:             try:
+3195:                 webhook_url = database.get_app_setting("LINE_WEBHOOK_URL", "")
+3196:                 if webhook_url and webhook_url.startswith("http"):
+3197:                     if "/api/line/webhook" in webhook_url:
+3198:                         base_url = webhook_url.split("/api/line/webhook")[0]
+3199:                     else:
+3200:                         from urllib.parse import urlparse
+3201:                         parsed = urlparse(webhook_url)
+3202:                         base_url = f"{parsed.scheme}://{parsed.netloc}"
+3203:             except Exception:
+3204:                 pass
+3205: 
+3206:             if "localhost" in base_url or "127.0.0.1" in base_url or not base_url.startswith("http"):
+3207:                 try:
+3208:                     from flask import request
+3209:                     forwarded_host = request.headers.get('X-Forwarded-Host')
+3210:                     forwarded_proto = request.headers.get('X-Forwarded-Proto', 'https')
+3211:                     if forwarded_host and "localhost" not in forwarded_host and "127.0.0.1" not in forwarded_host:
+3212:                         base_url = f"{forwarded_proto}://{forwarded_host}"
+3213:                     else:
+3214:                         host = request.headers.get('Host')
+3215:                         if host and "localhost" not in host and "127.0.0.1" not in host:
+3216:                             scheme = request.scheme or "https"
+3217:                             base_url = f"{scheme}://{host}"
+3218:                         else:
+3219:                             url_root = request.url_root.rstrip('/')
+3220:                             if "localhost" not in url_root and "127.0.0.1" not in url_root:
+3221:                                 base_url = url_root
+3222:                 except Exception:
+3223:                     pass
+3224: 
+3225:             if "localhost" in base_url or "127.0.0.1" in base_url:
+3226:                 env_url = os.environ.get("BASE_URL") or os.environ.get("PUBLIC_URL")
+3227:                 if env_url:
+3228:                     base_url = env_url.rstrip('/')
+3229: 
+3230:             sheet_id = mgr.spreadsheet_id
+3231:             sheet_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit" if sheet_id else "#"
+3232: 
+3233:             summary_bubble = create_batch_summary_flex_bubble(uploaded_results, folder_name)
+3234:             
+3235:             paired_bubbles = []
+3236:             carousel_results = uploaded_results[:20]
+3237:             for i in range(0, len(carousel_results), 2):
+3238:                 item1 = carousel_results[i]
+3239:                 idx1 = i + 1
+3240:                 item2 = carousel_results[i+1] if i+1 < len(carousel_results) else None
+3241:                 idx2 = i + 2 if item2 else None
+3242:                 
+3243:                 bubble = create_paired_expense_flex_bubble(
+3244:                     item1=item1,
+3245:                     idx1=idx1,
+3246:                     item2=item2,
+3247:                     idx2=idx2,
+3248:                     folder_name=folder_name,
+3249:                     base_url=base_url,
+3250:                     sheet_url=sheet_url
+3251:                 )
+3252:                 paired_bubbles.append(bubble)
+3253: 
+3254:             messages = [
+3255:                 {
+3256:                     "type": "flex",
+3257:                     "altText": "📊 สรุปรายการอัปโหลดแบบกลุ่ม",
+3258:                     "contents": summary_bubble
+3259:                 }
+3260:             ]
+3261:             
+3262:             if paired_bubbles:
+3263:                 messages.append({
+3264:                     "type": "flex",
+3265:                     "altText": "📂 รายละเอียดรายการใบเสร็จ",
+3266:                     "contents": {
+3267:                         "type": "carousel",
+3268:                         "contents": paired_bubbles
+3269:                     }
+3270:                 })
+3271: 
+3272:             # Full quick reply shortcuts attached to batch summary card
+3273:             _sheet_qr = f"https://docs.google.com/spreadsheets/d/{mgr.spreadsheet_id}/edit" if mgr.spreadsheet_id else "https://sheets.google.com"
+3274:             _p_id2 = os.getenv("GOOGLE_DRIVE_PARENT_ID") or os.getenv("PARENT_FOLDER_ID")
+3275:             _drive_qr = f"https://drive.google.com/drive/folders/{_p_id2}" if _p_id2 else "https://drive.google.com"
+3276:             quick_reply_batch = {
+3277:                 "items": [
+3278:                     {"type": "action", "action": {"type": "message", "label": "ส่งสลิปเพิ่ม", "text": "ส่งสลิประบบจะจัดเก็บให้อัตโนมัติค่ะ"}},
+3279:                     {"type": "action", "action": {"type": "message", "label": "สรุปรายจ่าย", "text": "สรุปรายจ่ายวันนี้"}},
+3280:                     {"type": "action", "action": {"type": "message", "label": "สรุปยอดวันนี้", "text": "สรุปยอดวันนี้"}},
+3281:                     {"type": "action", "action": {"type": "message", "label": "กระทบยอด", "text": "กระทบยอด"}},
+3282:                     {"type": "action", "action": {"type": "message", "label": "หาไฟล์", "text": "ค้นหา "}},
+3283:                     {"type": "action", "action": {"type": "uri", "label": "ดูบัญชี", "uri": _sheet_qr}},
+3284:                     {"type": "action", "action": {"type": "uri", "label": "Google Drive", "uri": _drive_qr}}
+3285:                 ]
+3286:             }
+3287:             messages[-1]["quickReply"] = quick_reply_batch
+3288: 
+3289: 
+3290:             try:
+3291:                 _send_messages(messages, "Batch")
+3292:             except Exception as e:
+3293:                 logger.error(f"❌ [LINE Push Flex Batch] HTTP Error: {e}")
+3294: 
+3295:         else:
+3296:             messages = []
+3297:             for r in uploaded_results:
+3298:                 sheet_name = r.get("sheet", "ทั่วไป")
+3299:                 row_num = r.get("row", 1)
+3300:                 file_link = r.get("link", "#")

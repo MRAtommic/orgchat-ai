@@ -1,0 +1,80 @@
+1371:         except Exception as e:
+1372:             logger.error(f"Dashboard update error: {e}")
+1373: 
+1374:     def log_expense(self, data, sheet_name=None):
+1375:         """Logs data with strict Thai headers and legacy cleanup."""
+1376:         if not self.sheets_service: return
+1377:         self._validate_or_create_spreadsheet()
+1378:         if not self.spreadsheet_id: return
+1379: 
+1380:         import json
+1381:         try:
+1382:             ext = data.get('extracted_data', {})
+1383:             raw_category = ext.get('category', 'Others')
+1384:             
+1385:             # Helper to get values with multiple key possibilities
+1386:             def get_val(keys, default='-'):
+1387:                 if isinstance(keys, str): keys = [keys]
+1388:                 for k in keys:
+1389:                     v = ext.get(k)
+1390:                     if v is not None and str(v).strip() != '-': return v
+1391:                 
+1392:                 if any(k in keys for k in ['sender', 'from']):
+1393:                     for k in ['sender_name', 'from_name', 'vendor', 'name']:
+1394:                         v = ext.get(k)
+1395:                         if v is not None and str(v).strip() != '-': return v
+1396:                 if any(k in keys for k in ['receiver', 'to']):
+1397:                     for k in ['receiver_name', 'to_name', 'customer', 'payee']:
+1398:                         v = ext.get(k)
+1399:                         if v is not None and str(v).strip() != '-': return v
+1400:                 if any(k in keys for k in ['address', 'ที่อยู่']):
+1401:                     for k in ['sender_address', 'vendor_address', 'address_of_sender', 'address', 'receiver_address', 'full_address']:
+1402:                         v = ext.get(k)
+1403:                         if v is not None and str(v).strip() != '-': return v
+1404:                 if any(k in keys for k in ['branch', 'สาขา']):
+1405:                     for k in ['sender_branch', 'receiver_branch', 'branch_code', 'branch']:
+1406:                         v = ext.get(k)
+1407:                         if v is not None and str(v).strip() != '-': return v
+1408:                 if any(k in keys for k in ['withdrawal', 'deposit', 'balance', 'fee']):
+1409:                     for k in keys:
+1410:                         v = ext.get(k)
+1411:                         if v is not None and str(v).strip() != '-': return v
+1412:                 if any(k in keys for k in ['sender_bank', 'bank_from']):
+1413:                     for k in ['sender_bank', 'bank_from', 'from_bank', 'bank_sender', 'sender_bank_name']:
+1414:                         v = ext.get(k)
+1415:                         if v is not None and str(v).strip() != '-': return v
+1416:                 if any(k in keys for k in ['receiver_bank', 'bank_to']):
+1417:                     for k in ['receiver_bank', 'bank_to', 'to_bank', 'bank_receiver', 'receiver_bank_name']:
+1418:                         v = ext.get(k)
+1419:                         if v is not None and str(v).strip() != '-': return v
+1420:                 return default
+1421: 
+1422:             # Load Schema Registry
+1423:             registry = self._load_sheet_schema()
+1424:             category_map = registry.get("category_map", {})
+1425:             sheet_name = category_map.get(raw_category, raw_category).strip()
+1426: 
+1427:             # Fetch existing sheet titles to avoid 400 Bad Request
+1428:             existing_sheets = []
+1429:             try:
+1430:                 spreadsheet = self.sheets_service.spreadsheets().get(spreadsheetId=self.spreadsheet_id).execute()
+1431:                 existing_sheets = [s['properties']['title'] for s in spreadsheet.get('sheets', [])]
+1432:             except Exception as e:
+1433:                 logger.warning(f"⚠️ Could not fetch spreadsheet metadata: {e}")
+1434: 
+1435:             # --- 🛡️ Duplicate Slip Detection by Ref Number ---
+1436:             ref_val = get_val(['ref', 'ref_number', 'เลขที่อ้างอิง', 'transaction_id'])
+1437:             if ref_val and str(ref_val).strip() != '-':
+1438:                 cleaned_ref = str(ref_val).replace('-', '').replace(' ', '').replace("'", "").strip()
+1439:                 if cleaned_ref and len(cleaned_ref) >= 6:
+1440:                     if sheet_name in existing_sheets:
+1441:                         try:
+1442:                             res_val = self.sheets_service.spreadsheets().values().get(
+1443:                                 spreadsheetId=self.spreadsheet_id, 
+1444:                                 range=f"'{sheet_name}'!A1:Z1000"
+1445:                             ).execute()
+1446:                             existing_rows = res_val.get('values', [])
+1447:                             
+1448:                             for r_idx, row_data in enumerate(existing_rows):
+1449:                                 if r_idx == 0: continue # Skip header
+1450:                                 for cell_val in row_data:

@@ -1,0 +1,16 @@
+240: <button class="nav-item active" data-tab="overview" onclick="showTab('overview')">
+244: <button class="nav-item" data-tab="billing" onclick="showTab('billing')">
+248: <button class="nav-item" data-tab="analytics" onclick="showTab('analytics')">
+254: <button class="nav-item" data-tab="orgs" onclick="showTab('orgs')">
+259: <button class="nav-item" data-tab="users" onclick="showTab('users')">
+266: <button class="nav-item" data-tab="broadcast" onclick="showTab('broadcast')">
+270: <button class="nav-item" data-tab="maintenance" onclick="showTab('maintenance')">
+274: <button class="nav-item" data-tab="system" onclick="showTab('system')">
+278: <button class="nav-item" data-tab="db" onclick="showTab('db')">
+282: <button class="nav-item" data-tab="sql" onclick="showTab('sql')">
+286: <button class="nav-item" data-tab="logs" onclick="showTab('logs')">
+888: function showTab(name) {
+1111: <td class="r"><button class="btn btn-ghost btn-xs" onclick="showTab('orgs');setTimeout(()=>openOrgModal(${o.id}),300)">จัดการ</button></td>
+1857: const _origShowTab = showTab;
+1858: function showTab(name) {
+2392: showTab(tabName);

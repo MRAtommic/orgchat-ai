@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>จัดการแพลน — OrgChat AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  // Dark mode: ตรวจสอบ preference จาก localStorage ของ OrgChat AI
+  (function() {
+    var theme = localStorage.getItem('theme');
+    var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (theme === 'dark' || (theme === 'auto' && prefersDark)) {
+      document.documentElement.classList.add('dark');
+    }
+  })();
+</script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+body { font-family: 'Outfit', 'Sarabun', sans-serif; background: #f8fafc; }
+@media (prefers-color-scheme: dark) {
+  html.dark body { background: #0f172a; color: #e2e8f0; }
+}
+html.dark body { background: #0f172a; color: #e2e8f0; }
+html.dark .bg-white { background: #1e293b !important; }
+html.dark .border-slate-200 { border-color: #334155 !important; }
+html.dark .text-slate-900 { color: #f1f5f9 !important; }
+html.dark .text-slate-700 { color: #cbd5e1 !important; }
+html.dark .text-slate-600 { color: #94a3b8 !important; }
+html.dark .text-slate-500 { color: #64748b !important; }
+html.dark .bg-slate-50  { background: #0f172a !important; }
+html.dark .bg-slate-100 { background: #1e293b !important; }
+html.dark .bg-f8fafc    { background: #0f172a !important; }
+html.dark nav { background: rgba(15,23,42,.92) !important; border-color: #334155 !important; }
+
+/* Progress bar */
+.bar-track { height: 10px; background: #e2e8f0; border-radius: 9999px; overflow: hidden; }
+.bar-fill  { height: 100%; border-radius: 9999px; transition: width 1s cubic-bezier(.4,0,.2,1); }
+
+/* Plan cards */
+.plan-card {
+    border: 2px solid #e2e8f0; border-radius: 1.5rem;
+    background: #fff; transition: all .2s; cursor: default;
+}
+.plan-card.current {
+    border-color: var(--plan-color);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--plan-color) 12%, transparent);
+}
+.plan-card:hover:not(.current) { border-color: #cbd5e1; box-shadow: 0 4px 20px rgba(0,0,0,.07); }
+
+/* Modal */
+.overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.55);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 999; opacity: 0; pointer-events: none; transition: opacity .2s;
+}
+.overlay.open { opacity: 1; pointer-events: all; }
+.modal {
+    background: #fff; border-radius: 1.75rem; padding: 2rem;
+    max-width: 440px; width: 92%;
+    transform: translateY(24px); transition: transform .2s;
+    box-shadow: 0 32px 80px rgba(0,0,0,.2);
+}
+.overlay.open .modal { transform: translateY(0); }
+
+/* Buttons */
+.btn {
+    display: inline-flex; align-items: center; gap: .4rem;
+    border-radius: .875rem; font-weight: 700; font-size: .875rem;
+    padding: .625rem 1.25rem; border: none; cursor: pointer; transition: all .15s;
+    text-decoration: none;
+}
+.btn-green  { background: #059669; color: #fff; }
+.btn-green:hover  { background: #047857; }
+.btn-green:disabled { background: #a7f3d0; cursor: not-allowed; }
+.btn-indigo { background: #6366f1; color: #fff; }
+.btn-indigo:hover { background: #4f46e5; }
+.btn-gray   { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+.btn-gray:hover   { background: #e2e8f0; }
+.btn-red    { background: #fff; color: #dc2626; border: 1.5px solid #fca5a5; }
+.btn-red:hover    { background: #fef2f2; border-color: #dc2626; }
+.btn-outline-green { background: transparent; color: #059669; border: 2px solid #059669; }
+.btn-outline-green:hover { background: #ecfdf5; }
+
+/* Spinner */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { animation: spin .7s linear infinite; display: inline-block; }
+
+/* Skeleton */
+.sk {
+    background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+    background-size: 200% 100%; animation: sk 1.4s infinite; border-radius: 1rem;
+}
+@keyframes sk { to { background-position: -200% 0; } }
+
+/* Badges */
+.badge { display: inline-flex; align-items: center; gap: .25rem;
+         font-size: .65rem; font-weight: 800; letter-spacing: .07em;
+         text-transform: uppercase; padding: .25rem .7rem; border-radius: 9999px; }
+.badge-free     { background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0; }
+.badge-pro      { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
+.badge-business { background: #e0e7ff; color: #3730a3; border: 1px solid #a5b4fc; }
+
+/* Toast */
+#toast { position: fixed; top: 1.25rem; right: 1.25rem; z-index: 1000;
+         transition: opacity .3s; pointer-events: none; opacity: 0; }
+#toast.show { opacity: 1; pointer-events: all; }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="sticky top-0 z-50 bg-white/90 backdrop-blur border-b border-slate-200">
+    <div class="max-w-4xl mx-auto px-4 py-3.5 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 bg-emerald-600 rounded-xl flex items-center justify-center">
+                <i data-lucide="zap" class="w-4 h-4 text-white"></i>
+            </div>
+            <span class="font-extrabold text-slate-900">OrgChat AI</span>
+            <span class="text-slate-300 mx-1">/</span>
+            <span class="font-semibold text-slate-500 text-sm">จัดการแพลน</span>
+        </div>
+        <a href="/" class="btn btn-gray text-xs py-2 px-3.5">
+            <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> กลับ
+        </a>
+    </div>
+</nav>
+
+<!-- TOAST -->
+<div id="toast">
+    <div id="toastInner" class="flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-xl text-sm font-semibold max-w-sm">
+        <i id="toastIcon" class="w-4 h-4 flex-shrink-0"></i>
+        <span id="toastMsg"></span>
+    </div>
+</div>
+
+<!-- PAYMENT RETURN BANNER -->
+<div id="payBanner" class="hidden max-w-4xl mx-auto px-4 pt-4"></div>
+
+<!-- MAIN -->
+<main class="max-w-4xl mx-auto px-4 py-8 space-y-6" id="main">
+    <!-- Skeleton -->
+    <div id="skeleton" class="space-y-5">
+        <div class="sk h-32"></div>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="sk h-32"></div><div class="sk h-32"></div>
+            <div class="sk h-32"></div><div class="sk h-32"></div>
+        </div>
+        <div class="sk h-72"></div>
+    </div>
+    <div id="content" class="hidden space-y-6"></div>
+</main>
+
+<!-- CANCEL MODAL -->
+<div class="overlay" id="cancelModal">
+    <div class="modal">
+        <div class="w-12 h-12 bg-rose-50 rounded-2xl flex items-center justify-center mb-4">
+            <i data-lucide="alert-triangle" class="w-6 h-6 text-rose-500"></i>
+        </div>
+        <h2 class="text-xl font-extrabold text-slate-900 mb-1">ยืนยันยกเลิกแผน?</h2>
+        <p class="text-sm text-slate-500 leading-relaxed mb-5">
+            แผนของคุณจะ Downgrade เป็น <strong class="text-slate-700">Free</strong> ทันที ฟีเจอร์ Pro/Ultra จะถูกปิด
+            แต่ข้อมูลทั้งหมดยังอยู่ครบ<br><br>
+            <span class="text-amber-600 font-semibold">หมายเหตุ:</span>
+            ถ้าชำระผ่าน Stripe ให้ยกเลิก Subscription ใน Stripe Portal ด้วย
+        </p>
+        <div class="flex gap-3">
+            <button class="btn btn-red flex-1" id="cancelConfirmBtn" onclick="doCancelPlan()">
+                <i data-lucide="x-circle" class="w-4 h-4"></i> ยืนยันยกเลิก
+            </button>
+            <button class="btn btn-gray flex-1" onclick="closeModal('cancelModal')">ไม่ยกเลิก</button>
+        </div>
+    </div>
+</div>
+
+<!-- PAYMENT METHOD MODAL -->
+<div class="overlay" id="payModal">
+    <div class="modal" style="max-width:500px">
+        <div class="flex items-center justify-between mb-5">
+            <h2 class="text-xl font-extrabold text-slate-900">เลือกวิธีชำระเงิน</h2>
+            <button onclick="closeModal('payModal')" class="text-slate-400 hover:text-slate-700 p-1">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+        <div id="payModalBody" class="space-y-3"></div>
+    </div>
+</div>
+
+<script>
+// ─── Config ────────────────────────────────────────────
+const PLAN_CFG = {
+    free:     { label:'Free',  labelTh:'ฟรี',     price:0,   color:'#64748b', icon:'star',       badge:'badge-free' },
+    pro:      { label:'Pro',   labelTh:'โปร',     price:299, color:'#059669', icon:'zap',        badge:'badge-pro' },
+    business: { label:'Ultra', labelTh:'อัลตร้า', price:599, color:'#6366f1', icon:'building-2', badge:'badge-business' },
+};
+const PLAN_RANK = { free:0, pro:1, business:2 };
+
+let _plan = 'free';
+let _pendingPlan = null;
+
+// ─── Init ───────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+    lucide.createIcons();
+    checkPayReturn();
+    load();
+});
+
+// ─── Payment return ─────────────────────────────────────
+function checkPayReturn() {
+    const p = new URLSearchParams(location.search);
+    const r = p.get('payment'), pl = p.get('plan');
+    const el = document.getElementById('payBanner');
+    if (r === 'success') {
+        el.className = 'max-w-4xl mx-auto px-4 pt-4';
+        el.innerHTML = `<div class="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-sm">
+            <div class="w-9 h-9 bg-emerald-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                <i data-lucide="check-circle" class="w-5 h-5 text-emerald-600"></i>
+            </div>
+            <div>
+                <p class="font-extrabold text-emerald-800">ชำระเงินสำเร็จ!</p>
+                <p class="text-emerald-600 text-xs mt-0.5">แพลนถูกอัปเกรดเป็น <strong>${PLAN_CFG[pl]?.label || pl}</strong> แล้วค่ะ ระบบจะอัปเดตภายใน 1–2 นาที</p>
+            </div></div>`;
+        lucide.createIcons();
+        history.replaceState({}, '', '/plan');
+    } else if (r === 'cancel') {
+        el.className = 'max-w-4xl mx-auto px-4 pt-4';
+        el.innerHTML = `<div id="cancelBanner" class="flex items-center justify-between gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl text-sm">
+            <div class="flex items-center gap-3">
+                <i data-lucide="info" class="w-4 h-4 text-amber-500 flex-shrink-0"></i>
+                <span class="text-amber-700">ยกเลิกการชำระเงินแล้วค่ะ ยังสามารถอัปเกรดได้ทุกเมื่อ</span>
+            </div>
+            <button onclick="document.getElementById('cancelBanner').remove()" class="text-amber-400 hover:text-amber-600 p-1 flex-shrink-0">
+                <i data-lucide="x" class="w-4 h-4"></i>
+            </button></div>`;
+        lucide.createIcons();
+        history.replaceState({}, '', '/plan');
+        setTimeout(() => { const b = document.getElementById('cancelBanner'); if (b) b.remove(); }, 7000);
+    }
+}
+
+// ─── Load ───────────────────────────────────────────────
+async function load() {
+    try {
+        const r = await fetch('/api/billing/status');
+        if (r.status === 401) { showAuth(); return; }
+        const d = await r.json();
+        if (!d.ok) throw new Error(d.error || 'โหลดไม่สำเร็จ');
+        _plan = d.plan;
+        render(d);
+    } catch(e) { showErr(e.message); }
+}
+
+// ─── Render ─────────────────────────────────────────────
+function render(d) {
+    document.getElementById('skeleton').classList.add('hidden');
+    const c = document.getElementById('content');
+    c.classList.remove('hidden');
+    c.innerHTML = [
+        renderHeader(d),
+        renderUsageSection(d),
+        renderPlanSection(d),
+        renderActionsSection(d),
+    ].join('');
+    lucide.createIcons();
+    // Animate bars
+    requestAnimationFrame(() => {
+        document.querySelectorAll('[data-w]').forEach(el => {
+            el.style.width = el.dataset.w + '%';
+        });
+    });
+}
+
+// ─── Section: Header ────────────────────────────────────
+function renderHeader(d) {
+    const cfg = PLAN_CFG[d.plan] || PLAN_CFG.free;
+    const expHtml = d.plan_expires_at
+        ? `<span class="flex items-center gap-1 text-xs text-slate-400">
+               <i data-lucide="calendar" class="w-3.5 h-3.5"></i>ต่ออายุ ${fmtDate(d.plan_expires_at)}
+           </span>`
+        : (d.plan !== 'free'
+            ? `<span class="flex items-center gap-1 text-xs text-emerald-600 font-semibold">
+                   <i data-lucide="infinity" class="w-3.5 h-3.5"></i>ไม่มีกำหนดหมดอายุ
+               </span>`
+            : '');
+    const expiredBadge = d.is_expired
+        ? `<span class="badge bg-rose-100 text-rose-600 border border-rose-200 ml-1">หมดอายุ</span>` : '';
+
+    return `
+    <div class="bg-white border border-slate-200 rounded-2xl p-6">
+        <div class="flex flex-col sm:flex-row sm:items-center gap-4">
+            <div class="w-16 h-16 rounded-2xl flex items-center justify-center flex-shrink-0"
+                 style="background:${cfg.color}15;border:2.5px solid ${cfg.color}30">
+                <i data-lucide="${cfg.icon}" class="w-7 h-7" style="color:${cfg.color}"></i>
+            </div>
+            <div class="flex-1">
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">แพลนปัจจุบัน</p>
+                <div class="flex items-center gap-2 flex-wrap">
+                    <span class="text-3xl font-black text-slate-900">${cfg.label}</span>
+                    <span class="badge ${cfg.badge}">${cfg.labelTh}</span>
+                    ${expiredBadge}
+                </div>
+                <div class="flex items-center gap-4 mt-1.5 flex-wrap">
+                    <span class="text-sm font-bold text-slate-500">
+                        ${cfg.price === 0 ? 'ฟรี' : `฿${cfg.price.toLocaleString()}/เดือน`}
+                    </span>
+                    ${expHtml}
+                </div>
+            </div>
+            ${d.plan !== 'free' ? `
+            <div class="flex gap-2 flex-wrap">
+                <button class="btn btn-gray text-xs" onclick="openPortal()">
+                    <i data-lucide="settings" class="w-3.5 h-3.5"></i>จัดการ Subscription
+                </button>
+                <button class="btn btn-red text-xs" onclick="openModal('cancelModal')">
+                    <i data-lucide="x-circle" class="w-3.5 h-3.5"></i>ยกเลิกแผน
+                </button>
+            </div>` : ''}
+        </div>
+    </div>`;
+}
+
+// ─── Section: Usage ─────────────────────────────────────
+function renderUsageSection(d) {
+    const u = d.usage;
+    return `
+    <div>
+        <h2 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+            <i data-lucide="bar-chart-2" class="w-3.5 h-3.5"></i>การใช้งานเดือนนี้
+        </h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            ${usageCard('ไฟล์เอกสาร (KB)', u.kb_files,   'files',          'ไฟล์')}
+            ${usageCard('บันทึกค่าใช้จ่าย', u.expenses,   'receipt',        'รายการ')}
+            ${usageCard('AI ถามตอบ',         u.ai_queries, 'message-circle', 'ครั้ง')}
+            ${usageCard('สมาชิกในทีม',       u.max_users,  'users',          'คน')}
+        </div>
+    </div>`;
+}
+
+function usageCard(label, stat, icon, unit) {
+    const unlimited = stat.limit === -1;
+    const used  = stat.used ?? 0;
+    const limit = stat.limit ?? 0;
+    const pct   = unlimited ? 100 : (limit > 0 ? Math.min(Math.round((used / limit) * 100), 100) : 0);
+    const barColor = unlimited ? '#10b981'
+                   : pct >= 90 ? '#ef4444'
+                   : pct >= 70 ? '#f59e0b' : '#059669';
+    const textColor = unlimited ? 'text-emerald-500'
+                    : pct >= 90 ? 'text-rose-500'
+                    : pct >= 70 ? 'text-amber-500' : 'text-emerald-600';
+
+    return `
+    <div class="bg-white border border-slate-200 rounded-2xl p-5">
+        <div class="flex items-center gap-2 mb-3">
+            <i data-lucide="${icon}" class="w-4 h-4 text-slate-400"></i>
+            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-tight">${label}</p>
+        </div>
+        <div class="flex items-end justify-between mb-3">
+            <div class="flex items-baseline gap-1">
+                <span class="text-3xl font-black text-slate-900">${used.toLocaleString()}</span>
+                <span class="text-xs text-slate-400 font-medium ml-0.5">
+                    ${unlimited ? '<span class="text-emerald-500 font-bold">/ ∞</span>'
+                                : `<span class="font-semibold text-slate-600">/ ${limit.toLocaleString()}</span> ${unit}`}
+                </span>
+            </div>
+            <span class="text-xs font-bold ${textColor}">
+                ${unlimited ? 'ไม่จำกัด' : pct + '%'}
+            </span>
+        </div>
+        <div class="bar-track">
+            <div class="bar-fill" data-w="${unlimited ? 100 : pct}"
+                 style="width:0%;background:${barColor}"></div>
+        </div>
+        ${!unlimited && pct >= 90 ? `
+        <p class="text-[10px] mt-1.5 text-rose-400 font-semibold">
+            <i data-lucide="alert-circle" class="w-3 h-3 inline"></i>
+            ใกล้ถึง limit — พิจารณาอัปเกรด
+        </p>` : ''}
+    </div>`;
+}
+
+// ─── Section: Plan Cards ─────────────────────────────────
+function renderPlanSection(d) {
+    const cur = d.plan;
+    const cards = Object.entries(PLAN_CFG).map(([key, cfg]) => {
+        const isCur  = key === cur;
+        const isLow  = PLAN_RANK[key] < PLAN_RANK[cur];
+        const isHigh = PLAN_RANK[key] > PLAN_RANK[cur];
+
+        const borderStyle = isCur
+            ? `style="--plan-color:${cfg.color};border-color:${cfg.color};box-shadow:0 0 0 4px ${cfg.color}18"`
+            : '';
+
+        const LIMITS = {
+            free:     ['10 รายการ/เดือน','35 ครั้ง/เดือน','5 ไฟล์ KB','1 คน'],
+            pro:      ['ไม่จำกัด','ไม่จำกัด','100 ไฟล์ KB','3 คน'],
+            business: ['ไม่จำกัด','ไม่จำกัด','ไม่จำกัด','10 คน'],
+        }[key];
+        const FEATS = {
+            free:     [false,false,false,false,false],
+            pro:      [true,true,true,false,false],
+            business: [true,true,true,true,true],
+        }[key];
+        const FEAT_LABELS = ['Google Sheets','Dashboard','LINE Bot','Export','Priority Support'];
+
+        const limitHtml = ['ค่าใช้จ่าย','AI ถามตอบ','Knowledge Base','สมาชิก']
+            .map((l,i) => `<div class="flex items-start gap-2 text-sm">
+                <i data-lucide="check" class="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style="color:${cfg.color}"></i>
+                <span class="text-slate-600"><span class="font-semibold text-slate-800">${LIMITS[i]}</span> ${l}</span>
+            </div>`).join('');
+
+        const featHtml = FEAT_LABELS.map((l,i) => FEATS[i]
+            ? `<span class="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-0.5">
+                   <i data-lucide="check" class="w-2.5 h-2.5"></i>${l}
+               </span>`
+            : `<span class="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400 bg-slate-50 border border-slate-200 rounded-full px-2.5 py-0.5">
+                   <i data-lucide="minus" class="w-2.5 h-2.5"></i>${l}
+               </span>`
+        ).join('');
+
+        let btnHtml;
+        if (isCur) {
+            btnHtml = `<div class="btn justify-center w-full pointer-events-none"
+                            style="background:${cfg.color}15;color:${cfg.color};border:1.5px solid ${cfg.color}50">
+                <i data-lucide="check-circle" class="w-4 h-4"></i> แพลนของคุณ
+            </div>`;
+        } else if (isLow) {
+            btnHtml = `<div class="btn btn-gray justify-center w-full pointer-events-none opacity-50 text-xs">
+                ไม่สามารถ Downgrade ได้
+            </div>`;
+        } else {
+            const btnClass = key === 'business' ? 'btn-indigo' : 'btn-green';
+            btnHtml = `<button class="btn ${btnClass} justify-center w-full" onclick="openPayModal('${key}')">
+                <i data-lucide="zap" class="w-4 h-4"></i> อัปเกรดเป็น ${cfg.label}
+            </button>`;
+        }
+
+        const popularTag = key === 'pro'
+            ? `<span class="badge bg-emerald-500 text-white ml-1">แนะนำ</span>` : '';
+        const priceHtml = cfg.price === 0
+            ? `<span class="text-2xl font-black text-slate-900">ฟรี</span>`
+            : `<span class="text-2xl font-black text-slate-900">฿${cfg.price.toLocaleString()}</span>
+               <span class="text-slate-400 text-xs font-semibold">/เดือน</span>`;
+
+        return `
+        <div class="plan-card ${isCur ? 'current' : ''} p-5 flex flex-col gap-4" ${borderStyle}>
+            <div>
+                <div class="flex items-center gap-2 mb-1 flex-wrap">
+                    <i data-lucide="${cfg.icon}" class="w-5 h-5" style="color:${cfg.color}"></i>
+                    <span class="font-extrabold text-slate-900 text-lg">${cfg.label}</span>
+                    ${isCur ? `<span class="badge ${cfg.badge}">ปัจจุบัน</span>` : ''}
+                    ${popularTag}
+                </div>
+                <div class="flex items-baseline gap-1.5">${priceHtml}</div>
+            </div>
+            <div class="space-y-2">${limitHtml}</div>
+            <div class="flex flex-wrap gap-1.5">${featHtml}</div>
+            ${btnHtml}
+        </div>`;
+    }).join('');
+
+    return `
+    <div>
+        <h2 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+            <i data-lucide="layers" class="w-3.5 h-3.5"></i>เปรียบเทียบและเปลี่ยนแพลน
+        </h2>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">${cards}</div>
+    </div>`;
+}
+
+// ─── Section: Actions ────────────────────────────────────
+function renderActionsSection(d) {
+    if (d.plan === 'free') {
+        return `
+        <div class="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl p-6 flex flex-col sm:flex-row items-center gap-5">
+            <div class="w-12 h-12 bg-emerald-100 rounded-2xl flex items-center justify-center flex-shrink-0">
+                <i data-lucide="sparkles" class="w-6 h-6 text-emerald-600"></i>
+            </div>
+            <div class="flex-1 text-center sm:text-left">
+                <p class="font-extrabold text-emerald-900 mb-0.5">อัปเกรดเพื่อปลดล็อคทุกฟีเจอร์</p>
+                <p class="text-sm text-emerald-700">Google Sheets, LINE Bot, Dashboard การเงิน และอีกมากมาย</p>
+            </div>
+            <div class="flex gap-3 flex-wrap justify-center">
+                <button class="btn btn-green whitespace-nowrap" onclick="openPayModal('pro')">
+                    <i data-lucide="zap" class="w-4 h-4"></i> Pro — ฿299/เดือน
+                </button>
+                <button class="btn btn-indigo whitespace-nowrap" onclick="openPayModal('business')">
+                    <i data-lucide="building-2" class="w-4 h-4"></i> Ultra — ฿599/เดือน
+                </button>
+            </div>
+        </div>`;
+    }
+
+    return `
+    <div class="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div class="text-center sm:text-left">
+            <p class="font-bold text-slate-700">ต้องการจัดการ Subscription?</p>
+            <p class="text-sm text-slate-400 mt-0.5">ดูประวัติการชำระ, เปลี่ยนบัตร, หรือยกเลิก Subscription ใน Stripe Portal</p>
+        </div>
+        <div class="flex gap-3 flex-wrap justify-center">
+            <button class="btn btn-gray" onclick="openPortal()">
+                <i data-lucide="external-link" class="w-4 h-4"></i>Stripe Portal
+            </button>
+            <button class="btn btn-red" onclick="openModal('cancelModal')">
+                <i data-lucide="x-circle" class="w-4 h-4"></i>ยกเลิกแผน
+            </button>
+        </div>
+    </div>`;
+}
+
+// ─── Payment Modal ───────────────────────────────────────
+function openPayModal(plan) {
+    _pendingPlan = plan;
+    const cfg = PLAN_CFG[plan];
+    document.getElementById('payModalBody').innerHTML = `
+        <div class="bg-slate-50 border border-slate-100 rounded-2xl p-4 mb-2">
+            <div class="flex items-center gap-3 mb-1">
+                <i data-lucide="${cfg.icon}" class="w-5 h-5" style="color:${cfg.color}"></i>
+                <span class="font-extrabold text-slate-900 text-lg">อัปเกรดเป็น ${cfg.label}</span>
+            </div>
+            <p class="text-2xl font-black text-slate-900">
+                ฿${cfg.price.toLocaleString()}
+                <span class="text-sm font-semibold text-slate-400">/เดือน</span>
+            </p>
+        </div>
+        <p class="text-sm text-slate-500 px-0.5 mb-3">เลือกช่องทางชำระเงิน</p>
+        <button id="btnCard" class="btn btn-green w-full justify-center text-base py-3.5 mb-2" onclick="doCheckout('card')">
+            <i data-lucide="credit-card" class="w-5 h-5"></i> บัตรเครดิต / Visa / Mastercard
+        </button>
+        <button id="btnPP" class="btn btn-outline-green w-full justify-center text-base py-3.5" onclick="doCheckout('promptpay')">
+            <span class="w-5 h-5 rounded-full bg-green-700 flex items-center justify-center text-white text-[9px] font-black flex-shrink-0">PP</span>
+            PromptPay — ชำระครั้งเดียว 30 วัน
+        </button>
+        <p class="text-[11px] text-slate-400 text-center mt-3 px-2">
+            PromptPay ต้องต่ออายุเองทุก 30 วัน • ชำระผ่าน Stripe (ปลอดภัย 100%)
+        </p>`;
+    lucide.createIcons();
+    openModal('payModal');
+}
+
+async function doCheckout(method) {
+    const plan = _pendingPlan;
+    const isCard = method === 'card';
+    const btn = document.getElementById(isCard ? 'btnCard' : 'btnPP');
+    btn.disabled = true;
+    btn.innerHTML = `<span class="w-4 h-4 border-2 border-white border-t-transparent rounded-full spin"></span> กำลังโหลด...`;
+    try {
+        const r = await fetch(isCard ? '/api/b/c' : '/api/b/cp', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ plan })
+        });
+        if (r.status === 401) { window.location.href = `/signup?plan=${plan}`; return; }
+        const data = await r.json();
+        if (data.ok && data.url) {
+            window.location.href = data.url;
+        } else if (data.needs_org) {
+            closeModal('payModal');
+            toast('กรุณาสร้างองค์กรก่อน', 'info');
+            setTimeout(() => window.location.href = '/onboarding', 1500);
+        } else {
+            toast(data.error || 'เกิดข้อผิดพลาด กรุณาลองใหม่', 'error');
+            btn.disabled = false;
+        }
+    } catch(e) {
+        toast('เชื่อมต่อไม่ได้', 'error');
+        btn.disabled = false;
+    }
+    lucide.createIcons();
+}
+
+// ─── Stripe Portal ───────────────────────────────────────
+async function openPortal() {
+    toast('กำลังเปิด Subscription Portal...', 'info');
+    try {
+        const r = await fetch('/api/b/p', { method: 'POST' });
+        const d = await r.json();
+        if (d.ok && d.url) window.location.href = d.url;
+        else toast(d.error || 'ไม่สามารถเปิด Portal ได้', 'error');
+    } catch(e) { toast('เกิดข้อผิดพลาด', 'error'); }
+}
+
+// ─── Cancel Plan ─────────────────────────────────────────
+async function doCancelPlan() {
+    const btn = document.getElementById('cancelConfirmBtn');
+    btn.disabled = true;
+    btn.innerHTML = `<span class="w-4 h-4 border-2 border-current border-t-transparent rounded-full spin"></span> กำลังยกเลิก...`;
+    try {
+        const r = await fetch('/api/billing/cancel-plan', { method: 'POST' });
+        const d = await r.json();
+        if (d.ok) {
+            closeModal('cancelModal');
+            toast('ยกเลิกแผนสำเร็จ — Downgrade เป็น Free แล้วค่ะ', 'success');
+            setTimeout(load, 1200);
+        } else {
+            toast(d.error || 'ยกเลิกไม่สำเร็จ', 'error');
+            btn.disabled = false;
+            btn.innerHTML = '<i data-lucide="x-circle" class="w-4 h-4"></i> ยืนยันยกเลิก';
+            lucide.createIcons();
+        }
+    } catch(e) {
+        toast('เกิดข้อผิดพลาด', 'error');
+        btn.disabled = false;
+    }
+}
+
+// ─── Modal helpers ────────────────────────────────────────
+function openModal(id)  { document.getElementById(id).classList.add('open'); document.body.style.overflow='hidden'; }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); document.body.style.overflow=''; }
+document.querySelectorAll('.overlay').forEach(el => {
+    el.addEventListener('click', e => { if (e.target === el) closeModal(el.id); });
+});
+
+// ─── Toast ────────────────────────────────────────────────
+let _tt = null;
+function toast(msg, type='info') {
+    const styles = {
+        success: { bg:'#d1fae5', border:'#6ee7b7', text:'#065f46', ic:'check-circle' },
+        error:   { bg:'#fee2e2', border:'#fca5a5', text:'#991b1b', ic:'alert-triangle' },
+        info:    { bg:'#dbeafe', border:'#93c5fd', text:'#1e3a8a', ic:'info' },
+    }[type] || { bg:'#dbeafe', border:'#93c5fd', text:'#1e3a8a', ic:'info' };
+    const inner = document.getElementById('toastInner');
+    const icon  = document.getElementById('toastIcon');
+    inner.style.background = styles.bg;
+    inner.style.border     = `1px solid ${styles.border}`;
+    inner.style.color      = styles.text;
+    icon.setAttribute('data-lucide', styles.ic);
+    document.getElementById('toastMsg').textContent = msg;
+    lucide.createIcons();
+    document.getElementById('toast').classList.add('show');
+    if (_tt) clearTimeout(_tt);
+    _tt = setTimeout(() => document.getElementById('toast').classList.remove('show'), 4500);
+}
+
+// ─── Error states ─────────────────────────────────────────
+function showErr(msg) {
+    document.getElementById('skeleton').classList.add('hidden');
+    const c = document.getElementById('content');
+    c.classList.remove('hidden');
+    c.innerHTML = `
+    <div class="py-24 flex flex-col items-center gap-4 text-center">
+        <div class="w-16 h-16 bg-rose-50 rounded-2xl flex items-center justify-center">
+            <i data-lucide="alert-triangle" class="w-8 h-8 text-rose-400"></i>
+        </div>
+        <p class="text-slate-500 text-sm max-w-xs">${msg}</p>
+        <div class="flex gap-3 mt-1">
+            <button onclick="load()" class="btn btn-green">ลองใหม่</button>
+            <a href="/" class="btn btn-gray">กลับหน้าหลัก</a>
+        </div>
+    </div>`;
+    lucide.createIcons();
+}
+
+function showAuth() {
+    showErr('กรุณาเข้าสู่ระบบก่อนดูข้อมูลแพลน');
+}
+
+// ─── Date format ──────────────────────────────────────────
+function fmtDate(iso) {
+    try { return new Date(iso).toLocaleDateString('th-TH', { year:'numeric', month:'long', day:'numeric' }); }
+    catch { return iso; }
+}
+</script>
+</body>
+</html>

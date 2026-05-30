@@ -1,0 +1,75 @@
+1081: database.line_link_delete(token)
+1082: PENDING_LINE_LINKS.pop(token, None)
+1083: return render_success_page(resolved_username)
+1084: else:
+1085: return render_login_page(token, error="ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้องค่ะ")
+1086: 
+1087: 
+1088: @auth_bp.route("/api/login", methods=["POST"])
+1089: @_limiter.limit("10 per minute; 50 per hour")
+1090: def api_login():
+1091: data = request.json
+1092: username_raw = data.get("username", "").strip()
+1093: username_lower = username_raw.lower()
+1094: password = data.get("password", "")
+1095: 
+1096: # ตรวจสอบ IP จาก SQLite (persist ข้าม restart — ป้องกัน brute-force)
+1097: client_ip = request.remote_addr or "unknown"
+1098: if database.count_failed_attempts(client_ip) >= database._LOGIN_ATTEMPT_LIMIT:
+1099: return jsonify({"ok": False, "error": "IP นี้ถูกล็อคชั่วคราวเนื่องจากพยายามเข้าสู่ระบบผิดพลาดหลายครั้ง กรุณาลองใหม่ใน 1 ชั่วโมง"}), 429
+1100: 
+1101: # 1. Check Database first (Dynamic Users) — supports bcrypt hashed passwords
+1102: settings = database.get_user_setting(username_raw)
+1103: 
+1104: def _check_whitelist(uname):
+1105: """Return error string if whitelist blocks this user, else None."""
+1106: user_orgs = database.get_user_orgs(uname)
+1107: if not user_orgs:
+1108: return None  # ยังไม่ได้อยู่ org ไหน → ไม่มี whitelist ที่ต้องตรวจ
+1109: org_id = user_orgs[0]["id"]
+1110: if not database.is_whitelist_enabled(org_id):
+1111: return None
+1112: # สมาชิกที่มีอยู่แล้วในองค์กรผ่านได้เสมอ — whitelist กันแค่คนใหม่
+1113: if database.is_org_member(org_id, uname):
+1114: return None
+1115: email = settings.get("email", "")
+1116: if not email or not database.is_email_allowed(org_id, email):
+1117: return "อีเมลนี้ไม่อยู่ในรายชื่อที่ได้รับอนุญาต (Whitelist)"
+1118: return None
+1119: 
+1120: if settings.get("custom_password") and database.check_password(password, settings["custom_password"]):
+1121: if not settings.get("is_active", 1):
+1122: return jsonify({"ok": False, "error": "บัญชีนี้ถูกระงับโดยผู้ดูแลระบบ"}), 403
+1123: wl_err = _check_whitelist(username_raw)
+1124: if wl_err:
+1125: return jsonify({"ok": False, "error": wl_err}), 403
+1126: session.clear()  # ป้องกัน session fixation
+1127: session.permanent = True
+1128: session["user"] = settings.get("username_original", username_raw)
+1129: session["role"] = settings.get("role", "user")
+1130: _set_session_org(session["user"])
+1131: database.record_login_attempt(client_ip, username_raw, success=True)
+1132: return jsonify({"ok": True, "user": session["user"], "role": session["role"], "org_role": session.get("org_role"), "has_org": session.get("org_id") is not None})
+1133: 
+1134: # 2. Fallback to Hardcoded (plain text)
+1135: if username_lower in USERS and hmac.compare_digest(USERS[username_lower], password):
+1136: user_to_session = username_raw.capitalize()
+1137: if not settings.get("is_active", 1):
+1138: return jsonify({"ok": False, "error": "บัญชีนี้ถูกระงับโดยผู้ดูแลระบบ"}), 403
+1139: session.clear()  # ป้องกัน session fixation
+1140: session.permanent = True
+1141: session["user"] = user_to_session
+1142: session["role"] = settings.get("role", "user")
+1143: _set_session_org(user_to_session)
+1144: database.record_login_attempt(client_ip, username_raw, success=True)
+1145: return jsonify({"ok": True, "user": user_to_session, "role": session["role"], "org_role": session.get("org_role"), "has_org": session.get("org_id") is not None})
+1146: 
+1147: database.record_login_attempt(client_ip, username_raw, success=False)
+1148: return jsonify({"ok": False, "error": "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง"})
+1149: 
+1150: 
+1151: @auth_bp.route("/api/qr/generate", methods=["POST"])
+1152: @_limiter.limit("10 per minute; 30 per hour")
+1153: def qr_generate():
+1154: """Generate a unique QR login token stored in DB (safe for multi-worker)."""
+1155: token = str(uuid.uuid4())

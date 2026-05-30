@@ -1,0 +1,110 @@
+1691:                     vat_rate_val = local_get_val(['vat_rate', 'vat_percent', 'อัตราภาษี'])
+1692:                     has_vat = (vat_val > 0) or (str(vat_rate_val).strip() not in ['-', '', '0', '0%', 'NO', 'no', 'No'])
+1693:                     val = "7%" if has_vat else "NO"
+1694:                 elif src == "peak_wht_rate":
+1695:                     wht_rate_val = local_get_val(['wht_rate', 'wht_percent', 'wht_percent_rate'])
+1696:                     if wht_rate_val and str(wht_rate_val).strip() != '-':
+1697:                         s = str(wht_rate_val).replace('%', '').strip()
+1698:                         try:
+1699:                             w_num = float(s)
+1700:                             if w_num > 0:
+1701:                                 if w_num.is_integer():
+1702:                                     val = f"{int(w_num)}%"
+1703:                                 else:
+1704:                                     val = f"{w_num}%"
+1705:                             else:
+1706:                                 val = "0"
+1707:                         except:
+1708:                             val = "0"
+1709:                     else:
+1710:                         wht_amt = clean_val(local_get_val(['wht_amount', 'wht']))
+1711:                         if wht_amt > 0:
+1712:                             val = "3%"
+1713:                         else:
+1714:                             val = "0"
+1715:                 elif src == "peak_payment_channel":
+1716:                     val = local_get_val(['payment_channel', 'payment_method', 'channel'], "")
+1717:                     if val == '-': val = ""
+1718:                 elif src == "peak_wht_type":
+1719:                     wht_rate_str = extract_field_value({"source": "peak_wht_rate"}, context_ext, context_data)
+1720:                     if wht_rate_str == "0":
+1721:                         val = "ไม่ระบุ"
+1722:                     else:
+1723:                         vendor_name = str(local_get_val(['sender', 'from', 'vendor', 'vendor_name', 'seller', 'company_name'])).strip()
+1724:                         tax_id = str(local_get_val(['tax_id', 'tax_number', 'เลขผู้เสียภาษี'])).strip()
+1725:                         is_company = False
+1726:                         for word in ['บริษัท', 'บจก', 'หจก', 'จำกัด', 'CO.', 'LTD', 'CORP', 'PUBLIC', 'มหาชน', 'ห้างหุ้นส่วน']:
+1727:                             if word in vendor_name or word.upper() in vendor_name.upper():
+1728:                                 is_company = True
+1729:                                 break
+1730:                         cleaned_tax = re.sub(r'\D', '', tax_id)
+1731:                         if len(cleaned_tax) == 13:
+1732:                             if cleaned_tax.startswith('0'):
+1733:                                 is_company = True
+1734:                         if is_company:
+1735:                             val = "53"
+1736:                         else:
+1737:                             val = "3"
+1738:                 
+1739:                 # Special cases for ID card split
+1740:                 elif src == "id_card_first_name_th":
+1741:                     full_name_th = local_get_val(['first_name_th', 'sender', 'name'])
+1742:                     f_name_th = local_get_val('first_name_th')
+1743:                     
+1744:                     if full_name_th == '-' or full_name_th == '':
+1745:                         s_name_part = context_data.get('smart_name', '')
+1746:                         if 'ID_Card_' in s_name_part:
+1747:                             try:
+1748:                                 name_part = s_name_part.split('_', 3)[-1].replace('.jpg', '').replace('.png', '').replace('_', ' ')
+1749:                                 if name_part:
+1750:                                     full_name_th = name_part
+1751:                             except: pass
+1752: 
+1753:                     if f_name_th == '-' and full_name_th != '-':
+1754:                         parts = full_name_th.split(' ', 2)
+1755:                         if len(parts) >= 2:
+1756:                             f_name_th = parts[0] if parts[0] not in ['นาย', 'นาง', 'น.ส.'] else f"{parts[0]} {parts[1]}"
+1757:                         else:
+1758:                             f_name_th = full_name_th
+1759:                     val = f_name_th
+1760:                 elif src == "id_card_last_name_th":
+1761:                     full_name_th = local_get_val(['first_name_th', 'sender', 'name'])
+1762:                     l_name_th = local_get_val('last_name_th')
+1763:                     
+1764:                     if full_name_th == '-' or full_name_th == '':
+1765:                         s_name_part = context_data.get('smart_name', '')
+1766:                         if 'ID_Card_' in s_name_part:
+1767:                             try:
+1768:                                 name_part = s_name_part.split('_', 3)[-1].replace('.jpg', '').replace('.png', '').replace('_', ' ')
+1769:                                 if name_part:
+1770:                                     full_name_th = name_part
+1771:                             except: pass
+1772: 
+1773:                     if l_name_th == '-' and full_name_th != '-':
+1774:                         parts = full_name_th.split(' ', 2)
+1775:                         if len(parts) >= 2:
+1776:                             l_name_th = parts[-1]
+1777:                     val = l_name_th
+1778:                 
+1779:                 # Special cases for Statement Transaction looping
+1780:                 elif src == "statement_date":
+1781:                     val = context_ext.get('date', local_get_val('date'))
+1782:                     # Split if combined with space
+1783:                     if ' ' in str(val):
+1784:                         val = str(val).split(' ', 1)[0]
+1785:                 elif src == "statement_time":
+1786:                     val = context_ext.get('time', local_get_val('time'))
+1787:                     raw_date = context_ext.get('date', local_get_val('date'))
+1788:                     if ' ' in str(raw_date) and str(val) == '-':
+1789:                         parts = str(raw_date).split(' ', 1)
+1790:                         if len(parts) > 1:
+1791:                             val = parts[1]
+1792:                 elif src == "statement_channel":
+1793:                     val = context_ext.get('channel', context_ext.get('source', local_get_val(['channel', 'source'])))
+1794: 
+1795:                 # Apply data cleaners
+1796:                 if cleaner == "float":
+1797:                     val = clean_val(val)
+1798:                 elif cleaner == "id":
+1799:                     val = clean_id(val)
+1800:                 elif cleaner == "branch":

@@ -1,0 +1,145 @@
+3: Authentication Blueprint — Login, Logout, OAuth2, QR Login, LINE Magic Link, Password Reset, Org Signup
+30: from google_drive_service import google_manager, GoogleWorkspaceManager
+33: VERSION, socketio, _limiter, login_required, admin_required,
+34: PENDING_LINE_LINKS, _OAUTH_STATES, _store_oauth_state, _pop_oauth_state,
+38: OAUTH2_AVAILABLE, oauth2_service,
+39: GOOGLE_AUTH_AVAILABLE, id_token, google_requests,
+57: <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
+239: <button class="btn btn-primary" id="btnApprove" onclick="approveLogin()">
+242: <button class="btn btn-secondary" onclick="cancelLogin()">ยกเลิก</button>
+264: async function approveLogin() {
+290: function cancelLogin() {
+299: @auth_bp.route("/api/auth/google/debug-uri")
+300: def auth_google_debug_uri():
+301: """แสดง redirect_uri ที่ app จะส่งไปให้ Google — ใช้ตรวจสอบว่าตรงกับ Console ไหม"""
+303: "redirect_uri_in_use": oauth2_service.redirect_uri if OAUTH2_AVAILABLE else "OAuth2 not available",
+304: "env_OAUTH2_REDIRECT_URI": os.environ.get("OAUTH2_REDIRECT_URI", "(ไม่ได้ตั้งค่า — ใช้ default localhost)"),
+308: @auth_bp.route("/api/auth/google/start")
+309: def auth_google_start():
+311: Initiate Google OAuth2 login flow.
+315: if not OAUTH2_AVAILABLE or not oauth2_service.is_configured:
+316: return jsonify({"ok": False, "error": "ระบบ Google OAuth2 ยังไม่ได้ตั้งค่า กรุณาติดต่อผู้ดูแลระบบ"}), 503
+320: return jsonify({"ok": False, "error": "กรุณาเข้าสู่ระบบก่อนเชื่อมต่อ Google"}), 401
+328: return jsonify({"ok": False, "error": "เฉพาะ Admin เท่านั้นที่เชื่อมต่อ Google ระดับองค์กรได้"}), 403
+330: if not billing.has_feature(org_id, "google_sheets"):
+335: "message": "การเชื่อมต่อ Google Sheets ต้องการ Plan Pro ขึ้นไป",
+342: redirect_uri = oauth2_service.redirect_uri
+346: authorization_url, _, code_verifier = oauth2_service.get_authorization_url(
+352: _store_oauth_state(state_token, {
+362: logger.error(f"OAuth2 start error: {e}")
+363: return jsonify({"ok": False, "error": "ไม่สามารถเชื่อมต่อ Google ได้ กรุณาลองใหม่"}), 500
+366: @auth_bp.route("/api/auth/google/callback")
+367: def auth_google_callback():
+368: """Handle Google OAuth2 callback — exchange code for tokens."""
+369: if not OAUTH2_AVAILABLE:
+370: return "<h1>OAuth2 ไม่พร้อมใช้งาน</h1>", 503
+374: state_data = _pop_oauth_state(state) if state else None
+382: # Check for error from Google
+387: return redirect('/?google_cancelled=1')
+388: return redirect(f'/?google_error=1')
+395: redirect_uri = state_data.get("redirect_uri", oauth2_service.redirect_uri)
+400: token_result = oauth2_service.exchange_code_for_token(
+406: google_email = token_result.get('email', '')
+407: google_name  = token_result.get('name', '')
+411: database.save_org_google_token(
+413: google_email=google_email,
+419: setup_ok = oauth2_service.setup_org_workspace(org_id, google_email, connected_by=username)
+423: database.save_google_token(
+425: google_email=google_email,
+430: # Update profile with Google avatar if not set
+433: database.update_user_profile(username, display_name=google_name,
+435: setup_ok = oauth2_service.setup_user_workspace(username, google_email)
+438: GoogleWorkspaceManager.invalidate_user_cache(username)
+449: <script>setTimeout(()=>{{window.location.href='/?google_connected=1';}},3000);</script>
+454: <h1 style="color:#059669">เชื่อมต่อ Google สำเร็จ!</h1>
+457: <p style="color:#475569">ระบบสร้าง Google Sheets และโฟลเดอร์ Drive เรียบร้อยแล้ว</p>
+459: <a href="/?google_connected=1" class="btn">กลับหน้าหลัก</a>
+460: </div></body></html>""", email=google_email, scope=scope_label)
+464: <script>setTimeout(()=>{{window.location.href='/?google_connected=1';}},4000);</script>
+471: <a href="/?google_connected=1" class="btn">กลับหน้าหลัก</a>
+475: logger.error(f"OAuth2 callback error: {e}")
+479: @auth_bp.route("/api/auth/google/status")
+480: def auth_google_status():
+481: """Check if the current user has connected their Google account."""
+486: if not OAUTH2_AVAILABLE:
+489: "oauth2_available": False,
+491: "message": "ระบบ OAuth2 ไม่พร้อมใช้งาน"
+498: org_info = oauth2_service.get_org_connection_info(org_id)
+500: personal_info = oauth2_service.get_user_connection_info(username)
+507: return f"https://docs.google.com/spreadsheets/d/{sid}/edit" if sid else None
+509: return f"https://drive.google.com/drive/folders/{fid}" if fid else None
+513: "oauth2_available": oauth2_service.is_configured,
+537: @auth_bp.route("/api/auth/google/disconnect", methods=["POST"])
+538: def auth_google_disconnect():
+540: Disconnect Google account.
+548: if not OAUTH2_AVAILABLE:
+549: return jsonify({"ok": False, "error": "OAuth2 not available"}), 503
+558: oauth2_service.disconnect_org(org_id)
+559: google_manager.set_context(username=None, org_id=org_id)
+560: return jsonify({"ok": True, "message": "ยกเลิกการเชื่อมต่อ Google ระดับบริษัทสำเร็จ"})
+562: oauth2_service.disconnect_user(username)
+563: GoogleWorkspaceManager.invalidate_user_cache(username)
+564: return jsonify({"ok": True, "message": "ยกเลิกการเชื่อมต่อ Google ส่วนตัวสำเร็จ"})
+575: <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
+702: <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
+841: def render_login_page(token, error=None):
+850: <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
+1052: return render_login_page(token)
+1065: return render_login_page(token, error="บัญชีผู้ใช้ของคุณถูกระงับการใช้งานชั่วคราวค่ะ")
+1070: return render_login_page(token, error="บัญชีผู้ใช้ของคุณถูกระงับการใช้งานชั่วคราวค่ะ")
+1085: return render_login_page(token, error="ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้องค่ะ")
+1088: @auth_bp.route("/api/login", methods=["POST"])
+1090: def api_login():
+1098: if database.count_failed_attempts(client_ip) >= database._LOGIN_ATTEMPT_LIMIT:
+1131: database.record_login_attempt(client_ip, username_raw, success=True)
+1144: database.record_login_attempt(client_ip, username_raw, success=True)
+1147: database.record_login_attempt(client_ip, username_raw, success=False)
+1154: """Generate a unique QR login token stored in DB (safe for multi-worker)."""
+1187: @login_required
+1189: """Mobile user (already logged in) approves a QR login token."""
+1200: @auth_bp.route("/qr-login/<token>")
+1201: def qr_login_page(token):
+1214: @auth_bp.route("/api/login/google", methods=["POST"])
+1215: def api_login_google():
+1218: client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
+1221: return jsonify({"ok": False, "error": "ไม่สามารถตรวจสอบสิทธิ์ด้วย Google ได้ (ไม่มี Token หรือ Client ID)"}), 400
+1223: if not GOOGLE_AUTH_AVAILABLE:
+1224: return jsonify({"ok": False, "error": "Google Auth library not installed on server"}), 500
+1228: idinfo = id_token.verify_oauth2_token(
+1230: google_requests.Request(),
+1238: return jsonify({"ok": False, "error": "ไม่พบอีเมลจาก Google Account"}), 400
+1242: _GOOGLE_RESERVED = frozenset({
+1249: if base_uname in _GOOGLE_RESERVED:
+1251: logger.info(f"[GoogleLogin] reserved username '{base_uname}' from {email} — using '{base_uname}'")
+1261: logger.info(f"[GoogleLogin] username collision on {base_uname!r} — using {username!r} for {email}")
+1288: logger.error(f"Error seeding user_settings for Gmail login: {e}")
+1301: logger.warning(f"[GoogleLogin] auto-join blocked for {username} org={first_org_id}: {_reason}")
+1306: # Refresh user_orgs so the login session logic knows about this organization
+1321: # Update user profile with Google info if they have no avatar/display name
+1344: logger.error(f"Google Login Error: {e}")
+1345: return jsonify({"ok": False, "error": "เข้าสู่ระบบด้วย Google ไม่สำเร็จ กรุณาลองใหม่"}), 500
+1521: prompt_login    = False   # บอก template ให้แสดง "กรุณา login ใหม่"
+1571: prompt_login = True   # แจ้งให้ login ใหม่เพื่อ refresh context
+1574: prompt_login = True
+1592: prompt_login=prompt_login,
+1644: @login_required
+1647: """สร้าง org สำหรับ user ที่ login แล้ว (เช่น Google login ที่ยังไม่มี org)"""
+1715: # Auto-login (session.clear ก่อนเสมอ — ป้องกัน session fixation)
+1727: @login_required
+1742: @login_required
+1755: @login_required
+1779: @login_required
+1848: <p style="font-size: 16px; margin-bottom: 30px;">คุณสามารถเข้าสู่ระบบและเริ่มใช้งานร่วมกับทีมได้ทันทีโดยการลงชื่อเข้าใช้ด้วยบัญชี Google (Gmail) ของคุณผ่านลิงก์ด้านล่างนี้:</p>
+1877: server.login(smtp_user, smtp_password)
+1887: @login_required
+1983: @login_required
+2017: @login_required
+2040: @login_required
+2065: @login_required
+2079: @login_required
+2103: @login_required
+2145: @login_required
+2185: @login_required
+2209: @login_required
+2220: @login_required
+2241: # No custom password set yet — allow if user provides their Google/default login (skip verify)

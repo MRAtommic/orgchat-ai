@@ -1,0 +1,185 @@
+Found 11 matches.
+
+=== MATCH 1 ===
+ehavior-y: contain;
+    width: 100%;
+    position: relative;
+  }
+}
+
+/* 🚀 Unified Messenger Fixes */
+#chatMainArea {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  min-width: 0 !important;
+  background: #f8fafc;
+}
+
+.dark #chatMainArea {
+  background: #020617;
+}
+
+/* Fix fo
+
+=== MATCH 2 ===
+nt;
+  flex-direction: column !important;
+  min-width: 0 !important;
+  background: #f8fafc;
+}
+
+.dark #chatMainArea {
+  background: #020617;
+}
+
+/* Fix for overlapping modals */
+.fixed.inset-0.z-\[10000\] {
+  backdrop-filter: blur(20px) !important;
+}
+
+/* ── Chat Bubble Layout Fix ── */
+.message-bubble-container {
+ 
+
+=== MATCH 3 ===
+ot(.hidden) {
+    background: #0f172a !important;
+  }
+
+  /* Navigation Pattern: List vs Detail */
+  #chatSidebarPanel {
+    width: 100% !important;
+    /* Full width list on mobile */
+    height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    opacity: 1 !important;
+    back
+
+=== MATCH 4 ===
+dex: 10 !important;
+    transform: none !important;
+    transition: opacity 0.3s ease;
+  }
+
+  .dark #chatSidebarPanel {
+    background: #0f172a !important;
+  }
+
+  /* When a chat is open, hide the list entirely */
+  #groupChatModal.chat-open #chatSidebarPanel {
+    display: none !important;
+  }
+
+  /* Main Chat Area s
+
+=== MATCH 5 ===
+2a !important;
+  }
+
+  /* When a chat is open, hide the list entirely */
+  #groupChatModal.chat-open #chatSidebarPanel {
+    display: none !important;
+  }
+
+  /* Main Chat Area slides in from the right */
+  #chatMainArea {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    heig
+
+=== MATCH 6 ===
+SidebarPanel {
+    display: none !important;
+  }
+
+  /* Main Chat Area slides in from the right */
+  #chatMainArea {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    background: #ffffff !important;
+    z-index: 20 !important;
+    display: fle
+
+=== MATCH 7 ===
+ty: hidden;
+  }
+
+  /* Show Detail View only when chat-open is active */
+  #groupChatModal.chat-open #chatMainArea {
+    transform: translateX(0);
+    visibility: visible;
+  }
+
+  .dark #chatMainArea {
+    background: #0f172a !important;
+  }
+
+  /* Fix Header and Buttons */
+  #chatHeader {
+    height: 70px !importa
+
+=== MATCH 8 ===
+Modal.chat-open #chatMainArea {
+    transform: translateX(0);
+    visibility: visible;
+  }
+
+  .dark #chatMainArea {
+    background: #0f172a !important;
+  }
+
+  /* Fix Header and Buttons */
+  #chatHeader {
+    height: 70px !important;
+    padding: env(safe-area-inset-top, 0) 16px 0 !important;
+    background: rgba
+
+=== MATCH 9 ===
+3, 1);
+  box-shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.4), 0 18px 36px -18px rgba(0, 0, 0, 0.3);
+}
+
+#chatSidebarPanel {
+  border-right: 1px solid rgba(0, 0, 0, 0.08) !important;
+  background: rgba(248, 250, 252, 0.4);
+}
+
+.dark #chatSidebarPanel {
+  border-right-color: rgba(255, 255, 255, 0.08) !important;
+  backgrou
+
+=== MATCH 10 ===
+r-right: 1px solid rgba(0, 0, 0, 0.08) !important;
+  background: rgba(248, 250, 252, 0.4);
+}
+
+.dark #chatSidebarPanel {
+  border-right-color: rgba(255, 255, 255, 0.08) !important;
+  background: rgba(15, 23, 42, 0.4);
+}
+
+
+.chat-sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+
+
+=== MATCH 11 ===
+p (48px) on mobile */
+  /* Sidebar: full width on mobile unless item open */
+  #groupChatModal aside#chatSidebarPanel {
+    width: 100% !important;
+    min-width: 100% !important;
+    flex-shrink: 0;
+    padding: 0 !important;
+    overflow: hidden !important;
+    /* Internal containers handle scrolling */
+    displa
+

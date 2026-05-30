@@ -1,0 +1,2 @@
+.\static\app.js:15914: toast('ไม่สามารถโหลดข้อมูล Google Drive ได้', 'error');
+.\_scratch\find_gdrive_error.py:14: if "ไม่สามารถโหลดข้อมูล Google Drive ได้" in line:

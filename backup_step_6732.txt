@@ -1,0 +1,60 @@
+Created At: 2026-05-27T06:49:43Z
+Completed At: 2026-05-27T06:49:43Z
+File Path: `file:///c:/Users/KC_Ketwilai/Downloads/orgchat-ai-main/orgchat-ai-main/webai/templates/index.html`
+Total Lines: 7427
+Total Bytes: 492461
+Showing lines 1940 to 2003
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1940:                 </div>
+1941:               </div>
+1942:             </div>
+1943:           </div>
+1944:         </section>
+1945: 
+1946:         <!-- Settings View (Original System Settings) -->
+1947:         <section id="view-settings"
+1948:           class="view hidden flex-1 flex flex-col items-center overflow-hidden animate-in fade-in duration-300">
+1949:           <header
+1950:             class="h-14 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between px-6 bg-white dark:bg-surface-900 w-full">
+1951:             <h2 class="font-semibold text-sm">การตั้งค่าระบบ</h2>
+1952:           </header>
+1953:           <div class="p-8 flex-1 min-h-0 overflow-y-auto w-full max-w-2xl space-y-4">
+1954:             <div class="p-6 bg-white dark:bg-surface-900 border border-surface-200 rounded-xl">
+1955:               <h3 class="font-bold text-sm mb-1 uppercase text-surface-500">Google Gemini Connectivity</h3>
+1956:               <p class="text-xl font-bold mb-4">Gemini 1.5 Flash AI</p>
+1957:               <button id="changeKeyBtn" class="btn-secondary w-full uppercase">RESET API KEY</button>
+1958:             </div>
+1959: 
+1960:             <!-- PWA & OS Notification Settings -->
+1961:             <div class="p-6 bg-white dark:bg-surface-900 border border-surface-200 rounded-xl space-y-4">
+1962:               <h3 class="font-bold text-sm mb-1 uppercase text-surface-500 flex items-center gap-2">
+1963:                 <i data-lucide="bell" class="w-4 h-4 text-br
+<truncated 1367 bytes>
+
+1978:                 </button>
+1979:               </div>
+1980: 
+1981:               <div class="pt-2">
+1982:                 <button id="testNotifBtn"
+1983:                   class="text-[10px] font-bold text-brand-600 hover:underline uppercase tracking-widest flex items-center gap-1.5 opacity-50 cursor-not-allowed disabled:opacity-50"
+1984:                   disabled>
+1985:                   <i data-lucide="send" class="w-3 h-3"></i> ส่งข้อความทดสอบ
+1986:                 </button>
+1987:               </div>
+1988:             </div>
+1989: 
+1990:             <!-- QR Login Scanner (New) -->
+1991:             <div class="p-6 bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl space-y-4">
+1992:               <h3 class="font-bold text-sm mb-1 uppercase text-surface-500 flex items-center gap-2">
+1993:                 <i data-lucide="qr-code" class="w-4 h-4 text-emerald-600"></i> QR Login Scanner
+1994:               </h3>
+1995:               <p class="text-xs text-surface-400">ใช้มือถือเครื่องนี้สแกน QR Code บนหน้าจอคอมพิวเตอร์เพื่อเข้าสู่ระบบทันที</p>
+1996:               
+1997:               <button onclick="openQRScanner()" 
+1998:                 class="btn-primary w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-xs font-black uppercase tracking-widest shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 border-none">
+1999:                 <i data-lucide="camera" class="w-5 h-5"></i> เปิดกล้องสแกน QR Code เพื่อ Login
+2000:               </button>
+2001:             </div>
+2002: 
+2003:             <!-- ═══ Google Drive & Sheets Connection ═══ -->
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

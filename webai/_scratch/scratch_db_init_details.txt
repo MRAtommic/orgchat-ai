@@ -1,0 +1,65 @@
+586:         ]
+587:         cursor.executemany("INSERT INTO lunch_places (name, type, location) VALUES (?,?,?)", places)
+588:     
+589:     cursor.execute("""
+590:         CREATE TABLE IF NOT EXISTS drive_logs (
+591:             id INTEGER PRIMARY KEY AUTOINCREMENT,
+592:             filename TEXT NOT NULL,
+593:             category TEXT,
+594:             amount REAL,
+595:             doc_date TEXT,
+596:             summary TEXT,
+597:             file_link TEXT,
+598:             user_id TEXT,
+599:             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+600:         )
+601:     """)
+602:     cursor.execute("CREATE INDEX IF NOT EXISTS idx_drive_logs_created_at ON drive_logs(created_at)")
+603:     cursor.execute("CREATE INDEX IF NOT EXISTS idx_drive_logs_filename ON drive_logs(filename)")
+604: 
+605:     # --- Per-User Google OAuth2 Token Storage (Multi-Tenant Drive & Sheets) ---
+606:     cursor.execute("""
+607:         CREATE TABLE IF NOT EXISTS user_google_tokens (
+608:             username TEXT PRIMARY KEY,
+609:             google_email TEXT NOT NULL,
+610:             access_token TEXT,
+611:             refresh_token TEXT,
+612:             token_expiry TEXT,
+613:             spreadsheet_id TEXT,
+614:             drive_folder_id TEXT,
+615:             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+616:             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+617:         )
+618:     """)
+619: 
+620:     conn.commit()
+621:     conn.close()
+622: 
+623: 
+624: def add_drive_log(filename, category=None, amount=None, doc_date=None, summary=None, file_link=None, user_id=None):
+625:     """Log a file upload/analysis event to the database."""
+626:     try:
+627:         conn = sqlite3.connect(DB_PATH)
+628:         cursor = conn.cursor()
+629:         cursor.execute("""
+630:             INSERT INTO drive_logs (filename, category, amount, doc_date, summary, file_link, user_id)
+631:             VALUES (?, ?, ?, ?, ?, ?, ?)
+632:         """, (filename, category, amount, doc_date, summary, file_link, user_id))
+633:         log_id = cursor.lastrowid
+634:         conn.commit()
+635:         conn.close()
+636:         return log_id
+637:     except Exception as e:
+638:         print(f"❌ Error adding drive log: {e}")
+639:         return None
+640: 
+641: def get_drive_logs(limit=50, offset=0, user_id=None):
+642:     """Retrieve recent drive logs."""
+643:     try:
+644:         conn = sqlite3.connect(DB_PATH)
+645:         cursor = conn.cursor()
+646:         query = "SELECT * FROM drive_logs"
+647:         params = []
+648:         if user_id:
+649:             query += " WHERE user_id = ?"
+650:             params.append(user_id)

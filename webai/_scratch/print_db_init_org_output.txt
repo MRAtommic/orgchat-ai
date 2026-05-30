@@ -1,0 +1,45 @@
+1136: try:
+1137: cursor.execute("ALTER TABLE line_group_mappings ADD COLUMN org_id INTEGER")
+1138: except Exception:
+1139: pass
+1140: # Migration: store real LINE group name and picture fetched from LINE API
+1141: try:
+1142: cursor.execute("ALTER TABLE line_group_mappings ADD COLUMN line_real_name TEXT")
+1143: except Exception:
+1144: pass
+1145: try:
+1146: cursor.execute("ALTER TABLE line_group_mappings ADD COLUMN line_picture_url TEXT")
+1147: except Exception:
+1148: pass
+1149: 
+1150: # Seed default organization
+1151: cursor.execute("INSERT OR IGNORE INTO organizations (id, name, slug, plan) VALUES (1, 'Default Organization', 'default', 'free')")
+1152: # Add existing users to default org ONLY IF they do not belong to any organization yet
+1153: cursor.execute("SELECT username FROM user_profiles")
+1154: for (uname,) in cursor.fetchall():
+1155: cursor.execute("SELECT 1 FROM organization_members WHERE username = ? COLLATE NOCASE", (uname,))
+1156: if not cursor.fetchone():
+1157: cursor.execute("""
+1158: INSERT OR IGNORE INTO organization_members (organization_id, username, role)
+1159: VALUES (1, ?, CASE WHEN lower(?) = 'admin' THEN 'admin' ELSE 'member' END)
+1160: """, (uname, uname))
+1161: # Also seed from user_settings
+1162: cursor.execute("SELECT username FROM user_settings")
+1163: for (uname,) in cursor.fetchall():
+1164: cursor.execute("SELECT 1 FROM organization_members WHERE username = ? COLLATE NOCASE", (uname,))
+1165: if not cursor.fetchone():
+1166: cursor.execute("""
+1167: INSERT OR IGNORE INTO organization_members (organization_id, username, role)
+1168: VALUES (1, ?, CASE WHEN lower(?) = 'admin' THEN 'admin' ELSE 'member' END)
+1169: """, (uname, uname))
+1170: 
+1171: # ══════════════════════════════════════════════════════
+1172: # Feature: Quotation / Invoice
+1173: # ══════════════════════════════════════════════════════
+1174: cursor.execute("""
+1175: CREATE TABLE IF NOT EXISTS quotations (
+1176: id              INTEGER PRIMARY KEY AUTOINCREMENT,
+1177: org_id          INTEGER NOT NULL,
+1178: quotation_no    TEXT NOT NULL,
+1179: type            TEXT DEFAULT 'quotation',   -- quotation | invoice
+1180: customer_name   TEXT NOT NULL,
