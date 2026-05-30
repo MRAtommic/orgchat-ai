@@ -29,11 +29,13 @@ def export_page_to_file(page_id: int, title: str, content: str, author: str, upd
 
     elif export_format == "pdf":
         file_path = downloads_dir / f"{safe_title}.pdf"
+        # fpdf2 supports unicode and complex scripts better
         pdf = FPDF()
         pdf.add_page()
         
+        # Common Thai fonts on Windows and Linux
         font_paths = [
-            r"C:\Windows\Fonts\leelawad.ttf", r"C:\Windows\Fonts\thsarabunnew.ttf",
+            r"C:\Windows\Fonts\thsarabunnew.ttf", r"C:\Windows\Fonts\leelawad.ttf",
             r"C:\Windows\Fonts\tahoma.ttf", r"C:\Windows\Fonts\arial.ttf"
         ] if os.name == 'nt' else [
             "/usr/share/fonts/truetype/thai/THSarabunNew.ttf",
@@ -43,18 +45,29 @@ def export_page_to_file(page_id: int, title: str, content: str, author: str, upd
         font_path = next((f for f in font_paths if os.path.exists(f)), None)
             
         if font_path:
+            # fpdf2: add_font automatically handles unicode
             pdf.add_font("THFont", "", font_path)
             pdf.set_font("THFont", size=16)
         else:
-            pdf.set_font("Arial", size=16)
+            pdf.set_font("helvetica", size=16)
 
-        pdf.cell(0, 10, txt=title, ln=1, align='C')
-        pdf.set_font(pdf.font_family, '', 10)
-        pdf.cell(0, 10, txt=f"Author: {author} | Updated: {updated_at}", ln=1, align='C')
-        pdf.ln(5)
-        pdf.set_font(pdf.font_family, '', 12)
+        # Title
+        pdf.cell(0, 10, text=title, new_x="LMARGIN", new_y="NEXT", align='C')
         
-        pdf.multi_cell(0, 7, txt=content)
+        # Meta info
+        if font_path: pdf.set_font("THFont", size=10)
+        else: pdf.set_font("helvetica", size=10)
+        pdf.cell(0, 10, text=f"Author: {author} | Updated: {updated_at}", new_x="LMARGIN", new_y="NEXT", align='C')
+        pdf.ln(5)
+        
+        # Content
+        if font_path: pdf.set_font("THFont", size=12)
+        else: pdf.set_font("helvetica", size=12)
+        
+        # Replace complex newlines to avoid issues
+        clean_content = content.replace("\r\n", "\n")
+        pdf.multi_cell(0, 7, text=clean_content)
+        
         pdf.output(str(file_path))
         return str(file_path), f"{safe_title}.pdf", None
 

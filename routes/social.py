@@ -4,6 +4,7 @@ Social Blueprint — Feed Posts, Comments, Likes, Reactions, Polls,
 Wiki Pages, Kanban Board, Link Preview
 """
 from flask import Blueprint, request, jsonify, render_template, render_template_string, send_from_directory, send_file, abort, redirect, session
+from werkzeug.utils import secure_filename
 import os
 import sys
 import io
@@ -62,8 +63,14 @@ def get_link_preview():
 
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-        response = requests.get(url, timeout=5, headers=headers, allow_redirects=True)
-        soup = BeautifulSoup(response.text, 'html.parser')
+        response = http_requests.get(url, timeout=5, headers=headers, allow_redirects=True, stream=True)
+        raw = b""
+        for chunk in response.iter_content(chunk_size=8192):
+            raw += chunk
+            if len(raw) > 512 * 1024:  # หยุดที่ 512 KB
+                break
+        response.close()
+        soup = BeautifulSoup(raw.decode("utf-8", errors="replace"), 'html.parser')
         
         title = soup.find("title").text if soup.find("title") else url
         description = ""
@@ -88,7 +95,8 @@ def get_link_preview():
             "url": url
         })
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        logger.error(f"[link-preview] {e}")
+        return jsonify({"ok": False, "error": "ไม่สามารถดึงข้อมูล URL ได้"}), 500
 
 
 @social_bp.route("/api/kanban/auto-generate", methods=["POST"])
@@ -132,15 +140,16 @@ def auto_generate_kanban():
             )
             tasks_added += 1
             
-        database.log_event(f"AI Auto-generated {tasks_added} tasks for goal: {goal[:50]}", user=user)
+        database.log_event(f"AI Auto-generated {tasks_added} tasks for goal: {goal[:50]}", user=user, org_id=org_id)
         return jsonify({"ok": True, "count": tasks_added})
     except Exception as e:
-        print(f"❌ AI Kanban Error: {e}")
-        return jsonify({"ok": False, "error": str(e)}), 500
+        logger.error(f"[AI Kanban] {e}")
+        return jsonify({"ok": False, "error": "ไม่สามารถสร้างงานอัตโนมัติได้ กรุณาลองใหม่"}), 500
 
 
 @social_bp.route("/api/posts", methods=["GET", "POST"])
 @login_required
+@_limiter.limit("20 per minute; 100 per hour", methods=["POST"])
 def manage_posts():
     if request.method == "POST":
         # Handle multipart form data for file uploads
@@ -185,11 +194,11 @@ def manage_posts():
                 poll_options = json.loads(poll_options_raw)
                 if isinstance(poll_options, list) and len(poll_options) >= 2:
                     database.add_poll(pid, poll_question, poll_options)
-                    database.log_event(f"Poll added to post: ID {pid}", user=author)
+                    database.log_event(f"Poll added to post: ID {pid}", user=author, org_id=get_current_org_id())
             except Exception as e:
                 print(f"Error adding poll: {e}")
 
-        database.log_event(f"New post created: ID {pid} by {author}", user=author)
+        database.log_event(f"New post created: ID {pid} by {author}", user=author, org_id=get_current_org_id())
         
         # --- New Post Broadcast ---
         profile = database.get_user_profile(author)
@@ -246,7 +255,7 @@ def update_delete_post(pid):
     if request.method == "DELETE":
         ok = database.delete_post(pid, username=user, is_admin=is_admin())
         if ok:
-            database.log_event(f"Post deleted: ID {pid}", user=user)
+            database.log_event(f"Post deleted: ID {pid}", user=user, org_id=get_current_org_id())
             return jsonify({"ok": True})
         return jsonify({"ok": False, "error": "คุณไม่มีสิทธิ์ลบโพสต์นี้"}), 403
     
@@ -254,9 +263,16 @@ def update_delete_post(pid):
     content = data.get("content")
     category = data.get("category")
     link = data.get("link")
-    
+
+    # ตรวจ ownership — เฉพาะเจ้าของหรือ admin
+    post = database.get_post(pid)
+    if not post:
+        return jsonify({"ok": False, "error": "ไม่พบโพสต์"}), 404
+    if post.get("author") != user and not is_admin():
+        return jsonify({"ok": False, "error": "ไม่มีสิทธิ์แก้ไขโพสต์นี้"}), 403
+
     database.update_post(pid, content, category, link)
-    database.log_event(f"Post updated: ID {pid}")
+    database.log_event(f"Post updated: ID {pid}", user=user, org_id=get_current_org_id())
     return jsonify({"ok": True})
 
 
@@ -270,9 +286,11 @@ def pin_post_route(pid):
 @social_bp.route("/api/posts/<int:pid>/comments", methods=["GET", "POST"])
 def manage_comments(pid):
     if request.method == "POST":
+        if "user" not in session:
+            return jsonify({"ok": False, "error": "กรุณาเข้าสู่ระบบก่อนแสดงความคิดเห็น"}), 401
         data = request.get_json(force=True)
         content = data.get("content")
-        author = session.get("user", data.get("author", "Anonymous"))  # Always use session user
+        author = session.get("user")  # Always use session user
         
         if not content:
             return jsonify({"ok": False, "error": "Comment content required"}), 400
@@ -280,11 +298,11 @@ def manage_comments(pid):
         database.add_comment(pid, content, author)
         
         # --- Comment Notification ---
+        profile = database.get_user_profile(author)
+        display_name = profile.get("display_name", author)
         posts = database.get_posts(org_id=get_current_org_id())
         post = next((p for p in posts if p["id"] == pid), None)
         if post and post["author"] != author:
-            profile = database.get_user_profile(author)
-            display_name = profile.get("display_name", author)
             notification_db.add_notification(
                 post["author"],
                 'comment',
@@ -340,7 +358,7 @@ def delete_comment_route(pid, cid):
     user = session.get("user")
     ok = database.delete_comment(cid, username=user, is_admin=is_admin())
     if ok:
-        database.log_event(f"Comment deleted: ID {cid} from post {pid}", user=user)
+        database.log_event(f"Comment deleted: ID {cid} from post {pid}", user=user, org_id=get_current_org_id())
         return jsonify({"ok": True})
     return jsonify({"ok": False, "error": "คุณไม่มีสิทธิ์ลบคอมเม้นนี้"}), 403
 
@@ -436,6 +454,7 @@ def get_reactions(pid):
 
 
 @social_bp.route("/api/posts/<int:pid>/summarize", methods=["POST"])
+@login_required
 def summarize_post_route(pid):
     posts = database.get_posts(org_id=get_current_org_id())
     post = next((p for p in posts if p["id"] == pid), None)
@@ -455,8 +474,8 @@ def summarize_post_route(pid):
         database.update_post_summary(pid, full_summary)
         return jsonify({"ok": True, "summary": full_summary})
     except Exception as e:
-        print(f"❌ Summarization Error: {e}")
-        return jsonify({"ok": False, "error": str(e)}), 500
+        logger.error(f"[Summarization] {e}")
+        return jsonify({"ok": False, "error": "ไม่สามารถสรุปเนื้อหาได้ กรุณาลองใหม่"}), 500
 
 
 @social_bp.route("/api/polls/<int:poll_id>/vote", methods=["POST"])
@@ -471,7 +490,7 @@ def vote_poll_route(poll_id):
         
     ok = database.vote_poll(poll_id, option_id, user)
     if ok:
-        database.log_event(f"User {user} voted on poll {poll_id}", user=user)
+        database.log_event(f"User {user} voted on poll {poll_id}", user=user, org_id=get_current_org_id())
         return jsonify({"ok": True})
     return jsonify({"ok": False, "error": "คุณได้ลงคะแนนโหวตแล้ว หรือมีข้อผิดพลาดเกิดขึ้นค่ะ"}), 500
 
@@ -522,8 +541,8 @@ def feed_daily_summary():
         
         return jsonify({"ok": True, "summary": full_summary})
     except Exception as e:
-        print(f"❌ Daily Summary Error: {e}")
-        return jsonify({"ok": False, "error": str(e)}), 500
+        logger.error(f"[Daily Summary] {e}")
+        return jsonify({"ok": False, "error": "ไม่สามารถสรุปข้อมูลวันนี้ได้ กรุณาลองใหม่"}), 500
 
 
 @social_bp.route("/api/wiki", methods=["GET"])
@@ -552,7 +571,7 @@ def create_wiki_page_route():
     # Ingest into RAG engine
     rag_engine.ingest_text(content, source_name=f"Wiki: {title}", category_id=category_id, org_id=org_id)
 
-    database.log_event(f"Created Wiki page: {title}", user=user)
+    database.log_event(f"Created Wiki page: {title}", user=user, org_id=org_id)
     return jsonify({"ok": True, "slug": slug})
 
 
@@ -582,7 +601,7 @@ def update_wiki_page_route(slug):
         # Update RAG engine
         rag_engine.ingest_text(content, source_name=f"Wiki: {title}", category_id=category_id, org_id=org_id)
         
-        database.log_event(f"Updated Wiki page: {title}", user=session.get("user"))
+        database.log_event(f"Updated Wiki page: {title}", user=session.get("user"), org_id=org_id)
         return jsonify({"ok": True})
     return jsonify({"ok": False, "error": "Update failed"}), 404
 
@@ -598,7 +617,7 @@ def delete_wiki_page_route(slug):
     if database.delete_wiki_page(slug, org_id=org_id):
         # Remove from RAG
         rag_engine._kb.delete_by_source(f"Wiki: {page['title']}")
-        database.log_event(f"Deleted Wiki page: {slug}", user=session.get("user"))
+        database.log_event(f"Deleted Wiki page: {slug}", user=session.get("user"), org_id=org_id)
         return jsonify({"ok": True})
     return jsonify({"ok": False}), 500
 
@@ -624,6 +643,13 @@ def kanban_add_column():
 @social_bp.route("/api/kanban/columns/<int:col_id>", methods=["PUT"])
 @login_required
 def kanban_update_column(col_id):
+    # ตรวจสอบ ownership — เฉพาะผู้สร้างหรือ admin ของ org เท่านั้น
+    user = session.get("user")
+    col = database.kanban_get_column(col_id)
+    if not col:
+        return jsonify({"ok": False, "error": "ไม่พบ column"}), 404
+    if col.get("created_by") != user and not is_admin():
+        return jsonify({"ok": False, "error": "ไม่มีสิทธิ์แก้ไข column นี้"}), 403
     data = request.json or {}
     database.kanban_update_column(col_id, title=data.get("title"), color=data.get("color"))
     return jsonify({"ok": True})
@@ -632,6 +658,12 @@ def kanban_update_column(col_id):
 @social_bp.route("/api/kanban/columns/<int:col_id>", methods=["DELETE"])
 @login_required
 def kanban_delete_column(col_id):
+    user = session.get("user")
+    col = database.kanban_get_column(col_id)
+    if not col:
+        return jsonify({"ok": False, "error": "ไม่พบ column"}), 404
+    if col.get("created_by") != user and not is_admin():
+        return jsonify({"ok": False, "error": "ไม่มีสิทธิ์ลบ column นี้"}), 403
     ok = database.kanban_delete_column(col_id)
     return jsonify({"ok": ok})
 
@@ -647,6 +679,7 @@ def kanban_reorder_columns():
 
 @social_bp.route("/api/kanban/cards", methods=["POST"])
 @login_required
+@_limiter.limit("30 per minute")
 def kanban_add_card():
     data = request.json or {}
     column_id = data.get("column_id")
@@ -759,6 +792,12 @@ def kanban_update_card(card_id):
 @social_bp.route("/api/kanban/cards/<int:card_id>", methods=["DELETE"])
 @login_required
 def kanban_delete_card(card_id):
+    user = session.get("user")
+    card = database.kanban_get_card(card_id)
+    if not card:
+        return jsonify({"ok": False, "error": "ไม่พบ card"}), 404
+    if card.get("created_by") != user and not is_admin():
+        return jsonify({"ok": False, "error": "ไม่มีสิทธิ์ลบ card นี้"}), 403
     ok = database.kanban_delete_card(card_id)
     return jsonify({"ok": ok})
 

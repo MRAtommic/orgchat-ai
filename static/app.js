@@ -29,6 +29,9 @@ const state = {
   chatList: { rooms: [], contacts: [] },
   isAdmin: false,
   canEditKB: false,
+  hasOrg: false,
+  orgId: null,
+  isOrgAdmin: false,
   kbCategories: [],
   allUsers: [],
   appSettings: {},
@@ -44,7 +47,8 @@ const state = {
   serverOffset: 0,      // ms offset (server - client)
   drive: {
     currentFolderId: 'root',
-    history: [] // [{id, name}]
+    history: [], // [{id, name}]
+    isLoading: false
   }
 };
 
@@ -148,17 +152,8 @@ const exportBtn = $('exportBtn');
 const auditLogList = $('auditLogList');
 const deptSelect = $('deptSelect');
 
-// Theme Toggle listener
-if (themeToggle) {
-  themeToggle.onclick = () => {
-    if (state.theme === 'auto') state.theme = 'dark';
-    else if (state.theme === 'dark') state.theme = 'light';
-    else state.theme = 'auto';
-    localStorage.setItem('theme', state.theme);
-    updateTheme();
-    toast(`เปลี่ยนธีมเป็น: ${state.theme}`, 'info');
-  };
-}
+// Theme Toggle listener (Consolidated below in Theme Management)
+
 const navSettings = document.getElementById("nav-settings");
 const navStats = document.getElementById("nav-stats");
 const navNotifications = document.getElementById("nav-notifications");
@@ -410,14 +405,16 @@ function toast(msg, type = 'info') {
   let container = document.querySelector('.toast-container');
   if (!container) {
     container = document.createElement('div');
-    container.className = 'toast-container fixed top-6 right-6 z-[200] flex flex-col gap-3 pointer-events-none';
+    // z-[99999] ต้องสูงกว่าทุก modal (groupChatModal=1200, incoming call=9000)
+    container.className = 'toast-container fixed top-6 right-6 z-[99999] flex flex-col gap-3 pointer-events-none';
     document.body.appendChild(container);
   }
   const el = document.createElement('div');
   const bgMap = {
     info: 'bg-surface-800 text-white',
     success: 'bg-emerald-600 text-white',
-    error: 'bg-red-600 text-white'
+    error: 'bg-red-600 text-white',
+    warning: 'bg-amber-500 text-white'
   };
   el.className = `${bgMap[type] || bgMap.info} px-6 py-3 rounded-xl shadow-xl text-xs font-semibold animate-in slide-in-from-right-10 duration-300 pointer-events-auto cursor-pointer`;
   el.textContent = msg;
@@ -551,19 +548,23 @@ function renderActiveUsersTray() {
   
   tray.innerHTML = activeUsers.map(u => {
     const displayNameShort = (u.display_name || u.username).split(' ')[0];
+    const safeUser = escHtml(u.username);
+    const safeName = escHtml(u.display_name || u.username);
+    const safeAvatar = escHtml(u.avatar_url || '');
+    const safeShort = escHtml(displayNameShort);
     return `
-      <div onclick="switchChat('dm', '${u.username}', '${u.display_name || u.username}', '${u.avatar_url || ''}')" 
-           class="flex flex-col items-center gap-1 cursor-pointer w-14 shrink-0 transition-transform hover:scale-105 group" 
-           title="ส่งข้อความหา ${u.display_name || u.username}">
+      <div onclick="switchChat('dm', '${safeUser}', '${safeName}', '${safeAvatar}')"
+           class="flex flex-col items-center gap-1 cursor-pointer w-14 shrink-0 transition-transform hover:scale-105 group"
+           title="ส่งข้อความหา ${safeName}">
         <div class="relative">
           <div class="w-12 h-12 rounded-full overflow-hidden border-2 border-brand-500 ring-2 ring-white dark:ring-surface-900 bg-surface-100 dark:bg-surface-800 p-0.5 group-hover:shadow-[0_0_15px_rgba(37,99,235,0.4)] transition-shadow">
              <div class="w-full h-full rounded-full overflow-hidden bg-brand-50 flex items-center justify-center text-brand-600">
-               ${u.avatar_url ? `<img src="${u.avatar_url}" class="w-full h-full object-cover">` : `<i data-lucide="user" class="w-5 h-5"></i>`}
+               ${u.avatar_url ? `<img src="${safeAvatar}" class="w-full h-full object-cover">` : `<i data-lucide="user" class="w-5 h-5"></i>`}
              </div>
           </div>
           <div class="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-white dark:border-surface-900 rounded-full animate-pulse shadow-sm"></div>
         </div>
-        <span class="text-[10px] font-bold text-surface-600 dark:text-surface-300 w-full truncate text-center">${displayNameShort}</span>
+        <span class="text-[10px] font-bold text-surface-600 dark:text-surface-300 w-full truncate text-center">${safeShort}</span>
       </div>
     `;
   }).join('');
@@ -693,11 +694,24 @@ async function loadStatus() {
       if (statusBadgeMobile) { statusBadgeMobile.innerHTML = html; statusBadgeMobile.className = cls; }
     }
     state.isAdmin = !!data.is_admin;
+    state.isSuperAdmin = !!data.is_superadmin;
     state.canEditKB = !!data.can_edit_kb;
     state.user = data.user;
-    state.username = data.user; // Ensure state.username is also set for consistency
+    state.username = data.user;
     state.appSettings = data.app_settings || {};
-    
+    state.hasOrg = data.has_org === true;
+    state.orgId = data.org_id ?? null;
+    state.isOrgAdmin = data.org_role === 'admin';
+
+    const noOrgEl = document.getElementById('noOrgOverlay');
+    if (noOrgEl) noOrgEl.classList.toggle('hidden', state.hasOrg);
+
+    if (data.org_plan) {
+      const planLabel = { free: 'Free', pro: 'Pro', business: 'Business' }[data.org_plan] || data.org_plan;
+      if ($('orgStatPlan')) $('orgStatPlan').textContent = planLabel;
+      if ($('orgPlanBadge')) $('orgPlanBadge').textContent = planLabel;
+    }
+
     // Calculate server offset if provided
     if (data.server_time) {
       const serverDate = parseServerDate(data.server_time);
@@ -705,7 +719,7 @@ async function loadStatus() {
       console.log("⏱️ Server Clock Offset:", state.serverOffset, "ms");
     }
 
-    toggleAdminFeatures(state.isAdmin);
+    toggleAdminFeatures(state.isAdmin, state.isSuperAdmin);
 
     if (activePersonaName) {
       activePersonaName.textContent = state.activePersona ? state.activePersona.name : 'Default';
@@ -729,23 +743,35 @@ async function loadStatus() {
   }
 }
 
-function toggleAdminFeatures(show) {
-  const adminElements = [
+function toggleAdminFeatures(isAdmin, isSuperAdmin) {
+  // nav-admin (แผงควบคุม): แสดงสำหรับ system admin ทุกคน
+  const navAdmin = $('nav-admin');
+  if (navAdmin) navAdmin.classList.toggle('hidden', !isAdmin);
+  const navAdminMobile = $('nav-admin-mobile');
+  if (navAdminMobile) navAdminMobile.classList.toggle('hidden', !isAdmin);
+
+  // ปุ่มที่เฉพาะ superadmin เท่านั้น
+  const superAdminElements = [
     wipeDataBtn,
     changeKeyBtn,
-    $('nav-admin'),
-    $('nav-admin-mobile'),
     $('nav-reconciliation'),
     $('nav-line-manager'),
-    $('auditLogSection')
+    $('auditLogSection'),
+    $('nav-super-admin'),
+    $('nav-superadmin-mobile')
   ];
-
-  adminElements.forEach(el => {
-    if (el) el.classList.toggle('hidden', !show);
+  superAdminElements.forEach(el => {
+    if (el) el.classList.toggle('hidden', !isSuperAdmin);
   });
 
-  if (show) {
+  if (isSuperAdmin) {
     initAdminChatPanel();
+  }
+
+  // nav-org (จัดการองค์กร): แสดงสำหรับ org admin
+  const navOrg = $('nav-org');
+  if (navOrg) {
+    navOrg.classList.toggle('hidden', !state.isOrgAdmin);
   }
 }
 
@@ -1272,7 +1298,8 @@ function renderQuotationItems() {
   // Update Totals
   const discount = parseFloat($('qtDiscount')?.value || 0);
   const afterDiscount = subtotal - discount;
-  const vat = afterDiscount * 0.07;
+  const vatRate = parseFloat($('qtVatRate')?.value ?? 0.07);
+  const vat = afterDiscount * vatRate;
   const grandTotal = afterDiscount + vat;
   
   if ($('prevSubTotal')) $('prevSubTotal').innerText = subtotal.toLocaleString(undefined, {minimumFractionDigits: 2});
@@ -1325,6 +1352,23 @@ function updateQuotationPreview() {
     prevSInfo.innerHTML = `${sAddr}<br>เลขประจำตัวผู้เสียภาษี: ${sTax}<br>โทร: ${sPhone}`;
   }
 
+  // Handle replacement receipt reference elements
+  const docType = $('docTypeSelect')?.value;
+  const repRefBlock = $('replacementRefBlock');
+  const prevRepRef = $('prevReplacementRef');
+  
+  if (docType === 'receipt_replacement') {
+    if (repRefBlock) repRefBlock.classList.remove('hidden');
+    if (prevRepRef) prevRepRef.classList.remove('hidden');
+    
+    if ($('prevOriginalRefNo')) $('prevOriginalRefNo').innerText = $('qtOriginalRefNo')?.value || '-';
+    if ($('prevOriginalRefDate')) $('prevOriginalRefDate').innerText = $('qtOriginalRefDate')?.value || '-';
+    if ($('prevReplacementReason')) $('prevReplacementReason').innerText = $('qtReplacementReason')?.value || '-';
+  } else {
+    if (repRefBlock) repRefBlock.classList.add('hidden');
+    if (prevRepRef) prevRepRef.classList.add('hidden');
+  }
+
   renderQuotationItems();
 }
 
@@ -1374,7 +1418,12 @@ async function generateAndSaveQuotation() {
     
     const result = await response.json();
     if (result.ok) {
-      toast('สร้างใบเสนอราคาและบันทึกเรียบร้อย!', 'success');
+      let successMsg = 'สร้างใบเสนอราคาและบันทึกเรียบร้อย!';
+      const docVal = $('docTypeSelect')?.value;
+      if (docVal === 'invoice') successMsg = 'สร้างใบแจ้งหนี้และบันทึกเรียบร้อย!';
+      else if (docVal === 'receipt') successMsg = 'สร้างใบเสร็จรับเงินและบันทึกเรียบร้อย!';
+      else if (docVal === 'receipt_replacement') successMsg = 'สร้างใบเสร็จรับเงิน/ใบแทนใบเสร็จและบันทึกเรียบร้อย!';
+      toast(successMsg, 'success');
       // Download locally as well for the user
       html2pdf().set(opt).from(element).save();
     } else {
@@ -1395,7 +1444,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Bind Quotation events
   const qtInputs = [
     'qtNo', 'qtDate', 'qtCustomerName', 'qtCustomerAddress', 'qtCustomerTaxId', 'qtCustomerContact', 'qtDiscount',
-    'sellerName', 'sellerAddress', 'sellerTaxId', 'sellerPhone'
+    'sellerName', 'sellerAddress', 'sellerTaxId', 'sellerPhone',
+    'qtOriginalRefNo', 'qtOriginalRefDate', 'qtReplacementReason'
   ];
   qtInputs.forEach(id => {
     const el = $(id);
@@ -1416,7 +1466,239 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Update initial preview
   updateQuotationPreview();
+
+  // Doc Type Select Event Listener
+  const docTypeSelect = $('docTypeSelect');
+  if (docTypeSelect) {
+    docTypeSelect.addEventListener('change', () => {
+      const val = docTypeSelect.value;
+      const titleTh = $('prevDocTitle');
+      const titleEn = $('prevDocTitleEn');
+      const qtNoInput = $('qtNo');
+      
+      let prefix = 'QT-';
+      let title = 'ใบเสนอราคา';
+      let titleEnText = 'QUOTATION';
+      
+      if (val === 'invoice') {
+        prefix = 'IV-';
+        title = 'ใบแจ้งหนี้';
+        titleEnText = 'INVOICE';
+      } else if (val === 'receipt') {
+        prefix = 'RE-';
+        title = 'ใบเสร็จรับเงิน';
+        titleEnText = 'RECEIPT';
+      } else if (val === 'receipt_replacement') {
+        prefix = 'RT-';
+        title = 'ใบเสร็จรับเงิน/ใบแทนใบเสร็จ';
+        titleEnText = 'REPLACEMENT RECEIPT';
+      }
+      
+      if (titleTh) titleTh.innerText = title;
+      if (titleEn) titleEn.innerText = titleEnText;
+      if (qtNoInput) {
+        const currentVal = qtNoInput.value;
+        const currentNum = currentVal.replace(/^[A-Z_]+-/, '');
+        qtNoInput.value = prefix + (currentNum || new Date().toISOString().split('T')[0].replace(/-/g, '') + '001');
+      }
+      updateQuotationPreview();
+    });
+  }
+
+  // Logo & Signature upload events for Admin settings
+  const logoInput = $('org_logo_file');
+  if (logoInput) {
+    logoInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      
+      const placeholder = $('org_logo_placeholder');
+      const preview = $('org_logo_preview');
+      const deleteBtn = $('btn_delete_logo');
+      const hiddenInput = $('biz_logo_url');
+      
+      if (placeholder) placeholder.innerHTML = `<i data-lucide="loader-2" class="w-5 h-5 animate-spin text-brand-600"></i><span class="text-[10px] font-bold">กำลังอัปโหลด...</span>`;
+      if (window.lucide) window.lucide.createIcons();
+      
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      try {
+        const res = await fetch('/api/org/upload-logo', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await res.json();
+        
+        if (data.ok) {
+          hiddenInput.value = data.url;
+          preview.src = data.url;
+          preview.classList.remove('hidden');
+          if (placeholder) placeholder.classList.add('hidden');
+          if (deleteBtn) deleteBtn.classList.remove('hidden');
+          toast('อัปโหลดโลโก้เรียบร้อยแล้วค่ะ', 'success');
+        } else {
+          toast(data.error || 'เกิดข้อผิดพลาดในการอัปโหลด', 'error');
+          resetOrgLogoUI();
+        }
+      } catch (err) {
+        console.error(err);
+        toast('เกิดข้อผิดพลาดในการอัปโหลด', 'error');
+        resetOrgLogoUI();
+      }
+    });
+  }
+  
+  const sigInput = $('org_sig_file');
+  if (sigInput) {
+    sigInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      
+      const placeholder = $('org_sig_placeholder');
+      const preview = $('org_sig_preview');
+      const deleteBtn = $('btn_delete_sig');
+      const hiddenInput = $('biz_signature_url');
+      const removeBg = $('org_sig_remove_bg')?.checked;
+      
+      if (placeholder) placeholder.innerHTML = `<i data-lucide="loader-2" class="w-5 h-5 animate-spin text-brand-600"></i><span class="text-[10px] font-bold">กำลังประมวลผล...</span>`;
+      if (window.lucide) window.lucide.createIcons();
+      
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('remove_bg', removeBg ? 'true' : 'false');
+      
+      try {
+        const res = await fetch('/api/signature/process-background', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await res.json();
+        
+        if (data.ok) {
+          hiddenInput.value = data.url;
+          preview.src = data.url;
+          preview.classList.remove('hidden');
+          if (placeholder) placeholder.classList.add('hidden');
+          if (deleteBtn) deleteBtn.classList.remove('hidden');
+          toast('อัปโหลดและลบพื้นหลังลายเซ็นเรียบร้อยแล้วค่ะ', 'success');
+        } else {
+          toast(data.error || 'เกิดข้อผิดพลาดในการอัปโหลด', 'error');
+          resetOrgSigUI();
+        }
+      } catch (err) {
+        console.error(err);
+        toast('เกิดข้อผิดพลาดในการอัปโหลด', 'error');
+        resetOrgSigUI();
+      }
+    });
+  }
 });
+
+async function initDocumentGenerator() {
+  try {
+    const data = await apiFetch('/api/org/profile');
+    if (data.ok && data.profile) {
+      const p = data.profile;
+      
+      // Autofill seller info
+      if (p.business_name_th) {
+        if ($('sellerName')) $('sellerName').value = p.business_name_th;
+      }
+      
+      // Combine address
+      let addr = p.address_line1 || '';
+      if (p.address_line2) addr += ' ' + p.address_line2;
+      if (p.district) addr += ' ' + p.district;
+      if (p.province) addr += ' ' + p.province;
+      if (p.zipcode) addr += ' ' + p.zipcode;
+      if ($('sellerAddress')) $('sellerAddress').value = addr.trim();
+      
+      if (p.tax_id) {
+        if ($('sellerTaxId')) $('sellerTaxId').value = p.tax_id;
+      }
+      if (p.phone) {
+        if ($('sellerPhone')) $('sellerPhone').value = p.phone;
+      }
+      
+      // Load Logo preview
+      const prevLogo = $('prevLogoImg');
+      if (prevLogo) {
+        if (p.logo_url) {
+          prevLogo.src = p.logo_url;
+          prevLogo.classList.remove('hidden');
+        } else {
+          prevLogo.src = '';
+          prevLogo.classList.add('hidden');
+        }
+      }
+      
+      // Load Signature preview
+      const prevSig = $('prevSignatureImg');
+      if (prevSig) {
+        if (p.signature_url) {
+          prevSig.src = p.signature_url;
+          prevSig.classList.remove('hidden');
+        } else {
+          prevSig.src = '';
+          prevSig.classList.add('hidden');
+        }
+      }
+      
+      updateQuotationPreview();
+    }
+  } catch (err) {
+    console.error('Error pre-filling quotation seller details from org profile:', err);
+  }
+}
+
+function resetOrgLogoUI() {
+  const placeholder = $('org_logo_placeholder');
+  const preview = $('org_logo_preview');
+  const deleteBtn = $('btn_delete_logo');
+  const hiddenInput = $('biz_logo_url');
+  
+  if (hiddenInput) hiddenInput.value = '';
+  if (preview) {
+    preview.src = '';
+    preview.classList.add('hidden');
+  }
+  if (placeholder) {
+    placeholder.classList.remove('hidden');
+    placeholder.innerHTML = `<i data-lucide="upload-cloud" class="w-5 h-5"></i><span class="text-[10px] font-bold">อัปโหลดโลโก้</span>`;
+  }
+  if (deleteBtn) deleteBtn.classList.add('hidden');
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function deleteOrgLogo() {
+  resetOrgLogoUI();
+  toast('ลบโลโก้เรียบร้อย กดบันทึกเพื่อบันทึกการเปลี่ยนแปลง', 'info');
+}
+
+function resetOrgSigUI() {
+  const placeholder = $('org_sig_placeholder');
+  const preview = $('org_sig_preview');
+  const deleteBtn = $('btn_delete_sig');
+  const hiddenInput = $('biz_signature_url');
+  
+  if (hiddenInput) hiddenInput.value = '';
+  if (preview) {
+    preview.src = '';
+    preview.classList.add('hidden');
+  }
+  if (placeholder) {
+    placeholder.classList.remove('hidden');
+    placeholder.innerHTML = `<i data-lucide="file-signature" class="w-5 h-5"></i><span class="text-[10px] font-bold">อัปโหลดลายเซ็น</span>`;
+  }
+  if (deleteBtn) deleteBtn.classList.add('hidden');
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function deleteOrgSig() {
+  resetOrgSigUI();
+  toast('ลบลายเซ็นเรียบร้อย กดบันทึกเพื่อบันทึกการเปลี่ยนแปลง', 'info');
+}
 
 // ─── Smart Dashboard Logic ─────────────────
 
@@ -1536,8 +1818,8 @@ async function loadDashboard() {
 
       // --- Drive Insights Populating ---
       if ($('dashStatDriveFiles')) $('dashStatDriveFiles').textContent = data.stats.drive_files || 0;
-      if ($('dashStatTotalAmount')) $('dashStatTotalAmount').textContent = '฿' + new Intl.NumberFormat().format(data.stats.total_amount || 0);
-      const catContainer = $('dashDriveCatContainer');
+      if ($('dashStatTotalAmount')) $('dashStatTotalAmount').textContent = '฿' + new Intl.NumberFormat('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(data.stats.total_amount || 0);
+      const catContainer = $('dashDriveCategoryStats');
       if (catContainer && data.drive_categories) {
         const cats = Object.entries(data.drive_categories);
         if (cats.length > 0) {
@@ -1547,6 +1829,8 @@ async function loadDashboard() {
               <span class="text-[9px] font-bold text-surface-400">(${count})</span>
             </div>
           `).join('');
+        } else {
+          catContainer.innerHTML = `<span class="text-[10px] text-surface-400 italic">ไม่มีข้อมูลหมวดหมู่</span>`;
         }
       }
 
@@ -1833,13 +2117,29 @@ function switchView(viewId) {
   if (viewId === 'calendar') { loadSchedules(); loadTodoTasks(); }
   if (viewId === 'kanban') loadKanbanBoard();
   if (viewId === 'wiki') { loadWikiPages(); renderWikiContent(); }
-  if (viewId === 'admin') initAdminPanel();
+  if (viewId === 'dashboard') { if (typeof loadDashboardData === 'function') loadDashboardData(); }
+  if (viewId === 'settings') loadMySettings();
+  if (viewId === 'plan') { if (typeof initPlanView === 'function') initPlanView(); }
+  if (viewId === 'admin') { initAdminPanel(); loadGoogleDriveStatus(); }
+  if (viewId === 'admin-customers') {
+    const iframe = document.getElementById('admin-customers-iframe');
+    if (iframe && (iframe.src === 'about:blank' || iframe.src === '' || !iframe.getAttribute('src') || iframe.getAttribute('src') === 'about:blank')) {
+      iframe.src = '/admin/customers';
+    }
+  }
+  if (viewId === 'super-admin') {
+    const iframe = document.getElementById('super-admin-iframe');
+    if (iframe && (iframe.src === 'about:blank' || iframe.src === '' || !iframe.getAttribute('src') || iframe.getAttribute('src') === 'about:blank')) {
+      iframe.src = '/admin/super';
+    }
+  }
   if (viewId === 'kb') loadFiles();
   if (viewId === 'drive') loadDriveContents(state.drive.currentFolderId);
   if (viewId === 'summary') renderSummary();
   if (viewId === 'whiteboard') initWhiteboard();
   if (viewId === 'leave') loadLeaveData();
-  if (viewId === 'settings') loadGoogleDriveStatus();
+  if (viewId === 'quotation') initDocumentGenerator();
+  if (viewId === 'receipt-replacement') initReplacementReceiptView();
 
   // ─── Feed Auto-Refresh ───────────────────────
   // Clear any existing feed poll interval when changing views
@@ -1939,6 +2239,10 @@ function applyProfile(profile) {
 
   // Update Sidebar
   if (sidebarDisplayName) sidebarDisplayName.textContent = profile.display_name || profile.username;
+  const sidebarUserRoleEl = $('sidebarUserRole');
+  if (sidebarUserRoleEl) {
+    sidebarUserRoleEl.textContent = profile.org_role === 'admin' ? 'Admin' : 'Member';
+  }
   if (profile.avatar_url && sidebarAvatar) {
     sidebarAvatar.innerHTML = `<img src="${profile.avatar_url}" class="w-full h-full object-cover">`;
   }
@@ -2210,13 +2514,17 @@ function updateThemeIcon() {
   }
 }
 
-if (themeToggle) {
-  themeToggle.addEventListener('click', () => {
-    document.documentElement.classList.toggle('dark');
-    const isDark = document.documentElement.classList.contains('dark');
-    localStorage.setItem('theme', isDark ? 'dark' : 'light');
-    updateThemeIcon();
-  });
+document.addEventListener('DOMContentLoaded', () => {
+  if (themeToggle) {
+    themeToggle.onclick = () => {
+      document.documentElement.classList.toggle('dark');
+      const isDark = document.documentElement.classList.contains('dark');
+      state.theme = isDark ? 'dark' : 'light';
+      localStorage.setItem('theme', state.theme);
+      updateThemeIcon();
+      toast(`เปลี่ยนธีมเป็น: ${isDark ? 'โหมดกลางคืน' : 'โหมดกลางวัน'}`, 'info');
+    };
+  }
 
   // AI Productivity Listeners
   if (aiGenKanbanBtn) aiGenKanbanBtn.onclick = () => {
@@ -2255,7 +2563,7 @@ if (themeToggle) {
   });
 
   initIcons();
-}
+});
 
 // ─── Events: Navigation ─────────────────────
 if (navItems) {
@@ -2528,11 +2836,24 @@ async function performKBSearch(query) {
 }
 
 function renderSearchList(results) {
+  const query = $('kbSearchInput').value.trim();
+  const searchTerms = query.toLowerCase().split(/\s+/).filter(t => t.length > 1);
+
+  const highlightText = (text, terms) => {
+    if (!terms.length) return text;
+    let out = text;
+    terms.forEach(term => {
+      const regex = new RegExp(`(${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+      out = out.replace(regex, '<mark class="bg-yellow-200 dark:bg-yellow-900/50 text-surface-900 dark:text-yellow-100 rounded-sm px-0.5">$1</mark>');
+    });
+    return out;
+  };
+
   if (!results.length) {
     fileList.innerHTML = `
       <div class="col-span-full py-20 text-center text-surface-400">
         <i data-lucide="search-x" class="w-12 h-12 mx-auto mb-4 opacity-10"></i>
-        <p>ไม่พบเนื้อหาที่เกี่ยวข้องกับ "${$('kbSearchInput').value}"</p>
+        <p>ไม่พบเนื้อหาที่เกี่ยวข้องกับ "${query}"</p>
       </div>`;
     initIcons();
     return;
@@ -2545,16 +2866,187 @@ function renderSearchList(results) {
           <i data-lucide="${FILE_LUCIDE[r.file_type] || 'file'}" class="w-4 h-4"></i>
         </div>
         <div class="flex-1 min-w-0">
-          <div class="font-bold text-xs truncate uppercase tracking-tight">${r.file_name || r.source}</div>
+          <div class="font-bold text-xs truncate uppercase tracking-tight">${highlightText(r.file_name || r.source, searchTerms)}</div>
           <div class="text-[9px] text-surface-400 font-bold uppercase">${r.location || 'Document'} • SCORE: ${(r.score * 100).toFixed(0)}%</div>
         </div>
       </div>
       <div class="text-[13px] text-surface-600 dark:text-surface-300 leading-relaxed bg-surface-50 dark:bg-surface-800/50 p-3 rounded-xl border border-surface-100 dark:border-surface-700 italic">
-        "...${r.text}..."
+        "...${highlightText(r.text, searchTerms)}..."
       </div>
     </div>
   `).join('');
   initIcons();
+}
+
+// ─── Global KB Drag & Drop ─────────────────────
+// Allow dropping files anywhere in the KB view to upload
+const viewKB = $('view-kb');
+if (viewKB) {
+  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+    viewKB.addEventListener(eventName, e => {
+      e.preventDefault();
+      e.stopPropagation();
+    }, false);
+  });
+
+  ['dragenter', 'dragover'].forEach(eventName => {
+    viewKB.addEventListener(eventName, () => {
+      const uploadZone = $('uploadZone');
+      if (uploadZone) uploadZone.classList.add('border-brand-600', 'bg-brand-50/50', 'scale-[1.01]');
+    }, false);
+  });
+
+  ['dragleave', 'drop'].forEach(eventName => {
+    viewKB.addEventListener(eventName, () => {
+      const uploadZone = $('uploadZone');
+      if (uploadZone) uploadZone.classList.remove('border-brand-600', 'bg-brand-50/50', 'scale-[1.01]');
+    }, false);
+  });
+
+  viewKB.addEventListener('drop', e => {
+    const dt = e.dataTransfer;
+    const files = dt.files;
+    if (files.length > 0) handleFiles(files);
+  }, false);
+}
+
+// ─── ตรวจประเภทเอกสารก่อนอัปโหลด KB ─────────────────────────
+const _FINANCIAL_CAT_KEYWORDS = ['บัญชี','finance','ค่าใช้จ่าย','invoice','slip','receipt','ใบเสร็จ','สลิป','รายจ่าย','expense','tax','ภาษี'];
+const _IMG_EXTS = new Set(['png','jpg','jpeg','webp','bmp']);
+const _DOC_EXTS = new Set(['pdf','docx','xlsx','csv','txt','md']);
+
+function _warnWrongDocType(files, catName) {
+  const name = (catName || '').toLowerCase();
+  const hasImage = files.some(f => _IMG_EXTS.has(f.name.split('.').pop().toLowerCase()));
+  const hasDoc   = files.some(f => _DOC_EXTS.has(f.name.split('.').pop().toLowerCase()));
+  const isFinancialCat = _FINANCIAL_CAT_KEYWORDS.some(k => name.includes(k));
+
+  // รูปภาพเข้าหมวดการเงิน → อาจเป็นสลิป ควรบันทึกรายจ่ายแทน
+  if (hasImage && isFinancialCat) {
+    return 'ไฟล์รูปภาพในหมวดการเงินอาจเป็นสลิปหรือใบเสร็จ — ต้องการบันทึกรายจ่ายผ่านระบบรายจ่ายแทนไหม? (กด OK เพื่อไปหน้ารายจ่าย หรือ Cancel เพื่ออัปโหลด KB ต่อ)';
+  }
+  // เอกสารเข้าหมวดรูปภาพ/media
+  const isMediaCat = ['รูป','media','ภาพ','photo','image'].some(k => name.includes(k));
+  if (hasDoc && isMediaCat) {
+    return 'กำลังอัปโหลดเอกสารเข้าหมวดสื่อ/ภาพ ถูกต้องไหม?';
+  }
+  return null;
+}
+
+// ─── Optimistic upload ghost cards ───────────────────────────
+const _IMG_PREVIEW_EXTS = new Set(['png','jpg','jpeg','webp','bmp']);
+let _ghostObjectURLs = []; // track for cleanup
+
+function _injectGhostCards(files) {
+  // ลบ empty-state placeholder ก่อน (ถ้ามี)
+  fileList.querySelector('.col-span-full')?.remove();
+
+  const ghosts = [];
+  [...files].reverse().forEach(f => {
+    const ext = f.name.split('.').pop().toLowerCase();
+    const icon = FILE_LUCIDE[ext] || 'file';
+    const id = `ghost-${Date.now()}-${Math.random().toString(36).substr(2,6)}`;
+    const isImg = _IMG_PREVIEW_EXTS.has(ext);
+    const thumbUrl = isImg ? URL.createObjectURL(f) : null;
+    if (thumbUrl) _ghostObjectURLs.push(thumbUrl);
+
+    const el = document.createElement('div');
+    el.id = id;
+    el.className = 'group relative bg-white dark:bg-surface-900 border-2 border-brand-400/60 dark:border-brand-600/60 rounded-3xl p-5 flex flex-col gap-4 animate-in slide-in-from-top-2 duration-300 shadow-lg shadow-brand-500/10';
+    el.innerHTML = `
+      <div class="absolute top-4 right-4 flex items-center gap-1.5">
+        <span class="flex h-2 w-2 relative">
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-400 opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-2 w-2 bg-brand-500"></span>
+        </span>
+        <span class="ghost-status text-[9px] font-black text-brand-500 uppercase tracking-tighter">รอส่ง...</span>
+      </div>
+
+      <div class="flex items-start gap-4">
+        <div class="w-12 h-12 rounded-2xl overflow-hidden bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800 flex items-center justify-center flex-shrink-0">
+          ${thumbUrl
+            ? `<img src="${thumbUrl}" class="w-full h-full object-cover">`
+            : `<i data-lucide="${icon}" class="w-6 h-6 text-brand-400"></i>`}
+        </div>
+        <div class="min-w-0 flex-1 pt-0.5">
+          <h4 class="font-black text-sm text-surface-900 dark:text-white truncate tracking-tight mb-1" title="${f.name}">${f.name}</h4>
+          <span class="text-[9px] font-bold text-brand-400">${formatSize(f.size)}</span>
+        </div>
+      </div>
+
+      <div class="space-y-1">
+        <div class="w-full bg-surface-100 dark:bg-surface-800 rounded-full h-1 overflow-hidden">
+          <div class="ghost-bar h-full bg-gradient-to-r from-brand-400 to-brand-600 rounded-full transition-all duration-200" style="width:0%"></div>
+        </div>
+        <p class="ghost-pct text-[10px] text-center font-bold text-brand-400">0%</p>
+      </div>`;
+
+    fileList.insertBefore(el, fileList.firstChild);
+    ghosts.push({ id, el });
+  });
+
+  initIcons();
+  return ghosts;
+}
+
+function _updateGhostProgress(ghosts, pct, label = '') {
+  ghosts.forEach(({ el }) => {
+    const bar    = el.querySelector('.ghost-bar');
+    const pctEl  = el.querySelector('.ghost-pct');
+    const status = el.querySelector('.ghost-status');
+    if (bar) bar.style.width = pct + '%';
+    if (pctEl) pctEl.textContent = pct + '%';
+    if (status && label) status.textContent = label;
+  });
+}
+
+function _transitionGhostsToIndexing(ghosts) {
+  ghosts.forEach(({ el }) => {
+    el.style.borderColor = '';
+    el.classList.remove('border-brand-400/60', 'dark:border-brand-600/60', 'shadow-brand-500/10');
+    el.classList.add('border-amber-400/60', 'dark:border-amber-600/60');
+    const bar   = el.querySelector('.ghost-bar');
+    const pctEl = el.querySelector('.ghost-pct');
+    const status = el.querySelector('.ghost-status');
+    if (bar) { bar.style.width = '100%'; bar.className = 'ghost-bar h-full bg-gradient-to-r from-amber-400 to-orange-500 rounded-full'; }
+    if (pctEl) pctEl.textContent = 'กำลัง Index...';
+    if (status) { status.textContent = 'Indexing...'; status.className = 'ghost-status text-[9px] font-black text-amber-500 uppercase tracking-tighter'; }
+  });
+}
+
+function _removeGhosts(ghosts) {
+  ghosts.forEach(({ el }) => {
+    el.style.transition = 'opacity 0.3s, transform 0.3s';
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(-8px)';
+    setTimeout(() => el.remove(), 350);
+  });
+  // Revoke object URLs to free memory
+  _ghostObjectURLs.forEach(u => URL.revokeObjectURL(u));
+  _ghostObjectURLs = [];
+}
+
+// XHR upload ที่ได้ progress จริงเป็น bytes (ไม่ใช่ fake %)
+function _xhrUpload(form, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/upload');
+    xhr.upload.onprogress = e => {
+      if (e.lengthComputable) onProgress(Math.round(e.loaded / e.total * 85));
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try { resolve(JSON.parse(xhr.responseText)); }
+        catch { reject(new Error('Invalid JSON')); }
+      } else {
+        reject(new Error(`HTTP ${xhr.status}`));
+      }
+    };
+    xhr.onerror = () => reject(new Error('Network error'));
+    // ส่ง CSRF/session cookie อัตโนมัติ (same-origin XHR)
+    xhr.withCredentials = true;
+    xhr.send(form);
+  });
 }
 
 async function handleFiles(files) {
@@ -2563,43 +3055,77 @@ async function handleFiles(files) {
   const valid = files.filter(f => allowed.includes(f.name.split('.').pop().toLowerCase()));
   if (!valid.length) { toast('รูปแบบไฟล์ไม่ถูกต้อง (รองรับ PDF, Excel, Word, Text, รูปภาพ)', 'error'); return; }
 
+  const MAX_SIZE = 50 * 1024 * 1024;
+  const oversize = valid.filter(f => f.size > MAX_SIZE);
+  if (oversize.length > 0) {
+    toast(`ไฟล์ขนาดใหญ่เกิน 50MB: ${oversize.map(f => f.name).join(', ')}`, 'error');
+    return;
+  }
+
+  const activeCatBtn = document.querySelector('#kbCategorySidebar .kb-cat-item.active');
+  const activeCatName = activeCatBtn?.textContent?.trim() || '';
+  const typeWarning = _warnWrongDocType(valid, activeCatName);
+  if (typeWarning) {
+    const goExpense = window.confirm(typeWarning);
+    if (goExpense) { showView('dashboard'); return; }
+  }
+
+  // ── Instant feedback: inject ghost cards ทันที ─────────────
+  const ghosts = _injectGhostCards(valid);
   uploadProgress.classList.remove('hidden');
-  updateProgress(10, 'กำลังเตรียมการ...');
+  updateProgress(0, 'กำลังส่งไฟล์...');
 
   const form = new FormData();
   valid.forEach(f => form.append('files', f));
   if (deptSelect) form.append('department', deptSelect.value);
-
-  // Auto-assign to current active category if it's not 'all' or 'unassigned'
-  const activeCatBtn = document.querySelector('#kbCategorySidebar .kb-cat-item.active');
   if (activeCatBtn && activeCatBtn.dataset.id !== 'all' && activeCatBtn.dataset.id !== 'unassigned') {
     form.append('category_id', activeCatBtn.dataset.id);
   }
 
   try {
-    updateProgress(50, 'กำลังวิเคราะห์และจัดหมวดหมู่...');
-    const data = await apiFetch('/api/upload', { method: 'POST', body: form });
-    updateProgress(100, 'เสร็จสมบูรณ์');
+    // ── Real byte-level progress via XHR ──────────────────────
+    const data = await _xhrUpload(form, pct => {
+      updateProgress(pct, `กำลังส่ง... ${pct}%`);
+      _updateGhostProgress(ghosts, pct, pct < 85 ? 'กำลังส่ง...' : 'กำลังประมวลผล...');
+    });
+
+    updateProgress(95, 'กำลัง Index...');
+    _transitionGhostsToIndexing(ghosts);
 
     if (data.ok) {
-      const failures = data.results.filter(r => r.status === 'error');
-      if (failures.length > 0) {
-        toast(`ผิดพลาด ${failures.length} ไฟล์: ${failures[0].error}`, 'error');
-      } else {
-        toast('นำเข้าและประมวลผลข้อมูลสำเร็จ', 'success');
+      const duplicates = (data.results || []).filter(r => r.status === 'duplicate');
+      const failures   = (data.results || []).filter(r => r.status === 'error');
+      const processing = (data.results || []).filter(r => r.status === 'processing');
+
+      if (duplicates.length > 0) {
+        toast(`⚠️ ไฟล์ซ้ำ ${duplicates.length} ไฟล์: ${duplicates.map(r => r.file).join(', ')}`, 'warning');
+        // remove ghost ของไฟล์ซ้ำทันที
+        duplicates.forEach((_, i) => ghosts[i] && ghosts[i].el.remove());
       }
+      if (failures.length > 0) {
+        toast(`❌ ผิดพลาด ${failures.length} ไฟล์: ${failures[0].error || failures[0].file}`, 'error');
+      }
+      if (processing.length > 0) {
+        toast(`✅ นำเข้า ${processing.length} ไฟล์แล้ว กำลัง Index...`, 'success');
+      }
+
+      // โหลด file list จริงแล้วลบ ghosts (ป้องกัน duplicate card)
       await loadFiles();
+      _removeGhosts(ghosts);
       await loadStatus();
     } else {
+      _removeGhosts(ghosts);
       toast(data.error || 'อัปโหลดล้มเหลว', 'error');
     }
   } catch (e) {
+    _removeGhosts(ghosts);
     toast('ข้อผิดพลาดในการเชื่อมต่อ', 'error');
   } finally {
+    updateProgress(100, 'เสร็จสมบูรณ์');
     setTimeout(() => {
       uploadProgress.classList.add('hidden');
       updateProgress(0, '');
-    }, 2000);
+    }, 1500);
   }
 }
 
@@ -4488,17 +5014,13 @@ if (voiceBtn) {
   initTheme();
   initIcons();
   showWelcome();
-  loadHistory();
-  await loadStatus();
-  await loadFiles();
-  await loadPersonas();
   msgInput.focus();
 
   // ─── Global Background Poller ─────────────────────────────────
-  // Runs every 5 seconds regardless of current view.
-  // Keeps notification badges and chat unread counts synced
-  // across all users on the network (Pi multi-device support).
+  // Runs every 5 seconds — ข้ามถ้าไม่ได้ login อยู่ (ป้องกัน 401 spam)
   setInterval(async () => {
+    if (!state.user) return; // ไม่ login → ไม่ต้อง poll
+
     // 1. Refresh Notification badge count silently
     try {
       const nData = await apiFetch('/api/notifications');
@@ -4516,12 +5038,12 @@ if (voiceBtn) {
       }
     } catch (e) { /* silent */ }
 
-    // 2. Refresh chat unread counts + sidebar + Trigger Toasts
-    // We run this even if pollInterval exists because loadUnreadCounts handles the logic 
-    // of skipping the 'active' chat naturally. This ensures we get toasts for Room B while in Room A.
-    try {
-      await loadUnreadCounts();
-    } catch (e) { /* silent */ }
+    // 2. Refresh chat unread counts (เฉพาะเมื่อ initAppContent ยังไม่ได้ register interval ซ้ำ)
+    if (!state._chatPollRegistered) {
+      try {
+        await loadUnreadCounts();
+      } catch (e) { /* silent */ }
+    }
 
   }, 5000);
 })();
@@ -5197,9 +5719,22 @@ async function deleteComment(pid, cid) {
 }
 
 // ─── @Mention Autocomplete ───────────────────────────────────────────────
+function escapeHTML(str) {
+  if (!str) return '';
+  return str.replace(/[&<>'"]/g, 
+    tag => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      "'": '&#39;',
+      '"': '&quot;'
+    }[tag] || tag)
+  );
+}
+
 function highlightMentions(text) {
   if (!text) return '';
-  return text.replace(/@(\w+)/g, '<span class="mention-tag">@$1</span>');
+  return escapeHTML(text).replace(/@(\w+)/g, '<span class="mention-tag">@$1</span>');
 }
 
 async function fetchUserSuggestions(prefix, userFn = null) {
@@ -5893,7 +6428,7 @@ function renderTodoList() {
 
       <!-- Task text / inline edit -->
       <div class="flex-1 min-w-0" id="todo-text-wrap-${t.id}">
-        <span class="text-xs font-medium text-surface-700 dark:text-surface-300 leading-tight ${isDone ? 'line-through text-surface-400' : ''}">${t.title}</span>
+        <span class="text-xs font-medium text-surface-700 dark:text-surface-300 leading-tight break-all ${isDone ? 'line-through text-surface-400' : ''}">${t.title}</span>
       </div>
 
       <!-- Action buttons -->
@@ -6635,6 +7170,7 @@ saveScheduleBtn.onclick = async () => {
 
     if (res.ok) {
       toast(editingScheduleId ? 'แก้ไขนัดหมายสำเร็จ!' : 'เพิ่มนัดหมายสำเร็จ!', 'success');
+      if (res.warning) toast('⚠️ ' + res.warning, 'warning');
       scheduleModal.classList.add('hidden');
       scheduleTitleInput.value = '';
       scheduleDescInput.value = '';
@@ -7396,17 +7932,40 @@ async function checkAuth() {
     const data = await apiFetch('/api/me');
     if (data.ok && data.user) {
       state.user = data.user;
-      state.username = data.user; // Consolidate
+      state.username = data.user;
       state.isAdmin = data.profile?.role === 'admin' || data.user === 'Admin';
       state.canEditKB = !!data.profile?.can_edit_kb;
+      state.hasOrg = data.has_org === true;
+      state.orgId = data.org_id ?? null;
+      state.isOrgAdmin = data.org_role === 'admin';
       applyProfile(data.profile);
       loginOverlay.classList.add('hidden');
+
+      const noOrgEl = document.getElementById('noOrgOverlay');
+      if (noOrgEl) {
+        if (!state.hasOrg) {
+          noOrgEl.classList.remove('hidden');
+        } else {
+          noOrgEl.classList.add('hidden');
+        }
+      }
+
+      if (state.isOrgAdmin || state.isAdmin) {
+        loadOrgMembers();
+      }
+
       return true;
     }
   } catch (e) {
     console.log('User not authed');
   }
   loginOverlay.classList.remove('hidden');
+  // ถ้า redirect มาจาก session timeout → บอก user ว่าทำไมต้อง login ใหม่
+  const _spParam = new URLSearchParams(window.location.search);
+  if (_spParam.get('session_expired') === '1') {
+    history.replaceState({}, '', '/');
+    showLoginError('เซสชันหมดอายุค่ะ กรุณาเข้าสู่ระบบใหม่');
+  }
   return false;
 }
 
@@ -7435,8 +7994,15 @@ loginBtn.onclick = async () => {
     if (data.ok) {
       state.user = data.user;
       state.username = typeof data.user === 'object' ? data.user.username : data.user;
+
+      // ยังไม่มี org → ไปหน้า onboarding เพื่อสร้าง/เข้าร่วมองค์กร
+      if (!data.has_org) {
+        window.location.href = '/onboarding';
+        return;
+      }
+
       loginOverlay.classList.add('hidden');
-      toast(`ยินดีต้อนรับคุณ ${data.user}`, 'success');
+      toast(`ยินดีต้อนรับคุณ ${state.username}`, 'success');
 
       // Notify backend that user is online
       if (socket) {
@@ -7446,29 +8012,10 @@ loginBtn.onclick = async () => {
         });
       }
 
-      // Re-init with auth context
-      initAppContent();
-      // Start all polling — same as init() when auto-logged in
-      loadNotifications();
-      setInterval(loadNotifications, 5000); // Every 5s
-
-      loadChatList();
-      loadUnreadCounts();
-      setInterval(() => {
-        loadUnreadCounts();
-        if (state.groupChat.isOpen) {
-          loadChatMessages(false);
-        }
-      }, 1000); // ⚡ Faster real-time polling: 1s
-
-      setInterval(() => {
-        const activeView = document.querySelector('.view:not(.hidden)');
-        if (activeView && activeView.id === 'view-chat' && !state.sending) {
-          loadHistory(true);
-        }
-      }, 4000);
-
-      setInterval(pollTypingStatus, 2000);
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
+      return;
     } else {
       showLoginError(data.error || 'การเข้าสู่ระบบล้มเหลว');
     }
@@ -7500,6 +8047,13 @@ async function handleGoogleLogin(response) {
     if (data.ok) {
       state.user = data.user;
       state.username = typeof data.user === 'object' ? data.user.username : data.user;
+
+      // ยังไม่มี org → ไปหน้า onboarding
+      if (!data.org_role) {
+        window.location.href = '/onboarding';
+        return;
+      }
+
       loginOverlay.classList.add('hidden');
       toast(`ยินดีต้อนรับคุณ ${state.username}`, 'success');
 
@@ -7510,27 +8064,10 @@ async function handleGoogleLogin(response) {
         });
       }
 
-      initAppContent();
-      loadNotifications();
-      setInterval(loadNotifications, 5000);
-
-      loadChatList();
-      loadUnreadCounts();
-      setInterval(() => {
-        loadUnreadCounts();
-        if (state.groupChat.isOpen) {
-          loadChatMessages(false);
-        }
-      }, 1000);
-
-      setInterval(() => {
-        const activeView = document.querySelector('.view:not(.hidden)');
-        if (activeView && activeView.id === 'view-chat' && !state.sending) {
-          loadHistory(true);
-        }
-      }, 4000);
-
-      setInterval(pollTypingStatus, 2000);
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
+      return;
     } else {
       showLoginError(data.error || 'การเข้าสู่ระบบล้มเหลว');
       loginBtn.disabled = false;
@@ -7579,16 +8116,25 @@ function showLoginError(msg) {
   loginError.classList.remove('hidden');
 }
 
-logoutBtn.onclick = async () => {
+async function logout() {
   try {
     const res = await fetch('/api/logout', { method: 'POST' });
     if (res.ok) {
       window.location.reload();
     }
   } catch (e) {
-    toast('ออกจากระบบไม่สำเร็จ', 'error');
+    if (typeof toast === 'function') {
+      toast('ออกจากระบบไม่สำเร็จ', 'error');
+    } else {
+      alert('ออกจากระบบไม่สำเร็จ');
+    }
   }
-};
+}
+window.logout = logout;
+
+if (logoutBtn) {
+  logoutBtn.onclick = logout;
+}
 
 // ─── Unified & Private Chat Logic ────────────────
 async function loadChatList() {
@@ -7764,7 +8310,7 @@ function updateGlobalChatBadge() {
 }
 
 function renderChatSidebar() {
-  const unifiedListId = 'unifiedChatList';
+  const unifiedListId = 'chatRoomList';
   const listEl = $(unifiedListId);
   if (!listEl) return;
 
@@ -8765,19 +9311,39 @@ if (searchDmUser) {
 // ─── Initialization ────────────────────────
 async function initAppContent() {
   console.log("🎮 Loading app content...");
+  // 1. Hide the login overlay
+  const overlay = $('loginOverlay');
+  if (overlay) {
+    overlay.classList.add('hidden');
+    overlay.classList.remove('flex', 'items-center', 'justify-center');
+  }
+
   try {
-    await loadStatus();
+    // 2. Sequential load of dashboard services
+    await loadStatus(); // Set state.isAdmin and toggle features
+    await loadNotifications();
+    await loadChatList();
+    await loadUnreadCounts();
     await loadHistory();
     await loadFiles();
     await loadSchedules();
     await loadPersonas();
-    // Load dashboard data (including weather) on init
     await loadDashboard();
-    console.log("✅ App Content Loaded.");
     
-    // Switch to default home dashboard view instead of showing a blank screen
-    if (typeof switchView === 'function') {
-      switchView('home');
+    console.log("✅ App Content Loaded.");
+
+    // 3. Final UI cleanup
+    initIcons();
+
+    // Switch to a view only if the user has NOT navigated away while loading.
+    if (typeof switchView === 'function' && !state.currentView) {
+      const _sp = new URLSearchParams(window.location.search);
+      const targetView = _sp.get('view');
+      if (targetView && document.getElementById('view-' + targetView)) {
+        switchView(targetView);
+      } else {
+        switchView('home');
+      }
     }
   } catch (e) {
     console.error("Content Load Failure:", e);
@@ -8884,7 +9450,9 @@ if (summonBotBtn) {
 }
 
 if (attachFileBtn) {
-  attachFileBtn.onclick = () => chatFileInput.click();
+  attachFileBtn.onclick = () => {
+    if (chatFileInput) chatFileInput.click();
+  };
 }
 
 if ($('fullscreenGroupChat')) {
@@ -9283,33 +9851,37 @@ async function init() {
     if (postInput) initMentionInput('postInput');  // Social feed: all users
     if (groupChatInput) initMentionInput('groupChatInput', fetchChatContextUsers);  // Chat: room members only
 
-    // Notification Polling (Increased frequency to 5s for real-time feel)
-    loadNotifications();
-    setInterval(loadNotifications, 5000);
+    // ป้องกัน interval ซ้ำซ้อน — register เพียงครั้งเดียว
+    if (!state._pollRegistered) {
+      state._pollRegistered = true;
+      state._chatPollRegistered = true;
 
-    // Unified Chat Initial Load & Polling (Increased frequency to 3s)
-    loadChatList();
-    loadUnreadCounts();
-    setInterval(() => {
+      // Notification Polling
+      loadNotifications();
+      setInterval(loadNotifications, 5000);
+
+      // Unified Chat Load & Polling
+      loadChatList();
       loadUnreadCounts();
-      if (state.groupChat.isOpen) {
-        // Poll messages only if open. 
-        // Use PEEK if modal is hidden (e.g. mobile bottom nav switched away)
-        const isModalHidden = groupChatModal && groupChatModal.classList.contains('hidden');
-        loadChatMessages(false, isModalHidden);
-      }
-    }, 3000);
+      setInterval(() => {
+        loadUnreadCounts();
+        if (state.groupChat.isOpen) {
+          const isModalHidden = groupChatModal && groupChatModal.classList.contains('hidden');
+          loadChatMessages(false, isModalHidden);
+        }
+      }, 3000);
 
-    // Main Chat Polling (Background update every 4s)
-    setInterval(() => {
-      const activeView = document.querySelector('.view:not(.hidden)');
-      if (activeView && activeView.id === 'view-chat' && !state.sending) {
-        loadHistory(true);
-      }
-    }, 4000);
+      // Main Chat Polling
+      setInterval(() => {
+        const activeView = document.querySelector('.view:not(.hidden)');
+        if (activeView && activeView.id === 'view-chat' && !state.sending) {
+          loadHistory(true);
+        }
+      }, 4000);
 
-    // Typing Status Polling (Every 2s)
-    setInterval(pollTypingStatus, 2000);
+      // Typing Status Polling
+      setInterval(pollTypingStatus, 2000);
+    }
 
     // Listen for main chat typing
     if (msgInput) {
@@ -9662,28 +10234,43 @@ function adminChatSetTab(tab) {
 async function adminChatLoadAi() {
   const el = document.getElementById('adminChatContent');
   el.innerHTML = '<div class="text-xs text-surface-400 animate-pulse">กำลังโหลด...</div>';
-  const data = await (await fetch('/api/admin/chat/ai')).json();
-  adminChatState.messages = data.messages || [];
-  adminRenderMessages(adminChatState.messages, 'ai');
+  try {
+    const res = await fetch('/api/admin/chat/ai');
+    if (!res.ok) throw new Error(res.statusText);
+    const data = await res.json();
+    adminChatState.messages = data.messages || [];
+    adminRenderMessages(adminChatState.messages, 'ai');
+  } catch (e) {
+    el.innerHTML = '<div class="text-xs text-red-400">โหลดข้อมูลไม่สำเร็จ</div>';
+  }
 }
 
 async function adminChatLoadRooms() {
   const el = document.getElementById('adminChatContent');
   el.innerHTML = '<div class="text-xs text-surface-400 animate-pulse">กำลังโหลด...</div>';
-  const data = await (await fetch('/api/admin/chat/overview')).json();
+  try {
+  const res = await fetch('/api/admin/chat/overview');
+  if (!res.ok) throw new Error(res.statusText);
+  const data = await res.json();
   const rooms = data.rooms || [];
   el.innerHTML = `
     <div class="flex flex-wrap gap-2 mb-2">
-      ${rooms.map(r => `<button onclick="adminChatLoadRoom(${r.id},'${r.name.replace(/'/g, "\\\'")}')" class="px-3 py-1.5 text-xs font-bold bg-surface-100 dark:bg-surface-800 hover:bg-brand-50 dark:hover:bg-brand-900/30 hover:text-brand-600 rounded-lg border border-surface-200 dark:border-surface-700 transition-colors">${r.name}</button>`).join('')}
+      ${rooms.map(r => `<button onclick="adminChatLoadRoom(${r.id}, ${JSON.stringify(r.name)})" class="px-3 py-1.5 text-xs font-bold bg-surface-100 dark:bg-surface-800 hover:bg-brand-50 dark:hover:bg-brand-900/30 hover:text-brand-600 rounded-lg border border-surface-200 dark:border-surface-700 transition-colors">${escHtml(r.name)}</button>`).join('')}
     </div>
     <div id="adminRoomMsgs" class="text-xs text-surface-400 italic">เลือกห้องแชทด้านบน</div>
   `;
+  } catch (e) {
+    el.innerHTML = '<div class="text-xs text-red-400">โหลดข้อมูลไม่สำเร็จ</div>';
+  }
 }
 
 async function adminChatLoadRoom(roomId, roomName) {
   adminChatState.selectedRoom = { id: roomId, name: roomName };
   adminChatState.tab = 'room';
-  const data = await (await fetch(`/api/admin/chat/room/${roomId}`)).json();
+  try {
+  const res = await fetch(`/api/admin/chat/room/${roomId}`);
+  if (!res.ok) throw new Error(res.statusText);
+  const data = await res.json();
   adminChatState.messages = data.messages || [];
   const el = document.getElementById('adminRoomMsgs');
   if (el) {
@@ -9691,12 +10278,19 @@ async function adminChatLoadRoom(roomId, roomName) {
     renderAdminMsgList(el, adminChatState.messages, 'room');
   }
   updateAdminMsgCount();
+  } catch (e) {
+    const el2 = document.getElementById('adminRoomMsgs');
+    if (el2) el2.innerHTML = '<div class="text-xs text-red-400">โหลดข้อมูลไม่สำเร็จ</div>';
+  }
 }
 
 async function adminChatLoadDmPairs() {
   const el = document.getElementById('adminChatContent');
   el.innerHTML = '<div class="text-xs text-surface-400 animate-pulse">กำลังโหลด...</div>';
-  const data = await (await fetch('/api/admin/chat/overview')).json();
+  try {
+  const res = await fetch('/api/admin/chat/overview');
+  if (!res.ok) throw new Error(res.statusText);
+  const data = await res.json();
   const pairs = data.dm_pairs || [];
   if (!pairs.length) {
     el.innerHTML = '<div class="text-xs text-surface-400 italic text-center py-8">ไม่มีข้อความ DM</div>';
@@ -9704,18 +10298,24 @@ async function adminChatLoadDmPairs() {
   }
   el.innerHTML = `
     <div class="flex flex-col gap-1 mb-2">
-      ${pairs.map(p => `<button onclick="adminChatLoadDm('${p.user1}','${p.user2}')" class="flex items-center justify-between px-3 py-2 text-xs font-bold bg-surface-100 dark:bg-surface-800 hover:bg-brand-50 dark:hover:bg-brand-900/30 hover:text-brand-600 rounded-lg border border-surface-200 dark:border-surface-700 transition-colors text-left">
-        <span>${p.user1} ↔ ${p.user2}</span>
+      ${pairs.map(p => `<button onclick="adminChatLoadDm(${JSON.stringify(p.user1)},${JSON.stringify(p.user2)})" class="flex items-center justify-between px-3 py-2 text-xs font-bold bg-surface-100 dark:bg-surface-800 hover:bg-brand-50 dark:hover:bg-brand-900/30 hover:text-brand-600 rounded-lg border border-surface-200 dark:border-surface-700 transition-colors text-left">
+        <span>${escHtml(p.user1)} ↔ ${escHtml(p.user2)}</span>
         <span class="text-surface-400">${p.count} ข้อความ</span>
       </button>`).join('')}
     </div>
     <div id="adminDmMsgs" class="text-xs text-surface-400 italic">เลือกคู่แชทด้านบน</div>
   `;
+  } catch (e) {
+    el.innerHTML = '<div class="text-xs text-red-400">โหลดข้อมูลไม่สำเร็จ</div>';
+  }
 }
 
 async function adminChatLoadDm(u1, u2) {
   adminChatState.selectedDm = { user1: u1, user2: u2 };
-  const data = await (await fetch(`/api/admin/chat/dm?user1=${u1}&user2=${u2}`)).json();
+  try {
+  const res = await fetch(`/api/admin/chat/dm?user1=${encodeURIComponent(u1)}&user2=${encodeURIComponent(u2)}`);
+  if (!res.ok) throw new Error(res.statusText);
+  const data = await res.json();
   adminChatState.messages = data.messages || [];
   const el = document.getElementById('adminDmMsgs');
   if (el) {
@@ -9723,6 +10323,10 @@ async function adminChatLoadDm(u1, u2) {
     renderAdminMsgList(el, adminChatState.messages, 'dm');
   }
   updateAdminMsgCount();
+  } catch (e) {
+    const el2 = document.getElementById('adminDmMsgs');
+    if (el2) el2.innerHTML = '<div class="text-xs text-red-400">โหลดข้อมูลไม่สำเร็จ</div>';
+  }
 }
 
 function adminRenderMessages(msgs, type) {
@@ -9887,6 +10491,769 @@ if (typeof checkAuth === 'function') {
   };
 }
 /* ══════════════════════════════════════════
+   Org Member Management
+   ══════════════════════════════════════════ */
+let _orgMembersCache = [];
+
+function switchOrgTab(tab) {
+  ['members', 'google', 'business'].forEach(t => {
+    const btn = $(`orgTab-${t}`);
+    const content = $(`orgTabContent-${t}`);
+    const active = t === tab;
+    if (btn) btn.className = `org-tab px-4 py-2 rounded-xl text-xs font-black transition-all ${active ? 'bg-white dark:bg-surface-700 shadow-sm text-surface-900 dark:text-white' : 'text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-200'}`;
+    if (content) content.classList.toggle('hidden', !active);
+  });
+  // Reset scroll so the new tab content is visible from the top
+  const scrollEl = document.querySelector('#view-org .overflow-y-auto');
+  if (scrollEl) scrollEl.scrollTop = 0;
+  if (tab === 'google') loadOrgGoogleStatus();
+  if (tab === 'business') loadOrgBusinessProfile();
+}
+
+async function loadOrgBusinessProfile() {
+  const form = $('orgBusinessForm');
+  if (!form) return;
+  try {
+    const data = await apiFetch('/api/org/profile');
+    if (data.ok && data.profile) {
+      const p = data.profile;
+      
+      // Select fields
+      if ($('biz_type')) $('biz_type').value = p.business_type || 'บริษัทจำกัด';
+      if ($('biz_province')) $('biz_province').value = p.province || '';
+      
+      // Text inputs
+      if ($('biz_name_th')) $('biz_name_th').value = p.business_name_th || '';
+      if ($('biz_name_en')) $('biz_name_en').value = p.business_name_en || '';
+      if ($('biz_tax_id')) $('biz_tax_id').value = p.tax_id || '';
+      if ($('biz_addr1')) $('biz_addr1').value = p.address_line1 || '';
+      if ($('biz_addr2')) $('biz_addr2').value = p.address_line2 || '';
+      if ($('biz_district')) $('biz_district').value = p.district || '';
+      if ($('biz_zipcode')) $('biz_zipcode').value = p.zipcode || '';
+      if ($('biz_phone')) $('biz_phone').value = p.phone || '';
+      
+      // Logo and Signature fields
+      if (p.logo_url) {
+        if ($('biz_logo_url')) $('biz_logo_url').value = p.logo_url;
+        if ($('org_logo_preview')) {
+          $('org_logo_preview').src = p.logo_url;
+          $('org_logo_preview').classList.remove('hidden');
+        }
+        if ($('org_logo_placeholder')) $('org_logo_placeholder').classList.add('hidden');
+        if ($('btn_delete_logo')) $('btn_delete_logo').classList.remove('hidden');
+      } else {
+        resetOrgLogoUI();
+      }
+      
+      if (p.signature_url) {
+        if ($('biz_signature_url')) $('biz_signature_url').value = p.signature_url;
+        if ($('org_sig_preview')) {
+          $('org_sig_preview').src = p.signature_url;
+          $('org_sig_preview').classList.remove('hidden');
+        }
+        if ($('org_sig_placeholder')) $('org_sig_placeholder').classList.add('hidden');
+        if ($('btn_delete_sig')) $('btn_delete_sig').classList.remove('hidden');
+      } else {
+        resetOrgSigUI();
+      }
+      
+      // Radio inputs
+      const vatVal = p.vat_status || 'จด VAT แล้ว';
+      const vatRadios = document.getElementsByName('vat_status');
+      for (let r of vatRadios) {
+        r.checked = (r.value === vatVal);
+      }
+      
+      const branchVal = p.branch_type || 'ไม่มี';
+      const branchRadios = document.getElementsByName('branch_type');
+      for (let r of branchRadios) {
+        r.checked = (r.value === branchVal);
+      }
+    }
+  } catch (e) {
+    console.error('Error loading business profile:', e);
+    toast('ไม่สามารถโหลดข้อมูลธุรกิจได้', 'error');
+  }
+}
+
+async function saveOrgBusinessProfile() {
+  const business_type = $('biz_type')?.value;
+  const business_name_th = $('biz_name_th')?.value;
+  const phone = $('biz_phone')?.value;
+  
+  if (!business_type || !business_name_th || !phone) {
+    toast('กรุณากรอกข้อมูลในช่องที่จำเป็น (*) ให้ครบถ้วน', 'error');
+    return;
+  }
+  
+  let vat_status = 'จด VAT แล้ว';
+  const vatRadios = document.getElementsByName('vat_status');
+  for (let r of vatRadios) {
+    if (r.checked) vat_status = r.value;
+  }
+  
+  let branch_type = 'ไม่มี';
+  const branchRadios = document.getElementsByName('branch_type');
+  for (let r of branchRadios) {
+    if (r.checked) branch_type = r.value;
+  }
+  
+  const payload = {
+    business_type,
+    vat_status,
+    branch_type,
+    business_name_th,
+    business_name_en: $('biz_name_en')?.value || '',
+    tax_id: $('biz_tax_id')?.value || '',
+    address_line1: $('biz_addr1')?.value || '',
+    address_line2: $('biz_addr2')?.value || '',
+    district: $('biz_district')?.value || '',
+    province: $('biz_province')?.value || '',
+    zipcode: $('biz_zipcode')?.value || '',
+    phone,
+    logo_url: $('biz_logo_url')?.value || '',
+    signature_url: $('biz_signature_url')?.value || ''
+  };
+  
+  try {
+    const data = await apiFetch('/api/org/profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (data.ok) {
+      toast('บันทึกข้อมูลธุรกิจเรียบร้อยแล้วค่ะ', 'success');
+      loadOrgBusinessProfile();
+    } else {
+      toast(data.error || 'ไม่สามารถบันทึกข้อมูลได้', 'error');
+    }
+  } catch (e) {
+    console.error('Error saving business profile:', e);
+    toast('เกิดข้อผิดพลาดในการบันทึกข้อมูล', 'error');
+  }
+}
+
+async function loadOrgMembers() {
+  const container = $('orgMemberList');
+  if (!container) return;
+  container.innerHTML = '<div class="text-center py-10 text-surface-400 text-sm">กำลังโหลดข้อมูลสมาชิก...</div>';
+  try {
+    const data = await apiFetch('/api/org/me');
+    if (data.ok) {
+      _orgMembersCache = data.members || [];
+      // Update stats
+      const total = _orgMembersCache.length;
+      const admins = _orgMembersCache.filter(m => m.role === 'admin').length;
+      if ($('orgStatTotal')) $('orgStatTotal').textContent = total;
+      if ($('orgStatAdmins')) $('orgStatAdmins').textContent = admins;
+      if ($('orgPanelName') && data.org?.name) $('orgPanelName').textContent = data.org.name;
+      renderOrgMembers(_orgMembersCache, state.isOrgAdmin || state.isAdmin);
+    } else {
+      container.innerHTML = '<div class="text-center py-10 text-surface-400 text-sm">ไม่พบข้อมูลองค์กร</div>';
+    }
+  } catch (e) {
+    container.innerHTML = `<div class="text-center py-10 text-red-400 text-sm">โหลดข้อมูลล้มเหลว</div>`;
+  }
+}
+
+function filterOrgMembers(query) {
+  const q = query.toLowerCase().trim();
+  const filtered = q ? _orgMembersCache.filter(m =>
+    m.username.toLowerCase().includes(q) || (m.display_name || '').toLowerCase().includes(q)
+  ) : _orgMembersCache;
+  renderOrgMembers(filtered, state.isOrgAdmin || state.isAdmin);
+}
+
+async function loadOrgGoogleStatus() {
+  const notConnected = $('orgGoogleNotConnected');
+  const connected = $('orgGoogleConnected');
+  if (!notConnected || !connected) return;
+  try {
+    const data = await apiFetch('/api/auth/google/status');
+    if (data.connected) {
+      notConnected.classList.add('hidden');
+      connected.classList.remove('hidden');
+      const isOrgLevel = data.effective_source === 'org';
+      const badge = isOrgLevel
+        ? `<span class="ml-2 text-[9px] font-black uppercase bg-brand-100 dark:bg-brand-900/30 text-brand-600 px-1.5 py-0.5 rounded-full">ระดับองค์กร</span>`
+        : `<span class="ml-2 text-[9px] font-black uppercase bg-surface-100 dark:bg-surface-700 text-surface-500 px-1.5 py-0.5 rounded-full">ส่วนตัว</span>`;
+      if ($('orgGoogleConnectedEmail')) $('orgGoogleConnectedEmail').innerHTML = (data.email || '—') + badge;
+      const connByEl = $('orgGoogleConnectedBy');
+      const connectedBy = data.org?.connected_by;
+      if (connByEl) {
+        if (isOrgLevel && connectedBy) {
+          connByEl.textContent = `เชื่อมต่อโดย: ${connectedBy}`;
+          connByEl.classList.remove('hidden');
+        } else {
+          connByEl.classList.add('hidden');
+        }
+      }
+      const disconnectBtn = $('orgGoogleDisconnectBtn');
+      if (disconnectBtn) {
+        disconnectBtn.classList.toggle('hidden', !(state.isOrgAdmin || state.isAdmin));
+      }
+    } else {
+      notConnected.classList.remove('hidden');
+      connected.classList.add('hidden');
+    }
+  } catch (e) {
+    notConnected.classList.remove('hidden');
+    connected.classList.add('hidden');
+  }
+}
+
+async function disconnectOrgGoogle() {
+  if (!confirm('ต้องการยกเลิกการเชื่อมต่อ Google Drive ขององค์กรใช่ไหม?')) return;
+  try {
+    const data = await apiFetch('/api/auth/google/disconnect', { method: 'POST' });
+    if (data.ok) {
+      toast('ยกเลิกการเชื่อมต่อ Google เรียบร้อยแล้ว', 'success');
+      loadOrgGoogleStatus();
+      loadGoogleDriveStatus();
+    } else {
+      toast(data.error || 'เกิดข้อผิดพลาด', 'error');
+    }
+  } catch (e) {
+    toast('เกิดข้อผิดพลาด', 'error');
+  }
+}
+
+function renderOrgMembers(members, canManage) {
+  const container = $('orgMemberList');
+  if (!container) return;
+  if (!members.length) {
+    container.innerHTML = '<div class="text-center py-10 text-surface-400 text-sm">ยังไม่มีสมาชิกในองค์กร</div>';
+    return;
+  }
+  container.innerHTML = members.map(m => {
+    const isMe = m.username === state.username;
+    const isActive = m.is_active !== false;
+    const avatarHtml = m.avatar_url
+      ? `<img src="${m.avatar_url}" class="w-10 h-10 rounded-xl object-cover flex-shrink-0" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+        + `<div class="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-400 to-indigo-500 items-center justify-center text-white text-sm font-black flex-shrink-0" style="display:none">${(m.display_name || m.username).charAt(0).toUpperCase()}</div>`
+      : `<div class="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-400 to-indigo-500 flex items-center justify-center text-white text-sm font-black flex-shrink-0">${(m.display_name || m.username).charAt(0).toUpperCase()}</div>`;
+    const roleBadge = m.role === 'admin'
+      ? `<span class="admin-role-badge admin">Admin</span>`
+      : `<span class="admin-role-badge user">Member</span>`;
+    const statusDot = `<span class="admin-status-dot" style="background:${isActive ? '#22c55e' : '#ef4444'}" title="${isActive ? 'ใช้งานอยู่' : 'ปิดใช้งาน'}"></span>`;
+    const financialBadge = m.can_view_financial
+      ? `<span class="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full">รายจ่าย</span>`
+      : '';
+    const googleBadge = m.google_connected
+      ? `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold bg-white dark:bg-surface-700 border border-surface-200 dark:border-surface-600 text-surface-600 dark:text-surface-300 rounded-full" title="เชื่อมต่อ Google: ${m.google_email || ''}"><svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>Google</span>`
+      : '';
+    const meBadge = isMe ? `<span class="text-[9px] font-bold text-surface-400 bg-surface-100 dark:bg-surface-700 px-1.5 py-0.5 rounded-full">คุณ</span>` : '';
+    const subInfo = [
+      `@${m.username}`,
+      m.google_email ? m.google_email : (m.email ? m.email : null),
+      m.department ? m.department : null,
+      m.position ? m.position : null,
+    ].filter(Boolean).join(' · ');
+    const actions = canManage ? `
+      <div class="flex items-center gap-1.5 ml-auto flex-shrink-0">
+        <button onclick="openOrgMemberEditModal('${m.username}')"
+          class="px-3 py-1.5 text-[10px] font-bold rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors">
+          <i data-lucide="pencil" class="w-3 h-3 inline mr-1"></i>แก้ไข
+        </button>
+        ${!isMe ? `<button onclick="removeOrgMember('${m.username}')"
+          class="p-1.5 text-surface-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors" title="ลบออกจากองค์กร">
+          <i data-lucide="user-minus" class="w-4 h-4"></i>
+        </button>` : ''}
+      </div>` : '';
+    return `
+      <div class="admin-user-row flex items-center gap-3 p-3.5 bg-white dark:bg-surface-800 border border-surface-100 dark:border-surface-700 rounded-2xl shadow-sm">
+        <div class="relative flex-shrink-0">
+          ${avatarHtml}
+          ${statusDot}
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 flex-wrap mb-0.5">
+            <span class="text-sm font-bold text-surface-900 dark:text-white truncate max-w-[160px]">${m.display_name || m.username}</span>
+            ${meBadge}
+            ${roleBadge}
+            ${financialBadge}
+            ${googleBadge}
+          </div>
+          <div class="text-[10px] text-surface-400 font-mono truncate">${subInfo}</div>
+        </div>
+        ${actions}
+      </div>`;
+  }).join('');
+  initIcons();
+}
+
+let _orgEditingUsername = null;
+
+function openOrgMemberEditModal(username) {
+  const m = _orgMembersCache.find(x => x.username === username);
+  if (!m) return;
+  _orgEditingUsername = username;
+  const avatarEl = $('orgEditMemberAvatar');
+  if (avatarEl) {
+    const initial = (m.display_name || username).charAt(0).toUpperCase();
+    if (m.avatar_url) {
+      const img = document.createElement('img');
+      img.src = m.avatar_url;
+      img.className = 'w-full h-full object-cover rounded-xl';
+      img.onerror = () => {
+        avatarEl.textContent = '';
+        const span = document.createElement('span');
+        span.className = 'text-lg font-black';
+        span.textContent = initial;
+        avatarEl.appendChild(span);
+      };
+      avatarEl.textContent = '';
+      avatarEl.appendChild(img);
+    } else {
+      avatarEl.textContent = '';
+      const span = document.createElement('span');
+      span.className = 'text-lg font-black';
+      span.textContent = initial;
+      avatarEl.appendChild(span);
+    }
+  }
+  if ($('orgEditMemberName')) $('orgEditMemberName').textContent = m.display_name || username;
+  if ($('orgEditMemberUsername')) $('orgEditMemberUsername').textContent = `@${username}${m.department ? ' · ' + m.department : ''}${m.position ? ' · ' + m.position : ''}`;
+  if ($('orgEditDisplayName')) $('orgEditDisplayName').value = m.display_name || '';
+  if ($('orgEditMemberRole')) $('orgEditMemberRole').value = m.role || 'member';
+  if ($('orgEditUserActive')) $('orgEditUserActive').checked = m.is_active !== false;
+  if ($('orgEditUserCanViewKB')) $('orgEditUserCanViewKB').checked = !!m.can_view_kb;
+  if ($('orgEditUserCanEditKB')) $('orgEditUserCanEditKB').checked = !!m.can_edit_kb;
+  if ($('orgEditUserCanDeleteKB')) $('orgEditUserCanDeleteKB').checked = !!m.can_delete_kb;
+  if ($('orgEditMemberFinancial')) $('orgEditMemberFinancial').checked = !!m.can_view_financial;
+  if ($('orgEditUserNotes')) $('orgEditUserNotes').value = m.notes || '';
+  if ($('orgEditUserNewPassword')) $('orgEditUserNewPassword').value = '';
+
+  const modal = $('orgMemberEditModal');
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closeOrgMemberEditModal() {
+  _orgEditingUsername = null;
+  const modal = $('orgMemberEditModal');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function submitOrgMemberEdit() {
+  if (!_orgEditingUsername) return;
+  const newRole = $('orgEditMemberRole')?.value;
+  const displayName = $('orgEditDisplayName')?.value;
+  const isActive = $('orgEditUserActive')?.checked ?? true;
+  const canViewKB = $('orgEditUserCanViewKB')?.checked ?? false;
+  const canEditKB = $('orgEditUserCanEditKB')?.checked ?? false;
+  const canDeleteKB = $('orgEditUserCanDeleteKB')?.checked ?? false;
+  const canViewFinancial = $('orgEditMemberFinancial')?.checked ?? false;
+  const notes = $('orgEditUserNotes')?.value || '';
+
+  const m = _orgMembersCache.find(x => x.username === _orgEditingUsername);
+  try {
+    // Update org role if changed
+    if (m && newRole !== m.role) {
+      const r = await apiFetch(`/api/org/members/${_orgEditingUsername}/role`, {
+        method: 'POST', body: JSON.stringify({ role: newRole })
+      });
+      if (!r.ok) { toast(r.error || 'เปลี่ยน role ไม่สำเร็จ', 'error'); return; }
+    }
+    // Update permissions and other fields
+    const r2 = await apiFetch(`/api/org/members/${_orgEditingUsername}/permissions`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        display_name: displayName,
+        is_active: isActive,
+        can_view_kb: canViewKB,
+        can_edit_kb: canEditKB,
+        can_delete_kb: canDeleteKB,
+        can_view_financial: canViewFinancial,
+        notes: notes
+      })
+    });
+    if (!r2.ok) { toast(r2.error || 'บันทึกข้อมูลไม่สำเร็จ', 'error'); return; }
+    toast('บันทึกข้อมูลเรียบร้อยแล้ว', 'success');
+    closeOrgMemberEditModal();
+    loadOrgMembers();
+  } catch (e) {
+    toast('เกิดข้อผิดพลาด', 'error');
+  }
+}
+
+async function submitOrgMemberResetPassword() {
+  if (!_orgEditingUsername) return;
+  const newPassword = $('orgEditUserNewPassword')?.value;
+  if (!newPassword) {
+    toast('กรุณากรอกรหัสผ่านใหม่', 'warning');
+    return;
+  }
+  if (!confirm(`ต้องการรีเซ็ตรหัสผ่านของผู้ใช้ "${_orgEditingUsername}" ใช่หรือไม่?`)) return;
+  try {
+    const data = await apiFetch(`/api/org/members/${_orgEditingUsername}/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify({ password: newPassword })
+    });
+    if (data.ok) {
+      toast('รีเซ็ตรหัสผ่านเรียบร้อยแล้ว', 'success');
+      if ($('orgEditUserNewPassword')) $('orgEditUserNewPassword').value = '';
+    } else {
+      toast(data.error || 'รีเซ็ตรหัสผ่านไม่สำเร็จ', 'error');
+    }
+  } catch (e) {
+    toast('เกิดข้อผิดพลาด', 'error');
+  }
+}
+
+async function toggleMemberRole(username, currentRole) {
+  const newRole = currentRole === 'admin' ? 'member' : 'admin';
+  const label = newRole === 'admin' ? 'เลื่อนเป็น Admin' : 'ลดเป็น Member';
+  if (!confirm(`${label} ผู้ใช้ "${username}"?`)) return;
+  try {
+    const data = await apiFetch(`/api/org/members/${username}/role`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: newRole })
+    });
+    if (data.ok) {
+      toast(`อัปเดตตำแหน่ง ${username} เป็น ${newRole} แล้ว`, 'success');
+      loadOrgMembers();
+    } else {
+      toast(data.error || 'เปลี่ยนตำแหน่งไม่สำเร็จ', 'error');
+    }
+  } catch (e) {
+    toast('เกิดข้อผิดพลาด', 'error');
+  }
+}
+
+async function removeOrgMember(username) {
+  if (!confirm(`ลบ "${username}" ออกจากองค์กร?`)) return;
+  try {
+    const data = await apiFetch(`/api/org/members/${username}`, { method: 'DELETE' });
+    if (data.ok) {
+      toast(`ลบ ${username} ออกจากองค์กรแล้ว`, 'success');
+      loadOrgMembers();
+    } else {
+      toast(data.error || 'ลบสมาชิกไม่สำเร็จ', 'error');
+    }
+  } catch (e) {
+    toast('เกิดข้อผิดพลาด', 'error');
+  }
+}
+
+// ─── My Settings (view-settings) ──────────────────────────────────────────
+let _mySettingsCache = null;
+
+async function loadMySettings(force = false) {
+  if (_mySettingsCache && !force) { _renderMySettings(_mySettingsCache); return; }
+  const loading = $('mySettingsLoading');
+  if (loading) loading.classList.remove('hidden');
+  try {
+    const data = await apiFetch('/api/user/my-settings');
+    if (data.ok) {
+      _mySettingsCache = data;
+      _renderMySettings(data);
+    }
+  } catch (e) {}
+  finally { if (loading) loading.classList.add('hidden'); }
+}
+
+function _renderMySettings(d) {
+  // Avatar
+  const avatarEl = $('mySettingsAvatar');
+  if (avatarEl) {
+    if (d.avatar_url) {
+      avatarEl.innerHTML = `<img src="${d.avatar_url}" class="w-full h-full object-cover" onerror="this.parentElement.innerHTML='<span class=\\'text-xl font-black\\'>${(d.display_name||d.username).charAt(0).toUpperCase()}</span>'">`;
+    } else {
+      avatarEl.innerHTML = `<span class="text-xl font-black">${(d.display_name || d.username || '?').charAt(0).toUpperCase()}</span>`;
+    }
+  }
+  if ($('mySettingsUsernameLabel')) $('mySettingsUsernameLabel').textContent = d.display_name || d.username;
+  if ($('mySettingsHandleLabel')) $('mySettingsHandleLabel').textContent = `@${d.username}`;
+  if ($('myDisplayNameInput')) $('myDisplayNameInput').value = d.display_name || '';
+  if ($('myNotesInput')) $('myNotesInput').value = d.notes || '';
+
+  // Role badge
+  const roleEl = $('myRoleBadge');
+  if (roleEl) {
+    const isAdmin = d.role === 'admin';
+    roleEl.innerHTML = isAdmin
+      ? `<span class="admin-role-badge admin">Admin</span>`
+      : `<span class="admin-role-badge user">User</span>`;
+  }
+  // Status badge
+  const statusEl = $('myStatusBadge');
+  if (statusEl) {
+    statusEl.innerHTML = d.is_active
+      ? `<span class="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400"><span class="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>ใช้งานอยู่</span>`
+      : `<span class="flex items-center gap-1.5 text-red-500"><span class="w-2 h-2 rounded-full bg-red-500 inline-block"></span>ปิดการใช้งาน</span>`;
+  }
+  // Permissions list
+  const permsEl = $('myPermissionsList');
+  if (permsEl) {
+    const perms = [
+      { key: 'can_view_kb', label: 'ดูคลังข้อมูล', desc: 'ดูและค้นหาไฟล์' },
+      { key: 'can_edit_kb', label: 'แก้ไขคลังข้อมูล', desc: 'อัปโหลดและแก้ไขไฟล์' },
+      { key: 'can_delete_kb', label: 'ลบไฟล์คลังข้อมูล', desc: 'ลบไฟล์ออกจากระบบ' },
+      { key: 'can_view_financial', label: 'แดชบอร์ดรายจ่าย', desc: 'ดูหน้าสรุปภาษีและค่าใช้จ่าย' },
+    ];
+    permsEl.innerHTML = perms.map(p => {
+      const on = !!d[p.key];
+      return `<div class="flex items-center justify-between p-3 rounded-xl border ${on ? 'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/50 dark:bg-emerald-900/10' : 'border-surface-100 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/30'}">
+        <div>
+          <div class="text-xs font-bold text-surface-800 dark:text-white">${p.label}</div>
+          <div class="text-[10px] text-surface-400">${p.desc}</div>
+        </div>
+        <span class="${on ? 'text-emerald-600 dark:text-emerald-400' : 'text-surface-300 dark:text-surface-600'} text-lg">
+          ${on ? '✓' : '—'}
+        </span>
+      </div>`;
+    }).join('');
+  }
+  if (window.lucide) window.lucide.createIcons();
+}
+
+async function saveMyDisplayName() {
+  const val = ($('myDisplayNameInput')?.value || '').trim();
+  if (!val) { toast('กรุณากรอกชื่อก่อน', 'error'); return; }
+  try {
+    const r = await apiFetch('/api/profile/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ display_name: val }),
+    });
+    if (r.ok) {
+      toast('บันทึกชื่อเรียบร้อยแล้ว', 'success');
+      if (_mySettingsCache) _mySettingsCache.display_name = val;
+      if ($('mySettingsUsernameLabel')) $('mySettingsUsernameLabel').textContent = val;
+    } else {
+      toast(r.error || 'บันทึกไม่สำเร็จ', 'error');
+    }
+  } catch { toast('เกิดข้อผิดพลาด', 'error'); }
+}
+
+async function saveMyNotes() {
+  const val = $('myNotesInput')?.value || '';
+  try {
+    const r = await apiFetch('/api/user/update-notes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notes: val }),
+    });
+    if (r.ok) { toast('บันทึกหมายเหตุแล้ว', 'success'); if (_mySettingsCache) _mySettingsCache.notes = val; }
+    else toast(r.error || 'บันทึกไม่สำเร็จ', 'error');
+  } catch { toast('เกิดข้อผิดพลาด', 'error'); }
+}
+
+async function changeMyPassword() {
+  const cur = $('myCurrentPw')?.value || '';
+  const newPw = ($('myNewPw')?.value || '').trim();
+  if (!newPw) { toast('กรุณากรอกรหัสผ่านใหม่', 'error'); return; }
+  try {
+    const r = await apiFetch('/api/user/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ current_password: cur, new_password: newPw }),
+    });
+    if (r.ok) {
+      toast('เปลี่ยนรหัสผ่านสำเร็จ', 'success');
+      if ($('myCurrentPw')) $('myCurrentPw').value = '';
+      if ($('myNewPw')) $('myNewPw').value = '';
+    } else {
+      toast(r.error || 'เปลี่ยนรหัสผ่านไม่สำเร็จ', 'error');
+    }
+  } catch { toast('เกิดข้อผิดพลาด', 'error'); }
+}
+
+let currentInviteTab = 'existing';
+
+function setInviteTab(tabName) {
+  currentInviteTab = tabName;
+  
+  // Update Tab buttons visual states
+  ['existing', 'precreate', 'gmail'].forEach(t => {
+    const btn = $('inviteTabBtn_' + t);
+    const content = $('inviteTabContent_' + t);
+    if (btn) {
+      if (t === tabName) {
+        btn.className = "flex-1 py-2 px-3 text-xs font-bold rounded-lg transition-all text-center flex items-center justify-center gap-1.5 bg-white dark:bg-surface-750 text-brand-600 dark:text-white shadow-sm border border-surface-200/55";
+      } else {
+        btn.className = "flex-1 py-2 px-3 text-xs font-bold rounded-lg transition-all text-center flex items-center justify-center gap-1.5 text-surface-500 dark:text-surface-400 hover:text-surface-800 dark:hover:text-surface-200";
+      }
+    }
+    if (content) {
+      if (t === tabName) {
+        content.classList.remove('hidden');
+      } else {
+        content.classList.add('hidden');
+      }
+    }
+  });
+
+  // Clear errors
+  const errEl = $('inviteError');
+  if (errEl) {
+    errEl.classList.add('hidden');
+    errEl.textContent = '';
+  }
+}
+
+function toggleInvitePwVisibility() {
+  const input = $('invitePrecreatePasswordInput');
+  const icon = $('invitePrecreatePwEyeIcon');
+  if (!input || !icon) return;
+  if (input.type === 'password') {
+    input.type = 'text';
+    icon.setAttribute('data-lucide', 'eye-off');
+  } else {
+    input.type = 'password';
+    icon.setAttribute('data-lucide', 'eye');
+  }
+  initIcons();
+}
+
+function showInviteMemberModal() {
+  const modal = $('inviteMemberModal');
+  if (!modal) return;
+  
+  // Reset values
+  $('inviteUsernameInput').value = '';
+  $('invitePrecreateUsernameInput').value = '';
+  $('invitePrecreatePasswordInput').value = '';
+  $('invitePrecreatePasswordInput').type = 'password';
+  $('invitePrecreateDisplayNameInput').value = '';
+  $('inviteEmailInput').value = '';
+  $('inviteRoleSelect').value = 'member';
+  
+  $('invitePrecreatePwEyeIcon')?.setAttribute('data-lucide', 'eye');
+  
+  // Reset form / success views
+  $('inviteFormWrapper')?.classList.remove('hidden');
+  $('inviteSuccessView')?.classList.add('hidden');
+  
+  setInviteTab('existing');
+  modal.classList.remove('hidden');
+  initIcons();
+  
+  setTimeout(() => $('inviteUsernameInput')?.focus(), 50);
+}
+
+function closeInviteMemberModal() {
+  const modal = $('inviteMemberModal');
+  if (modal) modal.classList.add('hidden');
+}
+
+function copyInviteSuccessLink() {
+  const input = $('inviteSuccessLinkInput');
+  if (!input) return;
+  input.select();
+  input.setSelectionRange(0, 99999);
+  navigator.clipboard.writeText(input.value);
+  
+  const btn = $('inviteCopyBtn');
+  if (btn) {
+    btn.innerHTML = '<i data-lucide="check" class="w-3.5 h-3.5"></i> คัดลอกสำเร็จแล้ว!';
+    btn.className = "px-3 py-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors flex items-center gap-1 shrink-0";
+    initIcons();
+    setTimeout(() => {
+      btn.innerHTML = '<i data-lucide="copy" class="w-3.5 h-3.5"></i> คัดลอก';
+      btn.className = "px-3 py-1.5 text-xs font-bold bg-brand-600 hover:bg-brand-700 text-white rounded-lg transition-colors flex items-center gap-1 shrink-0";
+      initIcons();
+    }, 2000);
+  }
+}
+
+async function submitInviteMember() {
+  const role = $('inviteRoleSelect')?.value || 'member';
+  const errEl = $('inviteError');
+  const btn = $('inviteSubmitBtn');
+  
+  let endpoint = '/api/org/invite';
+  let payload = { role };
+  let successMsg = 'เชิญสมาชิกสำเร็จ';
+
+  if (currentInviteTab === 'existing') {
+    const username = $('inviteUsernameInput')?.value.trim();
+    if (!username) {
+      errEl.textContent = 'กรุณากรอกชื่อผู้ใช้';
+      errEl.classList.remove('hidden');
+      return;
+    }
+    payload.username = username;
+    endpoint = '/api/org/invite';
+    successMsg = `เชิญผู้ใช้ ${username} เข้าองค์กรสำเร็จ`;
+  } else if (currentInviteTab === 'precreate') {
+    const username = $('invitePrecreateUsernameInput')?.value.trim();
+    const password = $('invitePrecreatePasswordInput')?.value.trim();
+    const displayName = $('invitePrecreateDisplayNameInput')?.value.trim();
+    
+    if (!username) {
+      errEl.textContent = 'กรุณากรอกชื่อผู้ใช้ใหม่';
+      errEl.classList.remove('hidden');
+      return;
+    }
+    if (!password || password.length < 6) {
+      errEl.textContent = 'กรุณากำหนดรหัสผ่านอย่างน้อย 6 ตัวอักษร';
+      errEl.classList.remove('hidden');
+      return;
+    }
+    
+    payload.username = username;
+    payload.password = password;
+    if (displayName) payload.display_name = displayName;
+    
+    // We send this to /api/org/members which supports on-the-fly user creation
+    endpoint = '/api/org/members';
+    successMsg = `สร้างบัญชีผู้ใช้ ${username} และแอดเข้าองค์กรสำเร็จ`;
+  } else if (currentInviteTab === 'gmail') {
+    const email = $('inviteEmailInput')?.value.trim();
+    if (!email || !email.includes('@')) {
+      errEl.textContent = 'กรุณากรอกที่อยู่อีเมลที่ถูกต้อง';
+      errEl.classList.remove('hidden');
+      return;
+    }
+    payload.email = email;
+    endpoint = '/api/org/invite-email';
+    successMsg = `เพิ่ม ${email} เข้า Whitelist และส่งคำเชิญเรียบร้อยแล้ว`;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> กำลังดำเนินการ...';
+  initIcons();
+  errEl.classList.add('hidden');
+
+  try {
+    const data = await apiFetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (data.ok) {
+      toast(data.message || successMsg, 'success');
+      loadOrgMembers();
+      
+      const successView = $('inviteSuccessView');
+      const formWrapper = $('inviteFormWrapper');
+      if (successView && formWrapper) {
+        $('inviteSuccessMessage').textContent = data.message || successMsg;
+        $('inviteSuccessLinkInput').value = window.location.origin;
+        
+        formWrapper.classList.add('hidden');
+        successView.classList.remove('hidden');
+        initIcons();
+      } else {
+        closeInviteMemberModal();
+      }
+    } else {
+      errEl.textContent = data.message || data.error || 'การดำเนินการไม่สำเร็จ';
+      errEl.classList.remove('hidden');
+    }
+  } catch (e) {
+    errEl.textContent = 'เกิดข้อผิดพลาดในการเชื่อมต่อระบบ กรุณาลองใหม่';
+    errEl.classList.remove('hidden');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i data-lucide="user-plus" class="w-4 h-4"></i> ดำเนินการเชิญ';
+    initIcons();
+  }
+}
+
+/* ══════════════════════════════════════════
    Admin User Management Panel
    ══════════════════════════════════════════ */
 let adminUsersListCache = [];
@@ -9982,9 +11349,27 @@ function openEditUserModal(username) {
   $('editUserCanViewKB').checked = !!user.can_view_kb;
   $('editUserCanEditKB').checked = !!user.can_edit_kb;
   $('editUserCanDeleteKB').checked = !!user.can_delete_kb;
+  if ($('editUserCanViewFinancial')) $('editUserCanViewFinancial').checked = !!user.can_view_financial;
   if ($('editUserDept')) $('editUserDept').value = user.department || '';
   $('editUserNotes').value = user.notes || '';
   $('editUserNewPassword').value = '';
+
+  // Populate LINE status
+  const lineStatusEl = $('editUserLineStatus');
+  const btnUnbindLine = $('btnUnbindLine');
+  if (lineStatusEl && btnUnbindLine) {
+    if (user.line_user_id) {
+      lineStatusEl.textContent = `🟢 เชื่อมต่อแล้ว (LINE ID: ${user.line_user_id.substring(0, 10)}...)`;
+      lineStatusEl.classList.remove('text-surface-600', 'dark:text-surface-300');
+      lineStatusEl.classList.add('text-purple-600', 'dark:text-purple-400');
+      btnUnbindLine.classList.remove('hidden');
+    } else {
+      lineStatusEl.textContent = '🔴 ยังไม่ได้เชื่อมต่อบัญชี LINE';
+      lineStatusEl.classList.remove('text-purple-600', 'dark:text-purple-400');
+      lineStatusEl.classList.add('text-surface-600', 'dark:text-surface-300');
+      btnUnbindLine.classList.add('hidden');
+    }
+  }
 
   // Protect admin self-lockout visually
   if (username === 'Admin') {
@@ -10005,6 +11390,49 @@ function closeEditUserModal() {
   $('editUserModal').classList.remove('flex', 'items-center', 'justify-center');
 }
 
+async function unbindUserLine() {
+  if (!currentEditingUsername) return;
+  if (!confirm(`คุณแน่ใจหรือไม่ที่จะยกเลิกการผูกบัญชี LINE สำหรับผู้ใช้ @${currentEditingUsername}?`)) {
+    return;
+  }
+  
+  try {
+    const res = await fetch(`/api/admin/users/${currentEditingUsername}/unbind-line`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await res.json();
+    if (data.ok) {
+      alert('ยกเลิกการผูกบัญชี LINE เรียบร้อยแล้วค่ะพี่!');
+      
+      // Update UI in modal
+      const lineStatusEl = $('editUserLineStatus');
+      const btnUnbindLine = $('btnUnbindLine');
+      if (lineStatusEl) {
+        lineStatusEl.textContent = '🔴 ยังไม่ได้เชื่อมต่อบัญชี LINE';
+        lineStatusEl.classList.remove('text-purple-600', 'dark:text-purple-400');
+        lineStatusEl.classList.add('text-surface-600', 'dark:text-surface-300');
+      }
+      if (btnUnbindLine) {
+        btnUnbindLine.classList.add('hidden');
+      }
+      
+      // Update cache
+      const user = adminUsersListCache.find(u => u.username === currentEditingUsername);
+      if (user) {
+        user.line_user_id = null;
+      }
+      
+      // Refresh list
+      renderAdminUserList(adminUsersListCache);
+    } else {
+      alert(`ไม่สามารถยกเลิกได้: ${data.error || 'เกิดข้อผิดพลาดค่ะ'}`);
+    }
+  } catch (e) {
+    alert(`เกิดข้อผิดพลาดในการเชื่อมต่อ: ${e.message}`);
+  }
+}
+
 async function submitEditUser() {
   if (!currentEditingUsername) return;
 
@@ -10015,6 +11443,7 @@ async function submitEditUser() {
     can_view_kb: $('editUserCanViewKB').checked,
     can_edit_kb: $('editUserCanEditKB').checked,
     can_delete_kb: $('editUserCanDeleteKB').checked,
+    can_view_financial: $('editUserCanViewFinancial') ? $('editUserCanViewFinancial').checked : false,
     department: $('editUserDept') ? $('editUserDept').value.trim() : '',
     notes: $('editUserNotes').value.trim()
   };
@@ -12433,8 +13862,8 @@ window.cancelVoiceRecording = function () {
 
 // 🪐 GLOBAL EVENT DELEGATION FOR VOICE MESSAGING
 document.addEventListener('click', (e) => {
-  // Voice recording button
-  const vBtn = e.target.closest('#voiceBtn');
+  // Voice recording button (main chat or group chat)
+  const vBtn = e.target.closest('#voiceBtn, #groupVoiceBtn');
   if (vBtn) {
     e.preventDefault();
     console.log('Voice button clicked via delegation');
@@ -12792,21 +14221,28 @@ window.downloadWhiteboard = downloadWhiteboard;
 // 📞 WebRTC Call Engine — Full Implementation
 // ═══════════════════════════════════════════════════
 
+// Helper — ดึง username string เสมอ ไม่ว่า state.user จะเป็น string หรือ object
+function _rtcMyUsername() {
+  return typeof state.user === 'object' ? (state.user?.username || '') : (state.user || '');
+}
+
 const rtcState = {
-  pc: null,                // RTCPeerConnection
-  localStream: null,       // MediaStream (local)
-  remoteStream: null,      // MediaStream (remote)
-  callType: 'audio',       // 'audio' | 'video'
+  pc: null,                 // RTCPeerConnection
+  localStream: null,        // MediaStream (local)
+  remoteStream: null,       // MediaStream (remote)
+  callType: 'audio',        // 'audio' | 'video'
   isCaller: false,
-  remoteUser: null,        // username of the other party
+  remoteUser: null,         // username of the other party
   isMicMuted: false,
   isCamOff: false,
   isSpeakerMuted: false,
   callTimer: null,
   callStartTime: null,
+  callTimeout: null,        // timeout สำหรับ no-answer 30s
   ringtoneCtx: null,
+  ringtoneInterval: null,   // interval สำหรับ repeat ringtone
   ringtoneNodes: [],
-  pendingOffer: null,      // store offer before acceptCall
+  pendingOffer: null,       // store offer before acceptCall
   pendingIceCandidates: [], // queue ICE candidates before PC is ready
 };
 
@@ -12948,7 +14384,7 @@ async function createPC() {
     if (event.candidate && socket && rtcState.remoteUser) {
       socket.emit('webrtc_signal', {
         target: rtcState.remoteUser,
-        sender: state.user, // Added explicit sender
+        sender: _rtcMyUsername(), // Added explicit sender
         type: 'ice',
         payload: event.candidate
       });
@@ -13034,10 +14470,12 @@ async function initiateCall(withVideo = false) {
     return;
   }
 
-  const targetUser = state.currentChat.name;
-  console.log('🎯 Target user identified:', targetUser);
-  
-  if (!targetUser || targetUser === state.user) {
+  // ใช้ id (username) ไม่ใช่ name (display name) — signaling ใช้ username เป็น room key
+  const targetUser = state.currentChat.id;
+  const myUsername = typeof state.user === 'object' ? state.user?.username : state.user;
+  console.log('🎯 Target user identified:', targetUser, '| me:', myUsername);
+
+  if (!targetUser || targetUser === myUsername) {
     toast('❌ ไม่พบผู้รับสาย หรือไม่สามารถโทรหาตัวเองได้', 'error');
     return;
   }
@@ -13066,7 +14504,7 @@ async function initiateCall(withVideo = false) {
     // Signal offer to target
     socket.emit('webrtc_signal', {
       target: targetUser,
-      sender: state.user,
+      sender: _rtcMyUsername(),
       type: 'offer',
       payload: offer,
       callType: rtcState.callType
@@ -13178,7 +14616,7 @@ async function acceptCall() {
     // Send answer to caller
     socket.emit('webrtc_signal', {
       target: rtcState.remoteUser,
-      sender: state.user,
+      sender: _rtcMyUsername(),
       type: 'answer',
       payload: answer
     });
@@ -13207,7 +14645,7 @@ function rejectCall() {
   if (rtcState.remoteUser && socket) {
     socket.emit('webrtc_signal', {
       target: rtcState.remoteUser,
-      sender: state.user,
+      sender: _rtcMyUsername(),
       type: 'reject',
       payload: null
     });
@@ -13221,7 +14659,7 @@ function endCall() {
   if (rtcState.remoteUser && socket) {
     socket.emit('webrtc_signal', {
       target: rtcState.remoteUser,
-      sender: state.user,
+      sender: _rtcMyUsername(),
       type: 'end',
       payload: null
     });
@@ -13429,7 +14867,7 @@ function initWebRTCSignaling() {
         if (rtcState.pc) {
           // Already in a call — reject automatically
           socket.emit('webrtc_signal', {
-            target: sender, sender: state.user, type: 'busy', payload: null
+            target: sender, sender: _rtcMyUsername(), type: 'busy', payload: null
           });
           return;
         }
@@ -13485,14 +14923,18 @@ function initWebRTCSignaling() {
 }
 
 // ─── Expose global functions ──────────────────────────────────
-window.initiateCall = initiateCall;
-window.acceptCall   = acceptCall;
-window.rejectCall   = rejectCall;
-window.endCall      = endCall;
-window.toggleMic    = toggleMic;
-window.toggleCam    = toggleCam;
+window.initiateCall  = initiateCall;
+window.acceptCall    = acceptCall;
+window.rejectCall    = rejectCall;
+window.endCall       = endCall;
+window.toggleMic     = toggleMic;
+window.toggleCam     = toggleCam;
 window.toggleSpeaker = toggleSpeaker;
-window.shareScreen  = shareScreen;
+window.shareScreen   = shareScreen;
+
+// ─── Wire up call buttons ─────────────────────────────────────
+if (voiceCallBtn) voiceCallBtn.addEventListener('click', () => initiateCall(false));
+if (videoCallBtn) videoCallBtn.addEventListener('click', () => initiateCall(true));
 
 // ─── Initialize WebRTC after socket is ready ─────────────────
 // Wait until socket and user are available
@@ -13719,8 +15161,12 @@ async function showQRLogin() {
           
           state.user = pollData.user;
           state.username = pollData.user;
-          
+
           setTimeout(() => {
+            if (!pollData.org_role) {
+              window.location.href = '/onboarding';
+              return;
+            }
             $('loginOverlay').classList.add('hidden');
             toast(`ยินดีต้อนรับคุณ ${pollData.user} (QR Login)`, 'success');
             initAppContent();
@@ -14267,35 +15713,6 @@ async function initAuth() {
     }
 }
 
-async function initAppContent() {
-    // 1. Hide the login overlay
-    const overlay = $('loginOverlay');
-    if (overlay) {
-        overlay.classList.add('hidden');
-        overlay.classList.remove('flex', 'items-center', 'justify-center');
-    }
-    
-    // 2. Sequential load of dashboard services
-    try {
-        await loadStatus(); // FIX: Set state.isAdmin and toggle features
-        await loadNotifications();
-        await loadChatList();
-        await loadUnreadCounts();
-        await loadDashboard();
-        
-        // 3. Final UI cleanup
-        initIcons();
-        console.log('Dashboard initialized successfully.');
-
-        // Switch to default home dashboard view instead of showing a blank screen
-        if (typeof switchView === 'function') {
-            switchView('home');
-        }
-    } catch (e) {
-        console.error('Failed to initialize dashboard content:', e);
-    }
-}
-
 async function runReconciliation() {
     const mpFiles = $('reconMPFiles').files;
     const shipFiles = $('reconShipFiles').files;
@@ -14464,6 +15881,9 @@ async function loadDriveContents(folderId = 'root') {
 
   if (!grid || !loading || !empty) return;
 
+  if (state.drive.isLoading) return;
+  state.drive.isLoading = true;
+
   grid.innerHTML = '';
   loading.classList.remove('hidden');
   empty.classList.add('hidden');
@@ -14495,13 +15915,14 @@ async function loadDriveContents(folderId = 'root') {
         backBtn.disabled = state.drive.history.length <= 1;
       }
     } else {
-      toast('ไม่สามารถโหลดข้อมูล Google Drive ได้', 'error');
+      toast(data.error || 'ไม่สามารถโหลดข้อมูล Google Drive ได้', 'error');
     }
   } catch (e) {
     console.error('Drive Load Error:', e);
-    toast('เกิดข้อผิดพลาดในการเชื่อมต่อ Google Drive', 'error');
+    toast(e.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อ Google Drive', 'error');
   } finally {
     loading.classList.add('hidden');
+    state.drive.isLoading = false;
   }
 }
 
@@ -14967,17 +16388,16 @@ async function sendLineBroadcast(msgId = 'lineBroadcastMsg', btnId = 'lineBroadc
   if (window.lucide) lucide.createIcons();
   
   try {
-    const res = await apiFetch('/api/admin/line/broadcast', {
+    const data = await apiFetch('/api/admin/line/broadcast', {
       method: 'POST',
       body: JSON.stringify({ text })
     });
     
-    const data = await res.json();
-    if (res.ok && data.success !== false) {
+    if (data && data.success !== false) {
       toast(data.message || 'น้องพั้นส่งบรอดแคสต์ให้เรียบร้อยแล้วค่ะ!', 'success');
       msgInput.value = ''; // clear
     } else {
-      toast(data.error || 'ส่งบรอดแคสต์ไม่สำเร็จนะคะพี่ ลองเช็ค Token อีกทีค่ะ', 'error');
+      toast((data && data.error) || 'ส่งบรอดแคสต์ไม่สำเร็จนะคะพี่ ลองเช็ค Token อีกทีค่ะ', 'error');
     }
   } catch (err) {
     toast('เกิดข้อผิดพลาดทางเทคนิคนะคะพี่ น้องพั้นขออภัยค่ะ', 'error');
@@ -15090,6 +16510,225 @@ window.openLineSettings = openLineSettings;
 window.saveLineSettings = saveLineSettings;
 window.refreshBroadcastHistory = refreshBroadcastHistory;
 
+// ─── To-Do Search & Filtering ──────────────────────────────
+function filterTodoTasks() {
+  const q = $('todoSearch').value.toLowerCase().trim();
+  const tasks = document.querySelectorAll('#todoList > div');
+  tasks.forEach(t => {
+    const text = t.querySelector('span')?.textContent?.toLowerCase() || '';
+    t.classList.toggle('hidden', q && !text.includes(q));
+  });
+}
+
+// ─── AI Persona Manager (Admin) ──────────────────────────────
+let adminPersonas = [];
+
+async function openPersonaManager() {
+  const modal = $('personaManagerModal');
+  if (!modal) return;
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+  await loadAdminPersonas();
+}
+
+function closePersonaManager() {
+  const modal = $('personaManagerModal');
+  if (!modal) return;
+  modal.classList.add('hidden');
+  modal.classList.remove('flex');
+}
+
+async function loadAdminPersonas() {
+  const list = $('adminPersonaList');
+  if (!list) return;
+  list.innerHTML = '<div class="text-center py-10 opacity-30 italic text-xs">กำลังโหลด...</div>';
+
+  try {
+    const data = await apiFetch('/api/admin/personas');
+    adminPersonas = data.personas || [];
+    renderAdminPersonaList();
+  } catch (err) {
+    list.innerHTML = '<div class="text-center py-10 text-rose-500 text-xs">โหลดไม่สำเร็จ</div>';
+  }
+}
+
+function renderAdminPersonaList() {
+  const list = $('adminPersonaList');
+  if (!list) return;
+
+  if (adminPersonas.length === 0) {
+    list.innerHTML = '<div class="text-center py-10 opacity-30 text-xs italic">ไม่มี Persona</div>';
+    return;
+  }
+
+  list.innerHTML = adminPersonas.map(p => `
+    <div onclick="selectPersona('${p.id}')" class="p-3 rounded-2xl border border-surface-100 dark:border-surface-800 hover:border-brand-500 cursor-pointer transition-all bg-white dark:bg-surface-900 group">
+      <div class="flex items-center gap-3">
+        <img src="${p.icon || 'https://cdn-icons-png.flaticon.com/512/1077/1077114.png'}" class="w-8 h-8 rounded-lg object-cover">
+        <div class="flex-1 min-w-0">
+          <div class="text-xs font-black truncate">${escHtml(p.name)}</div>
+          <div class="text-[9px] text-surface-400 truncate uppercase tracking-tighter">${escHtml(p.description || '')}</div>
+        </div>
+        <i data-lucide="chevron-right" class="w-3 h-3 text-surface-300 group-hover:text-brand-500 transition-colors"></i>
+      </div>
+    </div>
+  `).join('');
+  lucide.createIcons();
+}
+
+function selectPersona(id) {
+  const p = adminPersonas.find(x => x.id == id);
+  if (!p) return;
+
+  $('personaEmptyState').classList.add('hidden');
+  $('personaEditorContent').classList.remove('hidden');
+  $('btnDeletePersona').classList.remove('hidden');
+
+  $('edit_p_id').value = p.id;
+  $('edit_p_name').value = p.name;
+  $('edit_p_icon').value = p.icon || '';
+  $('edit_p_desc').value = p.description || '';
+  $('edit_p_prompt').value = p.prompt || '';
+}
+
+function openCreatePersona() {
+  $('personaEmptyState').classList.add('hidden');
+  $('personaEditorContent').classList.remove('hidden');
+  $('btnDeletePersona').classList.add('hidden');
+
+  $('edit_p_id').value = '';
+  $('edit_p_name').value = '';
+  $('edit_p_icon').value = '';
+  $('edit_p_desc').value = '';
+  $('edit_p_prompt').value = '';
+  $('edit_p_name').focus();
+}
+
+async function savePersona() {
+  const id = $('edit_p_id').value;
+  const name = $('edit_p_name').value.trim();
+  const icon = $('edit_p_icon').value.trim();
+  const description = $('edit_p_desc').value.trim();
+  const prompt = $('edit_p_prompt').value.trim();
+
+  if (!name || !prompt) {
+    toast('กรุณากรอกชื่อและนิสัย AI', 'warning');
+    return;
+  }
+
+  try {
+    const method = id ? 'PUT' : 'POST';
+    const url = id ? `/api/admin/personas/${id}` : '/api/admin/personas';
+    
+    const res = await apiFetch(url, {
+      method,
+      body: JSON.stringify({ name, icon, description, prompt })
+    });
+
+    if (res.ok) {
+      toast('บันทึก Persona สำเร็จ', 'success');
+      loadAdminPersonas();
+      $('personaEmptyState').classList.remove('hidden');
+      $('personaEditorContent').classList.add('hidden');
+    } else {
+      toast(res.error || 'เกิดข้อผิดพลาด', 'error');
+    }
+  } catch (err) {
+    toast('เซิร์ฟเวอร์ขัดข้อง', 'error');
+  }
+}
+
+async function deletePersona() {
+  const id = $('edit_p_id').value;
+  if (!id) return;
+
+  if (!confirm('ยืนยันการลบ Persona นี้?')) return;
+
+  try {
+    const res = await apiFetch(`/api/admin/personas/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      toast('ลบ Persona แล้ว', 'success');
+      loadAdminPersonas();
+      $('personaEmptyState').classList.remove('hidden');
+      $('personaEditorContent').classList.add('hidden');
+    } else {
+      toast(res.error || 'ลบไม่สำเร็จ', 'error');
+    }
+  } catch (err) {
+    toast('เซิร์ฟเวอร์ขัดข้อง', 'error');
+  }
+}
+
+// ─── Activity Logs (Admin) ──────────────────────────────
+let activityLogs = [];
+
+async function openActivityLogModal() {
+  const modal = $('activityLogModal');
+  if (!modal) return;
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+  await loadActivityLogs();
+}
+
+function closeActivityLogModal() {
+  const modal = $('activityLogModal');
+  if (!modal) return;
+  modal.classList.add('hidden');
+  modal.classList.remove('flex');
+}
+
+async function loadActivityLogs() {
+  const tbody = $('activityLogTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="4" class="p-10 text-center opacity-30 italic">กำลังโหลดประวัติ...</td></tr>';
+  $('logEmptyState').classList.add('hidden');
+
+  try {
+    const data = await apiFetch('/api/admin/logs');
+    activityLogs = data.logs || [];
+    renderLogs();
+  } catch (err) {
+    tbody.innerHTML = '<tr><td colspan="4" class="p-10 text-center text-rose-500">โหลดข้อมูลไม่สำเร็จ</td></tr>';
+  }
+}
+
+function renderLogs() {
+  const tbody = $('activityLogTableBody');
+  const q = $('logSearch').value.toLowerCase().trim();
+  
+  const filtered = activityLogs.filter(l => 
+    l.user.toLowerCase().includes(q) || 
+    l.event.toLowerCase().includes(q)
+  );
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = '';
+    $('logEmptyState').classList.remove('hidden');
+    return;
+  }
+
+  $('logEmptyState').classList.add('hidden');
+  tbody.innerHTML = filtered.map(l => `
+    <tr class="hover:bg-surface-50 dark:hover:bg-surface-800/30 transition-colors">
+      <td class="p-4 pl-8 text-surface-400 font-medium">${l.time}</td>
+      <td class="p-4">
+        <div class="flex items-center gap-2">
+          <div class="w-6 h-6 rounded-full bg-surface-100 dark:bg-surface-800 flex items-center justify-center text-[10px] font-black">${l.user[0].toUpperCase()}</div>
+          <span class="font-bold">${escHtml(l.user)}</span>
+        </div>
+      </td>
+      <td class="p-4 font-medium text-surface-600 dark:text-surface-300">${escHtml(l.event)}</td>
+      <td class="p-4 text-right pr-8">
+         <span class="px-2 py-0.5 rounded-full bg-surface-100 dark:bg-surface-800 text-[10px] font-bold text-surface-500">System</span>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function filterLogs() {
+  renderLogs();
+}
+
 // --- Window Exports ---
 window.rollLunch = rollLunch;
 window.openLunchModal = openLunchModal;
@@ -15099,6 +16738,20 @@ window.deleteLunchPlace = deleteLunchPlace;
 window.showWeatherDetail = showWeatherDetail;
 window.fetchWeather = fetchWeather;
 window.updateSystemStatus = updateSystemStatus;
+
+// New Admin Exports
+window.filterTodoTasks = filterTodoTasks;
+window.openPersonaManager = openPersonaManager;
+window.closePersonaManager = closePersonaManager;
+window.loadAdminPersonas = loadAdminPersonas;
+window.selectPersona = selectPersona;
+window.openCreatePersona = openCreatePersona;
+window.savePersona = savePersona;
+window.deletePersona = deletePersona;
+window.openActivityLogModal = openActivityLogModal;
+window.closeActivityLogModal = closeActivityLogModal;
+window.loadActivityLogs = loadActivityLogs;
+window.filterLogs = filterLogs;
 
 // ═══════════════════════════════════════════════════════════════
 // Google Drive & Sheets Per-User Connection (OAuth2)
@@ -15123,30 +16776,61 @@ async function loadGoogleDriveStatus() {
     loading.classList.add('hidden');
 
     if (data.connected) {
-      // Show connected state
       connected.classList.remove('hidden');
       notConnected.classList.add('hidden');
 
+      const isOrgLevel = data.effective_source === 'org';
+      const connectedBy = data.org?.connected_by;
+
       if ($('googleConnectedEmail')) {
-        $('googleConnectedEmail').textContent = data.email || '—';
+        const badge = isOrgLevel
+          ? `<span class="ml-2 text-[9px] font-black uppercase tracking-wider bg-brand-100 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 px-1.5 py-0.5 rounded-full">ระดับองค์กร</span>`
+          : `<span class="ml-2 text-[9px] font-black uppercase tracking-wider bg-surface-100 dark:bg-surface-700 text-surface-500 px-1.5 py-0.5 rounded-full">ส่วนตัว</span>`;
+        $('googleConnectedEmail').innerHTML = (data.email || '—') + badge;
       }
+
+      // แสดง "เชื่อมต่อโดย X" ถ้าเป็น org level
+      const connByEl = $('googleConnectedBy');
+      if (connByEl) {
+        connByEl.textContent = isOrgLevel && connectedBy ? `เชื่อมต่อโดย: ${connectedBy}` : '';
+        connByEl.classList.toggle('hidden', !isOrgLevel || !connectedBy);
+      }
+
       if ($('googleSheetLink') && data.spreadsheet_url) {
         $('googleSheetLink').href = data.spreadsheet_url;
       }
       if ($('googleDriveLink') && data.drive_folder_url) {
         $('googleDriveLink').href = data.drive_folder_url;
       }
+
+      // ซ่อนปุ่ม disconnect สำหรับ non-admin ถ้าเป็น org-level
+      const disconnectBtn = $('googleDisconnectBtn');
+      if (disconnectBtn && isOrgLevel && !state.isAdmin && !state.isOrgAdmin) {
+        disconnectBtn.classList.add('hidden');
+      }
+      // ซ่อนปุ่ม reconnect สำหรับ non-admin
+      const reconnectBtn = $('googleReconnectBtn');
+      if (reconnectBtn && isOrgLevel && !state.isAdmin && !state.isOrgAdmin) {
+        reconnectBtn.classList.add('hidden');
+      }
     } else {
-      // Show not connected state
       notConnected.classList.remove('hidden');
       connected.classList.add('hidden');
 
-      // Check if OAuth2 is configured
       if (data.oauth2_available === false && notConfigured) {
         notConfigured.classList.remove('hidden');
         if ($('googleConnectBtn')) {
           $('googleConnectBtn').classList.add('opacity-50', 'pointer-events-none');
         }
+      }
+
+      // ซ่อนปุ่มเชื่อมต่อสำหรับ non-admin
+      if ($('googleConnectBtn') && !state.isAdmin && !state.isOrgAdmin) {
+        $('googleConnectBtn').classList.add('hidden');
+        const noteEl = document.createElement('p');
+        noteEl.className = 'text-[10px] text-surface-400 text-center';
+        noteEl.textContent = 'Admin ขององค์กรต้องเชื่อมต่อ Google ก่อน';
+        $('googleConnectBtn').parentNode?.appendChild(noteEl);
       }
     }
   } catch (err) {
@@ -15268,3 +16952,244 @@ function _hideConnBanner() {
   const el = document.getElementById('_connBanner');
   if (el) el.remove();
 }
+
+// ═══════════════════════════════════════════════════════════════
+// ใบแทนใบเสร็จ (Replacement Receipt)
+// ═══════════════════════════════════════════════════════════════
+
+function initReplacementReceiptView() {
+  // Set today's date as default for new document date
+  const today = new Date().toISOString().split('T')[0];
+  const rrNewDate = $('rrNewDate');
+  if (rrNewDate && !rrNewDate.value) rrNewDate.value = today;
+
+  // Generate default RR number if empty
+  const rrNewNo = $('rrNewNo');
+  if (rrNewNo && !rrNewNo.value) {
+    const now = new Date();
+    rrNewNo.value = `RR-${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-001`;
+  }
+
+  // Wire up reason dropdown → show/hide custom input
+  const rrReason = $('rrReason');
+  const rrReasonCustom = $('rrReasonCustom');
+  if (rrReason && rrReasonCustom) {
+    rrReason.onchange = () => {
+      rrReasonCustom.classList.toggle('hidden', rrReason.value !== 'อื่นๆ');
+      updateRRPreview();
+    };
+  }
+
+  // Auto-fill seller info from org profile
+  apiFetch('/api/org/profile').then(data => {
+    if (!data || !data.ok) return;
+    const p = data.profile || {};
+    const nameEl = $('rrSellerName');
+    const addrEl = $('rrSellerAddr');
+    const taxEl = $('rrSellerTax');
+    const phoneEl = $('rrSellerPhone');
+    if (nameEl && !nameEl.value) nameEl.value = p.name || '';
+    if (addrEl && !addrEl.value) addrEl.value = p.address || '';
+    if (taxEl && !taxEl.value) taxEl.value = p.tax_id || '';
+    if (phoneEl && !phoneEl.value) phoneEl.value = p.phone || '';
+
+    // Render logo in Replacement Receipt A4 preview if it exists
+    const rrLogoImg = $('rrPrevLogoImg');
+    if (rrLogoImg) {
+      if (p.logo_url) {
+        rrLogoImg.src = p.logo_url;
+        rrLogoImg.classList.remove('hidden');
+      } else {
+        rrLogoImg.classList.add('hidden');
+      }
+    }
+
+    // Render signature in Replacement Receipt A4 preview if it exists
+    const rrSigImg = $('rrPrevSignatureImg');
+    if (rrSigImg) {
+      if (p.signature_url) {
+        rrSigImg.src = p.signature_url;
+        rrSigImg.classList.remove('hidden');
+      } else {
+        rrSigImg.classList.add('hidden');
+      }
+    }
+
+    updateRRPreview();
+  }).catch(() => {});
+
+  updateRRPreview();
+  if (typeof initIcons === 'function') initIcons();
+}
+
+function openReplacementFromExpense(item) {
+  showView('receipt-replacement');
+  // Wait for view to render then fill
+  setTimeout(() => {
+    initReplacementReceiptView();
+
+    // Fill original document reference from expense row
+    const origNo = $('rrOrigNo');
+    const origDate = $('rrOrigDate');
+    const desc = $('rrDescription');
+    const amt = $('rrAmountBeforeVat');
+    const wht = $('rrWhtAmt');
+
+    if (origNo) origNo.value = item.ref_number || '';
+    if (origDate && item.date) {
+      // Convert Thai/display date to yyyy-mm-dd if needed
+      try {
+        const parts = String(item.date).split('/');
+        if (parts.length === 3) {
+          const y = parts[2].length === 4 ? parts[2] : String(parseInt(parts[2]) - 543);
+          origDate.value = `${y}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+        } else {
+          origDate.value = item.date;
+        }
+      } catch (_) { origDate.value = item.date || ''; }
+    }
+    if (desc) desc.value = item.details || item.merchant || '';
+    if (amt) amt.value = item.net_amount != null ? parseFloat(item.net_amount).toFixed(2) : '';
+    if (wht) wht.value = item.wht_amount != null ? parseFloat(item.wht_amount).toFixed(2) : '';
+
+    calcRRTotal();
+    updateRRPreview();
+  }, 150);
+}
+
+function calcRRTotal() {
+  const before = parseFloat($('rrAmountBeforeVat')?.value) || 0;
+  const wht = parseFloat($('rrWhtAmt')?.value) || 0;
+  const vatEl = $('rrVatAmt');
+  
+  let vat = parseFloat(vatEl?.value);
+  
+  // Logic: If vat is NaN (empty) or if this was triggered by 'before' changing,
+  // we might want to suggest the 7% calculation.
+  // To keep it simple and flexible: If value is invalid, we auto-calc 7%.
+  // If user wants 0, they can type 0.
+  if (isNaN(vat)) {
+      vat = Math.round(before * 0.07 * 100) / 100;
+      if (vatEl) vatEl.value = vat.toFixed(2);
+  }
+
+  const grand = Math.round((before + vat - wht) * 100) / 100;
+  const grandEl = $('rrGrandTotal');
+  if (grandEl) grandEl.value = grand.toFixed(2);
+
+  updateRRPreview();
+}
+
+function _fmtRRDate(isoDate) {
+  if (!isoDate) return '-';
+  try {
+    const d = new Date(isoDate);
+    if (isNaN(d)) return isoDate;
+    return d.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+  } catch (_) { return isoDate; }
+}
+
+function updateRRPreview() {
+  const g = (id) => $( id )?.value || '';
+  const set = (id, val) => { const el = $(id); if (el) el.textContent = val || '-'; };
+
+  // Seller
+  const selName = g('rrSellerName');
+  set('rrPrevSelName', selName || '-');
+  const selInfo = [g('rrSellerAddr'), g('rrSellerTax') ? `เลขที่ผู้เสียภาษี: ${g('rrSellerTax')}` : '', g('rrSellerPhone') ? `โทร: ${g('rrSellerPhone')}` : ''].filter(Boolean).join('\n');
+  set('rrPrevSelInfo', selInfo || '-');
+
+  // Doc numbers
+  set('rrPrevNewNo', g('rrNewNo') || 'RR-XXXX-XXX');
+  const newDateEl = $('rrPrevNewDate');
+  if (newDateEl) newDateEl.textContent = _fmtRRDate(g('rrNewDate')) || '-';
+
+  // Original reference
+  set('rrPrevOrigNo', g('rrOrigNo') || '-');
+  const origDateEl = $('rrPrevOrigDate');
+  if (origDateEl) origDateEl.textContent = _fmtRRDate(g('rrOrigDate')) || '-';
+
+  // Reason
+  const reason = g('rrReason');
+  const reasonCustom = g('rrReasonCustom');
+  set('rrPrevReason', reason || '-');
+  const detailEl = $('rrPrevReasonDetail');
+  const detailTxtEl = $('rrPrevReasonDetailTxt');
+  if (detailEl && detailTxtEl) {
+    if (reason === 'อื่นๆ' && reasonCustom) {
+      detailEl.style.display = 'inline';
+      detailTxtEl.textContent = reasonCustom;
+    } else {
+      detailEl.style.display = 'none';
+    }
+  }
+
+  // Customer
+  set('rrPrevCustName', g('rrCustName') || '-');
+  set('rrPrevCustAddr', g('rrCustAddr') || '-');
+  const custTaxEl = $('rrPrevCustTax');
+  if (custTaxEl) custTaxEl.textContent = g('rrCustTax') ? `เลขที่ผู้เสียภาษี: ${g('rrCustTax')}` : '';
+
+  // Description & amounts
+  set('rrPrevDesc', g('rrDescription') || '-');
+  const before = parseFloat(g('rrAmountBeforeVat')) || 0;
+  const vat = parseFloat(g('rrVatAmt')) || 0;
+  const wht = parseFloat(g('rrWhtAmt')) || 0;
+  const grand = parseFloat(g('rrGrandTotal')) || (before + vat - wht);
+
+  const fmt = (n) => n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  set('rrPrevAmountBeforeVat', fmt(before));
+  set('rrPrevSubTotal', fmt(before));
+  set('rrPrevVat', fmt(vat));
+  set('rrPrevWht', fmt(wht));
+  set('rrPrevGrandTotal', fmt(grand));
+}
+
+function clearRRForm() {
+  ['rrSellerName','rrSellerAddr','rrSellerTax','rrSellerPhone',
+   'rrNewNo','rrNewDate','rrOrigNo','rrOrigDate',
+   'rrCustName','rrCustAddr','rrCustTax',
+   'rrDescription','rrAmountBeforeVat','rrWhtAmt','rrVatAmt','rrGrandTotal'].forEach(id => {
+    const el = $(id);
+    if (el) el.value = '';
+  });
+  const rrReason = $('rrReason');
+  if (rrReason) rrReason.selectedIndex = 0;
+  const rrReasonCustom = $('rrReasonCustom');
+  if (rrReasonCustom) rrReasonCustom.classList.add('hidden');
+  updateRRPreview();
+  toast('ล้างข้อมูลเรียบร้อย', 'success');
+}
+
+function generateRRPdf() {
+  const preview = $('rrPreview');
+  if (!preview) { toast('ไม่พบตัวอย่างเอกสาร', 'error'); return; }
+  if (typeof html2pdf === 'undefined') { toast('โหลด html2pdf ไม่สำเร็จ', 'error'); return; }
+
+  const docNo = $('rrNewNo')?.value || 'RR';
+  const origStyle = preview.style.cssText;
+  preview.style.transform = 'none';
+  preview.style.marginBottom = '0';
+
+  html2pdf().set({
+    margin: 0,
+    filename: `ใบแทนใบเสร็จ_${docNo}.pdf`,
+    image: { type: 'jpeg', quality: 0.98 },
+    html2canvas: { scale: 2, useCORS: true },
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+  }).from(preview).save().then(() => {
+    preview.style.cssText = origStyle;
+    toast('ดาวน์โหลด PDF สำเร็จ', 'success');
+  }).catch((e) => {
+    preview.style.cssText = origStyle;
+    console.error('PDF error:', e);
+    toast('เกิดข้อผิดพลาดในการสร้าง PDF', 'error');
+  });
+}
+
+window.initReplacementReceiptView = initReplacementReceiptView;
+window.openReplacementFromExpense = openReplacementFromExpense;
+window.calcRRTotal = calcRRTotal;
+window.updateRRPreview = updateRRPreview;
+window.clearRRForm = clearRRForm;
+window.generateRRPdf = generateRRPdf;

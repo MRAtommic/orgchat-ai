@@ -72,42 +72,46 @@ CHROMA_DIR = BASE_DIR / "chroma_db"
 CHROMA_DIR.mkdir(exist_ok=True)
 
 META_FILE = BASE_DIR / "file_meta.json"
+_META_LOCK = threading.RLock()
 
 
 def _load_meta() -> dict:
-    if META_FILE.exists():
-        with open(META_FILE, "r", encoding="utf-8") as f:
-            meta = json.load(f)
-            
-        # --- Path Self-Healing for Migration (Windows <-> Pi/Linux) ---
-        modified = False
-        for fid, info in meta.items():
-            stored_path = info.get("path")
-            if stored_path:
-                # If the path looks like Windows (has \) but we are on Linux (or vice versa)
-                # Or if the parent directory no longer matches our actual UPLOAD_DIR
-                # Use regex to split by both / and \ to safely get the filename on any OS
-                # Use a robust way to extract filename from either Windows or Linux absolute paths
-                actual_name = stored_path.replace('\\', '/').split('/')[-1]
-                expected_path = str(UPLOAD_DIR / actual_name)
-                
-                if stored_path != expected_path:
-                    # Fix it to match current OS and movement of folder
-                    info["path"] = expected_path
-                    modified = True
-                    
-        if modified:
-            print(f"[HEALED] Paths in file_meta.json self-healed. Total reconciled: {len([m for m in meta if meta[m].get('path')])}")
-            _save_meta(meta)
-            
-        return meta
-    return {}
+    with _META_LOCK:
+        if META_FILE.exists():
+            with open(META_FILE, "r", encoding="utf-8") as f:
+                meta = json.load(f)
+
+            # --- Path Self-Healing for Migration (Windows <-> Pi/Linux) ---
+            modified = False
+            for fid, info in meta.items():
+                stored_path = info.get("path")
+                if stored_path:
+                    # If the path looks like Windows (has \) but we are on Linux (or vice versa)
+                    # Or if the parent directory no longer matches our actual UPLOAD_DIR
+                    # Use regex to split by both / and \ to safely get the filename on any OS
+                    # Use a robust way to extract filename from either Windows or Linux absolute paths
+                    actual_name = stored_path.replace('\\', '/').split('/')[-1]
+                    expected_path = str(UPLOAD_DIR / actual_name)
+
+                    if stored_path != expected_path:
+                        # Fix it to match current OS and movement of folder
+                        info["path"] = expected_path
+                        modified = True
+
+            if modified:
+                print(f"[HEALED] Paths in file_meta.json self-healed. Total reconciled: {len([m for m in meta if meta[m].get('path')])}")
+                _save_meta(meta)
+            return meta
+        return {}
 
 
 def _save_meta(meta: dict):
-    with open(META_FILE, "w", encoding="utf-8") as f:
-        json.dump(meta, f, ensure_ascii=False, indent=2)
-
+    with _META_LOCK:
+        # Atomic write: write to tmp then rename to avoid corruption during crash/power loss
+        tmp_file = META_FILE.with_suffix(".tmp")
+        with open(tmp_file, "w", encoding="utf-8") as f:
+            json.dump(meta, f, ensure_ascii=False, indent=2)
+        tmp_file.replace(META_FILE)
 
 def _file_hash(path: Path) -> str:
     h = hashlib.sha256()
@@ -205,8 +209,8 @@ class BatchedGoogleEmbeddingFunction(embedding_functions.EmbeddingFunction):
                         print("🚫 DAILY Quota Exceeded. หยุดการ embed ชั่วคราว")
                         self.daily_quota_hit = True
                         raise Exception("DAILY_QUOTA_EXCEEDED")
-                    print(f"⚠️ Rate Limit — รอ 3 วินาทีแล้วลองใหม่...")
-                    time.sleep(3.0)  # Reduced from 30.0 to 3.0 to prevent Gunicorn timeout
+                    print(f"⚠️ Rate Limit — รอ 5 วินาทีแล้วลองใหม่...")
+                    time.sleep(5.0)
                     try:
                         response = self._client.models.embed_content(
                             model=self._model_name,
@@ -216,7 +220,7 @@ class BatchedGoogleEmbeddingFunction(embedding_functions.EmbeddingFunction):
                         for emb in response.embeddings:
                             all_embeddings.append(emb.values)
                         continue
-                    except:
+                    except Exception:
                         pass
                 print(f"❌ Embedding API Error: {e}")
                 raise e
@@ -349,13 +353,20 @@ class PurePythonVectorStore:
                     self.data = json.load(f)
                 print(f"✅ Loaded {len(self.data)} chunks from pure Python vector store fallback.")
             except Exception as e:
-                print(f"⚠️ Error loading fallback vector store: {e}")
+                print(f"⚠️ Error loading fallback vector store: {e}. Renaming corrupted file and starting fresh.")
+                try:
+                    corrupted_path = self.persist_path.with_suffix(".corrupted_" + str(int(time.time())))
+                    self.persist_path.rename(corrupted_path)
+                except:
+                    pass
                 self.data = []
 
     def save(self):
         try:
-            with open(self.persist_path, "w", encoding="utf-8") as f:
+            tmp_file = self.persist_path.with_suffix(".tmp")
+            with open(tmp_file, "w", encoding="utf-8") as f:
                 json.dump(self.data, f, ensure_ascii=False, indent=2)
+            tmp_file.replace(self.persist_path)
         except Exception as e:
             print(f"⚠️ Error saving fallback vector store: {e}")
 
@@ -991,16 +1002,32 @@ def ingest_file(file_path: Path, original_name: str, department: str = "General"
     }
     _save_meta(meta)
 
+    def _mark_status(new_status: str, error_msg: str = ""):
+        """อัปเดต status ใน meta เสมอ — ป้องกันไฟล์ค้างที่ 'processing'"""
+        try:
+            m = _load_meta()
+            if fid in m:
+                m[fid]["status"] = new_status
+                if error_msg:
+                    m[fid]["error"] = error_msg
+                _save_meta(m)
+        except Exception:
+            pass
+
     if not _get_kb().is_key_valid():
         print(f"❌ API Key not valid while ingesting {original_name}")
+        _mark_status("error", "API Key not set")
         return {"status": "error", "error": "API Key not set. Cannot ingest file.", "file_id": fid, "name": original_name}
 
     try:
         chunks, chunk_metas = FileProcessor.parse(file_path)
     except Exception as e:
         print(f"❌ Parsing Error: {e}")
+        _mark_status("error", f"Parsing failed: {e}")
         return {"status": "error", "error": f"Parsing failed: {e}", "file_id": fid, "name": original_name}
+
     if not chunks:
+        _mark_status("empty")
         return {"status": "empty", "file_id": fid, "name": original_name}
 
     for m in chunk_metas:
@@ -1009,20 +1036,21 @@ def ingest_file(file_path: Path, original_name: str, department: str = "General"
         m["organization_id"] = org_id
 
     try:
-        # Step-by-step ingestion to save RAM
-        batch_size = 20 # Smaller batches for Pi
+        batch_size = 20
         for i in range(0, len(chunks), batch_size):
             batch_chunks = chunks[i : i + batch_size]
-            batch_metas = chunk_metas[i : i + batch_size]
+            batch_metas  = chunk_metas[i : i + batch_size]
             _get_kb().add_chunks(batch_chunks, source_name=original_name, file_id=fid, metadatas=batch_metas)
             gc.collect()
     except Exception as e:
-        if "DAILY_QUOTA_EXCEEDED" in str(e):
-             raise e # Propagate hard stop
+        err_str = str(e)
+        _mark_status("error", err_str)
+        if "DAILY_QUOTA_EXCEEDED" in err_str:
+            raise e
         print(f"❌ Error adding chunks for {original_name}: {e}")
-        return {"status": "error", "error": str(e), "file_id": fid, "name": original_name}
+        return {"status": "error", "error": err_str, "file_id": fid, "name": original_name}
     finally:
-        gc.collect() # Force cleanup for Pi memory
+        gc.collect()
 
     meta[fid] = {
         "name": original_name,
@@ -1038,7 +1066,8 @@ def ingest_file(file_path: Path, original_name: str, department: str = "General"
         "timestamp": meta[fid].get("timestamp", datetime.now().isoformat())
     }
     _save_meta(meta)
-    return {"status": "ok", "file_id": fid, "name": original_name, "chunks": len(chunks), "department": department, "category_id": category_id, "organization_id": org_id}
+    return {"status": "ok", "file_id": fid, "name": original_name, "chunks": len(chunks),
+            "department": department, "category_id": category_id, "organization_id": org_id}
 
 
 def ingest_text(text: str, source_name: str, department: str = "General", category_id: int = None, org_id: int = 1) -> dict:
@@ -1047,7 +1076,7 @@ def ingest_text(text: str, source_name: str, department: str = "General", catego
         return {"status": "empty"}
 
     import hashlib
-    source_id = hashlib.md5(source_name.encode()).hexdigest()[:12]
+    source_id = hashlib.sha256(source_name.encode()).hexdigest()[:12]
 
     # First, clear previous version of this source if it exists
     _get_kb().delete_by_source(source_name)
@@ -1067,15 +1096,22 @@ def ingest_text(text: str, source_name: str, department: str = "General", catego
         return {"status": "error", "error": str(e)}
 
 
-def list_files() -> list[dict]:
+def list_files(org_id: int = None) -> list[dict]:
     meta = _load_meta()
-    return [{"file_id": fid, **info} for fid, info in meta.items()]
+    files = [{"file_id": fid, **info} for fid, info in meta.items()]
+    if org_id is not None:
+        files = [f for f in files if f.get("organization_id") == org_id]
+    return files
 
-
-def delete_file(file_id: str, delete_from_disk: bool = True) -> bool:
+def delete_file(file_id: str, delete_from_disk: bool = True, org_id: int = None) -> bool:
     meta = _load_meta()
     if file_id not in meta:
         return False
+
+    # Check org_id if provided
+    if org_id is not None and meta[file_id].get("organization_id") != org_id:
+        return False
+
     _get_kb().delete_by_file_id(file_id)
     info = meta.pop(file_id)
     _save_meta(meta)
@@ -1213,11 +1249,24 @@ def retrieve_context(question: str, where: dict = None) -> tuple[str, list[dict]
     return context, detailed_sources
 
 
-def kb_stats() -> dict:
+def kb_stats(org_id: int = None) -> dict:
+    meta = _load_meta()
+    if org_id is not None:
+        org_files = [f for f in meta.values() if f.get("organization_id") == org_id]
+        total_files = len(org_files)
+        # Approximate chunks for this org if we don't want to query ChromaDB for each chunk's org_id
+        # In a real system, we'd query the vector DB with a where filter for count.
+        # For now, let's use the metadata if available or a filtered count if possible.
+        return {
+            "total_chunks": "N/A", # Needs vector DB count with where filter
+            "total_files": total_files,
+            "knowledge_base_size": total_files
+        }
+
     chunks = _get_kb().total_chunks()
     return {
-        "total_chunks": chunks, 
-        "total_files": len(_load_meta()),
+        "total_chunks": chunks,
+        "total_files": len(meta),
         "knowledge_base_size": chunks
     }
 
@@ -1250,6 +1299,43 @@ def wipe_knowledge_base():
             Path(info["path"]).unlink(missing_ok=True)
         except Exception:
             pass
+def cleanup_stale_processing(max_age_minutes: int = 30) -> int:
+    """
+    ล้างไฟล์ที่ติดอยู่ที่ status='processing' นานเกิน max_age_minutes
+    คืนค่าจำนวนไฟล์ที่ถูกทำเครื่องหมายเป็น 'error'
+    """
+    from datetime import timezone as _tz
+    meta = _load_meta()
+    now = datetime.now(_tz.utc)
+    changed = 0
+    for fid, info in meta.items():
+        if info.get("status") != "processing":
+            continue
+        ts_str = info.get("timestamp", "")
+        if not ts_str:
+            info["status"] = "error"
+            info["error"] = "processing timeout (no timestamp)"
+            changed += 1
+            continue
+        try:
+            ts = datetime.fromisoformat(ts_str)
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=_tz.utc)
+            age_min = (now - ts).total_seconds() / 60
+            if age_min > max_age_minutes:
+                info["status"] = "error"
+                info["error"] = f"processing timeout ({int(age_min)} นาที)"
+                changed += 1
+                print(f"[Cleanup] {info.get('name')} stuck {int(age_min)}m → error")
+        except Exception:
+            info["status"] = "error"
+            info["error"] = "processing timeout (invalid timestamp)"
+            changed += 1
+    if changed:
+        _save_meta(meta)
+    return changed
+
+
 def fix_categories():
     """Sync and normalize category_ids from meta file to ChromaDB."""
     meta = _load_meta()

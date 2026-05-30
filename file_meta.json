@@ -1,7 +1,7 @@
 {
   "eb5af6047617f5d40dd2c3c9ac135f2043fe8f6f63a6de08a6d50cb130f3884e": {
     "name": "69110631_c6a73680_name_1.txt",
-    "path": "c:\\Users\\KC_Ketwilai\\Downloads\\orgchat-ai-main\\orgchat-ai-main\\webai\\uploads\\0221e336_69110631_c6a73680_name_1.txt",
+    "path": "C:\\Users\\KC_Ketwilai\\Downloads\\orgchat-ai-main\\orgchat-ai-main\\webai\\uploads\\0221e336_69110631_c6a73680_name_1.txt",
     "chunks": 2,
     "size": 1253,
     "type": "txt",
@@ -14,7 +14,7 @@
   },
   "aa76d845554feae8aa4d9c4a5a27ae636bf71a4dc61dd1cba4e25506bef4182b": {
     "name": "explorer_export_1775039142637.csv",
-    "path": "c:\\Users\\KC_Ketwilai\\Downloads\\orgchat-ai-main\\orgchat-ai-main\\webai\\uploads\\15e2b5e0_explorer_export_1775039142637.csv",
+    "path": "C:\\Users\\KC_Ketwilai\\Downloads\\orgchat-ai-main\\orgchat-ai-main\\webai\\uploads\\15e2b5e0_explorer_export_1775039142637.csv",
     "chunks": 2,
     "size": 545,
     "type": "csv",
@@ -27,7 +27,7 @@
   },
   "6be6b1203f3d51df0b553a70e57b8a723cd405683958204f96d23d7cd6aea659": {
     "name": "wine_data.csv",
-    "path": "c:\\Users\\KC_Ketwilai\\Downloads\\orgchat-ai-main\\orgchat-ai-main\\webai\\uploads\\35595443_wine_data.csv",
+    "path": "C:\\Users\\KC_Ketwilai\\Downloads\\orgchat-ai-main\\orgchat-ai-main\\webai\\uploads\\35595443_wine_data.csv",
     "chunks": 12,
     "size": 10782,
     "type": "csv",
@@ -40,15 +40,29 @@
   },
   "4a437fde05fe5264e1701a7387ac6fb75393772ba38bb2c9c566405af5af4bd7": {
     "name": "titanic.csv",
-    "path": "c:\\Users\\KC_Ketwilai\\Downloads\\orgchat-ai-main\\orgchat-ai-main\\webai\\uploads\\d824422d_titanic.csv",
+    "path": "C:\\Users\\KC_Ketwilai\\Downloads\\orgchat-ai-main\\orgchat-ai-main\\webai\\uploads\\d824422d_titanic.csv",
     "chunks": 0,
     "size": 60302,
     "type": "csv",
     "department": "General",
     "category_id": null,
     "organization_id": 1,
-    "status": "processing",
+    "status": "error",
     "api_key_status": "AIzaS...",
-    "timestamp": "2026-05-26T07:09:17.006248"
+    "timestamp": "2026-05-26T07:09:17.006248",
+    "error": "processing timeout (5574 นาที)"
+  },
+  "384108a643ce69ce1883db5eaae6d7fc2f8d74af80e4d14ee5fcd72702015e82": {
+    "name": "run run mat.png",
+    "path": "C:\\Users\\KC_Ketwilai\\Downloads\\orgchat-ai-main\\orgchat-ai-main\\webai\\uploads\\b72f9176_run_run_mat.png",
+    "chunks": 1,
+    "size": 2970741,
+    "type": "png",
+    "department": "General",
+    "category_id": null,
+    "organization_id": 11,
+    "status": "ready",
+    "api_key_status": "AIzaS...",
+    "timestamp": "2026-05-28T02:46:33.112062"
   }
 }

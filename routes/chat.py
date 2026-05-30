@@ -45,6 +45,7 @@ from redis_manager import RedisManager
 
 _line_batch_timer = {}
 LINE_FOLDER_CACHE = {}
+LINE_CONFIG_FILE = "line_config.json"
 
 from routes.shared import (
     VERSION, socketio, _limiter, login_required, admin_required,
@@ -66,6 +67,12 @@ from routes.shared import (
 logger = logging.getLogger("OrgChatAI.Chat")
 
 chat_bp = Blueprint('chat', __name__)
+
+
+def _err500(e: Exception, context: str = "") -> tuple:
+    """log full exception แต่ส่ง generic message ให้ user เท่านั้น"""
+    logger.error(f"[{context or 'Chat'}] {type(e).__name__}: {e}", exc_info=True)
+    return jsonify({"ok": False, "error": "เกิดข้อผิดพลาดภายในระบบ กรุณาลองใหม่อีกครั้ง"}), 500
 
 @socketio.on('connect')
 def handle_connect():
@@ -1896,8 +1903,7 @@ def get_line_config():
 def save_line_config(config):
     with open(LINE_CONFIG_FILE, 'w', encoding='utf-8') as f:
         json.dump(config, f, ensure_ascii=False, indent=2)
-    os.environ["LINE_CHANNEL_ACCESS_TOKEN"] = config.get("channel_access_token", "")
-    os.environ["LINE_CHANNEL_SECRET"] = config.get("channel_secret", "")
+    # ไม่ mutate os.environ — ทุก worker อ่านค่าจาก get_line_config() โดยตรง
 
 
 def get_line_sender_name(group_id, sender_id):
@@ -2459,15 +2465,14 @@ def process_line_event(event_data):
                     # Use pending_id from postback if available, fallback to batch_key for old buttons
                     pending_id = parsed.get('pending_id') or batch_key
                     # Process pending files immediately after folder selection
-                    if RedisManager.get_json(f"pending_files:{pending_id}"):
-                        RedisManager.set_json(f"upload_lock:{pending_id}", True, expire=30)
+                    if RedisManager.try_claim_upload(pending_id):
                         show_loading_animation(dest_id)
                         threading.Thread(target=process_pending_uploads, args=(pending_id, dest_id, f_id, f_name, reply_token), daemon=True).start()
                     else:
                         if RedisManager.get_json(f"upload_lock:{pending_id}"):
                             reply_to_line(reply_token, "น้องพั้นกำลังประมวลผลไฟล์ให้อยู่ค่ะ กรุณารอสักครู่นะคะ")
                         else:
-                            reply_to_line(reply_token, "ปุ่มนี้ถูกใช้งานไปแล้วค่ะ หากต้องการเก็บไฟล์ รบกวนส่งรูปภาพเข้ามาใหม่อีกครั้งนะคะ")
+                            reply_to_line(reply_token, "ปุ่มนี้หมดอายุแล้วค่ะ ส่งรูปใหม่ให้พั้นนะคะ", sticker_data={"packageId": "446", "stickerId": "1988"})
             elif parsed.get('action') == 'edit_prompt':
                 sheet = parsed.get('sheet')
                 row = parsed.get('row')
@@ -2580,17 +2585,23 @@ def process_pending_uploads(b_key, did, folder_id, folder_name, reply_tok):
 
 
     """Processes files that were waiting for folder selection."""
-    mgr = google_manager
-    # Note: GoogleWorkspaceManager is a Singleton. Individual user manager is not supported in this version.
-
     # Resolve org for billing (group or user)
     _upload_org_id = database.get_org_id_by_line_group(did) if (did.startswith("C") or did.startswith("R")) else database.get_org_id_by_line_user(did)
     if _upload_org_id is None:
         _upload_org_id = 1  # fallback for legacy/single-tenant deployments
     
     files = RedisManager.pop_pending_files(b_key)
-    if not files: return
-    
+    if not files:
+        RedisManager.release_upload_lock(b_key)
+        return
+    try:
+        _process_pending_uploads_inner(b_key, did, folder_id, folder_name, reply_tok, files, _upload_org_id)
+    finally:
+        RedisManager.release_upload_lock(b_key)
+
+
+def _process_pending_uploads_inner(b_key, did, folder_id, folder_name, reply_tok, files, _upload_org_id):
+
     # Enforce context for this background thread!
     sender_id = files[0].get("sender_id")
     u_name = database.get_username_by_line_id(sender_id) if sender_id else None
@@ -2656,7 +2667,7 @@ def process_pending_uploads(b_key, did, folder_id, folder_name, reply_tok):
             u_name = database.get_username_by_line_id(sender_id) if sender_id else None
 
             # Upload
-            link, upload_err = mgr.upload_file(content, original_name, mimetype, folder_id=folder_id, org_id=_upload_org_id, username=u_name)
+            link, upload_err = google_manager.upload_file(content, original_name, mimetype, folder_id=folder_id, org_id=_upload_org_id, username=u_name)
             if not link:
                 logger.error(f"❌ Drive upload failed for '{original_name}': {upload_err}")
                 return {"status": "upload_failed", "name": original_name, "error": str(upload_err)}
@@ -2680,7 +2691,7 @@ def process_pending_uploads(b_key, did, folder_id, folder_name, reply_tok):
                 "line_sender_name": sender_name
             }
 
-            log_res = mgr.log_expense(log_data, org_id=_upload_org_id, username=u_name)
+            log_res = google_manager.log_expense(log_data, org_id=_upload_org_id, username=u_name)
 
             # Log to local database for Dashboard stats (regardless of Sheets result)
             try:
@@ -2860,7 +2871,7 @@ def process_pending_uploads(b_key, did, folder_id, folder_name, reply_tok):
                 if env_url:
                     base_url = env_url.rstrip('/')
 
-            sheet_id = mgr.spreadsheet_id
+            sheet_id = google_manager.spreadsheet_id
             sheet_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit" if sheet_id else "#"
 
             summary_bubble = create_batch_summary_flex_bubble(uploaded_results, folder_name)
@@ -2905,7 +2916,7 @@ def process_pending_uploads(b_key, did, folder_id, folder_name, reply_tok):
                 })
 
             # Full quick reply shortcuts attached to batch summary card
-            _sheet_qr = f"https://docs.google.com/spreadsheets/d/{mgr.spreadsheet_id}/edit" if mgr.spreadsheet_id else "https://sheets.google.com"
+            _sheet_qr = f"https://docs.google.com/spreadsheets/d/{google_manager.spreadsheet_id}/edit" if google_manager.spreadsheet_id else "https://sheets.google.com"
             _p_id2 = os.getenv("GOOGLE_DRIVE_PARENT_ID") or os.getenv("PARENT_FOLDER_ID")
             _drive_qr = f"https://drive.google.com/drive/folders/{_p_id2}" if _p_id2 else "https://drive.google.com"
             quick_reply_batch = {
@@ -2934,7 +2945,7 @@ def process_pending_uploads(b_key, did, folder_id, folder_name, reply_tok):
                 row_num = r.get("row", 1)
                 file_link = r.get("link", "#")
                 
-                sheet_id = mgr.spreadsheet_id
+                sheet_id = google_manager.spreadsheet_id
                 sheet_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit" if sheet_id else "#"
                 
                 status = r.get("status", "success")
@@ -3004,7 +3015,7 @@ def process_pending_uploads(b_key, did, folder_id, folder_name, reply_tok):
                     
             if messages:
                 # Full quick reply shortcuts on the last message
-                _sheet_url_qr = f"https://docs.google.com/spreadsheets/d/{mgr.spreadsheet_id}/edit" if mgr.spreadsheet_id else "https://sheets.google.com"
+                _sheet_url_qr = f"https://docs.google.com/spreadsheets/d/{google_manager.spreadsheet_id}/edit" if google_manager.spreadsheet_id else "https://sheets.google.com"
                 _p_id = os.getenv("GOOGLE_DRIVE_PARENT_ID") or os.getenv("PARENT_FOLDER_ID")
                 _drive_url = f"https://drive.google.com/drive/folders/{_p_id}" if _p_id else "https://drive.google.com"
                 quick_reply = {
@@ -3038,11 +3049,16 @@ def process_pending_uploads(b_key, did, folder_id, folder_name, reply_tok):
 
 
 def verify_line_signature(body_bytes, signature):
-    """Verifies the LINE webhook signature using LINE_CHANNEL_SECRET."""
-    channel_secret = os.environ.get("LINE_CHANNEL_SECRET", "").strip()
+    """Verifies the LINE webhook signature.
+    อ่านจาก config file (admin อัปเดตผ่าน UI) ก่อน แล้ว fallback env var
+    """
+    # อ่านจาก file ก่อน เพื่อให้ทุก worker ใช้ค่าเดียวกัน (ไม่พึ่ง os.environ)
+    channel_secret = (get_line_config().get("channel_secret") or "").strip()
     if not channel_secret:
-        logger.warning("⚠️ LINE_CHANNEL_SECRET is not set. Bypassing verification.")
-        return True
+        channel_secret = os.environ.get("LINE_CHANNEL_SECRET", "").strip()
+    if not channel_secret:
+        logger.error("LINE_CHANNEL_SECRET is not set — rejecting LINE webhook request.")
+        return False
     hash_obj = hmac.new(channel_secret.encode('utf-8'), body_bytes, hashlib.sha256).digest()
     calc_signature = base64.b64encode(hash_obj).decode('utf-8')
     return calc_signature == signature
@@ -3440,8 +3456,9 @@ def process_line_command(text, user_id, reply_token, group_id=None):
             try:
                 context = ""
                 sources = []
+                line_where = {"$or": [{"organization_id": _line_org_id}, {"organization_id": {"$eq": None}}]}
                 if hasattr(rag_engine, 'retrieve_context'):
-                    context, sources = rag_engine.retrieve_context(text, where=None)
+                    context, sources = rag_engine.retrieve_context(text, where=line_where)
                 
                 if context:
                     system_prompt += f"\n\nContext:\n{context}\n\n(ใช้ข้อมูลนี้ตอบพี่เขาอย่างเป็นธรรมชาติที่สุด)"
@@ -3460,14 +3477,15 @@ def process_line_command(text, user_id, reply_token, group_id=None):
                 if 'context' in locals() and context:
                     response = f"พั้นเจอข้อมูลที่เกี่ยวข้องดังนี้ค่ะ (สำรอง):\n{context[:500]}..."
                 elif hasattr(rag_engine, 'retrieve_context'):
-                    ctx, _ = rag_engine.retrieve_context(text)
+                    ctx, _ = rag_engine.retrieve_context(text, where=line_where)
                     response = f"พั้นเจอข้อมูลที่เกี่ยวข้องดังนี้ค่ะ (สำรอง):\n{ctx[:500]}..." if ctx else "ขออภัยนะคะ พั้นมีปัญหาในการดึงข้อมูลสักครู่ ลองใหม่อีกครั้งนะคะ"
                 else:
                     response = "ขออภัยนะคะ พั้นมีปัญหาในการดึงข้อมูลสักครู่ ลองใหม่อีกครั้งนะคะ"
                 reply_to_line(reply_token, response, quick_reply=quick_reply)
         else:
             if hasattr(rag_engine, 'retrieve_context'):
-                ctx, _ = rag_engine.retrieve_context(text)
+                line_where = {"$or": [{"organization_id": _line_org_id}, {"organization_id": {"$eq": None}}]}
+                ctx, _ = rag_engine.retrieve_context(text, where=line_where)
                 response = f"พั้นเจอข้อมูลที่เกี่ยวข้องดังนี้ค่ะ:\n{ctx[:500]}..." if ctx else "ขออภัยนะคะ ไม่พบข้อมูลที่เกี่ยวข้องค่ะ"
             else:
                 response = "ระบบ AI ยังไม่พร้อมใช้งานในขณะนี้ค่ะ"
@@ -3480,6 +3498,7 @@ def process_line_command(text, user_id, reply_token, group_id=None):
 
 @chat_bp.route("/api/upload", methods=["POST"])
 @login_required
+@_limiter.limit("20 per minute; 60 per hour")
 def upload():
     if not can_edit_knowledge_base():
         return jsonify({"ok": False, "error": "คุณไม่มีสิทธิ์ในการอัปโหลดไฟล์ (ปิดการใช้งานโดยผู้ดูแลระบบ)"}), 403
@@ -3528,33 +3547,39 @@ def upload():
         save_path = rag_engine.UPLOAD_DIR / f"{uid}_{safe_name}"
         f.save(str(save_path))
 
+        # ── ตรวจ duplicate ก่อน spawn thread (synchronous, fast) ──
+        try:
+            _fid = rag_engine._file_hash(save_path)
+            _meta = rag_engine._load_meta()
+            if _fid in _meta and _meta[_fid].get("status") == "ready":
+                save_path.unlink(missing_ok=True)
+                results.append({"file": orig_name, "status": "duplicate",
+                                 "message": "ไฟล์นี้มีในระบบอยู่แล้ว"})
+                continue
+        except Exception as _dup_err:
+            print(f"[Upload] duplicate check error: {_dup_err}")
+
         # Use a thread for ingestion to keep the app responsive
         _ingest_org_id = get_current_org_id()
         @safe_thread_target
         @db_task_tracker("run_ingest")
         def run_ingest(path, name, d, cat, _oid=_ingest_org_id):
-
-
             try:
-                rag_engine.ingest_file(path, original_name=name, department=d, category_id=cat, org_id=_oid)
-                # --- Notify LINE when KB is updated ---
-                broadcast_line_announcement(
-                    "คลังความรู้อัปเดต", 
-                    f"-> เพิ่มไฟล์ใหม่เข้าระบบ!\nไฟล์: {name}\nส่วนงาน: {d}\nโดย: {user or 'Admin'}",
-                    fields={
-                        "ไฟล์": name,
-                        "ส่วนงาน": d,
-                        "ผู้บันทึก": user or "Admin"
-                    }
-                )
+                result = rag_engine.ingest_file(path, original_name=name, department=d, category_id=cat, org_id=_oid)
+                if result and result.get("status") not in ("duplicate", "error", "empty"):
+                    broadcast_line_announcement(
+                        "คลังความรู้อัปเดต",
+                        f"-> เพิ่มไฟล์ใหม่เข้าระบบ!\nไฟล์: {name}\nส่วนงาน: {d}\nโดย: {user or 'Admin'}",
+                        fields={"ไฟล์": name, "ส่วนงาน": d, "ผู้บันทึก": user or "Admin"}
+                    )
             except Exception as e:
                 print(f"❌ Background Ingest Error: {e}")
 
         thread = threading.Thread(target=run_ingest, args=(save_path, orig_name, dept, category_id))
         thread.start()
-        
+
         results.append({"file": orig_name, "status": "processing"})
-        database.log_event(f"Started uploading file: {orig_name}", user=user)
+        database.log_event(f"Started uploading file: {orig_name}", user=user, org_id=org_id)
 
     return jsonify({"ok": True, "results": results, "msg": "ไฟล์กำลังถูกประมวลผลในพื้นหลัง"})
 
@@ -3566,7 +3591,8 @@ def list_files():
         return jsonify({"ok": False, "error": "คุณไม่มีสิทธิ์ในการเข้าถึงคลังข้อมูล"}), 403
     
     user = session.get("user", "Admin")
-    all_files = rag_engine.list_files()
+    org_id = get_current_org_id()
+    all_files = rag_engine.list_files(org_id=org_id)
     
     # Get categories visible to this user
     visible_categories = database.get_categories(user)
@@ -3588,13 +3614,23 @@ def delete_file_route(file_id):
     if not can_delete_knowledge_base():
         return jsonify({"ok": False, "error": "คุณไม่มีสิทธิ์ในการลบไฟล์ (ติดต่อผู้ดูแลระบบเพื่อขอสิทธิ์)"}), 403
     print(f"🗑️ Deletion request for file_id: {file_id}")
-    ok = rag_engine.delete_file(file_id)
+    org_id = get_current_org_id()
+    ok = rag_engine.delete_file(file_id, org_id=org_id)
     if ok:
         user = session.get("user", "Admin")
-        database.log_event(f"Deleted file ID: {file_id}", user=user)
+        database.log_event(f"Deleted file ID: {file_id}", user=user, org_id=org_id)
         return jsonify({"ok": True})
     print(f"❌ Deletion failed for file_id: {file_id}")
     return jsonify({"ok": False, "error": "File not found or could not be deleted"}), 404
+
+
+@chat_bp.route("/api/kb/cleanup-stale", methods=["POST"])
+@login_required
+def cleanup_stale_kb():
+    """ล้างไฟล์ KB ที่ค้างอยู่ที่ status='processing' นานเกิน 30 นาที"""
+    cleaned = rag_engine.cleanup_stale_processing(max_age_minutes=30)
+    return jsonify({"ok": True, "cleaned": cleaned,
+                    "message": f"ล้างไฟล์ค้าง {cleaned} ไฟล์"})
 
 
 @chat_bp.route("/api/departments")
@@ -3636,10 +3672,10 @@ def add_kb_category():
         
     try:
         database.add_category(name, desc, user, visibility)
-        database.log_event(f"Added KB category: {name} (Visibility: {visibility})", user=user)
+        database.log_event(f"Added KB category: {name} (Visibility: {visibility})", user=user, org_id=get_current_org_id())
         return jsonify({"ok": True})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _err500(e)
 
 
 @chat_bp.route("/api/kb/categories/settings", methods=["POST"])
@@ -3667,11 +3703,11 @@ def update_kb_category_settings():
     try:
         success = database.update_category_settings(cat_id, visibility, authorized_users)
         if success:
-            database.log_event(f"Updated KB category settings ID: {cat_id}", user=user)
+            database.log_event(f"Updated KB category settings ID: {cat_id}", user=user, org_id=get_current_org_id())
             return jsonify({"ok": True})
         return jsonify({"ok": False, "error": "ล้มเหลวในการบันทึกการตั้งค่า"}), 500
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _err500(e)
 
 
 @chat_bp.route("/api/kb/categories/<int:cat_id>", methods=["DELETE"])
@@ -3682,10 +3718,10 @@ def delete_kb_category(cat_id):
     user = session.get("user", "Admin")
     try:
         database.delete_category(cat_id)
-        database.log_event(f"Deleted KB category ID: {cat_id}", user=user)
+        database.log_event(f"Deleted KB category ID: {cat_id}", user=user, org_id=get_current_org_id())
         return jsonify({"ok": True})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _err500(e)
 
 
 @chat_bp.route("/api/kb/categories/access/<int:cat_id>", methods=["GET"])
@@ -3780,7 +3816,7 @@ def kb_search():
                 seen_ids.add(fid)
         return jsonify({"ok": True, "results": results[:20]})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _err500(e)
 
 
 @chat_bp.route("/api/kb/files/assign", methods=["POST"])
@@ -3799,10 +3835,10 @@ def assign_file_category():
     try:
         # Update in database if needed, but primarily in rag_engine meta
         rag_engine.update_file_category(file_id, category_id)
-        database.log_event(f"Assigned file {file_id} to category {category_id}", user=user)
+        database.log_event(f"Assigned file {file_id} to category {category_id}", user=user, org_id=get_current_org_id())
         return jsonify({"ok": True})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _err500(e)
 
 
 @chat_bp.route("/api/personas", methods=["GET"])
@@ -3871,11 +3907,25 @@ def export_pdf():
         })
     except Exception as e:
         print(f"❌ PDF Export Error: {e}")
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _err500(e)
 
 
 @chat_bp.route("/api/files/download/<filename>")
+@login_required
 def download_file(filename):
+    # ป้องกัน cross-org access — ตรวจว่า file นี้เป็นของ org ผู้ขอหรือไม่
+    from pathlib import Path as _Path
+    all_files = rag_engine.list_files()
+    file_entry = next(
+        (f for f in all_files if _Path(f.get("path", "")).name == filename),
+        None,
+    )
+    if file_entry is None:
+        abort(404)
+    file_org = file_entry.get("organization_id")
+    user_org = get_current_org_id()
+    if file_org is not None and user_org is not None and file_org != user_org:
+        abort(403)
     return send_from_directory(rag_engine.UPLOAD_DIR, filename, as_attachment=True)
 
 
@@ -3921,7 +3971,7 @@ def compare_knowledge_base_files():
         return jsonify({"ok": True, "comparison": full_reply})
     except Exception as e:
         print(f"❌ Document Comparison Error: {e}")
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _err500(e)
 
 
 @chat_bp.route("/api/csv/<file_id>", methods=["GET", "POST"])
@@ -3929,7 +3979,8 @@ def compare_knowledge_base_files():
 def manage_csv_combined(file_id):
     """Combined CSV handler to ensure registration."""
     print(f"[API HIT] CSV API HIT: {request.method} {file_id}")
-    files = rag_engine.list_files()
+    org_id = get_current_org_id()
+    files = rag_engine.list_files(org_id=org_id)
     target = next((f for f in files if f["file_id"] == file_id), None)
     if not target:
         return jsonify({"ok": False, "error": "File not found"}), 404
@@ -3951,7 +4002,7 @@ def manage_csv_combined(file_id):
                     data.append(row)
             return jsonify({"ok": True, "headers": headers, "data": data, "name": target["name"]})
         except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 500
+            return _err500(e)
 
     if request.method == "POST":
         if not can_edit_knowledge_base():
@@ -3967,20 +4018,21 @@ def manage_csv_combined(file_id):
                 writer = csv.DictWriter(f, fieldnames=headers)
                 writer.writeheader()
                 writer.writerows(rows)
-            rag_engine.delete_file(file_id, delete_from_disk=False)
-            res = rag_engine.ingest_file(path, original_name=target["name"], department=target.get("department", "General"), org_id=get_current_org_id())
+            rag_engine.delete_file(file_id, delete_from_disk=False, org_id=org_id)
+            res = rag_engine.ingest_file(path, original_name=target["name"], department=target.get("department", "General"), org_id=org_id)
             if res.get("status") == "error":
                 return jsonify({"ok": False, "error": f"บันทึกไฟล์สำเร็จ แต่ AI อัปเดตข้อมูลล้มเหลว: {res.get('error')}"}), 500
             return jsonify({"ok": True})
         except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 500
+            return _err500(e)
 
 
 @chat_bp.route("/api/txt/<file_id>", methods=["GET", "POST"])
 @login_required
 def manage_txt(file_id):
     print(f"[API HIT] TXT API HIT: {request.method} {file_id}")
-    files = rag_engine.list_files()
+    org_id = get_current_org_id()
+    files = rag_engine.list_files(org_id=org_id)
     target = next((f for f in files if f["file_id"] == file_id), None)
     if not target:
         return jsonify({"ok": False, "error": "File not found"}), 404
@@ -3999,8 +4051,8 @@ def manage_txt(file_id):
         try:
             content = request.json.get("content", "")
             with open(path, "w", encoding="utf-8") as f: f.write(content)
-            rag_engine.delete_file(file_id, delete_from_disk=False)
-            res = rag_engine.ingest_file(path, original_name=target["name"], department=target.get("department", "General"), org_id=get_current_org_id())
+            rag_engine.delete_file(file_id, delete_from_disk=False, org_id=org_id)
+            res = rag_engine.ingest_file(path, original_name=target["name"], department=target.get("department", "General"), org_id=org_id)
             if res.get("status") == "error":
                 return jsonify({"ok": False, "error": f"บันทึกไฟล์สำเร็จ แต่ AI อัปเดตข้อมูลล้มเหลว: {res.get('error')}"}), 500
             return jsonify({"ok": True})
@@ -4015,7 +4067,8 @@ def search():
         return jsonify({"results": []})
     
     user = session.get("user")
-    rag_filter = get_rag_filter(user)
+    org_id = get_current_org_id()
+    rag_filter = get_rag_filter(user, org_id=org_id)
     results = rag_engine.search_kb(query, n_results=10, where=rag_filter)
     return jsonify({"results": results})
 
@@ -4069,6 +4122,7 @@ def stats_route():
 @login_required
 def dashboard_data():
     user = session.get("user")
+    org_id = get_current_org_id()
     # Auto cleanup/archive very old data (90+ days)
     database.auto_archive_old_schedules(90)
 
@@ -4077,27 +4131,31 @@ def dashboard_data():
         cursor = conn.cursor()
         
         # 1. Total Files & Chunks
-        kb_info = rag_engine.kb_stats()
+        kb_info = rag_engine.kb_stats(org_id=org_id)
         
         # 2. Total Chat Messages for this user
-        cursor.execute("SELECT COUNT(*) FROM messages WHERE username = ?", (user,))
+        cursor.execute("SELECT COUNT(*) FROM messages WHERE username = ? AND organization_id = ?", (user, org_id))
         chat_count = cursor.fetchone()[0]
         
-        # 3. Total Users
-        cursor.execute("SELECT COUNT(DISTINCT username) FROM user_profiles") # Simplified for now
+        # 3. Total Users in this organization
+        cursor.execute("""
+            SELECT COUNT(DISTINCT om.username) 
+            FROM organization_members om 
+            WHERE om.organization_id = ?
+        """, (org_id,))
         user_count = cursor.fetchone()[0]
         
-        # 4. Recent Activity (Latest 5 events for this user)
-        cursor.execute("SELECT event_text, time FROM events WHERE user = ? ORDER BY time DESC LIMIT 5", (user,))
+        # 4. Recent Activity (Latest 5 events for this user/org)
+        cursor.execute("SELECT event_text, time FROM events WHERE user = ? AND (organization_id = ? OR organization_id IS NULL) ORDER BY time DESC LIMIT 5", (user, org_id))
         logs = cursor.fetchall()
         activity_count = len(logs)
         
         # 5. Recent History (Latest 5 chats)
-        cursor.execute("SELECT text, timestamp FROM messages WHERE username = ? AND role = 'user' ORDER BY timestamp DESC LIMIT 5", (user,))
+        cursor.execute("SELECT text, timestamp FROM messages WHERE username = ? AND role = 'user' AND organization_id = ? ORDER BY timestamp DESC LIMIT 5", (user, org_id))
         recent_chats = [{"text": r[0], "time": r[1]} for r in cursor.fetchall()]
         
-        # 7. Recent Files (Filtered by visibility)
-        all_files = rag_engine.list_files()
+        # 7. Recent Files (Filtered by visibility and org)
+        all_files = rag_engine.list_files(org_id=org_id)
         visible_categories = database.get_categories(user)
         visible_cat_ids = {str(c["id"]) for c in visible_categories}
         
@@ -4117,14 +4175,12 @@ def dashboard_data():
         # 9. Tasks and Schedules
         from datetime import date
         today = date.today().isoformat()
-        user_schedules = database.get_schedules(user, org_id=get_current_org_id())
+        user_schedules = database.get_schedules(user, org_id=org_id)
         pending_tasks = [s for s in user_schedules if s.get("status", "todo") in ("todo", "doing") and s.get("date", "") >= today]
         completed_tasks_count = len([s for s in user_schedules if s.get("status") == "done"])
      
-     
         # 10. Drive Logs Stats — filter by current org so stats reflect only this org's data
-        _dash_org_id = get_current_org_id()
-        drive_stats = database.get_drive_stats(org_id=_dash_org_id)
+        drive_stats = database.get_drive_stats(org_id=org_id)
     finally:
         conn.close()
 
@@ -4150,7 +4206,7 @@ def dashboard_data():
         "pending_tasks": pending_tasks,
         "logs": [{"event": l[0], "time": l[1]} for l in logs],
         "drive_categories": drive_stats.get("categories", {}),
-        "recent_drive_logs": database.get_drive_logs(limit=5, org_id=_dash_org_id)
+        "recent_drive_logs": database.get_drive_logs(limit=5, org_id=org_id)
     })
 
 
@@ -4207,30 +4263,36 @@ def generate_global_summary():
     data = request.json or {}
     focus = data.get("focus", "").strip()
     category_id = data.get("category_id", "all")
-    
+
     user = session.get("user", "Admin")
     visible_categories = database.get_categories(user)
     visible_cat_ids = [str(c["id"]) for c in visible_categories]
-    
-    # Global visibility filter (user sees visible categories + unassigned)
-    global_where = {
-        "$or": [
-            {"category_id": {"$in": visible_cat_ids}},
-            {"category_id": ""}
-        ]
-    }
+
+    # Respect organization isolation
+    org_id = get_current_org_id()
+    org_clause = {"$or": [{"organization_id": org_id}, {"organization_id": {"$eq": None}}]}
 
     where_filter = None
     search_query = focus
-    
+
     if category_id != "all":
         if category_id == "unassigned":
-            where_filter = {"category_id": ""}
-            if not search_query: search_query = "สรุปข้อมูลที่ยังไม่ได้ระบุหมวดหมู่"
+            where_filter = {
+                "$and": [
+                    org_clause,
+                    {"category_id": ""}
+                ]
+            }
+            if not search_query: search_query = ""
         else:
             if str(category_id) not in visible_cat_ids:
-                return jsonify({"ok": False, "error": "คุณไม่มีสิทธิ์เข้าถึงหมวดหมู่นี้"}), 403
-            where_filter = {"category_id": str(category_id)}
+                return jsonify({"ok": False, "error": ""}), 403
+            where_filter = {
+                "$and": [
+                    org_clause,
+                    {"category_id": str(category_id)}
+                ]
+            }
             # Try to get category name for better context if no focus given
             if not search_query:
                 try:
@@ -4241,34 +4303,54 @@ def generate_global_summary():
                         row = cursor.fetchone()
                     finally:
                         conn.close()
-                    if row: search_query = f"สรุปข้อมูลเกี่ยวกับ {row[0]}"
+                    if row: search_query = f" {row[0]}"
                 except: pass
-    # else: category_id == "all" → where_filter stays None (search ALL data)
-        
-    if not search_query:
-        search_query = "ภาพรวมองค์กร กฎระเบียบ ประกาศ ข่าวสารล่าสุด"
+    else: # category_id == "all"
+        # Search all visible categories + unassigned, within the organization boundaries
+        if visible_cat_ids:
+            where_filter = {
+                "$and": [
+                    org_clause,
+                    {
+                        "$or": [
+                            {"category_id": {"$in": visible_cat_ids}},
+                            {"category_id": ""}
+                        ]
+                    }
+                ]
+            }
+        else:
+            where_filter = {
+                "$and": [
+                    org_clause,
+                    {"category_id": ""}
+                ]
+            }
 
-    print(f"📄 Summary Request - Category: {category_id}, Focus: '{focus}', Filter: {where_filter}")
-    
+    if not search_query:
+        search_query = "   "
+
+    print(f" Summary Request - Category: {category_id}, Focus: '{focus}', Filter: {where_filter}")
+
     try:
         is_fallback = False
         # 1. Semantic Search
         results = rag_engine.search_kb(search_query, n_results=10, where=where_filter)
-        
+
         # Fallback 1: Literal grab from category
         if not results:
             results = rag_engine.get_all_chunks(where=where_filter, limit=10)
-            
-        # Fallback 2: Try without any filter at all
-        if not results and where_filter is not None:
-            print(f"⚠️ Filtered search empty, falling back to unfiltered search")
-            results = rag_engine.search_kb(search_query, n_results=10)
+
+        # Fallback 2: Try with only org isolation filter (NEVER completely unfiltered!)
+        if not results:
+            print(f" Filtered search empty, falling back to org-only search")
+            results = rag_engine.search_kb(search_query, n_results=10, where=org_clause)
             if not results:
-                results = rag_engine.get_all_chunks(limit=10)
+                results = rag_engine.get_all_chunks(where=org_clause, limit=10)
             is_fallback = True
 
         if not results:
-            msg = "ไม่มีข้อมูลในหมวดหมู่ที่ระบุหรือหมวดหมู่ที่คุณสามารถเข้าถึงได้"
+            msg = ""
             return jsonify({"ok": False, "error": msg}), 404
             
         context_text = "\n".join([f"- {r['text']}" for r in results])
@@ -4315,7 +4397,7 @@ def generate_global_summary():
         })
     except Exception as e:
         print(f"❌ Global Summary Error: {e}")
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _err500(e)
 
 
 @chat_bp.route("/api/summarize_data", methods=["POST"])
@@ -4352,7 +4434,7 @@ def summarize_data():
         return jsonify({"ok": True, "summary": summary})
     except Exception as e:
         print(f"❌ Summarize Data Error: {e}")
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _err500(e)
 
 
 @chat_bp.route("/api/export")
@@ -4371,7 +4453,7 @@ def export_chat():
         
         return send_from_directory(directory=str(export_dir), path=file_path.name, as_attachment=True)
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _err500(e)
 
 
 @chat_bp.route("/api/logs")
@@ -4393,11 +4475,11 @@ def trigger_system_cleanup():
         with redirect_stdout(f):
             kb_cleanup.cleanup()
         output = f.getvalue()
-        database.log_event("System Cleanup Triggered", user=session.get("user"))
+        database.log_event("System Cleanup Triggered", user=session.get("user"), org_id=get_current_org_id())
         return jsonify({"ok": True, "message": "Cleanup completed", "details": output})
     except Exception as e:
         print(f"❌ Cleanup Error: {e}")
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _err500(e)
 
 
 @chat_bp.route("/api/users/status")
@@ -4429,7 +4511,7 @@ def get_all_users_status():
             })
         return jsonify({"ok": True, "users": users})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _err500(e)
 
 
 @chat_bp.route("/api/notifications/subscribe", methods=["POST"])
@@ -4511,8 +4593,9 @@ def create_new_group():
     name = data.get("name", "Unnamed Group")
     members = data.get("members", []) # List of usernames
     
-    room_id = database.create_room(name, user, members, org_id=get_current_org_id())
-    database.log_event(f"Created group: {name} (ID: {room_id})", user=user)
+    org_id = get_current_org_id()
+    room_id = database.create_room(name, user, members, org_id=org_id)
+    database.log_event(f"Created group: {name} (ID: {room_id})", user=user, org_id=org_id)
     return jsonify({"ok": True, "room_id": room_id})
 
 
@@ -4527,7 +4610,7 @@ def add_members_to_group(room_id):
         return jsonify({"ok": False, "error": "ไม่ได้ระบุสมาชิกที่ต้องการเพิ่ม"}), 400
         
     database.add_room_members(room_id, members)
-    database.log_event(f"Added {len(members)} members to room {room_id}", user=user)
+    database.log_event(f"Added {len(members)} members to room {room_id}", user=user, org_id=get_current_org_id())
     return jsonify({"ok": True})
 
 
@@ -4536,7 +4619,8 @@ def add_members_to_group(room_id):
 def update_group_profile_route(gid):
     user = session.get("user")
     # Check if owner
-    room = next((r for r in database.get_rooms_for_user(user, org_id=get_current_org_id())["rooms"] if r["id"] == gid), None)
+    org_id = get_current_org_id()
+    room = next((r for r in database.get_rooms_for_user(user, org_id=org_id)["rooms"] if r["id"] == gid), None)
     if not room or room["owner"] != user and user != "Admin":
         return jsonify({"ok": False, "error": "Unauthorized"}), 403
         
@@ -4548,6 +4632,24 @@ def update_group_profile_route(gid):
             ext = Path(secure_filename(file.filename)).suffix.lower()
             if ext not in {".jpg", ".jpeg", ".png", ".webp", ".gif"}:
                 return jsonify({"ok": False, "error": "รองรับเฉพาะไฟล์รูป (.jpg, .png, .webp, .gif)"}), 400
+            # ตรวจ magic bytes ป้องกันไฟล์ปลอมที่เปลี่ยนแค่นามสกุล
+            _header = file.read(12)
+            file.seek(0)
+            _MAGIC_MAP = {
+                b'\xff\xd8\xff': {".jpg", ".jpeg"},
+                b'\x89PNG\r\n\x1a\n': {".png"},
+                b'GIF87a': {".gif"},
+                b'GIF89a': {".gif"},
+            }
+            _valid = any(
+                _header.startswith(sig) and ext in exts
+                for sig, exts in _MAGIC_MAP.items()
+            )
+            if not _valid:
+                # WebP: RIFF????WEBP
+                _valid = (_header[:4] == b'RIFF' and _header[8:12] == b'WEBP' and ext == ".webp")
+            if not _valid:
+                return jsonify({"ok": False, "error": "โครงสร้างไฟล์รูปไม่ถูกต้อง"}), 400
             group_dir = Path("uploads/group_profiles")
             group_dir.mkdir(parents=True, exist_ok=True)
             filename = secure_filename(f"group_{gid}_{int(time.time())}_{file.filename}")
@@ -4564,7 +4666,7 @@ def delete_group_route(gid):
     user = session.get("user")
     ok = database.delete_room(gid)
     if ok:
-        database.log_event(f"Deleted group room ID: {gid}", user=user)
+        database.log_event(f"Deleted group room ID: {gid}", user=user, org_id=get_current_org_id())
         return jsonify({"ok": True})
     return jsonify({"ok": False, "error": "ไม่พบกลุ่มที่ต้องการลบ"}), 404
 
@@ -4603,7 +4705,7 @@ def get_room_members(room_id):
 def remove_room_member_route(room_id, username):
     ok, msg = database.remove_room_member(room_id, username)
     if ok:
-        database.log_event(f"Removed user {username} from room {room_id}", user=session.get("user"))
+        database.log_event(f"Removed user {username} from room {room_id}", user=session.get("user"), org_id=get_current_org_id())
         return jsonify({"ok": True})
     return jsonify({"ok": False, "error": msg}), 400
 
@@ -4730,7 +4832,7 @@ def send_unified_message():
                     except Exception as e:
                         print(f"⚠️ Error loading image for AI: {e}")
 
-            threading.Thread(target=handle_bot_response, args=(int(cid), text, "room", user, ai_image, ai_mime)).start()
+            threading.Thread(target=handle_bot_response, args=(int(cid), text, "room", user, ai_image, ai_mime, get_current_org_id())).start()
             
     else: # dm
         mid = database.save_dm(user, cid, text, attachments, reply_to_id=reply_to_id)
@@ -4783,7 +4885,7 @@ def send_unified_message():
                     except Exception as e:
                         print(f"⚠️ Error loading image for AI: {e}")
 
-            threading.Thread(target=handle_bot_response, args=(cid, text, "dm", user, ai_image, ai_mime)).start()
+            threading.Thread(target=handle_bot_response, args=(cid, text, "dm", user, ai_image, ai_mime, get_current_org_id())).start()
             
     # Emit socket signal for real-time update
     socket_room = f"room_{cid}" if ctype == "room" else f"dm_{user}_{cid}"
@@ -4868,15 +4970,15 @@ def log_bot(message):
         pass
 
 
-def handle_bot_response(cid, user_text, ctype, original_sender=None, image_data=None, mime_type="image/jpeg"):
+def handle_bot_response(cid, user_text, ctype, original_sender=None, image_data=None, mime_type="image/jpeg", org_id=1):
     """Generates an AI response for the chat, now with Vision support."""
     try:
-        log_bot(f"🤖 Bot generating response for: {user_text[:50]}... User: {original_sender}")
+        log_bot(f"🤖 Bot generating response for: {user_text[:50]}... User: {original_sender} Org: {org_id}")
         # 1. Retrieve context with permission filter
-        rag_filter = get_rag_filter(original_sender)
+        rag_filter = get_rag_filter(original_sender, org_id=org_id)
         context, sources = rag_engine.retrieve_context(user_text, where=rag_filter)
         log_bot(f"🔍 RAG context retrieved ({len(context)} chars). Sources: {len(sources)}")
-        
+
         # Greeting Detection
         is_greeting = any(x in user_text.lower() for x in ["สวัสดี", "hi", "hello", "หวัดดี"]) and len(user_text) < 15
 
@@ -4893,7 +4995,7 @@ def handle_bot_response(cid, user_text, ctype, original_sender=None, image_data=
             "6. ห้ามทักทายซ้ำซ้อน (เช่น สวัสดีค่ะพี่... แล้วต่อด้วย ยินดีที่ได้รู้จักค่ะพี่... ให้เลือกอย่างใดอย่างหนึ่ง)\n"
             "7. หากไม่พบข้อมูลที่ต้องการ ให้บอกตรงๆ ว่า 'ไม่พบข้อมูลในระบบค่ะพี่' พร้อมอาสาจะช่วยเรื่องอื่นแทน\n\n"
         )
-        
+
         # Inject Schedules into context only if NOT a simple greeting or if specifically asked
         current_date_str = get_current_time().split()[0]
         calendar_info = f"=== วันสำคัญและกิจกรรมองค์กร (วันนี้คือ: {current_date_str}) ===\n"
@@ -4901,7 +5003,7 @@ def handle_bot_response(cid, user_text, ctype, original_sender=None, image_data=
             calendar_info += f"- {date}: {name} (วันหยุดนักขัตฤกษ์)\n"
 
         current_user = original_sender or "System"
-        schedules = database.get_schedules(current_user, org_id=get_current_org_id())
+        schedules = database.get_schedules(current_user, org_id=org_id)
         if schedules:
             for s in schedules[-15:]:
                 calendar_info += f"- {s['date']} {s['time']}: {s['title']} ({s['desc']})\n"
@@ -5388,7 +5490,7 @@ def edit_chat_message(ctype, mid):
         return jsonify({"ok": False, "error": "ประเภทแชทไม่ถูกต้องหรือไม่รองรับการแก้ไขค่ะ"}), 400
 
     if ok:
-        database.log_event(f"Message {mid} edited by {user}", user=user)
+        database.log_event(f"Message {mid} edited by {user}", user=user, org_id=get_current_org_id())
         return jsonify({"ok": True, "text": new_text})
     return jsonify({"ok": False, "error": "ไม่พบข้อความ หรือคุณไม่มีสิทธิ์แก้ไขข้อความนี้ค่ะ"}), 403
 
@@ -5431,7 +5533,7 @@ def global_search_route():
         all_results = db_results + kb_results
         return jsonify({"ok": True, "results": all_results, "query": q})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _err500(e)
 
 
 @chat_bp.route("/api/admin/search-insights")
@@ -5473,7 +5575,7 @@ def extract_tasks_route():
         tasks = json.loads(clean_json)
         return jsonify({"ok": True, "tasks": tasks})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _err500(e)
 
 
 @safe_thread_target
@@ -5577,12 +5679,12 @@ def create_quotation():
         user = session.get("user", "System")
         threading.Thread(target=append_quotation_to_sheet, args=(quotation_data, drive_link, user, org_id)).start()
         
-        database.log_event(f"สร้างใบเสนอราคา: {quotation_data.get('quotation_no')}", user=user)
+        database.log_event(f"สร้างใบเสนอราคา: {quotation_data.get('quotation_no')}", user=user, org_id=org_id)
         
         return jsonify({"ok": True, "link": drive_link})
         
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return _err500(e)
 
 
 @socketio.on('join')
@@ -5866,15 +5968,37 @@ def daily_morning_summary():
 @chat_bp.route('/api/drive/contents', methods=['GET'])
 @login_required
 def get_drive_contents():
-    folder_id = request.args.get('folder_id')
+    folder_id = request.args.get('folder_id') or 'root'
     try:
         username = session.get("user")
         org_id = session.get("org_id")
         google_manager.set_context(username, org_id)
+        
+        if not google_manager.drive_service:
+            return jsonify({
+                "ok": False,
+                "error": "Google Drive ขององค์กรยังไม่ได้เชื่อมต่อค่ะ กรุณาเชื่อมต่อในเมนูการตั้งค่า"
+            }), 400
+            
         contents = google_drive_service.list_folder_contents(folder_id)
-        return jsonify(contents)
+        
+        folder_name = "My Drive"
+        if folder_id and folder_id != "root":
+            try:
+                folder_meta = google_manager.drive_service.files().get(
+                    fileId=folder_id, fields="name", supportsAllDrives=True
+                ).execute()
+                folder_name = folder_meta.get("name", "Unknown Folder")
+            except Exception:
+                folder_name = "Folder"
+                
+        return jsonify({
+            "ok": True,
+            "items": contents,
+            "folder_name": folder_name
+        })
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @chat_bp.route('/api/drive/rename', methods=['POST'])
@@ -5890,7 +6014,7 @@ def rename_drive_file():
     org_id = session.get("org_id")
     google_manager.set_context(username, org_id)
     if google_drive_service.rename_file(file_id, new_name):
-        database.log_event(f"Renamed Drive file {file_id} to {new_name}", user=session.get("user"))
+        database.log_event(f"Renamed Drive file {file_id} to {new_name}", user=session.get("user"), org_id=get_current_org_id())
         return jsonify({"ok": True})
     return jsonify({"ok": False, "error": "Failed to rename"}), 500
 
@@ -5907,7 +6031,7 @@ def delete_drive_file():
     org_id = session.get("org_id")
     google_manager.set_context(username, org_id)
     if google_drive_service.delete_file(file_id):
-        database.log_event(f"Deleted Drive file {file_id}", user=session.get("user"))
+        database.log_event(f"Deleted Drive file {file_id}", user=session.get("user"), org_id=get_current_org_id())
         return jsonify({"ok": True})
     return jsonify({"ok": False, "error": "Failed to delete"}), 500
 
@@ -5941,7 +6065,7 @@ def bind_line_group():
         default_folder_name=default_folder_name
     )
     if ok:
-        database.log_event(f"Bound LINE group {group_id} to {username}", user=username)
+        database.log_event(f"Bound LINE group {group_id} to {username}", user=username, org_id=get_current_org_id())
         return jsonify({"ok": True})
     return jsonify({"ok": False, "error": "เกิดข้อผิดพลาดในการบันทึกข้อมูลค่ะ"}), 500
 
@@ -5957,7 +6081,7 @@ def unbind_line_group(group_id):
         return jsonify({"ok": False, "error": "ไม่มีสิทธิ์ลบกลุ่มนี้ค่ะ"}), 403
         
     if database.delete_group_mapping(group_id):
-        database.log_event(f"Unbound LINE group {group_id} from {username}", user=username)
+        database.log_event(f"Unbound LINE group {group_id} from {username}", user=username, org_id=get_current_org_id())
         return jsonify({"ok": True})
     return jsonify({"ok": False, "error": "เกิดข้อผิดพลาดในการยกเลิกเชื่อมต่อค่ะ"}), 500
 

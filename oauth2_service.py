@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
+from google.auth.exceptions import RefreshError
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 
@@ -181,7 +182,6 @@ class GoogleOAuth2Service:
         if creds.expired and creds.refresh_token:
             try:
                 creds.refresh(Request())
-                # Save refreshed token
                 new_expiry = creds.expiry.isoformat() if creds.expiry else None
                 database.save_google_token(
                     username=username,
@@ -191,12 +191,15 @@ class GoogleOAuth2Service:
                     token_expiry=new_expiry
                 )
                 logger.info(f"🔄 Refreshed Google token for user: {username}")
+            except RefreshError as e:
+                logger.warning(f"⚠️ Google token revoked/expired for user {username} — clearing token: {e}")
+                database.delete_google_token(username)
+                return None
             except Exception as e:
                 logger.error(f"❌ Failed to refresh token for {username}: {e}")
                 return None
 
         if not creds.valid:
-            # Try refreshing one more time
             try:
                 creds.refresh(Request())
                 new_expiry = creds.expiry.isoformat() if creds.expiry else None
@@ -207,6 +210,10 @@ class GoogleOAuth2Service:
                     refresh_token=creds.refresh_token,
                     token_expiry=new_expiry
                 )
+            except RefreshError as e:
+                logger.warning(f"⚠️ Google token revoked/expired for user {username} — clearing token: {e}")
+                database.delete_google_token(username)
+                return None
             except Exception as e:
                 logger.error(f"❌ Token invalid and refresh failed for {username}: {e}")
                 return None
@@ -486,6 +493,10 @@ class GoogleOAuth2Service:
                     token_expiry=new_expiry,
                     connected_by=token_data.get('connected_by')
                 )
+            except RefreshError as e:
+                logger.warning(f"⚠️ Google org token revoked/expired for org {org_id} — clearing token: {e}")
+                database.delete_org_google_token(org_id)
+                return None
             except Exception as e:
                 logger.error(f"❌ Failed to refresh org token for org {org_id}: {e}")
                 return None
@@ -537,6 +548,15 @@ class GoogleOAuth2Service:
                             refresh_token=creds.refresh_token,
                             token_expiry=new_expiry
                         )
+            except RefreshError as e:
+                logger.warning(f"⚠️ Google token revoked/expired ({source}) — clearing token: {e}")
+                if source == 'org' and org_id:
+                    database.delete_org_google_token(org_id)
+                else:
+                    t_username = token_data.get('username') or username
+                    if t_username:
+                        database.delete_google_token(t_username)
+                return None, 'none'
             except Exception as e:
                 logger.error(f"❌ Failed to refresh dynamic Google token ({source}): {e}")
                 return None, 'none'

@@ -14,12 +14,13 @@ if hasattr(sys.stdout, 'reconfigure'):
 # Setup paths and env
 BASE_DIR = Path(__file__).parent.absolute()
 sys.path.append(str(BASE_DIR))
-load_dotenv(BASE_DIR / ".env", override=True)
+load_dotenv(BASE_DIR.parent / ".env", override=True)
 
 import ai_providers
 import google_drive_service
 import database
 from google_drive_service import google_manager
+google_manager.set_context("Admin", 1)
 
 CACHE_FILE = BASE_DIR / "processed_files_cache.json"
 

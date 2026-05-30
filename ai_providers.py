@@ -8,6 +8,8 @@ import json
 import logging
 import requests
 
+logger = logging.getLogger(__name__)
+
 try:
     from google import genai
     from google.genai import types
@@ -70,25 +72,37 @@ class GeminiProvider(AIProvider):
                 if image_data:
                     parts.append(types.Part.from_bytes(data=image_data, mime_type=mime_type))
                 
-                contents = [types.Content(role="user", parts=parts)]
-                config = types.GenerateContentConfig(system_instruction=system_prompt, temperature=0.7)
+                contents = []
+                for msg in history[-5:]:
+                    r = "user" if msg.get("role") == "user" else "model"
+                    contents.append(types.Content(role=r, parts=[types.Part.from_text(text=msg.get("text", ""))]))
+                contents.append(types.Content(role="user", parts=parts))
+                config = types.GenerateContentConfig(
+                    system_instruction=system_prompt, 
+                    temperature=0.7,
+                    safety_settings=[
+                        types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE"),
+                        types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_NONE"),
+                        types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"),
+                        types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
+                    ]
+                )
                 
                 active_ids = self._get_active_models()
                 if active_ids:
                     dynamic_models = []
                     # Ranking of preferred Gemini models in 2026
                     patterns = [
-                        "gemini-3.5-flash",
                         "gemini-3.1-flash-lite",
+                        "gemini-3.1-flash",
                         "gemini-3.1-pro",
                         "gemini-3-flash",
-                        "gemini-3-pro",
+                        "gemini-2.5-flash-lite",
                         "gemini-2.5-flash",
                         "gemini-2.5-pro",
                         "gemini-2.0-flash-lite",
                         "gemini-2.0-flash",
-                        "gemini-flash-lite",
-                        "gemini-flash"
+                        "gemini-1.5-flash"
                     ]
                     for pattern in patterns:
                         for m in active_ids:
@@ -107,14 +121,16 @@ class GeminiProvider(AIProvider):
                             dynamic_models.append(m)
                     
                     if not dynamic_models:
-                        dynamic_models = ["gemini-3.1-flash-lite", "gemini-3.1-pro-preview", "gemini-2.5-flash"]
+                        dynamic_models = ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-1.5-flash"]
                     models = dynamic_models
                 else:
                     models = [
-                        "gemini-3.1-flash-lite", 
-                        "gemini-3.1-pro-preview", 
-                        "gemini-2.5-flash"
+                        "gemini-2.5-flash-lite",
+                        "gemini-2.5-flash",
+                        "gemini-1.5-flash"
                     ]
+                # Limit the models we try to avoid infinite 429 rate limit retries
+                models = models[:3]
                 for model in models:
                     try:
                         for chunk in self.client.models.generate_content_stream(model=model, contents=contents, config=config):
@@ -122,29 +138,37 @@ class GeminiProvider(AIProvider):
                         return
                     except Exception as e:
                         print(f"⚠️ Gemini New SDK ({model}) Error: {e}")
+                        e_str = str(e).lower()
+                        if "429" in e_str or "resource_exhausted" in e_str or "quota" in e_str:
+                            print(f"🛑 Quota/Rate Limit exceeded for Gemini API Key. Failing fast to avoid delays.")
+                            raise e
                         continue
             except Exception as e:
                 print(f"⚠️ New SDK Setup Error: {e}")
 
-        # 🟡 Old SDK Fallback (2026 Models)
-        try:
-            # ลองใช้ Gemini 3.1 Flash-Lite เป็นตัวหลักสำหรับ SDK เก่า
-            model_name = "gemini-3.1-flash-lite"
-            model = old_genai.GenerativeModel(model_name=model_name, system_instruction=system_prompt)
-            
-            if image_data:
-                content = [{"mime_type": mime_type, "data": image_data}, question]
-            else:
-                content = [question]
-                
-            response = model.generate_content(content, stream=True)
-            for chunk in response:
-                if chunk.text: yield chunk.text
-        except Exception as e:
-            print(f"❌ Gemini (Old SDK) Error: {e}")
-            # Final fallback to Groq
-            groq = GroqProvider(os.environ.get("GROQ_API_KEY", ""))
+        # 🟡 Old SDK Fallback — ใช้ได้เฉพาะเมื่อ New SDK ไม่ได้ติดตั้ง
+        if not HAS_NEW_SDK:
+            try:
+                model_name = "gemini-3.1-flash-lite"
+                model = old_genai.GenerativeModel(model_name=model_name, system_instruction=system_prompt)
+                if image_data:
+                    content = [{"mime_type": mime_type, "data": image_data}, question]
+                else:
+                    content = [question]
+                response = model.generate_content(content, stream=True)
+                for chunk in response:
+                    if chunk.text: yield chunk.text
+                return
+            except Exception as e:
+                print(f"❌ Gemini (Old SDK) Error: {e}")
+
+        # Final fallback to Groq
+        groq_key = os.environ.get("GROQ_API_KEY", "")
+        if groq_key:
+            groq = GroqProvider(groq_key)
             yield from groq.chat_stream(question, history, system_prompt, image_data, mime_type)
+        else:
+            yield "⚠️ Gemini ไม่สามารถเชื่อมต่อได้ และไม่มี GROQ_API_KEY สำรอง"
 
 class GroqProvider(AIProvider):
     _cached_models = []
@@ -330,17 +354,21 @@ EXTRACT JSON ONLY.
   "category": "Receipt | Slip | Statement | ID_Card | Invoice | Quotation",
   "smart_name": "ประเภท_วันที่_ผู้ส่ง_ยอดเงิน.jpg",
   "extracted_data": {
-    "date": "DD/MM/YYYY", "time": "HH:MM",
-    "sender": "SENDER_NAME", "receiver": "RECEIVER_NAME",
-    "sender_bank": "Full English Bank Name (e.g. Kasikornbank, SCB)", 
-    "receiver_bank": "Full English Bank Name",
-    "gross_amount": 0.00, "discount_amount": 0.00, "vat_amount": 0.00, "wht_amount": 0.00, "net_amount": 0.00,
-    "tax_id": "13_DIGIT", "memo": "MEMO", "ref_number": "REF_NO", "appr_code": "APPROVAL_CODE",
-    "branch": "BRANCH", "sender_address": "ADDRESS", "receiver_address": "ADDRESS",
-    "income_type": "Income Type", "wht_type": "WHT Type", "is_etax": false,
-    "transactions": [{"date": "DD/MM/YYYY", "time": "HH:MM", "description": "...", "withdrawal": 0.00, "deposit": 0.00, "balance": 0.00}]
-  },
-  "summary": "Thai summary"
+  "date": "DD/MM/YYYY", "time": "HH:MM",
+  "sender": "SENDER_NAME", "receiver": "RECEIVER_NAME",
+  "sender_bank": "Full English Bank Name (e.g. Kasikornbank, SCB)", 
+  "receiver_bank": "Full English Bank Name",
+  "gross_amount": 0.00, "discount_amount": 0.00, "vat_amount": 0.00, "wht_amount": 0.00, "net_amount": 0.00, "wht_rate": 0.00,
+  "tax_id": "13_DIGIT", "memo": "MEMO", "ref_number": "REF_NO", "appr_code": "APPROVAL_CODE",
+  "qr_payload": "000201...",
+  "branch": "BRANCH", "sender_address": "ADDRESS", "receiver_address": "ADDRESS",
+  "contact": "Contact Info", "phone": "Phone No", "email": "Email",
+  "first_name_th": "ชื่อ", "last_name_th": "นามสกุล",
+  "first_name_en": "First Name", "last_name_en": "Last Name",
+  "birth_date": "DD/MM/YYYY", "gender": "Male/Female", "expiry_date": "DD/MM/YYYY",
+  "address": "Full Address", "laser_id": "Laser Code",
+  "income_type": "Income Type", "wht_type": "WHT Type", "is_etax": false,  "transactions": [{"date": "DD/MM/YYYY", "time": "HH:MM", "description": "...", "withdrawal": 0.00, "deposit": 0.00, "balance": 0.00}]
+  },  "summary": "Thai summary"
 }
 RULES:
 1. Bank Slip: Extract exact sender_bank/receiver_bank in English. Check logos. For Bill Payment without receiver logo, receiver_bank="-".
@@ -348,7 +376,8 @@ RULES:
 3. Statement: Extract ALL rows into `transactions`.
 4. ID Card: Extract `id_number`, names (TH/EN), `birth_date`, `gender`, `address`, `laser_id`.
 5. ALWAYS extract `appr_code` (Auth Code/Approval Code) to prevent duplicates.
-6. Use "-" for missing string, 0 for missing numbers. No conversational text."""
+6. QR Code Slip Verification: Look for the Thai QR Code payload on the transfer slip (usually begins with '000201' and is a long alphanumeric string) and extract the raw EMVCo string payload into 'qr_payload'. If not found or not visible, use "-".
+7. Use "-" for missing string, 0 for missing numbers. No conversational text."""
     
     # 🚀 Prioritize Gemini for Media Analysis
     full_response = ""
@@ -378,27 +407,119 @@ RULES:
                     full_response += chunk
         except Exception as e:
             import traceback
-            print(f"❌ Fallback also failed: {e}\n{traceback.format_exc()}", flush=True)
+            logger.error(f"Fallback also failed: {e}\n{traceback.format_exc()}")
 
-    print(f"DEBUG: AI Raw Response ({len(full_response)} chars): {full_response[:500]}...", flush=True)
+    logger.debug(f"AI Raw Response ({len(full_response)} chars): {full_response[:500]}...")
     
+    import re
     try:
         # Clean response to get JSON
         full_response = full_response.strip()
+        
+        # Strip outer markdown blocks if present
+        if full_response.startswith("```json"):
+            full_response = full_response[7:].strip()
+        if full_response.endswith("```"):
+            full_response = full_response[:-3].strip()
+            
         start_idx = full_response.find('{')
         end_idx = full_response.rfind('}')
         
-        if start_idx != -1 and end_idx != -1:
-            json_str = full_response[start_idx:end_idx+1]
-            return json.loads(json_str)
-        return {"category": "Unknown", "extracted_data": {}, "summary": full_response or "❌ No response from AI providers"}
+        json_str = ""
+        if start_idx != -1:
+            if end_idx != -1:
+                json_str = full_response[start_idx:end_idx+1]
+            else:
+                json_str = full_response[start_idx:]
+                
+        if json_str:
+            try:
+                # Use strict=False to allow control characters (tabs, newlines) inside strings
+                return json.loads(json_str, strict=False)
+            except Exception as e:
+                # Clean nested markdown blocks if any
+                cleaned = json_str
+                cleaned = re.sub(r'```json\s*', '', cleaned)
+                cleaned = re.sub(r'```\s*', '', cleaned)
+                try:
+                    return json.loads(cleaned, strict=False)
+                except Exception:
+                    pass
+        
+        # If we reach here, it failed to parse as JSON. Let's do a regex fallback on full_response!
+        result = {
+            "category": "Unknown",
+            "extracted_data": {},
+            "summary": "สแกนเอกสารสำเร็จ (ข้อมูลบางส่วนอาจคลาดเคลื่อน)"
+        }
+        
+        # Use full_response or json_str as search target
+        search_target = json_str or full_response
+        
+        # Extract category
+        cat_match = re.search(r'"category"\s*:\s*"([^"]+)"', search_target)
+        if cat_match:
+            result["category"] = cat_match.group(1)
+        else:
+            # Try parsing from smart_name prefix
+            name_match = re.search(r'"smart_name"\s*:\s*"([^"]+)"', search_target)
+            if name_match:
+                name_val = name_match.group(1)
+                if "_" in name_val:
+                    result["category"] = name_val.split("_")[0]
+            
+        # Extract net_amount
+        amt_match = re.search(r'"net_amount"\s*:\s*([\d.]+)', search_target)
+        if amt_match:
+            try:
+                result["extracted_data"]["net_amount"] = float(amt_match.group(1))
+            except:
+                pass
+                
+        # Extract sender
+        sender_match = re.search(r'"sender"\s*:\s*"([^"]+)"', search_target)
+        if sender_match:
+            result["extracted_data"]["sender"] = sender_match.group(1)
+            
+        # Extract receiver
+        receiver_match = re.search(r'"receiver"\s*:\s*"([^"]+)"', search_target)
+        if receiver_match:
+            result["extracted_data"]["receiver"] = receiver_match.group(1)
+
+        # Extract date
+        date_match = re.search(r'"date"\s*:\s*"([^"]+)"', search_target)
+        if date_match:
+            result["extracted_data"]["date"] = date_match.group(1)
+            
+        # Extract ref_number
+        ref_match = re.search(r'"ref_number"\s*:\s*"([^"]+)"', search_target)
+        if ref_match:
+            result["extracted_data"]["ref_number"] = ref_match.group(1)
+
+        # Extract summary
+        sum_match = re.search(r'"summary"\s*:\s*"([^"]+)"', search_target)
+        if sum_match:
+            result["summary"] = sum_match.group(1)
+            
+        # If the category is STILL Unknown, but we see "Slip" or "Receipt" in the text, let's auto-detect it
+        if result["category"] == "Unknown":
+            lower_text = search_target.lower()
+            if "slip" in lower_text or "สลิป" in lower_text:
+                result["category"] = "Slip"
+            elif "receipt" in lower_text or "ใบเสร็จ" in lower_text:
+                result["category"] = "Receipt"
+            elif "invoice" in lower_text or "ใบกำกับ" in lower_text:
+                result["category"] = "Invoice"
+                
+        return result
+
     except Exception as e:
         return {"category": "Unknown", "extracted_data": {}, "summary": f"❌ JSON Parse Error: {str(e)} | Raw: {full_response[:100]}"}
 
 
 def get_provider():
     """Returns the configured AI provider based on environment variables."""
-    provider_type = os.environ.get("AI_PROVIDER", "gemini").lower()
+    provider_type = os.environ.get("AI_PROVIDER", "groq").lower()
     api_key = os.environ.get("GEMINI_API_KEY")
     groq_key = os.environ.get("GROQ_API_KEY")
 

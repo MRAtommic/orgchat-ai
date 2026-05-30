@@ -17,46 +17,71 @@
       --muted: #64748b;
       --accent: #6366f1;
     }
+
+    /* ── Light Theme Override ── */
+    :root.light {
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --surface2: #f1f5f9;
+      --border: #cbd5e1;
+      --border2: #cbd5e1;
+      --text: #0f172a;
+      --muted: #475569;
+      --accent: #2563eb;
+    }
+
+    /* ── Light Theme Badge/Button overrides for sleek styling ── */
+    :root.light .badge-pro { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+    :root.light .badge-business { background: #f3e8ff; color: #5b21b6; border: 1px solid #e9d5ff; }
+    :root.light .badge-active { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+    :root.light .badge-suspended { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+    :root.light .badge-info { background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
+    :root.light .btn-danger { background: #fee2e2; color: #ef4444; border-color: #fca5a5; }
+    :root.light .btn-warning { background: #fef3c7; color: #d97706; border-color: #fcd34d; }
+    :root.light .btn-success { background: #d1fae5; color: #10b981; border-color: #a7f3d0; }
+    :root.light .btn-info { background: #dbeafe; color: #3b82f6; border-color: #bfdbfe; }
+
     * { box-sizing: border-box; }
     body { font-family: 'Outfit', sans-serif; background: var(--bg); color: var(--text); margin: 0; }
     .mono { font-family: 'JetBrains Mono', monospace; }
     ::-webkit-scrollbar { width: 5px; height: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #2d3f58; border-radius: 3px; }
+    :root.light ::-webkit-scrollbar-thumb { background: #cbd5e1; }
 
     /* ── Sidebar ── */
     .nav-item {
       display: flex; align-items: center; gap: 10px;
       width: 100%; padding: 8px 12px; border-radius: 10px;
-      font-size: 13px; font-weight: 600; color: #64748b;
+      font-size: 13px; font-weight: 600; color: var(--muted);
       border: none; background: none; cursor: pointer;
       transition: all .15s; text-align: left;
     }
-    .nav-item:hover { background: #111827; color: #cbd5e1; }
-    .nav-item.active { background: #1e1b4b; color: #a5b4fc; border: 1px solid #312e81; }
-    .nav-section { font-size: 10px; font-weight: 800; letter-spacing: .1em; color: #334155; padding: 12px 12px 4px; text-transform: uppercase; }
-    .nav-badge { margin-left: auto; background: #1e293b; color: #64748b; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 20px; }
-    .nav-item.active .nav-badge { background: #312e81; color: #a5b4fc; }
+    .nav-item:hover { background: var(--surface2); color: var(--text); }
+    .nav-item.active { background: var(--surface2); color: var(--accent); border: 1px solid var(--border); }
+    .nav-section { font-size: 10px; font-weight: 800; letter-spacing: .1em; color: var(--muted); padding: 12px 12px 4px; text-transform: uppercase; }
+    .nav-badge { margin-left: auto; background: var(--surface2); color: var(--muted); font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 20px; border: 1px solid var(--border); }
+    .nav-item.active .nav-badge { background: var(--accent); color: white; border-color: var(--accent); }
 
     /* ── Cards ── */
     .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; }
     .card-sm { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; }
-    .section-label { font-size: 10px; font-weight: 800; letter-spacing: .12em; color: #475569; text-transform: uppercase; margin-bottom: 14px; }
+    .section-label { font-size: 10px; font-weight: 800; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; margin-bottom: 14px; }
 
     /* ── KPI Cards ── */
-    .kpi { background: linear-gradient(135deg, #0d1424, #0a1020); border: 1px solid var(--border); border-radius: 14px; padding: 18px 22px; position: relative; overflow: hidden; }
+    .kpi { background: linear-gradient(135deg, var(--surface), var(--surface2)); border: 1px solid var(--border); border-radius: 14px; padding: 18px 22px; position: relative; overflow: hidden; }
     .kpi::before { content: ''; position: absolute; inset: 0; opacity: .03; background: radial-gradient(circle at 80% 20%, white, transparent 60%); }
     .kpi-val { font-size: 28px; font-weight: 900; line-height: 1; }
-    .kpi-label { font-size: 10px; font-weight: 800; letter-spacing: .1em; color: #475569; text-transform: uppercase; margin-bottom: 6px; }
-    .kpi-sub { font-size: 11px; color: #475569; margin-top: 4px; }
+    .kpi-label { font-size: 10px; font-weight: 800; letter-spacing: .1em; color: var(--muted); text-transform: uppercase; margin-bottom: 6px; }
+    .kpi-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
 
     /* ── Badges ── */
     .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
-    .badge-free     { background: #1e293b; color: #64748b; border: 1px solid #334155; }
+    .badge-free     { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
     .badge-pro      { background: #064e3b; color: #34d399; border: 1px solid #065f46; }
     .badge-business { background: #2e1065; color: #c4b5fd; border: 1px solid #4c1d95; }
-    .badge-admin    { background: #1e1b4b; color: #a5b4fc; border: 1px solid #312e81; }
-    .badge-user     { background: #0f172a; color: #475569; border: 1px solid #1e293b; }
+    .badge-admin    { background: var(--surface2); color: var(--accent); border: 1px solid var(--border); }
+    .badge-user     { background: var(--bg); color: var(--muted); border: 1px solid var(--border); }
     .badge-active   { background: #052e16; color: #34d399; border: 1px solid #065f46; }
     .badge-suspended{ background: #450a0a; color: #f87171; border: 1px solid #7f1d1d; }
     .badge-info     { background: #0c1a3a; color: #93c5fd; border: 1px solid #1d4ed8; }
@@ -64,31 +89,31 @@
     /* ── Table ── */
     .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     .data-table thead tr { border-bottom: 1px solid var(--border); }
-    .data-table th { padding: 10px 14px; font-size: 10px; font-weight: 800; color: #475569; text-transform: uppercase; letter-spacing: .08em; text-align: left; white-space: nowrap; }
+    .data-table th { padding: 10px 14px; font-size: 10px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; text-align: left; white-space: nowrap; }
     .data-table th.r { text-align: right; }
-    .data-table tbody tr { border-bottom: 1px solid #0f172a; transition: background .1s; }
-    .data-table tbody tr:hover { background: #0a0f1a; }
+    .data-table tbody tr { border-bottom: 1px solid var(--border2); transition: background .1s; }
+    .data-table tbody tr:hover { background: var(--surface2); }
     .data-table tbody tr:last-child { border-bottom: none; }
     .data-table td { padding: 10px 14px; vertical-align: middle; }
     .data-table td.r { text-align: right; }
 
     /* ── Inputs ── */
-    .inp { background: #0d1424; border: 1px solid #1e293b; border-radius: 8px; padding: 8px 12px; color: #e2e8f0; font-size: 13px; width: 100%; outline: none; font-family: 'Outfit', sans-serif; }
-    .inp:focus { border-color: #6366f1; box-shadow: 0 0 0 3px #6366f122; }
-    select.inp option { background: #0d1424; }
-    .inp-sm { background: #111827; border: 1px solid #1e293b; border-radius: 8px; padding: 6px 10px; color: #e2e8f0; font-size: 12px; outline: none; font-family: 'Outfit', sans-serif; }
-    .inp-sm:focus { border-color: #6366f1; }
+    .inp { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; color: var(--text); font-size: 13px; width: 100%; outline: none; font-family: 'Outfit', sans-serif; }
+    .inp:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15); }
+    select.inp option { background: var(--surface); color: var(--text); }
+    .inp-sm { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; color: var(--text); font-size: 12px; outline: none; font-family: 'Outfit', sans-serif; }
+    .inp-sm:focus { border-color: var(--accent); }
     .search-wrap { position: relative; }
-    .search-wrap svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 15px; height: 15px; color: #475569; pointer-events: none; }
+    .search-wrap svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 15px; height: 15px; color: var(--muted); pointer-events: none; }
     .search-wrap .inp { padding-left: 32px; }
 
     /* ── Buttons ── */
     .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; border: 1px solid transparent; transition: all .15s; white-space: nowrap; }
     .btn svg { width: 13px; height: 13px; flex-shrink: 0; }
-    .btn-primary { background: #4338ca; color: white; border-color: #6366f1; }
-    .btn-primary:hover { background: #4f46e5; }
-    .btn-ghost  { background: #111827; color: #94a3b8; border-color: #1e293b; }
-    .btn-ghost:hover { background: #1e293b; color: #e2e8f0; }
+    .btn-primary { background: var(--accent); color: white; border-color: var(--accent); }
+    .btn-primary:hover { opacity: 0.9; }
+    .btn-ghost  { background: var(--surface2); color: var(--muted); border-color: var(--border); }
+    .btn-ghost:hover { background: var(--surface); color: var(--text); }
     .btn-danger { background: #450a0a22; color: #f87171; border-color: #7f1d1d55; }
     .btn-danger:hover { background: #450a0a44; }
     .btn-warning{ background: #451a0322; color: #fbbf24; border-color: #78350f55; }
@@ -108,16 +133,16 @@
 
     /* ── Modal ── */
     .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.75); backdrop-filter: blur(6px); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 20px; }
-    .modal-box { background: #0d1424; border: 1px solid #243044; border-radius: 18px; width: 100%; max-width: 580px; max-height: 90vh; overflow-y: auto; position: relative; }
-    .modal-header { padding: 22px 24px 16px; border-bottom: 1px solid #1e293b; position: sticky; top: 0; background: #0d1424; z-index: 1; border-radius: 18px 18px 0 0; }
+    .modal-box { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; width: 100%; max-width: 580px; max-height: 90vh; overflow-y: auto; position: relative; }
+    .modal-header { padding: 22px 24px 16px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface); z-index: 1; border-radius: 18px 18px 0 0; }
     .modal-body { padding: 20px 24px; }
-    .modal-footer { padding: 14px 24px; border-top: 1px solid #1e293b; display: flex; justify-content: flex-end; gap: 8px; }
-    .modal-close { position: absolute; top: 16px; right: 16px; background: none; border: none; color: #64748b; cursor: pointer; font-size: 18px; line-height: 1; padding: 4px; }
-    .modal-close:hover { color: #e2e8f0; }
+    .modal-footer { padding: 14px 24px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+    .modal-close { position: absolute; top: 16px; right: 16px; background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; line-height: 1; padding: 4px; }
+    .modal-close:hover { color: var(--text); }
 
     /* ── Toast ── */
     .toast-zone { position: fixed; bottom: 20px; right: 20px; z-index: 999; display: flex; flex-direction: column; gap: 8px; }
-    .toast { background: #111827; border: 1px solid #243044; color: #e2e8f0; padding: 10px 16px; border-radius: 10px; font-size: 13px; font-weight: 600; transform: translateX(20px); opacity: 0; transition: all .2s; pointer-events: none; }
+    .toast { background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 10px 16px; border-radius: 10px; font-size: 13px; font-weight: 600; transform: translateX(20px); opacity: 0; transition: all .2s; pointer-events: none; }
     .toast.in { transform: translateX(0); opacity: 1; }
     .toast.success { border-color: #065f46; color: #34d399; }
     .toast.error   { border-color: #7f1d1d; color: #f87171; }
@@ -128,40 +153,66 @@
     .tab-pane.active { display: block; }
 
     /* ── Progress bar ── */
-    .prog-track { height: 6px; background: #1e293b; border-radius: 99px; overflow: hidden; }
+    .prog-track { height: 6px; background: var(--surface2); border-radius: 99px; overflow: hidden; }
     .prog-fill { height: 100%; border-radius: 99px; transition: width .4s; }
 
     /* ── Env chip ── */
-    .env-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: #070c16; border: 1px solid #1e293b; border-radius: 8px; gap: 12px; }
+    .env-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; gap: 12px; }
     .env-row.ok { border-color: #064e3b44; }
     .env-row.miss { border-color: #7f1d1d44; }
     .env-key { color: #818cf8; font-size: 11px; font-weight: 700; font-family: monospace; }
-    .env-val { color: #64748b; font-size: 11px; font-family: monospace; }
+    .env-val { color: var(--muted); font-size: 11px; font-family: monospace; }
 
     /* ── Log row ── */
-    .log-row { display: flex; align-items: flex-start; gap: 12px; padding: 8px 14px; border-bottom: 1px solid #0a0f1a; }
-    .log-row:hover { background: #070c16; }
+    .log-row { display: flex; align-items: flex-start; gap: 12px; padding: 8px 14px; border-bottom: 1px solid var(--border2); }
+    .log-row:hover { background: var(--surface2); }
     .log-row:last-child { border-bottom: none; }
-    .log-time { font-size: 10px; color: #334155; font-family: monospace; width: 120px; flex-shrink: 0; margin-top: 1px; }
-    .log-user { font-size: 11px; font-weight: 700; color: #475569; width: 100px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .log-text { font-size: 12px; color: #94a3b8; flex: 1; }
-    .log-text.super { color: #fbbf24; }
-    .log-text.broadcast { color: #34d399; }
+    .log-time { font-size: 10px; color: var(--muted); font-family: monospace; width: 120px; flex-shrink: 0; margin-top: 1px; }
+    .log-user { font-size: 11px; font-weight: 700; color: var(--text); width: 100px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .log-text { font-size: 12px; color: var(--text); opacity: 0.9; flex: 1; }
+    .log-text.super { color: #fbbf24; opacity: 1; }
+    .log-text.broadcast { color: #34d399; opacity: 1; }
 
     /* ── Avatar ── */
     .avatar { width: 32px; height: 32px; border-radius: 10px; object-fit: cover; flex-shrink: 0; }
     .avatar-placeholder { width: 32px; height: 32px; border-radius: 10px; background: #1e1b4b; border: 1px solid #312e81; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; color: #818cf8; flex-shrink: 0; }
 
     /* ── Revenue bar ── */
-    .rev-card { background: #070c16; border: 1px solid #1e293b; border-radius: 12px; padding: 14px 18px; }
+    .rev-card { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px; }
 
     /* ── Tooltip ── */
     [title] { cursor: help; }
 
     /* ── Page header ── */
-    .page-title { font-size: 20px; font-weight: 800; color: white; }
-    .page-sub { font-size: 12px; color: #475569; margin-top: 2px; }
+    .page-title { font-size: 20px; font-weight: 800; color: var(--text); }
+    .page-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
   </style>
+  <script>
+    (function() {
+      function applyTheme(isDark) {
+        if (isDark) {
+          document.documentElement.classList.remove('light');
+        } else {
+          document.documentElement.classList.add('light');
+        }
+      }
+
+      if (window.self !== window.top) {
+        try {
+          const parentDoc = window.parent.document;
+          const isDark = parentDoc.documentElement.classList.contains('dark');
+          applyTheme(isDark);
+        } catch (e) {
+          console.error("Failed to sync theme with parent on init:", e);
+          const savedTheme = localStorage.getItem('theme') || 'dark';
+          applyTheme(savedTheme === 'dark');
+        }
+      } else {
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        applyTheme(savedTheme === 'dark');
+      }
+    })();
+  </script>
 </head>
 <body>
 
@@ -171,14 +222,14 @@
 <div style="display:flex; height:100vh; overflow:hidden;">
 
   <!-- ══ SIDEBAR ══ -->
-  <aside style="width:220px; flex-shrink:0; background:#070c16; border-right:1px solid #111827; display:flex; flex-direction:column; overflow:hidden;">
+  <aside style="width:220px; flex-shrink:0; background: var(--surface); border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden;">
     <!-- Brand -->
-    <div style="padding:18px 14px 14px; border-bottom:1px solid #111827;">
+    <div style="padding:18px 14px 14px; border-bottom:1px solid var(--border);">
       <div style="display:flex; align-items:center; gap:10px;">
         <div style="width:34px; height:34px; background:linear-gradient(135deg,#4338ca,#7c3aed); border-radius:10px; display:flex; align-items:center; justify-content:center; font-weight:900; font-size:14px; color:white;">S</div>
         <div>
-          <div style="font-weight:800; font-size:13px; color:white;">Super Admin</div>
-          <div style="font-size:9px; color:#334155; font-weight:700; letter-spacing:.1em; text-transform:uppercase;">OrgChat Console</div>
+          <div style="font-weight:800; font-size:13px; color: var(--text);">Super Admin</div>
+          <div style="font-size:9px; color: var(--muted); font-weight:700; letter-spacing:.1em; text-transform:uppercase;">OrgChat Console</div>
         </div>
       </div>
     </div>
@@ -216,9 +267,21 @@
         <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"/></svg>
         Broadcast
       </button>
+      <button class="nav-item" data-tab="maintenance" onclick="showTab('maintenance')">
+        <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z"/></svg>
+        Maintenance
+      </button>
       <button class="nav-item" data-tab="system" onclick="showTab('system')">
         <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3"/></svg>
         ระบบ & Config
+      </button>
+      <button class="nav-item" data-tab="db" onclick="showTab('db')">
+        <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/></svg>
+        DB Explorer
+      </button>
+      <button class="nav-item" data-tab="sql" onclick="showTab('sql')">
+        <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+        SQL Console
       </button>
       <button class="nav-item" data-tab="logs" onclick="showTab('logs')">
         <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
@@ -227,13 +290,13 @@
     </nav>
 
     <!-- Bottom -->
-    <div style="padding:12px 10px; border-top:1px solid #111827;">
+    <div style="padding:12px 10px; border-top:1px solid var(--border);">
       <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px;">
         <span class="dot dot-green dot-pulse"></span>
-        <span style="font-size:10px; font-weight:700; color:#334155; letter-spacing:.08em; text-transform:uppercase;">LIVE</span>
-        <span style="font-size:10px; color:#334155; margin-left:auto;" id="sb-uptime">—</span>
+        <span style="font-size:10px; font-weight:700; color: var(--muted); letter-spacing:.08em; text-transform:uppercase;">LIVE</span>
+        <span style="font-size:10px; color: var(--muted); margin-left:auto;" id="sb-uptime">—</span>
       </div>
-      <a href="/" style="display:flex; align-items:center; gap:6px; font-size:12px; color:#475569; text-decoration:none; padding:6px 8px; border-radius:8px; transition:all .15s;" onmouseover="this.style.background='#111827';this.style.color='#94a3b8'" onmouseout="this.style.background='';this.style.color='#475569'">
+      <a href="/" style="display:flex; align-items:center; gap:6px; font-size:12px; color: var(--muted); text-decoration:none; padding:6px 8px; border-radius:8px; transition:all .15s;" onmouseover="this.style.background='var(--surface2)';this.style.color='var(--text)'" onmouseout="this.style.background='';this.style.color='var(--muted)'">
         <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
         กลับหน้าหลัก
       </a>
@@ -244,16 +307,16 @@
   <main style="flex:1; overflow-y:auto; display:flex; flex-direction:column;">
 
     <!-- Topbar -->
-    <div style="position:sticky; top:0; z-index:10; background:#070c1699; backdrop-filter:blur(12px); border-bottom:1px solid #111827; padding:10px 24px; display:flex; align-items:center; justify-content:space-between;">
+    <div style="position:sticky; top:0; z-index:10; background: var(--surface); border-bottom:1px solid var(--border); padding:10px 24px; display:flex; align-items:center; justify-content:space-between;">
       <div style="display:flex; align-items:center; gap:12px;">
-        <span class="mono" style="font-size:11px; color:#334155;" id="tb-version">—</span>
-        <span style="color:#1e293b;">|</span>
-        <span style="font-size:11px; color:#475569;">Python <span class="mono" id="tb-python">—</span></span>
-        <span style="color:#1e293b;">|</span>
-        <span style="font-size:11px; color:#475569;">Provider: <span style="color:#818cf8; font-weight:700;" id="tb-provider">—</span></span>
+        <span class="mono" style="font-size:11px; color: var(--muted);" id="tb-version">—</span>
+        <span style="color: var(--border);">|</span>
+        <span style="font-size:11px; color: var(--muted);">Python <span class="mono" id="tb-python">—</span></span>
+        <span style="color: var(--border);">|</span>
+        <span style="font-size:11px; color: var(--muted);">Provider: <span style="color: var(--accent); font-weight:700;" id="tb-provider">—</span></span>
       </div>
       <div style="display:flex; align-items:center; gap:8px;">
-        <span style="font-size:11px; color:#334155;">Uptime: <span class="mono" style="color:#475569;" id="tb-uptime">—</span></span>
+        <span style="font-size:11px; color: var(--muted);">Uptime: <span class="mono" style="color: var(--text);" id="tb-uptime">—</span></span>
         <button class="btn btn-ghost" onclick="refreshAll()" style="padding:5px 10px; font-size:11px;">
           <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
           Refresh
@@ -465,7 +528,7 @@
       <div id="tab-broadcast" class="tab-pane">
         <div style="margin-bottom:20px;">
           <div class="page-title">Broadcast</div>
-          <div class="page-sub">ส่งประกาศถึงผู้ใช้ทั้งหมดในระบบ</div>
+          <div class="page-sub">ส่งประกาศถึงผู้ใช้ — ทั้งหมด หรือเฉพาะ org/plan ที่ต้องการ</div>
         </div>
 
         <div style="display:grid; grid-template-columns:1fr 1.2fr; gap:16px;">
@@ -479,18 +542,29 @@
               </div>
               <div>
                 <label style="font-size:11px; color:#64748b; font-weight:700; display:block; margin-bottom:4px;">ข้อความ</label>
-                <textarea class="inp" id="bc-msg" rows="5" placeholder="พิมพ์ข้อความประกาศ..." style="resize:vertical;"></textarea>
+                <textarea class="inp" id="bc-msg" rows="4" placeholder="พิมพ์ข้อความประกาศ..." style="resize:vertical;"></textarea>
+              </div>
+              <div style="border-top:1px solid var(--border); padding-top:10px;">
+                <label style="font-size:11px; color:#64748b; font-weight:700; display:block; margin-bottom:8px;">กลุ่มเป้าหมาย</label>
+                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                  <select class="inp-sm" id="bc-target-type" onchange="onBcTargetChange()" style="width:130px;">
+                    <option value="all">ทุกคน</option>
+                    <option value="plan">เฉพาะ Plan</option>
+                    <option value="org">เฉพาะ Org ID</option>
+                  </select>
+                  <select class="inp-sm" id="bc-plan-sel" style="width:110px; display:none;">
+                    <option value="free">Free</option>
+                    <option value="pro">Pro</option>
+                    <option value="business">Ultra</option>
+                  </select>
+                  <input class="inp-sm" id="bc-org-id" placeholder="Org ID" style="width:80px; display:none;">
+                </div>
               </div>
               <div style="display:flex; gap:8px;">
                 <button class="btn btn-primary" onclick="sendBroadcast()" style="flex:1;">
                   <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
                   ส่งประกาศ
                 </button>
-              </div>
-              <div style="background:#111827; border:1px solid #1e293b; border-radius:8px; padding:10px 12px;">
-                <p style="font-size:11px; color:#475569; line-height:1.6; margin:0;">
-                  ⚠️ ประกาศจะถูกบันทึกไว้ใน Event Log และแสดงในหน้า Broadcast History ด้านขวา
-                </p>
               </div>
             </div>
           </div>
@@ -503,6 +577,94 @@
             </div>
             <div id="bc-history" style="max-height:500px; overflow-y:auto;">
               <div style="padding:30px; text-align:center; color:#334155; font-size:13px;">กำลังโหลด...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ MAINTENANCE ══ -->
+      <div id="tab-maintenance" class="tab-pane">
+        <div style="margin-bottom:20px;">
+          <div class="page-title">Maintenance</div>
+          <div class="page-sub">KB cleanup, DB backup, scheduler, system health</div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
+          <!-- System Health -->
+          <div class="card-sm">
+            <p class="section-label">System Health</p>
+            <div id="health-info" style="display:flex; flex-direction:column; gap:0;">
+              <div style="padding:20px; text-align:center; color:var(--muted); font-size:12px;">กด Refresh เพื่อโหลด</div>
+            </div>
+            <button class="btn btn-ghost btn-xs" onclick="loadHealth()" style="margin-top:10px; width:100%;">Refresh Health</button>
+          </div>
+
+          <!-- Scheduler -->
+          <div class="card-sm">
+            <p class="section-label">Scheduled Jobs</p>
+            <div id="scheduler-info" style="display:flex; flex-direction:column; gap:6px;">
+              <div style="padding:20px; text-align:center; color:var(--muted); font-size:12px;">กด Refresh เพื่อโหลด</div>
+            </div>
+            <button class="btn btn-ghost btn-xs" onclick="loadScheduler()" style="margin-top:10px; width:100%;">Refresh Jobs</button>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+          <!-- Maintenance Actions -->
+          <div class="card-sm">
+            <p class="section-label">Maintenance Actions</p>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:var(--surface2); border:1px solid var(--border); border-radius:10px;">
+                <div>
+                  <div style="font-size:13px; font-weight:700; color:var(--text);">KB Cleanup</div>
+                  <div style="font-size:11px; color:var(--muted); margin-top:1px;">ล้างไฟล์ KB ที่ค้าง 'processing' นาน</div>
+                </div>
+                <div style="display:flex; gap:6px; align-items:center;">
+                  <input id="cleanup-minutes" type="number" class="inp-sm" value="30" style="width:55px;" title="นาที">
+                  <button class="btn btn-warning btn-xs" onclick="runKbCleanup()">Cleanup</button>
+                </div>
+              </div>
+
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:var(--surface2); border:1px solid var(--border); border-radius:10px;">
+                <div>
+                  <div style="font-size:13px; font-weight:700; color:var(--text);">Clear RAG Cache</div>
+                  <div style="font-size:11px; color:var(--muted); margin-top:1px;">ล้าง Knowledge Base cache</div>
+                </div>
+                <button class="btn btn-warning btn-xs" onclick="clearCache()">ล้าง</button>
+              </div>
+
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:var(--surface2); border:1px solid var(--border); border-radius:10px;">
+                <div>
+                  <div style="font-size:13px; font-weight:700; color:var(--text);">Force Expiry Reminders</div>
+                  <div style="font-size:11px; color:var(--muted); margin-top:1px;">ส่ง reminder plan หมดอายุทันที</div>
+                </div>
+                <button class="btn btn-info btn-xs" onclick="sendExpiryReminders()">Send</button>
+              </div>
+
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:var(--surface2); border:1px solid var(--border); border-radius:10px;">
+                <div>
+                  <div style="font-size:13px; font-weight:700; color:var(--text);">Export Event Logs</div>
+                  <div style="font-size:11px; color:var(--muted); margin-top:1px;">ดาวน์โหลด event log เป็น CSV</div>
+                </div>
+                <button class="btn btn-info btn-xs" onclick="exportLogsCSV()">Export</button>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- DB Backup -->
+          <div class="card-sm">
+            <p class="section-label">Database Backup</p>
+            <div style="display:flex; gap:8px; margin-bottom:12px;">
+              <button class="btn btn-success" onclick="triggerBackup()" style="flex:1;">
+                <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
+                Backup ทันที
+              </button>
+              <button class="btn btn-ghost btn-xs" onclick="loadBackups()">Refresh List</button>
+            </div>
+            <div id="backup-list" style="max-height:280px; overflow-y:auto; display:flex; flex-direction:column; gap:4px;">
+              <div style="padding:20px; text-align:center; color:var(--muted); font-size:12px;">กด Refresh List เพื่อดูไฟล์</div>
             </div>
           </div>
         </div>
@@ -528,28 +690,152 @@
 
             <p class="section-label">Maintenance Actions</p>
             <div style="display:flex; flex-direction:column; gap:8px;">
-              <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:#070c16; border:1px solid #1e293b; border-radius:10px;">
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background: var(--surface2); border:1px solid var(--border); border-radius:10px;">
                 <div>
-                  <div style="font-size:13px; font-weight:700; color:#e2e8f0;">Clear RAG / KB Cache</div>
-                  <div style="font-size:11px; color:#475569; margin-top:1px;">ล้าง cache ของ Knowledge Base engine</div>
+                  <div style="font-size:13px; font-weight:700; color: var(--text);">Clear RAG / KB Cache</div>
+                  <div style="font-size:11px; color: var(--muted); margin-top:1px;">ล้าง cache ของ Knowledge Base engine</div>
                 </div>
                 <button class="btn btn-warning btn-xs" onclick="clearCache()">ล้าง Cache</button>
               </div>
-              <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:#070c16; border:1px solid #1e293b; border-radius:10px;">
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background: var(--surface2); border:1px solid var(--border); border-radius:10px;">
                 <div>
-                  <div style="font-size:13px; font-weight:700; color:#e2e8f0;">Export Event Logs</div>
-                  <div style="font-size:11px; color:#475569; margin-top:1px;">ดาวน์โหลด event log เป็น CSV</div>
+                  <div style="font-size:13px; font-weight:700; color: var(--text);">Export Event Logs</div>
+                  <div style="font-size:11px; color: var(--muted); margin-top:1px;">ดาวน์โหลด event log เป็น CSV</div>
                 </div>
                 <button class="btn btn-info btn-xs" onclick="exportLogsCSV()">Export</button>
               </div>
-              <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:#070c16; border:1px solid #7f1d1d44; border-radius:10px;">
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background: var(--surface2); border:1px solid #7f1d1d44; border-radius:10px;">
                 <div>
                   <div style="font-size:13px; font-weight:700; color:#f87171;">Danger Zone</div>
-                  <div style="font-size:11px; color:#475569; margin-top:1px;">Actions ที่ไม่สามารถยกเลิกได้</div>
+                  <div style="font-size:11px; color: var(--muted); margin-top:1px;">Actions ที่ไม่สามารถยกเลิกได้</div>
                 </div>
-                <span style="font-size:10px; color:#475569;">ระวัง</span>
+                <span style="font-size:10px; color: var(--muted);">ระวัง</span>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ DATABASE EXPLORER ══ -->
+      <div id="tab-db" class="tab-pane">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+          <div>
+            <div class="page-title">Database Explorer</div>
+            <div class="page-sub">เข้าถึง ตรวจสอบ และแก้ไขทุกตารางข้อมูลในระบบแบบ Real-time</div>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:240px 1fr; gap:16px; align-items:flex-start;">
+          <!-- Left: Table list -->
+          <div class="card-sm" style="padding:16px;">
+            <p class="section-label" style="margin-bottom:12px;">ตารางข้อมูลทั้งหมด</p>
+            <div id="db-tables-list" style="display:flex; flex-direction:column; gap:4px;">
+              <div style="padding:10px; text-align:center; color:#334155; font-size:12px;">กำลังโหลด...</div>
+            </div>
+          </div>
+
+          <!-- Right: Data table viewer -->
+          <div class="card" id="db-table-viewer" style="display:none;">
+            <div style="padding:16px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; background:linear-gradient(180deg, var(--surface), var(--surface2));">
+              <div>
+                <h3 id="db-current-table-title" style="font-size:16px; font-weight:800; color: var(--text); margin:0;">—</h3>
+                <p id="db-current-table-subtitle" style="font-size:11px; color: var(--muted); margin:2px 0 0 0;">—</p>
+              </div>
+              <div style="display:flex; gap:8px; align-items:center;">
+                <div class="search-wrap">
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                  <input class="inp inp-sm" id="db-table-q" placeholder="ค้นหาในตาราง..." oninput="searchCurrentTable()" style="width:160px;">
+                </div>
+                <button class="btn btn-primary btn-xs animate-pulse" onclick="openAddRowModal()">
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                  เพิ่มข้อมูล
+                </button>
+              </div>
+            </div>
+
+            <!-- Table content scrolling area -->
+            <div style="overflow-x:auto; max-width:100%; border-bottom:1px solid var(--border);">
+              <table class="data-table" id="db-data-table">
+                <thead><tr id="db-table-headers"></tr></thead>
+                <tbody id="db-table-body"></tbody>
+              </table>
+            </div>
+
+            <!-- Footer Pagination -->
+            <div style="padding:14px 20px; display:flex; justify-content:space-between; align-items:center; background: var(--surface2); border-radius:0 0 16px 16px;">
+              <span id="db-pagination-info" style="font-size:11px; color: var(--muted);">—</span>
+              <div style="display:flex; gap:4px;">
+                <button class="btn btn-ghost btn-xs" id="db-btn-prev" onclick="prevTablePage()">ก่อนหน้า</button>
+                <button class="btn btn-ghost btn-xs" id="db-btn-next" onclick="nextTablePage()">ถัดไป</button>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Select Table Helper -->
+          <div class="card" id="db-table-placeholder" style="padding:80px 20px; text-align:center; width: 100%;">
+            <div style="width:64px; height:64px; background: var(--surface2); border-radius:20px; display:flex; align-items:center; justify-content:center; margin:0 auto 16px; border:1px solid var(--border);">
+              <svg width="24" height="24" fill="none" stroke="#818cf8" viewBox="0 0 24 24" style="stroke-width:1.5;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/></svg>
+            </div>
+            <h3 style="font-size:16px; font-weight:800; color: var(--text); margin:0 0 6px;">โปรดเลือกตารางข้อมูล</h3>
+            <p style="font-size:12px; color: var(--muted); max-width:280px; margin:0 auto;">เลือกตารางทางแถบซ้ายเพื่อเปิดดู ค้นหา เพิ่ม แก้ไข หรือลบข้อมูลระเบียนต่าง ๆ ได้ทันที</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ INTERACTIVE SQL CONSOLE ══ -->
+      <div id="tab-sql" class="tab-pane">
+        <div style="margin-bottom:20px;">
+          <div class="page-title">SQL Console</div>
+          <div class="page-sub">รันคำสั่ง SQLite เผื่อควบคุม จัดการ และสืบค้นข้อมูลเชิงลึกได้โดยตรง</div>
+        </div>
+
+        <div style="display:grid; grid-template-rows:auto 1fr; gap:16px;">
+          <!-- Editor and Controls -->
+          <div class="card-sm" style="padding:18px;">
+            <p class="section-label" style="margin-bottom:8px;">คำสั่ง SQL (SQLite Syntax)</p>
+            <div style="position:relative; margin-bottom:12px; border:1px solid var(--border); border-radius:12px; overflow:hidden; background: var(--bg);">
+              <div style="background: var(--surface2); border-bottom:1px solid var(--border); padding:6px 12px; display:flex; justify-content:space-between; align-items:center;">
+                <span class="mono" style="font-size:10px; color: var(--muted);">QUERY WINDOW</span>
+                <span style="font-size:11px; color: var(--muted); font-weight:600;">รันด่วน: F8 หรือ Ctrl+Enter</span>
+              </div>
+              <textarea class="mono" id="sql-query-input" rows="8" style="width:100%; border:none; background: var(--bg); color: var(--text); padding:14px; font-size:13px; outline:none; font-family:'JetBrains Mono', monospace; line-height:1.6; resize:vertical;" placeholder="SELECT * FROM users LIMIT 10;"></textarea>
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+              <div style="display:flex; gap:8px;">
+                <button class="btn btn-primary" onclick="runSqlQuery()">
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                  Execute Query (F8)
+                </button>
+                <button class="btn btn-ghost" onclick="clearSqlConsole()">ล้างคำสั่ง</button>
+              </div>
+              <div style="display:flex; gap:6px;">
+                <button class="btn btn-ghost btn-xs" id="sql-export-csv" onclick="exportSqlResult('csv')" style="display:none;">Export CSV</button>
+                <button class="btn btn-ghost btn-xs" id="sql-export-json" onclick="exportSqlResult('json')" style="display:none;">Export JSON</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Output Console -->
+          <div class="card" id="sql-result-card" style="display:none; margin-top: 10px;">
+            <div style="padding:12px 18px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; background: var(--surface2);">
+              <span class="mono" style="font-size:10px; font-weight:800; color:#34d399;" id="sql-result-status">COMPLETED IN — ms</span>
+              <span style="font-size:11px; color: var(--muted);" id="sql-result-count">— rows returned</span>
+            </div>
+            
+            <div style="overflow-x:auto; max-width:100%; max-height:400px;">
+              <table class="data-table" id="sql-result-table">
+                <thead><tr id="sql-result-headers"></tr></thead>
+                <tbody id="sql-result-body"></tbody>
+              </table>
+            </div>
+          </div>
+          
+          <div class="card" id="sql-error-card" style="display:none; border-color:#7f1d1d; background:#450a0a11; margin-top: 10px;">
+            <div style="padding:12px 18px; border-bottom:1px solid #7f1d1d44; color:#f87171; font-weight:800; font-size:11px;">
+              ⚠️ SQL QUERY ERROR
+            </div>
+            <pre class="mono" id="sql-error-text" style="margin:0; padding:16px; font-size:12px; color:#fca5a5; overflow-x:auto; white-space:pre-wrap;"></pre>
           </div>
         </div>
       </div>
@@ -564,7 +850,7 @@
           <div style="display:flex; gap:8px; align-items:center;">
             <div class="search-wrap">
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-              <input class="inp-sm" id="log-q" placeholder="ค้นหา..." oninput="filterLogs()" style="width:180px;padding-left:32px;background:#111827;border:1px solid #1e293b;border-radius:8px;color:#e2e8f0;outline:none;">
+              <input class="inp-sm" id="log-q" placeholder="ค้นหา..." oninput="filterLogs()" style="width:180px;padding-left:32px;">
             </div>
             <select class="inp-sm" id="log-type" onchange="filterLogs()" style="width:140px;">
               <option value="">ทุกประเภท</option>
@@ -602,16 +888,26 @@ let _orgs = [], _users = [], _logs = [];
 function showTab(name) {
   document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
-  document.getElementById('tab-' + name).classList.add('active');
-  document.querySelector(`[data-tab="${name}"]`).classList.add('active');
+  const tabEl = document.getElementById('tab-' + name);
+  if (tabEl) tabEl.classList.add('active');
+  document.querySelectorAll(`[data-tab="${name}"]`).forEach(el => el.classList.add('active'));
 
-  if (name === 'orgs'      && !_orgs.length)  loadOrgs();
-  if (name === 'users'     && !_users.length) loadUsers();
+  if (name === 'orgs') {
+    if (!_orgs.length) loadOrgs();
+    else filterOrgs();
+  }
+  if (name === 'users') {
+    if (!_users.length) loadUsers();
+    else filterUsers();
+  }
   if (name === 'billing')   loadBilling();
   if (name === 'analytics') loadAnalytics();
   if (name === 'system')    loadSystem();
   if (name === 'logs')      loadLogs();
   if (name === 'broadcast') loadBroadcasts();
+  if (name === 'maintenance') { loadHealth(); loadScheduler(); loadBackups(); }
+  if (name === 'db')        loadDbTables();
+  if (name === 'sql')       initSqlConsole();
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -684,8 +980,8 @@ function avatar(u, size=32) {
   return `<div style="${sz}border-radius:${size>24?10:6}px;background:#1e1b4b;border:1px solid #312e81;display:flex;align-items:center;justify-content:center;font-size:${size>24?12:9}px;font-weight:800;color:#818cf8;flex-shrink:0;">${letter}</div>`;
 }
 function statRow(label, value, color='#94a3b8') {
-  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #0f172a;">
-    <span style="font-size:12px;color:#64748b;">${label}</span>
+  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border2);">
+    <span style="font-size:12px;color: var(--muted);">${label}</span>
     <span style="font-size:13px;font-weight:700;color:${color};">${value}</span>
   </div>`;
 }
@@ -889,7 +1185,7 @@ async function loadOrgs() {
   const d = await r.json();
   if (!d.ok) return;
   _orgs = d.orgs;
-  document.getElementById('nb-orgs').textContent = _orgs.length;
+  document.querySelectorAll('#nb-orgs').forEach(el => el.textContent = _orgs.length);
   filterOrgs();
 }
 function filterOrgs() {
@@ -912,19 +1208,19 @@ function renderOrgs(list) {
   tbody.innerHTML = list.map(o => {
     const ep = o.effective_plan || o.plan || 'free';
     return `<tr>
-      <td style="color:#334155;" class="mono" style="font-size:11px;">${o.id}</td>
+      <td style="color:var(--muted);" class="mono" style="font-size:11px;">${o.id}</td>
       <td>
-        <div style="font-weight:700;color:white;font-size:13px;">${o.name}</div>
-        <div style="font-size:10px;color:#475569;" class="mono">${o.slug||''}</div>
+        <div style="font-weight:700;color:var(--text);font-size:13px;">${o.name}</div>
+        <div style="font-size:10px;color:var(--muted);" class="mono">${o.slug||''}</div>
       </td>
       <td>
         ${planBadge(ep)}
-        ${o.plan_expires_at?`<br><span style="font-size:9px;color:#475569;">หมด ${fmtDate(o.plan_expires_at)}</span>`:''}
+        ${o.plan_expires_at?`<br><span style="font-size:9px;color:var(--muted);">หมด ${fmtDate(o.plan_expires_at)}</span>`:''}
       </td>
-      <td class="r" style="color:#94a3b8;">${o.member_count||0}</td>
+      <td class="r" style="color:var(--muted);">${o.member_count||0}</td>
       <td class="r" style="color:#818cf8;">${(o.ai_query_count||0).toLocaleString()}</td>
-      <td class="r" style="color:#64748b;">${(o.expense_count||0).toLocaleString()}</td>
-      <td class="r" style="color:#475569;font-size:11px;">${fmtDate(o.created_at)}</td>
+      <td class="r" style="color:var(--muted);">${(o.expense_count||0).toLocaleString()}</td>
+      <td class="r" style="color:var(--muted);font-size:11px;">${fmtDate(o.created_at)}</td>
       <td class="r">
         <div style="display:flex;gap:4px;justify-content:flex-end;">
           <button class="btn btn-info btn-xs" onclick="openOrgModal(${o.id})">จัดการ</button>
@@ -945,29 +1241,29 @@ async function openOrgModal(orgId) {
   const expVal = org.plan_expires_at ? org.plan_expires_at.substring(0,10) : '';
 
   const membHtml = members.map(m => `
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #0f172a;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border2);">
       <div style="display:flex;align-items:center;gap:8px;">
         ${avatar(m, 26)}
         <div>
-          <span style="font-size:13px;color:white;font-weight:600;">${m.display_name||m.username}</span>
-          <span style="font-size:10px;color:#475569;margin-left:4px;">@${m.username}</span>
+          <span style="font-size:13px;color: var(--text);font-weight:600;">${m.display_name||m.username}</span>
+          <span style="font-size:10px;color: var(--muted);margin-left:4px;">@${m.username}</span>
         </div>
       </div>
       ${roleBadge(m.org_role||m.role)}
-    </div>`).join('') || '<p style="color:#334155;font-size:12px;padding:8px 0;">ไม่มีสมาชิก</p>';
+    </div>`).join('') || '<p style="color: var(--muted);font-size:12px;padding:8px 0;">ไม่มีสมาชิก</p>';
 
   showModal(`องค์กร: ${org.name}`,`
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
       ${planBadge(ep)}
-      <span style="font-size:11px;color:#475569;" class="mono">ID: ${org.id} · ${org.slug||'—'}</span>
+      <span style="font-size:11px;color: var(--muted);" class="mono">ID: ${org.id} · ${org.slug||'—'}</span>
     </div>
 
     <!-- Plan management -->
-    <div style="background:#070c16;border:1px solid #1e293b;border-radius:12px;padding:14px;margin:16px 0;">
-      <p style="font-size:10px;font-weight:800;color:#475569;letter-spacing:.1em;text-transform:uppercase;margin:0 0 12px;">เปลี่ยน Plan</p>
+    <div style="background: var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;margin:16px 0;">
+      <p style="font-size:10px;font-weight:800;color: var(--muted);letter-spacing:.1em;text-transform:uppercase;margin:0 0 12px;">เปลี่ยน Plan</p>
       <div style="display:flex;gap:8px;align-items:flex-end;">
         <div style="flex:1;">
-          <label style="font-size:11px;color:#64748b;font-weight:700;display:block;margin-bottom:4px;">Plan</label>
+          <label style="font-size:11px;color: var(--muted);font-weight:700;display:block;margin-bottom:4px;">Plan</label>
           <select id="mp-plan-${orgId}" class="inp">
             <option value="free" ${ep==='free'?'selected':''}>Free</option>
             <option value="pro" ${ep==='pro'?'selected':''}>Pro (฿299)</option>
@@ -975,7 +1271,7 @@ async function openOrgModal(orgId) {
           </select>
         </div>
         <div style="flex:1;">
-          <label style="font-size:11px;color:#64748b;font-weight:700;display:block;margin-bottom:4px;">หมดอายุ (ว่าง = ตลอดไป)</label>
+          <label style="font-size:11px;color: var(--muted);font-weight:700;display:block;margin-bottom:4px;">หมดอายุ (ว่าง = ตลอดไป)</label>
           <input type="date" id="mp-exp-${orgId}" class="inp" value="${expVal}">
         </div>
         <button class="btn btn-success" onclick="setPlan(${orgId})">บันทึก</button>
@@ -983,24 +1279,24 @@ async function openOrgModal(orgId) {
     </div>
 
     <!-- Members -->
-    <div style="background:#070c16;border:1px solid #1e293b;border-radius:12px;padding:14px;margin-bottom:12px;">
-      <p style="font-size:10px;font-weight:800;color:#475569;letter-spacing:.1em;text-transform:uppercase;margin:0 0 8px;">สมาชิก (${members.length} คน)</p>
+    <div style="background: var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px;">
+      <p style="font-size:10px;font-weight:800;color: var(--muted);letter-spacing:.1em;text-transform:uppercase;margin:0 0 8px;">สมาชิก (${members.length} คน)</p>
       <div style="max-height:200px;overflow-y:auto;">${membHtml}</div>
     </div>
 
     <!-- Stats -->
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
-      <div style="background:#070c16;border:1px solid #1e293b;border-radius:10px;padding:12px;text-align:center;">
-        <p style="font-size:22px;font-weight:900;color:white;margin:0;">${org.member_count||0}</p>
-        <p style="font-size:9px;color:#475569;text-transform:uppercase;letter-spacing:.08em;margin:2px 0 0;">สมาชิก</p>
+      <div style="background: var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center;">
+        <p style="font-size:22px;font-weight:900;color: var(--text);margin:0;">${org.member_count||0}</p>
+        <p style="font-size:9px;color: var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:2px 0 0;">สมาชิก</p>
       </div>
-      <div style="background:#070c16;border:1px solid #1e293b;border-radius:10px;padding:12px;text-align:center;">
+      <div style="background: var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center;">
         <p style="font-size:22px;font-weight:900;color:#818cf8;margin:0;">${(org.ai_query_count||0).toLocaleString()}</p>
-        <p style="font-size:9px;color:#475569;text-transform:uppercase;letter-spacing:.08em;margin:2px 0 0;">AI Queries</p>
+        <p style="font-size:9px;color: var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:2px 0 0;">AI Queries</p>
       </div>
-      <div style="background:#070c16;border:1px solid #1e293b;border-radius:10px;padding:12px;text-align:center;">
+      <div style="background: var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center;">
         <p style="font-size:22px;font-weight:900;color:#fbbf24;margin:0;">${fmtDate(org.created_at)}</p>
-        <p style="font-size:9px;color:#475569;text-transform:uppercase;letter-spacing:.08em;margin:2px 0 0;">สร้างเมื่อ</p>
+        <p style="font-size:9px;color: var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:2px 0 0;">สร้างเมื่อ</p>
       </div>
     </div>
   `);
@@ -1031,7 +1327,7 @@ function openCreateOrgModal() {
   showModal('สร้างองค์กรใหม่', `
     <div style="display:flex;flex-direction:column;gap:14px;">
       <div>
-        <label style="font-size:11px;color:#64748b;font-weight:700;display:block;margin-bottom:5px;">ชื่อองค์กร *</label>
+        <label style="font-size:11px;color:var(--muted);font-weight:700;display:block;margin-bottom:5px;">ชื่อองค์กร *</label>
         <input class="inp" id="co-name" placeholder="เช่น บริษัท ABC จำกัด">
       </div>
       <div>
@@ -1070,7 +1366,7 @@ async function loadUsers() {
   const d = await r.json();
   if (!d.ok) return;
   _users = d.users;
-  document.getElementById('nb-users').textContent = _users.length;
+  document.querySelectorAll('#nb-users').forEach(el => el.textContent = _users.length);
   filterUsers();
 }
 function filterUsers() {
@@ -1090,30 +1386,30 @@ function filterUsers() {
 function renderUsers(list) {
   const tbody = document.getElementById('users-tbody');
   if (!list.length) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:#334155;">ไม่พบผู้ใช้</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color: var(--muted);">ไม่พบผู้ใช้</td></tr>';
     return;
   }
   tbody.innerHTML = list.map(u => {
     const isActive = u.is_active !== 0;
     const orgTags = (u.orgs||[]).slice(0,2).map(o=>
-      `<span style="font-size:10px;background:#111827;border:1px solid #1e293b;color:#64748b;padding:1px 6px;border-radius:5px;">${o.name}</span>`
+      `<span style="font-size:10px;background: var(--surface2);border:1px solid var(--border);color: var(--muted);padding:1px 6px;border-radius:5px;">${o.name}</span>`
     ).join('');
-    const moreOrgs = (u.orgs||[]).length > 2 ? `<span style="font-size:10px;color:#475569;">+${(u.orgs||[]).length-2}</span>` : '';
+    const moreOrgs = (u.orgs||[]).length > 2 ? `<span style="font-size:10px;color: var(--muted);">+${(u.orgs||[]).length-2}</span>` : '';
     return `<tr>
       <td>
         <div style="display:flex;align-items:center;gap:10px;">
           ${avatar(u, 32)}
           <div>
-            <div style="font-weight:700;color:white;font-size:13px;">${u.display_name||u.username}</div>
-            <div style="font-size:10px;color:#475569;" class="mono">@${u.username}</div>
+            <div style="font-weight:700;color: var(--text);font-size:13px;">${u.display_name||u.username}</div>
+            <div style="font-size:10px;color: var(--muted);" class="mono">@${u.username}</div>
           </div>
         </div>
       </td>
       <td>${roleBadge(u.role)}</td>
       <td>${statusBadge(isActive)}</td>
-      <td><div style="display:flex;gap:3px;flex-wrap:wrap;">${orgTags||'<span style="color:#334155;font-size:11px;">—</span>'}${moreOrgs}</div></td>
-      <td style="font-size:12px;color:#64748b;">${u.department||'—'}</td>
-      <td class="r" style="font-size:11px;color:#475569;">${fmtDate(u.profile_created||u.created_at)}</td>
+      <td><div style="display:flex;gap:3px;flex-wrap:wrap;">${orgTags||'<span style="color: var(--muted);font-size:11px;">—</span>'}${moreOrgs}</div></td>
+      <td style="font-size:12px;color: var(--text);">${u.department||'—'}</td>
+      <td class="r" style="font-size:11px;color: var(--muted);">${fmtDate(u.profile_created||u.created_at)}</td>
       <td class="r">
         <button class="btn btn-info btn-xs" onclick="openUserModal('${u.username.replace(/'/g,"\\'")}')">จัดการ</button>
       </td>
@@ -1126,30 +1422,30 @@ function openUserModal(username) {
   if (!u) return;
   const isActive = u.is_active !== 0;
   const orgLines = (u.orgs||[]).map(o =>
-    `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid #0f172a;">
-      <span style="font-size:12px;color:#94a3b8;">${o.name}</span>
+    `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border2);">
+      <span style="font-size:12px;color: var(--text);">${o.name}</span>
       <div style="display:flex;gap:4px;">${roleBadge(o.role||'member')} ${planBadge(o.plan)}</div>
     </div>`
-  ).join('') || '<p style="color:#334155;font-size:12px;margin:8px 0;">ไม่ได้อยู่ใน org ใด</p>';
+  ).join('') || '<p style="color: var(--muted);font-size:12px;margin:8px 0;">ไม่ได้อยู่ใน org ใด</p>';
 
   showModal(`จัดการผู้ใช้: @${username}`, `
     <!-- Profile -->
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
       ${avatar(u, 44)}
       <div style="flex:1;">
-        <div style="font-weight:800;color:white;font-size:15px;">${u.display_name||u.username}</div>
-        <div style="font-size:11px;color:#475569;" class="mono">@${u.username}</div>
+        <div style="font-weight:800;color: var(--text);font-size:15px;">${u.display_name||u.username}</div>
+        <div style="font-size:11px;color: var(--muted);" class="mono">@${u.username}</div>
         <div style="margin-top:4px;display:flex;gap:4px;">${roleBadge(u.role)} ${statusBadge(isActive)}</div>
       </div>
       <div style="text-align:right;">
-        <div style="font-size:10px;color:#475569;">สมัครเมื่อ</div>
-        <div style="font-size:11px;color:#64748b;">${fmtDate(u.profile_created||u.created_at)}</div>
-        ${u.department?`<div style="font-size:10px;color:#475569;margin-top:2px;">แผนก: ${u.department}</div>`:''}
+        <div style="font-size:10px;color: var(--muted);">สมัครเมื่อ</div>
+        <div style="font-size:11px;color: var(--text);">${fmtDate(u.profile_created||u.created_at)}</div>
+        ${u.department?`<div style="font-size:10px;color: var(--muted);margin-top:2px;">แผนก: ${u.department}</div>`:''}
       </div>
     </div>
 
     <!-- Actions -->
-    <div style="display:flex;flex-wrap:wrap;gap:6px;padding:12px;background:#070c16;border:1px solid #1e293b;border-radius:10px;margin-bottom:14px;">
+    <div style="display:flex;flex-wrap:wrap;gap:6px;padding:12px;background: var(--surface2);border:1px solid var(--border);border-radius:10px;margin-bottom:14px;">
       <button class="btn ${isActive?'btn-warning':'btn-success'} btn-xs" onclick="toggleActive('${username}',${isActive})">
         ${isActive?'⏸ ระงับบัญชี':'▶ เปิดบัญชี'}
       </button>
@@ -1159,18 +1455,21 @@ function openUserModal(username) {
       <button class="btn btn-ghost btn-xs" onclick="resetPw('${username}')">
         🔑 Reset รหัสผ่าน
       </button>
+      <button class="btn btn-info btn-xs" onclick="impersonate('${username}')" title="Login as this user (ออกได้ตลอดเวลา)">
+        👤 Impersonate
+      </button>
       ${username!=='Admin'?`<button class="btn btn-danger btn-xs" onclick="confirmDeleteUser('${username}')">🗑 ลบ User</button>`:''}
     </div>
 
     <!-- Orgs -->
-    <div style="background:#070c16;border:1px solid #1e293b;border-radius:10px;padding:12px;margin-bottom:12px;">
-      <p style="font-size:10px;font-weight:800;color:#475569;letter-spacing:.1em;text-transform:uppercase;margin:0 0 4px;">สังกัดองค์กร</p>
+    <div style="background: var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px;">
+      <p style="font-size:10px;font-weight:800;color: var(--muted);letter-spacing:.1em;text-transform:uppercase;margin:0 0 4px;">สังกัดองค์กร</p>
       ${orgLines}
     </div>
 
     <!-- Notes -->
-    <div style="background:#070c16;border:1px solid #1e293b;border-radius:10px;padding:12px;">
-      <p style="font-size:10px;font-weight:800;color:#475569;letter-spacing:.1em;text-transform:uppercase;margin:0 0 8px;">หมายเหตุ (Admin)</p>
+    <div style="background: var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;">
+      <p style="font-size:10px;font-weight:800;color: var(--muted);letter-spacing:.1em;text-transform:uppercase;margin:0 0 8px;">หมายเหตุ (Admin)</p>
       <textarea id="notes-${username}" class="inp" rows="2" style="resize:vertical;" placeholder="บันทึกข้อมูลเพิ่มเติม...">${u.notes||''}</textarea>
       <button class="btn btn-ghost btn-xs" style="margin-top:6px;" onclick="saveNotes('${username}')">บันทึกหมายเหตุ</button>
     </div>
@@ -1292,17 +1591,17 @@ async function loadBroadcasts() {
   const d = await r.json();
   const el = document.getElementById('bc-history');
   if (!d.ok || !d.broadcasts.length) {
-    el.innerHTML = '<div style="padding:40px;text-align:center;color:#334155;font-size:13px;">ยังไม่มีประกาศ</div>';
+    el.innerHTML = '<div style="padding:40px;text-align:center;color: var(--muted);font-size:13px;">ยังไม่มีประกาศ</div>';
     return;
   }
   el.innerHTML = d.broadcasts.map(b => `
-    <div style="padding:14px 16px;border-bottom:1px solid #0f172a;">
+    <div style="padding:14px 16px;border-bottom:1px solid var(--border2);">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
-        <span style="font-size:13px;font-weight:700;color:white;">${b.title||'ประกาศ'}</span>
-        <span style="font-size:10px;color:#475569;" class="mono">${(b.time||'').substring(0,16).replace('T',' ')}</span>
+        <span style="font-size:13px;font-weight:700;color: var(--text);">${b.title||'ประกาศ'}</span>
+        <span style="font-size:10px;color: var(--muted);" class="mono">${(b.time||'').substring(0,16).replace('T',' ')}</span>
       </div>
-      <p style="font-size:12px;color:#94a3b8;margin:0;line-height:1.5;">${b.message}</p>
-      <div style="margin-top:6px;font-size:10px;color:#475569;">โดย: ${b.user||'—'}</div>
+      <p style="font-size:12px;color: var(--text);opacity:0.9;margin:0;line-height:1.5;">${b.message}</p>
+      <div style="margin-top:6px;font-size:10px;color: var(--muted);">โดย: ${b.user||'—'}</div>
     </div>`).join('');
 }
 
@@ -1342,11 +1641,24 @@ async function clearCache() {
    LOGS
    ═══════════════════════════════════════════════════════════ */
 async function loadLogs() {
-  const limit = document.getElementById('log-limit')?.value || 100;
-  const r = await fetch(`/api/superadmin/logs?limit=${limit}`);
-  const d = await r.json();
-  _logs = d.ok ? d.events : [];
-  filterLogs();
+  try {
+    const limit = document.getElementById('log-limit')?.value || 100;
+    const r = await fetch(`/api/superadmin/logs?limit=${limit}`);
+    if (!r.ok) {
+      const text = await r.text();
+      throw new Error(text || `HTTP error ${r.status}`);
+    }
+    const d = await r.json();
+    _logs = d.ok ? d.events : [];
+    filterLogs();
+  } catch (e) {
+    console.error("Failed to load logs:", e);
+    toast("เกิดข้อผิดพลาดในการโหลด Logs: " + e.message, "error");
+    const wrap = document.getElementById('logs-wrap');
+    if (wrap) {
+      wrap.innerHTML = `<div style="padding:40px;text-align:center;color:#ef4444;font-size:13px;">⚠️ เกิดข้อผิดพลาดในการโหลด Event Logs: ${e.message}</div>`;
+    }
+  }
 }
 function filterLogs() {
   const q = (document.getElementById('log-q')?.value||'').toLowerCase();
@@ -1411,27 +1723,691 @@ function downloadCSV(rows, filename) {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   BROADCAST TARGETED
+   ═══════════════════════════════════════════════════════════ */
+function onBcTargetChange() {
+  const t = document.getElementById('bc-target-type').value;
+  document.getElementById('bc-plan-sel').style.display = t==='plan'?'':'none';
+  document.getElementById('bc-org-id').style.display  = t==='org' ?'':'none';
+}
+
+async function sendBroadcast() {
+  const title   = document.getElementById('bc-title').value.trim();
+  const message = document.getElementById('bc-msg').value.trim();
+  const targetType = document.getElementById('bc-target-type').value;
+  if (!message) { toast('กรุณาพิมพ์ข้อความก่อน','error'); return; }
+
+  let url, body;
+  if (targetType === 'all') {
+    url  = '/api/superadmin/broadcast';
+    body = { title, message };
+  } else {
+    url  = '/api/superadmin/broadcast-targeted';
+    body = { title, message };
+    if (targetType === 'plan') body.plan = document.getElementById('bc-plan-sel').value;
+    if (targetType === 'org')  body.org_id = parseInt(document.getElementById('bc-org-id').value || '0');
+  }
+
+  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+  const d = await r.json();
+  if (d.ok) {
+    const who = targetType==='all'?'ทุกคน':targetType==='plan'?`plan ${body.plan}`:`org #${body.org_id}`;
+    toast(`ส่งประกาศถึง ${who} ${d.notified!=null?'('+d.notified+' คน)':''} สำเร็จ`,'success');
+    document.getElementById('bc-msg').value = '';
+    loadBroadcasts();
+  } else toast(d.error||'Error','error');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MAINTENANCE
+   ═══════════════════════════════════════════════════════════ */
+async function loadHealth() {
+  const r = await fetch('/api/superadmin/system/health');
+  const d = await r.json();
+  const el = document.getElementById('health-info');
+  if (!d.ok && !d.cpu_pct) {
+    el.innerHTML = `<div style="padding:10px;color:#fbbf24;font-size:12px;">${d.psutil||d.error||'Error'}</div>`;
+    return;
+  }
+  const rows = [];
+  if (d.cpu_pct != null) rows.push(statRow('CPU', d.cpu_pct+'%', d.cpu_pct>80?'#f87171':'#34d399'));
+  if (d.mem_pct != null) rows.push(statRow('RAM', `${d.mem_used_mb} / ${d.mem_total_mb} MB (${d.mem_pct}%)`, d.mem_pct>85?'#f87171':'#60a5fa'));
+  if (d.disk_pct != null) rows.push(statRow('Disk', `${d.disk_used_gb} / ${d.disk_total_gb} GB (${d.disk_pct}%)`, d.disk_pct>90?'#f87171':'#fbbf24'));
+  el.innerHTML = rows.join('') || '<div style="color:var(--muted);font-size:12px;padding:8px 0;">ไม่มีข้อมูล</div>';
+}
+
+async function loadScheduler() {
+  const r = await fetch('/api/superadmin/system/scheduler');
+  const d = await r.json();
+  const el = document.getElementById('scheduler-info');
+  if (!d.jobs || !d.jobs.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px 0;">ไม่พบ jobs</div>';
+    return;
+  }
+  el.innerHTML = d.jobs.map(j => `
+    <div style="padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
+      <div style="font-size:12px;font-weight:700;color:var(--text);">${j.id}</div>
+      <div style="font-size:10px;color:var(--muted);margin-top:2px;">Next: ${j.next_run?j.next_run.substring(0,16).replace('T',' '):'—'}</div>
+    </div>`).join('');
+}
+
+async function runKbCleanup() {
+  const minutes = parseInt(document.getElementById('cleanup-minutes').value||30);
+  const r = await fetch('/api/superadmin/system/kb-cleanup', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({minutes})
+  });
+  const d = await r.json();
+  if (d.ok) toast(`ล้าง ${d.cleaned} ไฟล์ค้างสำเร็จ`,'success');
+  else toast(d.error||'Error','error');
+}
+
+async function triggerBackup() {
+  const r = await fetch('/api/superadmin/system/backup', { method:'POST' });
+  const d = await r.json();
+  if (d.ok) { toast('Backup สำเร็จ','success'); loadBackups(); }
+  else toast(d.error||'Error','error');
+}
+
+async function loadBackups() {
+  const r = await fetch('/api/superadmin/system/backups');
+  const d = await r.json();
+  const el = document.getElementById('backup-list');
+  if (!d.backups || !d.backups.length) {
+    el.innerHTML = '<div style="padding:10px;text-align:center;color:var(--muted);font-size:12px;">ไม่พบไฟล์ backup</div>';
+    return;
+  }
+  el.innerHTML = d.backups.map(b => `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--text);" class="mono">${b.name}</div>
+        <div style="font-size:10px;color:var(--muted);">${fmtBytes(b.size_bytes)} · ${(b.modified||'').substring(0,16).replace('T',' ')}</div>
+      </div>
+      <span class="badge badge-info">backup</span>
+    </div>`).join('');
+}
+
+async function sendExpiryReminders() {
+  if (!confirm('ส่ง reminder plan หมดอายุทันทีใช่ไหม?')) return;
+  const r = await fetch('/api/superadmin/system/send-expiry-reminders', { method:'POST' });
+  const d = await r.json();
+  if (d.ok) toast('ส่ง reminder เรียบร้อย','success');
+  else toast(d.error||'Error','error');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   IMPERSONATE
+   ═══════════════════════════════════════════════════════════ */
+async function impersonate(username) {
+  if (!confirm(`⚠️ Login เป็น @${username} ?\n\nการกระทำนี้จะถูกบันทึกใน audit log\nกลับมาได้ที่ /api/superadmin/exit-impersonate`)) return;
+  const r = await fetch(`/api/superadmin/impersonate/${encodeURIComponent(username)}`, { method:'POST' });
+  const d = await r.json();
+  if (d.ok) {
+    toast(`กำลังเปิดหน้าหลักเป็น @${username}...`,'info');
+    closeModal();
+    setTimeout(() => window.open('/', '_blank'), 800);
+  } else toast(d.error||'Error','error');
+}
+
+/* ═══════════════════════════════════════════════════════════
    REFRESH ALL
    ═══════════════════════════════════════════════════════════ */
 function refreshAll() {
   _orgs=[]; _users=[]; _logs=[];
   loadOverview();
   const active = document.querySelector('.tab-pane.active')?.id?.replace('tab-','');
-  if (active==='orgs')      loadOrgs();
-  if (active==='users')     loadUsers();
-  if (active==='system')    loadSystem();
-  if (active==='logs')      loadLogs();
-  if (active==='billing')   loadBilling();
-  if (active==='analytics') loadAnalytics();
-  if (active==='broadcast') loadBroadcasts();
+  if (active==='orgs')        loadOrgs();
+  if (active==='users')       loadUsers();
+  if (active==='system')      loadSystem();
+  if (active==='logs')        loadLogs();
+  if (active==='billing')     loadBilling();
+  if (active==='analytics')   loadAnalytics();
+  if (active==='broadcast')   loadBroadcasts();
+  if (active==='maintenance') { loadHealth(); loadScheduler(); loadBackups(); }
   toast('รีเฟรชข้อมูลแล้ว');
 }
+
+// Hook maintenance tab load was integrated directly into showTab above to prevent function hoisting recursive calls.
+
+/* ═══════════════════════════════════════════════════════════
+   DATABASE EXPLORER
+   ═══════════════════════════════════════════════════════════ */
+let dbState = {
+  tables: [],
+  currentTable: '',
+  columns: [],
+  rows: [],
+  totalRows: 0,
+  limit: 20,
+  offset: 0,
+  search: ''
+};
+
+async function loadDbTables() {
+  const r = await fetch('/api/superadmin/db/tables');
+  const d = await r.json();
+  if (!d.ok) { toast(d.error||'Error loading DB tables', 'error'); return; }
+  dbState.tables = d.tables;
+  
+  const el = document.getElementById('db-tables-list');
+  el.innerHTML = d.tables.map(t => {
+    const isSelected = dbState.currentTable === t.name;
+    return `
+      <button class="nav-item ${isSelected?'active':''}" onclick="selectDbTable('${t.name}')" style="justify-content:space-between; width:100%; padding:6px 10px;">
+        <span class="mono text-xs" style="color:${isSelected?'#a5b4fc':'#94a3b8'}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${t.name}</span>
+        <span class="nav-badge" style="font-size:9px; background:${isSelected?'#312e81':'#111827'};">${t.count}</span>
+      </button>
+    `;
+  }).join('');
+}
+
+async function selectDbTable(tableName) {
+  dbState.currentTable = tableName;
+  dbState.offset = 0;
+  dbState.search = '';
+  document.getElementById('db-table-q').value = '';
+  
+  // Update sidebar active states
+  loadDbTables();
+  
+  // Show table container
+  document.getElementById('db-table-placeholder').style.display = 'none';
+  document.getElementById('db-table-viewer').style.display = 'block';
+  
+  document.getElementById('db-current-table-title').textContent = tableName;
+  document.getElementById('db-current-table-subtitle').textContent = `กำลังโหลดโครงสร้างและข้อมูลของตาราง...`;
+  
+  await fetchTableData();
+}
+
+async function fetchTableData() {
+  const tableName = dbState.currentTable;
+  if (!tableName) return;
+  
+  const q = encodeURIComponent(dbState.search);
+  const r = await fetch(`/api/superadmin/db/table/${tableName}?limit=${dbState.limit}&offset=${dbState.offset}&q=${q}`);
+  const d = await r.json();
+  
+  if (!d.ok) {
+    toast(d.error || 'Error loading table data', 'error');
+    return;
+  }
+  
+  dbState.columns = d.columns;
+  dbState.rows = d.rows;
+  dbState.totalRows = d.total;
+  
+  document.getElementById('db-current-table-subtitle').textContent = `ตาราง ${tableName} (${d.total} รายการ)`;
+  renderCurrentTable();
+}
+
+function renderCurrentTable() {
+  const headersEl = document.getElementById('db-table-headers');
+  const bodyEl = document.getElementById('db-table-body');
+  
+  if (dbState.columns.length === 0) {
+    headersEl.innerHTML = '<th>No columns</th>';
+    bodyEl.innerHTML = '<tr><td style="text-align:center;padding:30px;color:var(--muted);">ไม่พบโครงสร้างตาราง</td></tr>';
+    return;
+  }
+  
+  // Header HTML (Columns + Action head)
+  let headersHtml = dbState.columns.map(c => `
+    <th class="mono" style="font-size:10px; color:${c.pk?'#fbbf24':'var(--muted)'};">
+      ${c.name} ${c.pk?'🔑':''}
+      <span style="display:block; font-size:8px; font-weight:normal; text-transform:lowercase; color:var(--muted); opacity:0.7;">${c.type}</span>
+    </th>
+  `).join('');
+  headersHtml += '<th style="width:100px; text-align:right;">การจัดการ</th>';
+  headersEl.innerHTML = headersHtml;
+  
+  // Body HTML
+  if (dbState.rows.length === 0) {
+    bodyEl.innerHTML = `<tr><td colspan="${dbState.columns.length + 1}" style="text-align:center;padding:40px;color:var(--muted);">ไม่พบข้อมูลในตารางนี้</td></tr>`;
+  } else {
+    bodyEl.innerHTML = dbState.rows.map((row, rowIdx) => {
+      let tdsHtml = dbState.columns.map(col => {
+        const val = row[col.name];
+        const displayVal = val === null ? '<span style="color:var(--muted); font-style:italic;">null</span>' : String(val).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        return `<td class="mono" style="font-size:11px; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text);" title="${String(val)}">${displayVal}</td>`;
+      }).join('');
+      
+      // Actions: Edit and Delete
+      const rowEscaped = encodeURIComponent(JSON.stringify(row));
+      tdsHtml += `
+        <td style="text-align:right;">
+          <div style="display:inline-flex; gap:4px;">
+            <button class="btn btn-ghost btn-xs" onclick="openEditRowModal('${rowEscaped}')" style="padding:2px 6px;">แก้ไข</button>
+            <button class="btn btn-danger btn-xs" onclick="deleteDbRow('${rowEscaped}')" style="padding:2px 6px;">ลบ</button>
+          </div>
+        </td>
+      `;
+      return `<tr>${tdsHtml}</tr>`;
+    }).join('');
+  }
+  
+  // Pagination Update
+  const start = dbState.totalRows === 0 ? 0 : dbState.offset + 1;
+  const end = Math.min(dbState.offset + dbState.limit, dbState.totalRows);
+  document.getElementById('db-pagination-info').textContent = `แสดงรายการที่ ${start} - ${end} จากทั้งหมด ${dbState.totalRows} รายการ`;
+  
+  document.getElementById('db-btn-prev').disabled = dbState.offset === 0;
+  document.getElementById('db-btn-next').disabled = end >= dbState.totalRows;
+}
+
+let dbSearchTimeout;
+function searchCurrentTable() {
+  clearTimeout(dbSearchTimeout);
+  dbSearchTimeout = setTimeout(() => {
+    dbState.search = document.getElementById('db-table-q').value;
+    dbState.offset = 0;
+    fetchTableData();
+  }, 300);
+}
+
+function prevTablePage() {
+  if (dbState.offset === 0) return;
+  dbState.offset = Math.max(0, dbState.offset - dbState.limit);
+  fetchTableData();
+}
+
+function nextTablePage() {
+  if (dbState.offset + dbState.limit >= dbState.totalRows) return;
+  dbState.offset += dbState.limit;
+  fetchTableData();
+}
+
+function openAddRowModal() {
+  const inputsHtml = dbState.columns.map(c => {
+    const isPK = c.pk === 1;
+    const placeholder = isPK ? 'Primary Key (ระบบจะสร้างอัตโนมัติหากปล่อยว่าง)' : `กรอกข้อมูล ${c.name}`;
+    const inputType = c.type.toLowerCase().includes('int') ? 'number' : 'text';
+    return `
+      <div style="margin-bottom:12px;">
+        <label class="mono" style="font-size:11px; font-weight:700; color:${isPK?'#fbbf24':'var(--text)'}; display:block; margin-bottom:4px;">
+          ${c.name} <span style="font-size:9px; font-weight:normal; color:var(--muted);">(${c.type})</span> ${isPK?'🔑':''}
+        </label>
+        <input class="inp" id="db-field-${c.name}" type="${inputType}" placeholder="${placeholder}">
+      </div>
+    `;
+  }).join('');
+  
+  const footerHtml = `
+    <button class="btn btn-ghost" onclick="closeModal()">ยกเลิก</button>
+    <button class="btn btn-primary" onclick="submitAddRow()">บันทึกข้อมูล</button>
+  `;
+  
+  showModal(`เพิ่มข้อมูลตาราง ${dbState.currentTable}`, `<div style="max-height:60vh; overflow-y:auto; padding-right:4px;">${inputsHtml}</div>`, footerHtml);
+}
+
+async function submitAddRow() {
+  const data = {};
+  dbState.columns.forEach(c => {
+    const val = document.getElementById(`db-field-${c.name}`).value.trim();
+    if (val !== '') {
+      data[c.name] = c.type.toLowerCase().includes('int') ? parseInt(val, 10) : val;
+    }
+  });
+  
+  const r = await fetch(`/api/superadmin/db/table/${dbState.currentTable}/row`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  
+  const d = await r.json();
+  if (d.ok) {
+    toast('เพิ่มข้อมูลเรียบร้อยแล้วค่ะ! ✨', 'success');
+    closeModal();
+    fetchTableData();
+    loadDbTables(); // Refresh sidebar count
+  } else {
+    toast(d.error || 'เกิดข้อผิดพลาดในการบันทึกข้อมูล', 'error');
+  }
+}
+
+function openEditRowModal(rowEscaped) {
+  const row = JSON.parse(decodeURIComponent(rowEscaped));
+  const inputsHtml = dbState.columns.map(c => {
+    const isPK = c.pk === 1;
+    const val = row[c.name] !== null ? String(row[c.name]) : '';
+    const inputType = c.type.toLowerCase().includes('int') ? 'number' : 'text';
+    return `
+      <div style="margin-bottom:12px;">
+        <label class="mono" style="font-size:11px; font-weight:700; color:${isPK?'#fbbf24':'var(--text)'}; display:block; margin-bottom:4px;">
+          ${c.name} <span style="font-size:9px; font-weight:normal; color:var(--muted);">(${c.type})</span> ${isPK?'🔑':''}
+        </label>
+        <input class="inp" id="db-field-${c.name}" type="${inputType}" value="${val.replace(/"/g, '&quot;')}" ${isPK?'disabled style="opacity:0.6;cursor:not-allowed;"':''}>
+      </div>
+    `;
+  }).join('');
+  
+  const footerHtml = `
+    <button class="btn btn-ghost" onclick="closeModal()">ยกเลิก</button>
+    <button class="btn btn-primary" onclick="submitEditRow('${rowEscaped}')">อัปเดตข้อมูล</button>
+  `;
+  
+  showModal(`แก้ไขข้อมูลตาราง ${dbState.currentTable}`, `<div style="max-height:60vh; overflow-y:auto; padding-right:4px;">${inputsHtml}</div>`, footerHtml);
+}
+
+async function submitEditRow(rowEscaped) {
+  const row = JSON.parse(decodeURIComponent(rowEscaped));
+  const pk_cols = {};
+  const fields = {};
+  
+  dbState.columns.forEach(c => {
+    const inputEl = document.getElementById(`db-field-${c.name}`);
+    const val = inputEl.value.trim();
+    const typedVal = c.type.toLowerCase().includes('int') ? (val === '' ? null : parseInt(val, 10)) : val;
+    
+    if (c.pk === 1) {
+      pk_cols[c.name] = row[c.name];
+    } else {
+      fields[c.name] = typedVal;
+    }
+  });
+  
+  const r = await fetch(`/api/superadmin/db/table/${dbState.currentTable}/row/update`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ _pk_cols: pk_cols, _fields: fields })
+  });
+  
+  const d = await r.json();
+  if (d.ok) {
+    toast('อัปเดตข้อมูลเรียบร้อยแล้วค่ะ! ✨', 'success');
+    closeModal();
+    fetchTableData();
+  } else {
+    toast(d.error || 'เกิดข้อผิดพลาดในการบันทึกข้อมูล', 'error');
+  }
+}
+
+async function deleteDbRow(rowEscaped) {
+  if (!confirm('คุณแน่ใจใช่หรือไม่ว่าต้องการลบแถวข้อมูลนี้? ไม่สามารถเรียกคืนได้ภายหลังนะ!')) return;
+  const row = JSON.parse(decodeURIComponent(rowEscaped));
+  const pk_cols = {};
+  
+  dbState.columns.forEach(c => {
+    if (c.pk === 1) {
+      pk_cols[c.name] = row[c.name];
+    }
+  });
+  
+  // Fallback: If no explicit pk column, bind all fields as identification
+  const bodyData = Object.keys(pk_cols).length > 0 ? pk_cols : row;
+  
+  const r = await fetch(`/api/superadmin/db/table/${dbState.currentTable}/row/delete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(bodyData)
+  });
+  
+  const d = await r.json();
+  if (d.ok) {
+    toast('ลบข้อมูลเรียบร้อยแล้วค่ะ', 'success');
+    fetchTableData();
+    loadDbTables(); // Refresh sidebar count
+  } else {
+    toast(d.error || 'เกิดข้อผิดพลาดในการลบข้อมูล', 'error');
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SQL CONSOLE
+   ═══════════════════════════════════════════════════════════ */
+let sqlState = {
+  lastResult: null
+};
+
+function initSqlConsole() {
+  const queryInput = document.getElementById('sql-query-input');
+  if (!queryInput) return;
+  
+  // Setup F8 hotkey & Ctrl+Enter to execute query
+  queryInput.removeEventListener('keydown', handleSqlKeys);
+  queryInput.addEventListener('keydown', handleSqlKeys);
+}
+
+function handleSqlKeys(e) {
+  if (e.key === 'F8' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) {
+    e.preventDefault();
+    runSqlQuery();
+  }
+}
+
+async function runSqlQuery() {
+  const query = document.getElementById('sql-query-input').value.trim();
+  if (!query) { toast('กรุณากรอก SQL คำสั่งก่อนค่ะ', 'warning'); return; }
+  
+  document.getElementById('sql-result-card').style.display = 'none';
+  document.getElementById('sql-error-card').style.display = 'none';
+  
+  const startTime = performance.now();
+  const r = await fetch('/api/superadmin/db/query', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sql: query })
+  });
+  const d = await r.json();
+  const duration = (performance.now() - startTime).toFixed(1);
+  
+  if (!d.ok) {
+    document.getElementById('sql-error-card').style.display = 'block';
+    document.getElementById('sql-error-text').textContent = d.error || 'Unknown query error occurred.';
+    toast('เกิดข้อผิดพลาดในการรัน SQL คำสั่งค่ะ', 'error');
+    return;
+  }
+  
+  sqlState.lastResult = d;
+  toast('รันคำสั่ง SQL สำเร็จเรียบร้อย! ✨', 'success');
+  
+  if (d.is_select) {
+    // Show select tables
+    document.getElementById('sql-result-card').style.display = 'block';
+    document.getElementById('sql-result-status').textContent = `EXECUTION COMPLETED IN ${duration} ms`;
+    document.getElementById('sql-result-count').textContent = `${d.total} rows returned ${d.truncated?'(truncated to 500 rows)':''}`;
+    
+    // Exports buttons
+    document.getElementById('sql-export-csv').style.display = 'inline-flex';
+    document.getElementById('sql-export-json').style.display = 'inline-flex';
+    
+    // Headers
+    const headersEl = document.getElementById('sql-result-headers');
+    headersEl.innerHTML = d.columns.map(c => `<th class="mono" style="font-size:10px;">${c}</th>`).join('');
+    
+    // Body
+    const bodyEl = document.getElementById('sql-result-body');
+    if (d.rows.length === 0) {
+      bodyEl.innerHTML = `<tr><td colspan="${d.columns.length}" style="text-align:center;padding:30px;color:#475569;">ไม่พบข้อมูลใด ๆ ที่ตรงกับเงื่อนไขคำสั่ง</td></tr>`;
+    } else {
+      bodyEl.innerHTML = d.rows.map(row => {
+        const tdsHtml = d.columns.map(col => {
+          const val = row[col];
+          const displayVal = val === null ? '<span style="color:#334155; font-style:italic;">null</span>' : String(val).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+          return `<td class="mono" style="font-size:11px; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${String(val)}">${displayVal}</td>`;
+        }).join('');
+        return `<tr>${tdsHtml}</tr>`;
+      }).join('');
+    }
+  } else {
+    // Show writing operation results
+    document.getElementById('sql-result-card').style.display = 'block';
+    document.getElementById('sql-result-status').textContent = `EXECUTION COMPLETED IN ${duration} ms`;
+    document.getElementById('sql-result-count').textContent = `คำสั่งสำเร็จ: มีการอัปเดต/ปรับปรุง ${d.affected_rows} แถวข้อมูลในระบบ`;
+    
+    document.getElementById('sql-export-csv').style.display = 'none';
+    document.getElementById('sql-export-json').style.display = 'none';
+    document.getElementById('sql-result-headers').innerHTML = '<th>การทำงานของคำสั่ง</th>';
+    document.getElementById('sql-result-body').innerHTML = `<tr><td style="padding:20px;color:#34d399;font-weight:700;">ทำการเรียกใช้และ Commit ข้อมูลเรียบร้อยแล้ว แถวที่เปลี่ยนไป: ${d.affected_rows} แถว</td></tr>`;
+  }
+}
+
+function clearSqlConsole() {
+  document.getElementById('sql-query-input').value = '';
+  document.getElementById('sql-result-card').style.display = 'none';
+  document.getElementById('sql-error-card').style.display = 'none';
+  sqlState.lastResult = null;
+}
+
+function exportSqlResult(type) {
+  const d = sqlState.lastResult;
+  if (!d || !d.is_select || d.rows.length === 0) return;
+  
+  if (type === 'json') {
+    const jsonStr = JSON.stringify(d.rows, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'sql_result.json';
+    a.click();
+    toast('ดาวน์โหลดไฟล์ JSON เรียบร้อยแล้วค่ะ', 'success');
+  } else {
+    const csvRows = [d.columns, ...d.rows.map(row => d.columns.map(col => row[col]))];
+    downloadCSV(csvRows, 'sql_result.csv');
+  }
+}
+
 
 /* ═══════════════════════════════════════════════════════════
    INIT
    ═══════════════════════════════════════════════════════════ */
 document.addEventListener('DOMContentLoaded', () => {
   loadOverview();
+
+  // Watch for real-time theme changes on the parent window (if loaded inside iframe)
+  if (window.self !== window.top) {
+    try {
+      const parentDoc = window.parent.document;
+      function syncTheme() {
+        const isDark = parentDoc.documentElement.classList.contains('dark');
+        if (isDark) {
+          document.documentElement.classList.remove('light');
+        } else {
+          document.documentElement.classList.add('light');
+        }
+      }
+      
+      const observer = new MutationObserver(syncTheme);
+      observer.observe(parentDoc.documentElement, { attributes: true, attributeFilter: ['class'] });
+      syncTheme(); // Run once initially
+    } catch (e) {
+      console.error("Failed to observe parent theme changes:", e);
+    }
+  }
+
+  // Check if loaded inside an iframe (SPA mode)
+  if (window.self !== window.top) {
+    const aside = document.querySelector('aside');
+    if (aside) {
+      aside.style.display = 'none';
+    }
+
+    // Make Topbar not sticky so it doesn't overlap the horizontal menu
+    const topbar = document.querySelector('main > div');
+    if (topbar) {
+      topbar.style.position = 'relative';
+      topbar.style.top = 'auto';
+      topbar.style.zIndex = '5';
+    }
+
+    // Build elegant horizontal tab navbar
+    const navItems = Array.from(document.querySelectorAll('nav .nav-item'));
+    const subnav = document.createElement('div');
+    subnav.id = 'iframe-horizontal-nav';
+    subnav.style.cssText = `
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 24px;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      overflow-x: auto;
+      white-space: nowrap;
+      scrollbar-width: none;
+      box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.08);
+    `;
+
+    const style = document.createElement('style');
+    style.innerHTML = `
+      #iframe-horizontal-nav::-webkit-scrollbar { display: none; }
+      #iframe-horizontal-nav .nav-item {
+        width: auto !important;
+        white-space: nowrap;
+        padding: 10px 18px;
+        font-size: 13.5px;
+        font-weight: 600;
+        flex-shrink: 0;
+        border: 1px solid transparent;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border-radius: 12px;
+        color: var(--muted);
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        background: transparent;
+      }
+      #iframe-horizontal-nav .nav-item:hover {
+        background: var(--surface2);
+        color: var(--text);
+        transform: translateY(-1px);
+      }
+      #iframe-horizontal-nav .nav-item.active {
+        background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(99, 102, 241, 0.05));
+        color: var(--accent);
+        border: 1px solid rgba(99, 102, 241, 0.3);
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.1);
+      }
+      :root.light #iframe-horizontal-nav .nav-item.active {
+        background: linear-gradient(135deg, rgba(37, 99, 235, 0.1), rgba(37, 99, 235, 0.03));
+        color: var(--accent);
+        border: 1px solid rgba(37, 99, 235, 0.25);
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.05);
+      }
+      #iframe-horizontal-nav .nav-badge {
+        margin-left: 8px;
+        background: var(--surface2);
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        transition: all 0.2s;
+      }
+      #iframe-horizontal-nav .nav-item.active .nav-badge {
+        background: var(--accent);
+        color: white;
+        border-color: var(--accent);
+      }
+      #iframe-horizontal-nav svg {
+        width: 16px;
+        height: 16px;
+        transition: transform 0.2s;
+      }
+      #iframe-horizontal-nav .nav-item:hover svg {
+        transform: scale(1.1);
+      }
+    `;
+    document.head.appendChild(style);
+
+    navItems.forEach(item => {
+      const clone = item.cloneNode(true);
+      const tabName = clone.getAttribute('data-tab');
+      clone.onclick = () => {
+        showTab(tabName);
+      };
+      subnav.appendChild(clone);
+    });
+
+    const main = document.querySelector('main');
+    if (main) {
+      main.insertBefore(subnav, main.firstChild);
+    }
+  }
 });
 </script>
 </body>

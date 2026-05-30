@@ -57,11 +57,13 @@ def get_version():
 
 
 @misc_bp.route('/uploads/social_feed/<path:filename>')
+@login_required
 def serve_social_uploads(filename):
     return send_from_directory('uploads/social_feed', filename)
 
 
 @misc_bp.route('/uploads/profiles/<path:filename>')
+@login_required
 def serve_profile_uploads(filename):
     return send_from_directory('uploads/profiles', filename)
 
@@ -79,6 +81,7 @@ def serve_dm_chat_uploads(filename):
 
 
 @misc_bp.route('/uploads/group_profiles/<path:filename>')
+@login_required
 def serve_group_profile_uploads(filename):
     return send_from_directory('uploads/group_profiles', filename)
 
@@ -89,13 +92,21 @@ def index():
     user = session.get("user")
     is_admin = False
     is_superadmin = False
+    is_org_admin = False
     if user:
         settings = database.get_user_setting(user)
         is_admin = settings.get("role") == "admin"
         sa_users = set(filter(None, os.environ.get("SUPERADMIN_USERS", "Admin").split(",")))
         is_superadmin = user in sa_users
+        is_org_admin = session.get("org_role") == "admin"
+    line_bot_id = os.environ.get("LINE_BOT_BASIC_ID", "").strip()
+    
+    org_id = get_current_org_id()
+    biz_profile = database.get_org_profile(org_id) if org_id else None
+    
     return render_template("index.html", google_client_id=google_client_id,
-                           vapid_public_key=VAPID_PUBLIC_KEY, is_admin=is_admin, is_superadmin=is_superadmin)
+                           vapid_public_key=VAPID_PUBLIC_KEY, is_admin=is_admin, is_superadmin=is_superadmin,
+                           is_org_admin=is_org_admin, line_bot_id=line_bot_id, biz_profile=biz_profile)
 
 
 @misc_bp.route("/dashboard")
@@ -104,11 +115,14 @@ def dashboard():
     org_id = get_current_org_id()
     if not billing.has_feature(org_id, "financial_dashboard"):
         return redirect("/pricing?upgrade=financial_dashboard")
-    return render_template("tax_expense_dashboard.html")
+    biz_profile = database.get_org_profile(org_id) if org_id else None
+    return render_template("tax_expense_dashboard.html", biz_profile=biz_profile)
 
 
 @misc_bp.route("/pricing")
 def pricing_page():
+    if session.get("user"):
+        return redirect("/?view=plan")
     stripe_key = os.environ.get("STRIPE_SECRET_KEY", "")
     is_test_mode = stripe_key.startswith("sk_test_")
     return render_template("pricing.html", plans=billing.PLANS, plan_hierarchy=billing.PLAN_HIERARCHY, is_test_mode=is_test_mode)
@@ -141,31 +155,45 @@ def status():
     
     user_settings = database.get_user_setting(session.get("user"))
     
+    user = session.get("user")
+    sa_users = set(filter(None, os.environ.get("SUPERADMIN_USERS", "Admin").split(",")))
+    is_superadmin = user in sa_users if user else False
+    
+    org_id = session.get("org_id")
+    org_role = session.get("org_role")
+
     return jsonify({
-        "api_key_set": has_key, 
+        "api_key_set": has_key,
         "quota_info": quota_info,
         "provider": provider,
         "is_admin": user_settings.get("role") == "admin",
+        "is_superadmin": is_superadmin,
         "can_view_kb": bool(user_settings.get("can_view_kb")),
         "can_edit_kb": bool(user_settings.get("can_edit_kb")),
         "can_delete_kb": bool(user_settings.get("can_delete_kb")),
         "user": session.get("user"),
         "app_settings": database.get_all_app_settings(),
         "server_time": get_current_time(),
+        "org_id": org_id,
+        "org_role": org_role,
+        "has_org": org_id is not None,
+        "org_plan": billing.get_effective_plan(org_id) if org_id else None,
         **stats
     })
 
 
 @misc_bp.route("/api/ping")
 def ping():
-    return jsonify({"ok": True, "version": "v1.2-diagnostics"})
+    return jsonify({"ok": True, "version": VERSION})
 
 
 @misc_bp.route("/api/feedback", methods=["POST"])
+@login_required
+@_limiter.limit("10 per minute; 30 per hour")
 def feedback():
-    user = session.get("user", "Admin")
+    user = session.get("user")
     data = request.get_json(force=True)
-    val = data.get("value", 0) # 1 or -1
+    val = data.get("value", 0)
     database.save_feedback(user, val)
     return jsonify({"ok": True})
 

@@ -4,25 +4,45 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Executive Financial Dashboard &amp; Expense Manager</title>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        if (typeof tailwind !== 'undefined') {
+            tailwind.config = {
+                theme: {
+                    extend: {
+                        colors: {
+                            brand: { 50:'#f0f5ff', 100:'#e0ebff', 500:'#3b82f6', 600:'#2563eb', 700:'#1d4ed8', 800:'#1e40af', 900:'#1e3a8a' },
+                            surface: { 50:'#f8fafc', 100:'#f1f5f9', 200:'#e2e8f0', 300:'#cbd5e1', 400:'#94a3b8', 500:'#64748b', 600:'#475569', 700:'#334155', 800:'#1e293b', 900:'#0f172a', 950:'#020617' }
+                        },
+                        fontFamily: { sans: ['Inter','Sarabun','sans-serif'] }
+                    }
+                }
+            };
+        }
+    </script>
     <style>
-        body { font-family: 'Outfit', 'Sarabun', sans-serif; }
+        body { font-family: 'Inter', 'Sarabun', system-ui, -apple-system, sans-serif; }
 
         ::-webkit-scrollbar { width: 5px; height: 5px; }
-        ::-webkit-scrollbar-track { background: #f1f5f9; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.2); }
 
         .stat-card {
-            background: #ffffff;
-            border: 1px solid #e2e8f0;
-            border-radius: 1rem;
-            transition: box-shadow 0.2s, transform 0.2s;
+            background: rgba(255,255,255,0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.4);
+            border-radius: 1.25rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
+            transition: box-shadow 0.25s, transform 0.25s;
         }
-        .stat-card:hover { box-shadow: 0 4px 20px rgba(15,23,42,0.07); transform: translateY(-1px); }
+        .stat-card:hover { box-shadow: 0 8px 30px rgba(37,99,235,0.08), 0 2px 8px rgba(0,0,0,0.04); transform: translateY(-2px); }
 
         .accent-bar { width: 3px; border-radius: 2px; flex-shrink: 0; }
 
@@ -32,32 +52,33 @@
             top: 0; right: -420px;
             width: 420px;
             height: 100vh;
-            background: #ffffff;
+            background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(20px);
             border-left: 1px solid #e2e8f0;
             box-shadow: -8px 0 32px rgba(15,23,42,0.12);
-            z-index: 300;
+            z-index: 9999 !important;
             transition: right 0.35s cubic-bezier(0.4, 0, 0.2, 1);
             display: flex;
             flex-direction: column;
         }
         #mediaSidebar.open { right: 0; }
-        #sidebarOverlay {
+        #mediaSidebarOverlay {
             position: fixed; inset: 0;
-            background: rgba(15,23,42,0.25);
-            backdrop-filter: blur(2px);
-            z-index: 299;
+            background: rgba(15,23,42,0.3);
+            backdrop-filter: blur(4px);
+            z-index: 9998 !important;
             opacity: 0;
             pointer-events: none;
             transition: opacity 0.3s;
         }
-        #sidebarOverlay.active { opacity: 1; pointer-events: all; }
+        #mediaSidebarOverlay.active { opacity: 1; pointer-events: all; }
         #mediaFrame { flex: 1; border: none; width: 100%; }
         #audioPlayer { width: 100%; }
 
         /* General Modal */
         .modal-backdrop {
             background: rgba(15,23,42,0.4);
-            backdrop-filter: blur(4px);
+            backdrop-filter: blur(8px);
         }
 
         @keyframes slideUp {
@@ -69,7 +90,8 @@
         @keyframes spin { to { transform: rotate(360deg); } }
         .spinning { animation: spin 0.8s linear infinite; }
 
-        .table-row-hover:hover { background: #f8fafc; }
+        .table-row-hover { transition: background 0.15s; }
+        .table-row-hover:hover { background: rgba(37,99,235,0.03); }
 
         .badge-amber {
             background: #fef3c7; color: #92400e;
@@ -87,35 +109,42 @@
             background: #ffe4e6; color: #9f1239;
             border: 1px solid #fecdd3;
         }
+        .badge-brand {
+            background: #eff6ff; color: #1d4ed8;
+            border: 1px solid #bfdbfe;
+        }
 
         .btn-primary {
-            background: #0f172a; color: white;
-            border-radius: 0.625rem; font-weight: 600;
-            transition: background 0.15s;
+            background: #2563eb; color: white;
+            border-radius: 0.75rem; font-weight: 600;
+            transition: all 0.2s;
+            box-shadow: 0 1px 2px rgba(37,99,235,0.15);
         }
-        .btn-primary:hover { background: #1e293b; }
+        .btn-primary:hover { background: #1d4ed8; box-shadow: 0 4px 12px rgba(37,99,235,0.25); }
+        .btn-primary:active { transform: scale(0.97); }
         .btn-ghost {
-            background: #f1f5f9; color: #475569;
-            border-radius: 0.625rem; font-weight: 600;
+            background: #ffffff; color: #475569;
+            border-radius: 0.75rem; font-weight: 600;
             border: 1px solid #e2e8f0;
-            transition: background 0.15s;
+            transition: all 0.2s;
         }
-        .btn-ghost:hover { background: #e2e8f0; }
+        .btn-ghost:hover { background: #f1f5f9; border-color: #cbd5e1; }
 
         input[type="text"]:focus, input[type="date"]:focus, input[type="number"]:focus, textarea:focus, select:focus { 
             outline: none; 
-            box-shadow: 0 0 0 3px rgba(15,23,42,0.1); 
-            border-color: #475569; 
+            box-shadow: 0 0 0 3px rgba(37,99,235,0.15); 
+            border-color: #93c5fd; 
         }
 
         .tab-btn {
             border-bottom: 2px solid transparent;
             transition: all 0.2s;
+            padding-bottom: 0.75rem;
         }
         .tab-btn.active {
-            border-bottom-color: #0f172a;
-            color: #0f172a;
-            font-weight: 600;
+            border-bottom-color: #2563eb;
+            color: #1d4ed8;
+            font-weight: 700;
         }
 
         /* Toggle switch */
@@ -148,32 +177,45 @@
             border-radius: 50%;
         }
         input:checked + .slider {
-            background-color: #0f172a;
+            background-color: #2563eb;
         }
         input:checked + .slider:before {
             transform: translateX(20px);
         }
+
+        /* Gradient header accent */
+        .header-gradient {
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 40%, #1e40af 100%);
+        }
+
+        /* Glass panels */
+        .glass-panel {
+            background: rgba(255,255,255,0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.3);
+        }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-800 min-h-screen">
+<body class="bg-surface-50 text-surface-800 min-h-screen">
 
     <!-- TOP NAV -->
-    <nav class="sticky top-0 z-50 bg-white border-b border-slate-200 px-6 py-3.5 shadow-sm">
+    <nav class="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-surface-200/60 px-6 py-3.5 shadow-sm">
         <div class="max-w-7xl mx-auto flex items-center justify-between gap-4">
             <div class="flex items-center gap-3">
-                <div class="w-9 h-9 bg-slate-900 rounded-xl flex items-center justify-center shadow-sm">
+                <div class="w-9 h-9 header-gradient rounded-2xl flex items-center justify-center shadow-lg shadow-brand-500/20 transform -rotate-3">
                     <i data-lucide="wallet" class="text-white w-5 h-5"></i>
                 </div>
                 <div>
-                    <h1 class="text-base font-bold text-slate-900 leading-tight">ระบบบันทึกบัญชีรายจ่าย</h1>
-                    <p class="text-[10px] text-slate-400 uppercase tracking-widest font-semibold">Expense &amp; Tax Reconciler</p>
+                    <h1 class="text-base font-extrabold text-surface-900 leading-tight tracking-tight">ระบบบันทึกบัญชีรายจ่าย</h1>
+                    <p class="text-[10px] text-surface-400 uppercase tracking-widest font-semibold">Expense &amp; Tax Reconciler</p>
                 </div>
             </div>
             <div class="flex items-center gap-2.5">
-                <a href="/" class="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition">
+                <a href="/" class="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-surface-500 hover:text-brand-600 hover:bg-brand-50 rounded-xl transition">
                     <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> กลับหน้าหลัก
                 </a>
-                <button onclick="loadDashboardData()" class="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition border border-slate-200">
+                <button onclick="loadDashboardData()" class="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-xl transition shadow-sm shadow-brand-500/20">
                     <i data-lucide="refresh-cw" id="refreshIcon" class="w-3.5 h-3.5"></i> รีเฟรช
                 </button>
             </div>
@@ -183,26 +225,26 @@
     <main class="max-w-7xl mx-auto px-4 md:px-6 py-8 space-y-7">
 
         <!-- COMPANY TITLE BANNER -->
-        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white/80 backdrop-blur-lg p-6 rounded-3xl border border-surface-200/50 shadow-sm">
             <div>
-                <h2 id="companyNameLabel" class="text-xl font-bold text-slate-950">บริษัท ฮาร์ทวอมมิ่ง จำกัด</h2>
-                <p class="text-xs text-slate-400 font-medium mt-1">Heartwarming Co., Ltd. &middot; Maha Engine</p>
-                <p class="text-xs text-slate-500 font-semibold mt-2 flex items-center gap-1">
-                    <i data-lucide="phone" class="w-3.5 h-3.5 text-slate-400"></i> 0636534337
+                <h2 id="companyNameLabel" class="text-xl font-extrabold text-surface-950 tracking-tight">{{ biz_profile.business_name_th if (biz_profile is defined and biz_profile and biz_profile.business_name_th) else 'บริษัท ฮาร์ทวอมมิ่ง จำกัด' }}</h2>
+                <p id="companyNameEnLabel" class="text-xs text-surface-400 font-medium mt-1">{{ biz_profile.business_name_en if (biz_profile is defined and biz_profile and biz_profile.business_name_en) else 'Heartwarming Co., Ltd.' }} &middot; Maha Engine</p>
+                <p id="companyPhoneLabel" class="text-xs text-surface-500 font-semibold mt-2 flex items-center gap-1">
+                    <i data-lucide="phone" class="w-3.5 h-3.5 text-surface-400"></i> {{ biz_profile.phone if (biz_profile is defined and biz_profile and biz_profile.phone) else '0636534337' }}
                 </p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
-                <a href="https://drive.google.com" target="_blank" class="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-600 bg-white hover:bg-slate-50 rounded-xl border border-slate-200 transition">
-                    <i data-lucide="hard-drive" class="w-4 h-4 text-emerald-600"></i> Google Drive
+                <a id="dashboardDriveLink" href="https://drive.google.com" target="_blank" class="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-surface-600 bg-white hover:bg-surface-50 rounded-xl border border-surface-200 transition hover:border-brand-300 hover:text-brand-600">
+                    <i data-lucide="hard-drive" class="w-4 h-4 text-emerald-500"></i> Google Drive
                 </a>
-                <a href="https://docs.google.com/spreadsheets" target="_blank" class="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-600 bg-white hover:bg-slate-50 rounded-xl border border-slate-200 transition">
-                    <i data-lucide="sheet" class="w-4 h-4 text-emerald-600"></i> Google Sheets
+                <a id="dashboardSheetsLink" href="https://docs.google.com/spreadsheets" target="_blank" class="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-surface-600 bg-white hover:bg-surface-50 rounded-xl border border-surface-200 transition hover:border-brand-300 hover:text-brand-600">
+                    <i data-lucide="sheet" class="w-4 h-4 text-emerald-500"></i> Google Sheets
                 </a>
-                <button onclick="downloadFullExcel()" class="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-600 bg-white hover:bg-slate-50 rounded-xl border border-slate-200 transition">
-                    <i data-lucide="download" class="w-4 h-4 text-slate-600"></i> ดาวน์โหลดเป็นไฟล์ Excel
+                <button onclick="downloadFullExcel()" class="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-surface-600 bg-white hover:bg-surface-50 rounded-xl border border-surface-200 transition hover:border-brand-300 hover:text-brand-600">
+                    <i data-lucide="download" class="w-4 h-4 text-surface-500"></i> ดาวน์โหลดเป็นไฟล์ Excel
                 </button>
-                <a href="/" class="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-slate-950 hover:bg-slate-800 rounded-xl shadow-sm transition">
-                    อัปโหลดค่าใช้จ่าย
+                <a href="/" class="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white header-gradient hover:opacity-90 rounded-xl shadow-lg shadow-brand-500/20 transition">
+                    <i data-lucide="upload" class="w-3.5 h-3.5"></i> อัปโหลดค่าใช้จ่าย
                 </a>
             </div>
         </div>
@@ -210,42 +252,42 @@
         <!-- SUMMARY STAT CARDS -->
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <!-- Total Expense -->
-            <div class="stat-card p-5 flex gap-4 items-start bg-white">
-                <div class="accent-bar h-12 bg-slate-800 mt-0.5"></div>
+            <div class="stat-card p-5 flex gap-4 items-start">
+                <div class="accent-bar h-12 bg-brand-600 mt-0.5"></div>
                 <div class="min-w-0">
-                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">ค่าใช้จ่ายปีนี้ 2026</p>
-                    <p id="valExpense" class="text-2xl font-bold text-slate-900 leading-none">0.00</p>
-                    <p class="text-[10px] text-slate-400 mt-1 font-medium">บาท (THB)</p>
+                    <p class="text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1">ค่าใช้จ่ายปีนี้ 2026</p>
+                    <p id="valExpense" class="text-2xl font-extrabold text-surface-900 leading-none">0.00</p>
+                    <p class="text-[10px] text-surface-400 mt-1 font-medium">บาท (THB)</p>
                 </div>
             </div>
 
             <!-- VAT -->
-            <div class="stat-card p-5 flex gap-4 items-start bg-white">
+            <div class="stat-card p-5 flex gap-4 items-start">
                 <div class="accent-bar h-12 bg-emerald-500 mt-0.5"></div>
                 <div class="min-w-0">
-                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">VAT 7% รวม</p>
-                    <p id="valVat" class="text-2xl font-bold text-emerald-700 leading-none">0.00</p>
-                    <p class="text-[10px] text-slate-400 mt-1 font-medium">จากใบกำกับภาษี</p>
+                    <p class="text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1">VAT 7% รวม</p>
+                    <p id="valVat" class="text-2xl font-extrabold text-emerald-600 leading-none">0.00</p>
+                    <p class="text-[10px] text-surface-400 mt-1 font-medium">จากใบกำกับภาษี</p>
                 </div>
             </div>
 
             <!-- WHT 3% -->
-            <div class="stat-card p-5 flex gap-4 items-start bg-white">
+            <div class="stat-card p-5 flex gap-4 items-start">
                 <div class="accent-bar h-12 bg-amber-500 mt-0.5"></div>
                 <div class="min-w-0">
-                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">ภ.ง.ด.3</p>
-                    <p id="valWht3" class="text-2xl font-bold text-amber-700 leading-none">0.00</p>
-                    <p class="text-[10px] text-slate-400 mt-1 font-medium">หัก ณ ที่จ่าย (บุคคล)</p>
+                    <p class="text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1">ภ.ง.ด.3</p>
+                    <p id="valWht3" class="text-2xl font-extrabold text-amber-600 leading-none">0.00</p>
+                    <p class="text-[10px] text-surface-400 mt-1 font-medium">หัก ณ ที่จ่าย (บุคคล)</p>
                 </div>
             </div>
 
             <!-- WHT 53% -->
-            <div class="stat-card p-5 flex gap-4 items-start bg-white">
+            <div class="stat-card p-5 flex gap-4 items-start">
                 <div class="accent-bar h-12 bg-rose-500 mt-0.5"></div>
                 <div class="min-w-0">
-                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">ภ.ง.ด.53</p>
-                    <p id="valWht53" class="text-2xl font-bold text-rose-700 leading-none">0.00</p>
-                    <p class="text-[10px] text-slate-400 mt-1 font-medium">หัก ณ ที่จ่าย (นิติ)</p>
+                    <p class="text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1">ภ.ง.ด.53</p>
+                    <p id="valWht53" class="text-2xl font-extrabold text-rose-600 leading-none">0.00</p>
+                    <p class="text-[10px] text-surface-400 mt-1 font-medium">หัก ณ ที่จ่าย (นิติ)</p>
                 </div>
             </div>
         </div>
@@ -253,82 +295,82 @@
         <!-- CHART + CATEGORIES -->
         <div class="grid grid-cols-1 lg:grid-cols-5 gap-5">
             <!-- Donut Chart -->
-            <div class="lg:col-span-3 stat-card p-6 bg-white">
+            <div class="lg:col-span-3 stat-card p-6">
                 <div class="flex items-center justify-between mb-5">
-                    <h3 class="text-sm font-bold text-slate-700 uppercase tracking-widest">สัดส่วนค่าใช้จ่ายตามหมวดหมู่</h3>
-                    <i data-lucide="pie-chart" class="w-4 h-4 text-slate-400"></i>
+                    <h3 class="text-sm font-bold text-surface-700 uppercase tracking-widest">สัดส่วนค่าใช้จ่ายตามหมวดหมู่</h3>
+                    <i data-lucide="pie-chart" class="w-4 h-4 text-brand-400"></i>
                 </div>
                 <div class="relative mx-auto" style="max-width:260px; height:280px;">
                     <canvas id="mainChart"></canvas>
                     <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                        <span class="text-[10px] text-slate-400 font-bold uppercase">รวม</span>
-                        <span id="chartTotalLabel" class="text-lg font-bold text-slate-900">0.00</span>
-                        <span class="text-[10px] text-slate-400">THB</span>
+                        <span class="text-[10px] text-surface-400 font-bold uppercase">รวม</span>
+                        <span id="chartTotalLabel" class="text-lg font-extrabold text-surface-900">0.00</span>
+                        <span class="text-[10px] text-surface-400">THB</span>
                     </div>
                 </div>
             </div>
 
             <!-- Category Breakdown List -->
-            <div class="lg:col-span-2 stat-card p-6 bg-white flex flex-col">
-                <h3 class="text-sm font-bold text-slate-700 uppercase tracking-widest mb-4">รายละเอียดหมวดหมู่</h3>
+            <div class="lg:col-span-2 stat-card p-6 flex flex-col">
+                <h3 class="text-sm font-bold text-surface-700 uppercase tracking-widest mb-4">รายละเอียดหมวดหมู่</h3>
                 <div id="catList" class="space-y-2.5 flex-1 overflow-y-auto">
-                    <div class="text-center py-10 text-slate-400 text-sm">กำลังโหลด...</div>
+                    <div class="text-center py-10 text-surface-400 text-sm">กำลังโหลด...</div>
                 </div>
             </div>
         </div>
 
         <!-- MAIN EXPENSE MANAGER (TAB PANEL) -->
-        <div class="stat-card overflow-hidden bg-white">
+        <div class="stat-card overflow-hidden">
             
             <!-- Dynamic Tab Headers -->
-            <div class="border-b border-slate-200 px-6 py-4 flex flex-wrap items-center justify-between gap-4">
+            <div class="border-b border-surface-200/60 px-6 py-4 flex flex-wrap items-center justify-between gap-4">
                 <div class="flex gap-6">
-                    <button onclick="switchTab('all')" id="tabBtn-all" class="tab-btn pb-3 text-sm font-semibold text-slate-400 active">
-                        รายการค่าใช้จ่าย
+                    <button onclick="switchTab('all')" id="tabBtn-all" class="tab-btn text-sm font-semibold text-surface-400 active">
+                        <span class="flex items-center gap-1.5"><i data-lucide="list" class="w-3.5 h-3.5"></i> รายการค่าใช้จ่าย</span>
                     </button>
-                    <button onclick="switchTab('vat')" id="tabBtn-vat" class="tab-btn pb-3 text-sm font-semibold text-slate-400">
-                        ใบสำคัญจ่าย (Tax / WHT)
+                    <button onclick="switchTab('vat')" id="tabBtn-vat" class="tab-btn text-sm font-semibold text-surface-400">
+                        <span class="flex items-center gap-1.5"><i data-lucide="receipt" class="w-3.5 h-3.5"></i> ใบสำคัญจ่าย (Tax / WHT)</span>
                     </button>
-                    <button onclick="switchTab('unclear')" id="tabBtn-unclear" class="tab-btn pb-3 text-sm font-semibold text-slate-400">
-                        รายการที่ต้องตรวจสอบ
+                    <button onclick="switchTab('unclear')" id="tabBtn-unclear" class="tab-btn text-sm font-semibold text-surface-400">
+                        <span class="flex items-center gap-1.5"><i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i> รายการที่ต้องตรวจสอบ</span>
                     </button>
                 </div>
                 <div class="flex items-center gap-3">
-                    <span class="text-xs text-slate-400 font-medium">วันที่ในใบเสร็จ</span>
+                    <span class="text-xs text-surface-400 font-medium">วันที่ในใบเสร็จ</span>
                     <label class="switch">
                         <input type="checkbox" id="dateToggle" onchange="loadDashboardData()">
                         <span class="slider"></span>
                     </label>
-                    <span class="text-xs text-slate-400 font-medium">วันที่อัปโหลด</span>
+                    <span class="text-xs text-surface-400 font-medium">วันที่อัปโหลด</span>
                 </div>
             </div>
 
             <!-- Interactive Filters Section -->
-            <div class="px-6 py-4 bg-slate-50/50 border-b border-slate-200 grid grid-cols-2 md:grid-cols-6 gap-3">
+            <div class="px-6 py-4 bg-surface-50/60 border-b border-surface-200/50 grid grid-cols-2 md:grid-cols-6 gap-3">
                 <!-- Date Select -->
                 <div>
-                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">เลือกวัน</label>
-                    <input type="date" id="filterDate" onchange="applyAllFilters()" class="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-700">
+                    <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">เลือกวัน</label>
+                    <input type="date" id="filterDate" onchange="applyAllFilters()" class="w-full px-3 py-2 text-xs bg-white border border-surface-200 rounded-xl text-surface-700">
                 </div>
                 <!-- Search -->
                 <div class="col-span-2">
-                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">ค้นหาร้านค้า, รายละเอียด</label>
+                    <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">ค้นหาร้านค้า, รายละเอียด</label>
                     <div class="relative">
-                        <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400"></i>
-                        <input type="text" id="filterSearch" oninput="applyAllFilters()" placeholder="พิมพ์ชื่อร้าน หรือข้อความ..." class="w-full pl-9 pr-3 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-700">
+                        <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-surface-400"></i>
+                        <input type="text" id="filterSearch" oninput="applyAllFilters()" placeholder="พิมพ์ชื่อร้าน หรือข้อความ..." class="w-full pl-9 pr-3 py-2 text-xs bg-white border border-surface-200 rounded-xl text-surface-700">
                     </div>
                 </div>
                 <!-- Requester -->
                 <div>
-                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">ผู้เบิกจ่าย</label>
-                    <select id="filterRequester" onchange="applyAllFilters()" class="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-700">
+                    <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">ผู้เบิกจ่าย</label>
+                    <select id="filterRequester" onchange="applyAllFilters()" class="w-full px-3 py-2 text-xs bg-white border border-surface-200 rounded-xl text-surface-700">
                         <option value="">ทั้งหมด</option>
                     </select>
                 </div>
                 <!-- Doc Type -->
                 <div>
-                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">ประเภทเอกสาร</label>
-                    <select id="filterDocType" onchange="applyAllFilters()" class="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-700">
+                    <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">ประเภทเอกสาร</label>
+                    <select id="filterDocType" onchange="applyAllFilters()" class="w-full px-3 py-2 text-xs bg-white border border-surface-200 rounded-xl text-surface-700">
                         <option value="">ทั้งหมด</option>
                         <option value="ใบเสร็จ/ใบกำกับภาษี">ใบเสร็จ/ใบกำกับภาษี</option>
                         <option value="สลิปโอนเงิน">สลิปโอนเงิน</option>
@@ -339,8 +381,8 @@
                 </div>
                 <!-- Status -->
                 <div>
-                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">สถานะการจ่าย</label>
-                    <select id="filterStatus" onchange="applyAllFilters()" class="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-700">
+                    <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">สถานะการจ่าย</label>
+                    <select id="filterStatus" onchange="applyAllFilters()" class="w-full px-3 py-2 text-xs bg-white border border-surface-200 rounded-xl text-surface-700">
                         <option value="">ทั้งหมด</option>
                         <option value="จ่ายแล้ว">จ่ายแล้ว</option>
                         <option value="ยังไม่จ่าย">ยังไม่จ่าย</option>
@@ -352,7 +394,7 @@
             <div id="tabContent-all" class="tab-pane">
                 <div id="expenseListGrouped" class="p-6 space-y-8 divide-y divide-slate-100">
                     <!-- Grouped rows appended here dynamically -->
-                    <div class="text-center py-12 text-slate-400 text-sm">กำลังดึงข้อมูลและจัดเตรียมข้อมูล...</div>
+                    <div class="text-center py-12 text-surface-400 text-sm">กำลังดึงข้อมูลและจัดเตรียมข้อมูล...</div>
                 </div>
             </div>
 
@@ -361,20 +403,20 @@
                 <div class="overflow-x-auto">
                     <table class="w-full text-left">
                         <thead>
-                            <tr class="bg-slate-50 border-b border-slate-200">
-                                <th class="px-6 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">วันที่</th>
-                                <th class="px-6 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">ร้านค้า / ผู้ส่ง</th>
-                                <th class="px-6 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">รายละเอียด</th>
-                                <th class="px-6 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">ก่อนภาษี</th>
-                                <th class="px-6 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">VAT</th>
-                                <th class="px-6 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">หัก ณ ที่จ่าย</th>
-                                <th class="px-6 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">ยอดรวมสุทธิ</th>
-                                <th class="px-6 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-right">การจัดการ</th>
+                            <tr class="bg-surface-50 border-b border-surface-200">
+                                <th class="px-6 py-3.5 text-[10px] font-bold text-surface-500 uppercase tracking-wider">วันที่</th>
+                                <th class="px-6 py-3.5 text-[10px] font-bold text-surface-500 uppercase tracking-wider">ร้านค้า / ผู้ส่ง</th>
+                                <th class="px-6 py-3.5 text-[10px] font-bold text-surface-500 uppercase tracking-wider">รายละเอียด</th>
+                                <th class="px-6 py-3.5 text-[10px] font-bold text-surface-500 uppercase tracking-wider">ก่อนภาษี</th>
+                                <th class="px-6 py-3.5 text-[10px] font-bold text-surface-500 uppercase tracking-wider">VAT</th>
+                                <th class="px-6 py-3.5 text-[10px] font-bold text-surface-500 uppercase tracking-wider">หัก ณ ที่จ่าย</th>
+                                <th class="px-6 py-3.5 text-[10px] font-bold text-surface-500 uppercase tracking-wider">ยอดรวมสุทธิ</th>
+                                <th class="px-6 py-3.5 text-[10px] font-bold text-surface-500 uppercase tracking-wider text-right">การจัดการ</th>
                             </tr>
                         </thead>
                         <tbody id="taxInvoicesTable" class="divide-y divide-slate-100">
                             <tr>
-                                <td colspan="8" class="py-16 text-center text-slate-400 text-sm">กำลังโหลดข้อมูล...</td>
+                                <td colspan="8" class="py-16 text-center text-surface-400 text-sm">กำลังโหลดข้อมูล...</td>
                             </tr>
                         </tbody>
                     </table>
@@ -386,18 +428,18 @@
                 <div class="overflow-x-auto">
                     <table class="w-full text-left">
                         <thead>
-                            <tr class="bg-slate-50 border-b border-slate-200">
-                                <th class="px-6 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">วันที่</th>
-                                <th class="px-6 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">ร้านค้า / ผู้ส่ง</th>
-                                <th class="px-6 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">ยอดเงิน</th>
-                                <th class="px-6 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">ปัญหา</th>
-                                <th class="px-6 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">ไฟล์</th>
-                                <th class="px-6 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-right">ย้าย</th>
+                            <tr class="bg-surface-50 border-b border-surface-200">
+                                <th class="px-6 py-3.5 text-[10px] font-bold text-surface-500 uppercase tracking-wider">วันที่</th>
+                                <th class="px-6 py-3.5 text-[10px] font-bold text-surface-500 uppercase tracking-wider">ร้านค้า / ผู้ส่ง</th>
+                                <th class="px-6 py-3.5 text-[10px] font-bold text-surface-500 uppercase tracking-wider">ยอดเงิน</th>
+                                <th class="px-6 py-3.5 text-[10px] font-bold text-surface-500 uppercase tracking-wider">ปัญหา</th>
+                                <th class="px-6 py-3.5 text-[10px] font-bold text-surface-500 uppercase tracking-wider">ไฟล์</th>
+                                <th class="px-6 py-3.5 text-[10px] font-bold text-surface-500 uppercase tracking-wider text-right">ย้าย</th>
                             </tr>
                         </thead>
                         <tbody id="unclearScansTable" class="divide-y divide-slate-100">
                             <tr>
-                                <td colspan="6" class="py-16 text-center text-slate-400 text-sm">กำลังโหลดข้อมูล...</td>
+                                <td colspan="6" class="py-16 text-center text-surface-400 text-sm">กำลังโหลดข้อมูล...</td>
                             </tr>
                         </tbody>
                     </table>
@@ -405,27 +447,27 @@
             </div>
 
             <!-- Empty State -->
-            <div id="filterEmpty" class="hidden py-16 text-center text-slate-400 text-sm">
+            <div id="filterEmpty" class="hidden py-16 text-center text-surface-400 text-sm">
                 ไม่พบรายการบัญชีที่ตรงกับเงื่อนไขการค้นหา
             </div>
         </div>
     </main>
 
     <!-- ═══════════ PREMIUM EDIT EXPENSE MODAL ═══════════ -->
-    <div id="editExpenseModal" class="fixed inset-0 z-[400] hidden flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-        <div class="bg-white rounded-2xl max-w-6xl w-full h-[90vh] flex flex-col shadow-2xl slide-up overflow-hidden">
+    <div id="editExpenseModal" class="fixed inset-0 z-[9999] hidden flex items-center justify-center p-4 bg-surface-900/50 backdrop-blur-md" style="z-index: 9999 !important;">
+        <div class="bg-white rounded-3xl max-w-6xl w-full h-[90vh] flex flex-col shadow-2xl slide-up overflow-hidden border border-surface-200/50">
             <!-- Modal Header -->
-            <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
+            <div class="px-6 py-4 border-b border-surface-200/60 flex items-center justify-between flex-shrink-0 bg-white">
                 <div class="flex items-center gap-2">
-                    <div class="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center">
+                    <div class="w-8 h-8 header-gradient rounded-xl flex items-center justify-center shadow-sm shadow-brand-500/20">
                         <i data-lucide="edit-3" class="w-4 h-4 text-white"></i>
                     </div>
                     <div>
-                        <h3 class="text-base font-bold text-slate-950">แก้ไขรายจ่าย</h3>
-                        <p class="text-[10px] text-slate-400 font-medium">ปรับปรุงข้อมูลค่าใช้จ่ายและแนบใบสำคัญจ่าย</p>
+                        <h3 class="text-base font-extrabold text-surface-950 tracking-tight">แก้ไขรายจ่าย</h3>
+                        <p class="text-[10px] text-surface-400 font-medium">ปรับปรุงข้อมูลค่าใช้จ่ายและแนบใบสำคัญจ่าย</p>
                     </div>
                 </div>
-                <button onclick="closeEditModal()" class="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition">
+                <button onclick="closeEditModal()" class="p-1.5 text-surface-400 hover:text-surface-600 hover:bg-surface-100 rounded-xl transition">
                     <i data-lucide="x" class="w-5 h-5"></i>
                 </button>
             </div>
@@ -433,38 +475,38 @@
             <!-- Modal Content (Two Panes) -->
             <div class="flex-1 flex overflow-hidden min-h-0">
                 <!-- Left Pane: File Preview & Thumbnail -->
-                <div class="w-1/2 border-r border-slate-200 flex flex-col bg-slate-50 p-4">
+                <div class="w-1/2 border-r border-surface-200/60 flex flex-col bg-surface-50 p-4">
                     <!-- Zoom & Rotate controls -->
-                    <div class="flex items-center justify-between bg-white px-4 py-2 rounded-xl border border-slate-200 mb-3 text-xs text-slate-500 flex-shrink-0">
-                        <span id="modalDocTypeBadge" class="font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded">สลิปโอนเงิน</span>
+                    <div class="flex items-center justify-between bg-white px-4 py-2 rounded-xl border border-surface-200 mb-3 text-xs text-surface-500 flex-shrink-0">
+                        <span id="modalDocTypeBadge" class="font-bold text-brand-700 bg-brand-50 px-2 py-0.5 rounded border border-brand-200">สลิปโอนเงิน</span>
                         <div class="flex gap-3">
-                            <button onclick="adjustEmbedZoom(1.2)" class="hover:text-slate-950 font-bold"><i data-lucide="zoom-in" class="w-4 h-4"></i></button>
+                            <button onclick="adjustEmbedZoom(1.2)" class="hover:text-surface-950 font-bold"><i data-lucide="zoom-in" class="w-4 h-4"></i></button>
                             <span id="zoomPercent">100%</span>
-                            <button onclick="adjustEmbedZoom(0.8)" class="hover:text-slate-950 font-bold"><i data-lucide="zoom-out" class="w-4 h-4"></i></button>
+                            <button onclick="adjustEmbedZoom(0.8)" class="hover:text-surface-950 font-bold"><i data-lucide="zoom-out" class="w-4 h-4"></i></button>
                         </div>
                     </div>
 
                     <!-- Main preview frame -->
-                    <div class="flex-1 bg-slate-200 rounded-xl overflow-hidden relative border border-slate-200">
-                        <iframe id="editMediaFrame" src="about:blank" class="w-full h-full bg-slate-50"></iframe>
+                    <div class="flex-1 bg-surface-200 rounded-xl overflow-hidden relative border border-surface-200">
+                        <iframe id="editMediaFrame" src="about:blank" class="w-full h-full bg-surface-50"></iframe>
                         <div id="editMediaLoading" class="absolute inset-0 flex flex-col items-center justify-center bg-white gap-3 pointer-events-none">
-                            <div class="w-8 h-8 border-2 border-slate-900 border-t-transparent rounded-full spinning"></div>
-                            <p class="text-xs text-slate-400 font-medium">กำลังโหลดไฟล์ต้นฉบับ...</p>
+                            <div class="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full spinning"></div>
+                            <p class="text-xs text-surface-400 font-medium">กำลังโหลดไฟล์ต้นฉบับ...</p>
                         </div>
                     </div>
 
                     <!-- Attachment List -->
                     <div class="mt-4 flex-shrink-0">
-                        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">เอกสารรายจ่าย / หลักฐาน</label>
+                        <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-2">เอกสารรายจ่าย / หลักฐาน</label>
                         <div class="flex gap-3">
-                            <div class="p-3 bg-white border border-slate-200 rounded-xl flex items-center gap-2 cursor-pointer max-w-[200px] truncate">
-                                <i data-lucide="file-text" class="w-5 h-5 text-slate-400"></i>
+                            <div class="p-3 bg-white border border-surface-200 rounded-xl flex items-center gap-2 cursor-pointer max-w-[200px] truncate hover:border-brand-300 transition">
+                                <i data-lucide="file-text" class="w-5 h-5 text-brand-400"></i>
                                 <div class="min-w-0">
-                                    <p id="modalOriginalFilename" class="text-xs font-semibold text-slate-700 truncate">เอกสารหลักฐาน</p>
-                                    <p class="text-[9px] text-slate-400">คลิกเพื่อเปิดใน Drive</p>
+                                    <p id="modalOriginalFilename" class="text-xs font-semibold text-surface-700 truncate">เอกสารหลักฐาน</p>
+                                    <p class="text-[9px] text-surface-400">คลิกเพื่อเปิดใน Drive</p>
                                 </div>
                             </div>
-                            <div class="p-3 border border-dashed border-slate-300 hover:bg-slate-100 rounded-xl flex items-center justify-center cursor-pointer text-slate-400 hover:text-slate-600 gap-1.5 transition">
+                            <div class="p-3 border border-dashed border-surface-300 hover:bg-brand-50 hover:border-brand-300 rounded-xl flex items-center justify-center cursor-pointer text-surface-400 hover:text-brand-600 gap-1.5 transition">
                                 <i data-lucide="plus" class="w-4 h-4"></i>
                                 <span class="text-xs font-semibold">แนบเอกสารรายจ่าย/หลักฐาน</span>
                             </div>
@@ -475,11 +517,11 @@
                 <!-- Right Pane: Tabbed Edit Forms -->
                 <div class="w-1/2 flex flex-col min-h-0 bg-white">
                     <!-- Form Tab Headers -->
-                    <div class="px-6 border-b border-slate-200 flex gap-6 flex-shrink-0 bg-slate-50/50">
-                        <button onclick="switchFormTab('info')" id="formTab-info" class="tab-btn pb-3 pt-4 text-xs font-bold uppercase tracking-widest text-slate-400 active">
+                    <div class="px-6 border-b border-surface-200/60 flex gap-6 flex-shrink-0 bg-surface-50/50">
+                        <button onclick="switchFormTab('info')" id="formTab-info" class="tab-btn pb-3 pt-4 text-xs font-bold uppercase tracking-widest text-surface-400 active">
                             ข้อมูลรายจ่าย
                         </button>
-                        <button onclick="switchFormTab('summary')" id="formTab-summary" class="tab-btn pb-3 pt-4 text-xs font-bold uppercase tracking-widest text-slate-400">
+                        <button onclick="switchFormTab('summary')" id="formTab-summary" class="tab-btn pb-3 pt-4 text-xs font-bold uppercase tracking-widest text-surface-400">
                             รายการและสรุปค่าใช้จ่าย
                         </button>
                     </div>
@@ -490,32 +532,32 @@
                         <div id="formContent-info" class="space-y-6">
                             
                             <div>
-                                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">รายจ่ายสำหรับ</label>
-                                <div class="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
+                                <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1">รายจ่ายสำหรับ</label>
+                                <div class="flex items-center justify-between p-3.5 bg-surface-50 border border-surface-200 rounded-xl">
                                     <div>
-                                        <p class="text-xs font-bold text-slate-800">บริษัท ฮาร์ทวอมมิ่ง จำกัด</p>
-                                        <p class="text-[10px] text-slate-400">Heartwarming Co., Ltd.</p>
+                                        <p id="editModalCompanyNameLabel" class="text-xs font-bold text-surface-800">{{ biz_profile.business_name_th if (biz_profile is defined and biz_profile and biz_profile.business_name_th) else 'บริษัท ฮาร์ทวอมมิ่ง จำกัด' }}</p>
+                                        <p id="editModalCompanyNameEnLabel" class="text-[10px] text-surface-400">{{ biz_profile.business_name_en if (biz_profile is defined and biz_profile and biz_profile.business_name_en) else 'Heartwarming Co., Ltd.' }}</p>
                                     </div>
-                                    <button class="text-xs font-semibold text-slate-500 hover:text-slate-800 bg-white hover:bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 transition">เปลี่ยนธุรกิจ</button>
+                                    <button class="text-xs font-semibold text-brand-600 hover:text-brand-800 bg-white hover:bg-brand-50 px-3 py-1.5 rounded-lg border border-surface-200 hover:border-brand-300 transition">เปลี่ยนธุรกิจ</button>
                                 </div>
                             </div>
 
                             <!-- Payment status radio cards -->
                             <div>
-                                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">สถานะการจ่ายเงิน *</label>
+                                <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-2">สถานะการจ่ายเงิน *</label>
                                 <div class="grid grid-cols-2 gap-3">
-                                    <label class="border border-slate-200 rounded-xl p-3.5 flex items-center gap-3 cursor-pointer hover:bg-slate-50 transition">
-                                        <input type="radio" name="payment_status" value="จ่ายแล้ว" checked class="accent-slate-900">
+                                    <label class="border border-surface-200 rounded-xl p-3.5 flex items-center gap-3 cursor-pointer hover:bg-brand-50 hover:border-brand-300 transition">
+                                        <input type="radio" name="payment_status" value="จ่ายแล้ว" checked class="accent-brand-600">
                                         <div>
-                                            <p class="text-xs font-bold text-slate-800">จ่ายแล้ว</p>
-                                            <p class="text-[10px] text-slate-400">ชำระเงินเสร็จสิ้นแล้ว</p>
+                                            <p class="text-xs font-bold text-surface-800">จ่ายแล้ว</p>
+                                            <p class="text-[10px] text-surface-400">ชำระเงินเสร็จสิ้นแล้ว</p>
                                         </div>
                                     </label>
-                                    <label class="border border-slate-200 rounded-xl p-3.5 flex items-center gap-3 cursor-pointer hover:bg-slate-50 transition">
-                                        <input type="radio" name="payment_status" value="ยังไม่จ่าย" class="accent-slate-900">
+                                    <label class="border border-surface-200 rounded-xl p-3.5 flex items-center gap-3 cursor-pointer hover:bg-brand-50 hover:border-brand-300 transition">
+                                        <input type="radio" name="payment_status" value="ยังไม่จ่าย" class="accent-brand-600">
                                         <div>
-                                            <p class="text-xs font-bold text-slate-800">ยังไม่จ่าย ตั้งหนี้ไว้ก่อน</p>
-                                            <p class="text-[10px] text-slate-400">ค้างชำระ / รอชำระ</p>
+                                            <p class="text-xs font-bold text-surface-800">ยังไม่จ่าย ตั้งหนี้ไว้ก่อน</p>
+                                            <p class="text-[10px] text-surface-400">ค้างชำระ / รอชำระ</p>
                                         </div>
                                     </label>
                                 </div>
@@ -523,63 +565,63 @@
 
                             <div class="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">วันที่ออกใบเสร็จ *</label>
-                                    <input type="date" id="modalField-date" required class="w-full px-4 py-2.5 text-xs bg-white border border-slate-200 rounded-xl text-slate-700">
+                                    <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">วันที่ออกใบเสร็จ *</label>
+                                    <input type="date" id="modalField-date" required class="w-full px-4 py-2.5 text-xs bg-white border border-surface-200 rounded-xl text-surface-700">
                                 </div>
                                 <div>
-                                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">ผู้ขออนุญาตเบิกจ่าย *</label>
-                                    <input type="text" id="modalField-requester" placeholder="ระบุชื่อผู้เบิก..." class="w-full px-4 py-2.5 text-xs bg-white border border-slate-200 rounded-xl text-slate-700">
+                                    <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">ผู้ขออนุญาตเบิกจ่าย *</label>
+                                    <input type="text" id="modalField-requester" placeholder="ระบุชื่อผู้เบิก..." class="w-full px-4 py-2.5 text-xs bg-white border border-surface-200 rounded-xl text-surface-700">
                                 </div>
                             </div>
 
                             <div class="flex items-center gap-3">
-                                <input type="checkbox" id="modalField-hasTaxInvoice" onchange="toggleTaxInvoiceInput()" class="w-4.5 h-4.5 rounded accent-slate-900">
-                                <label for="modalField-hasTaxInvoice" class="text-xs font-semibold text-slate-700">มีใบกำกับภาษีเต็มรูปแบบ</label>
+                                <input type="checkbox" id="modalField-hasTaxInvoice" onchange="toggleTaxInvoiceInput()" class="w-4.5 h-4.5 rounded accent-brand-600">
+                                <label for="modalField-hasTaxInvoice" class="text-xs font-semibold text-surface-700">มีใบกำกับภาษีเต็มรูปแบบ</label>
                             </div>
 
-                            <div id="taxInvoiceSection" class="hidden bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4">
+                            <div id="taxInvoiceSection" class="hidden bg-surface-50 p-4 rounded-xl border border-surface-200 space-y-4">
                                 <div>
-                                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">เลขที่ใบกำกับภาษี</label>
-                                    <input type="text" id="modalField-refNumber" placeholder="เช่น IV2026/001" class="w-full px-4 py-2.5 text-xs bg-white border border-slate-200 rounded-xl text-slate-700">
+                                    <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">เลขที่ใบกำกับภาษี</label>
+                                    <input type="text" id="modalField-refNumber" placeholder="เช่น IV2026/001" class="w-full px-4 py-2.5 text-xs bg-white border border-surface-200 rounded-xl text-surface-700">
                                 </div>
                             </div>
 
                             <div>
-                                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">รายละเอียด *</label>
-                                <textarea id="modalField-details" required rows="2" placeholder="ระบุวัตถุประสงค์ในการจ่าย..." class="w-full px-4 py-2.5 text-xs bg-white border border-slate-200 rounded-xl text-slate-700"></textarea>
+                                <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">รายละเอียด *</label>
+                                <textarea id="modalField-details" required rows="2" placeholder="ระบุวัตถุประสงค์ในการจ่าย..." class="w-full px-4 py-2.5 text-xs bg-white border border-surface-200 rounded-xl text-surface-700"></textarea>
                             </div>
 
                             <!-- Supplier Info -->
-                            <div class="border-t border-slate-100 pt-6 space-y-4">
+                            <div class="border-t border-surface-100 pt-6 space-y-4">
                                 <div class="flex items-center justify-between">
-                                    <h4 class="text-xs font-bold text-slate-900 uppercase tracking-wider">ข้อมูลผู้ขาย</h4>
+                                    <h4 class="text-xs font-bold text-surface-900 uppercase tracking-wider">ข้อมูลผู้ขาย</h4>
                                     <button class="text-[11px] font-semibold text-blue-600 hover:text-blue-800">ค้นหาด้วยชื่อหรือเลขผู้เสียภาษี</button>
                                 </div>
                                 <div class="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">ผู้ขาย/ผู้ให้บริการ *</label>
-                                        <input type="text" id="modalField-merchant" required placeholder="ชื่อนิติบุคคลหรือชื่อร้านค้า..." class="w-full px-4 py-2.5 text-xs bg-white border border-slate-200 rounded-xl text-slate-700">
+                                        <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">ผู้ขาย/ผู้ให้บริการ *</label>
+                                        <input type="text" id="modalField-merchant" required placeholder="ชื่อนิติบุคคลหรือชื่อร้านค้า..." class="w-full px-4 py-2.5 text-xs bg-white border border-surface-200 rounded-xl text-surface-700">
                                     </div>
                                     <div>
-                                        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">เลขประจำตัวผู้เสียภาษีของผู้ขาย</label>
-                                        <input type="text" id="modalField-taxId" placeholder="เลข 13 หลัก..." class="w-full px-4 py-2.5 text-xs bg-white border border-slate-200 rounded-xl text-slate-700">
+                                        <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">เลขประจำตัวผู้เสียภาษีของผู้ขาย</label>
+                                        <input type="text" id="modalField-taxId" placeholder="เลข 13 หลัก..." class="w-full px-4 py-2.5 text-xs bg-white border border-surface-200 rounded-xl text-surface-700">
                                     </div>
                                 </div>
                                 <div>
-                                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">ที่อยู่ผู้ขาย</label>
-                                    <textarea id="modalField-address" rows="2" placeholder="ระบุที่อยู่ของคู่ค้า/ร้านค้า..." class="w-full px-4 py-2.5 text-xs bg-white border border-slate-200 rounded-xl text-slate-700"></textarea>
+                                    <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">ที่อยู่ผู้ขาย</label>
+                                    <textarea id="modalField-address" rows="2" placeholder="ระบุที่อยู่ของคู่ค้า/ร้านค้า..." class="w-full px-4 py-2.5 text-xs bg-white border border-surface-200 rounded-xl text-surface-700"></textarea>
                                 </div>
                                 <div>
-                                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">ประเภทสาขา *</label>
+                                    <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-2">ประเภทสาขา *</label>
                                     <div class="flex gap-4">
-                                        <label class="flex items-center gap-2 text-xs font-medium text-slate-600">
-                                            <input type="radio" name="branch_type" value="สำนักงานใหญ่" checked class="accent-slate-900"> สำนักงานใหญ่
+                                        <label class="flex items-center gap-2 text-xs font-medium text-surface-600">
+                                            <input type="radio" name="branch_type" value="สำนักงานใหญ่" checked class="accent-brand-600"> สำนักงานใหญ่
                                         </label>
-                                        <label class="flex items-center gap-2 text-xs font-medium text-slate-600">
-                                            <input type="radio" name="branch_type" value="สาขา" class="accent-slate-900"> สาขา
+                                        <label class="flex items-center gap-2 text-xs font-medium text-surface-600">
+                                            <input type="radio" name="branch_type" value="สาขา" class="accent-brand-600"> สาขา
                                         </label>
-                                        <label class="flex items-center gap-2 text-xs font-medium text-slate-600">
-                                            <input type="radio" name="branch_type" value="ไม่มีสาขา" class="accent-slate-900"> ไม่มีสาขา
+                                        <label class="flex items-center gap-2 text-xs font-medium text-surface-600">
+                                            <input type="radio" name="branch_type" value="ไม่มีสาขา" class="accent-brand-600"> ไม่มีสาขา
                                         </label>
                                     </div>
                                 </div>
@@ -591,65 +633,65 @@
                             <!-- Currency -->
                             <div class="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">สกุลเงิน *</label>
-                                    <select class="w-full px-4 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-700" disabled>
+                                    <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">สกุลเงิน *</label>
+                                    <select class="w-full px-4 py-2.5 text-xs bg-surface-50 border border-surface-200 rounded-xl text-surface-700" disabled>
                                         <option value="THB">THB - Thai Baht (฿)</option>
                                     </select>
                                 </div>
                                 <div class="flex items-end pb-1.5">
-                                    <label class="flex items-center gap-2 text-xs font-medium text-slate-600">
-                                        <input type="checkbox" id="modalField-manualEdit" onchange="toggleManualTotals()" class="w-4 h-4 rounded accent-slate-900"> แก้ไขยอดเอง
+                                    <label class="flex items-center gap-2 text-xs font-medium text-surface-600">
+                                        <input type="checkbox" id="modalField-manualEdit" onchange="toggleManualTotals()" class="w-4 h-4 rounded accent-brand-600"> แก้ไขยอดเอง
                                     </label>
                                 </div>
                             </div>
 
                             <!-- List of item summaries -->
-                            <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                                <h4 class="text-xs font-bold text-slate-900 uppercase tracking-wider mb-2">รายการค่าใช้จ่าย</h4>
-                                <div class="p-3 bg-white border border-slate-200 rounded-lg flex justify-between items-center text-xs">
+                            <div class="bg-surface-50 p-4 rounded-xl border border-surface-200 space-y-3">
+                                <h4 class="text-xs font-bold text-surface-900 uppercase tracking-wider mb-2">รายการค่าใช้จ่าย</h4>
+                                <div class="p-3 bg-white border border-surface-200 rounded-lg flex justify-between items-center text-xs">
                                     <div class="min-w-0">
-                                        <p id="modalItemTitle" class="font-bold text-slate-700 truncate">ค่าบริการ</p>
-                                        <p class="text-[10px] text-slate-400 mt-0.5">จำนวน 1 รายการ</p>
+                                        <p id="modalItemTitle" class="font-bold text-surface-700 truncate">ค่าบริการ</p>
+                                        <p class="text-[10px] text-surface-400 mt-0.5">จำนวน 1 รายการ</p>
                                     </div>
-                                    <span id="modalItemAmount" class="font-bold text-slate-950">฿22.00</span>
+                                    <span id="modalItemAmount" class="font-bold text-surface-950">฿22.00</span>
                                 </div>
                             </div>
 
                             <!-- Math breakdown -->
-                            <div class="border-t border-slate-100 pt-6 space-y-4">
-                                <h4 class="text-xs font-bold text-slate-900 uppercase tracking-wider">สรุปรวมค่าใช้จ่าย</h4>
+                            <div class="border-t border-surface-100 pt-6 space-y-4">
+                                <h4 class="text-xs font-bold text-surface-900 uppercase tracking-wider">สรุปรวมค่าใช้จ่าย</h4>
                                 
                                 <div class="grid grid-cols-3 items-center gap-3">
-                                    <label class="col-span-2 text-xs font-semibold text-slate-600">ยอดรวมก่อนภาษี *</label>
-                                    <input type="number" step="0.01" id="modalField-grossAmount" oninput="recalculateTotals()" class="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl text-right font-bold text-slate-800">
+                                    <label class="col-span-2 text-xs font-semibold text-surface-600">ยอดรวมก่อนภาษี *</label>
+                                    <input type="number" step="0.01" id="modalField-grossAmount" oninput="recalculateTotals()" class="w-full px-3 py-2 text-xs bg-white border border-surface-200 rounded-xl text-right font-bold text-surface-800">
                                 </div>
 
                                 <div class="grid grid-cols-3 items-center gap-3">
-                                    <label class="col-span-2 text-xs font-semibold text-slate-600">ส่วนลดรวม (ถ้ามี)</label>
-                                    <input type="number" step="0.01" id="modalField-discount" oninput="recalculateTotals()" class="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl text-right font-bold text-slate-800" value="0.00">
+                                    <label class="col-span-2 text-xs font-semibold text-surface-600">ส่วนลดรวม (ถ้ามี)</label>
+                                    <input type="number" step="0.01" id="modalField-discount" oninput="recalculateTotals()" class="w-full px-3 py-2 text-xs bg-white border border-surface-200 rounded-xl text-right font-bold text-surface-800" value="0.00">
                                 </div>
 
                                 <div class="grid grid-cols-3 items-center gap-3">
-                                    <label class="col-span-2 text-xs font-semibold text-slate-600">ภาษีมูลค่าเพิ่ม (VAT)</label>
-                                    <input type="number" step="0.01" id="modalField-vatAmount" oninput="recalculateTotals()" class="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl text-right font-bold text-slate-800">
+                                    <label class="col-span-2 text-xs font-semibold text-surface-600">ภาษีมูลค่าเพิ่ม (VAT)</label>
+                                    <input type="number" step="0.01" id="modalField-vatAmount" oninput="recalculateTotals()" class="w-full px-3 py-2 text-xs bg-white border border-surface-200 rounded-xl text-right font-bold text-surface-800">
                                 </div>
 
                                 <div class="grid grid-cols-3 items-center gap-3">
-                                    <label class="col-span-2 text-xs font-semibold text-slate-600">ภาษีหัก ณ ที่จ่าย (WHT)</label>
-                                    <input type="number" step="0.01" id="modalField-whtAmount" oninput="recalculateTotals()" class="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl text-right font-bold text-slate-800">
+                                    <label class="col-span-2 text-xs font-semibold text-surface-600">ภาษีหัก ณ ที่จ่าย (WHT)</label>
+                                    <input type="number" step="0.01" id="modalField-whtAmount" oninput="recalculateTotals()" class="w-full px-3 py-2 text-xs bg-white border border-surface-200 rounded-xl text-right font-bold text-surface-800">
                                 </div>
 
-                                <div class="grid grid-cols-3 items-center gap-3 border-t border-slate-100 pt-4">
-                                    <label class="col-span-2 text-xs font-bold text-slate-900">ยอดชำระ *</label>
-                                    <input type="number" step="0.01" id="modalField-netAmount" class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-right font-extrabold text-slate-950" readonly>
+                                <div class="grid grid-cols-3 items-center gap-3 border-t border-surface-100 pt-4">
+                                    <label class="col-span-2 text-xs font-bold text-surface-900">ยอดชำระ *</label>
+                                    <input type="number" step="0.01" id="modalField-netAmount" class="w-full px-3 py-2 text-xs bg-surface-50 border border-surface-200 rounded-xl text-right font-extrabold text-surface-950" readonly>
                                 </div>
                             </div>
                         </div>
                     </div>
 
                     <!-- Modal Actions footer -->
-                    <div class="px-6 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between flex-shrink-0">
-                        <button onclick="deleteExpenseRow()" class="px-4 py-2.5 text-xs font-bold text-rose-600 hover:text-white bg-white hover:bg-rose-600 border border-slate-200 hover:border-rose-600 rounded-xl transition flex items-center gap-1.5">
+                    <div class="px-6 py-4 border-t border-surface-200/60 bg-surface-50/50 flex items-center justify-between flex-shrink-0">
+                        <button onclick="deleteExpenseRow()" class="px-4 py-2.5 text-xs font-bold text-rose-600 hover:text-white bg-white hover:bg-rose-600 border border-surface-200 hover:border-rose-600 rounded-xl transition flex items-center gap-1.5">
                             <i data-lucide="trash-2" class="w-4 h-4"></i> ลบรายการนี้
                         </button>
                         <div class="flex gap-2.5">
@@ -665,48 +707,48 @@
     </div>
 
     <!-- ═══════════ MEDIA SIDEBAR ═══════════ -->
-    <div id="sidebarOverlay" onclick="closeMediaSidebar()"></div>
+    <div id="mediaSidebarOverlay" onclick="closeMediaSidebar()"></div>
     <aside id="mediaSidebar">
-        <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 flex-shrink-0">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-surface-100 flex-shrink-0">
             <div class="flex items-center gap-2">
-                <div class="w-7 h-7 bg-slate-100 rounded-lg flex items-center justify-center">
-                    <i data-lucide="file-search" class="w-3.5 h-3.5 text-slate-800"></i>
+                <div class="w-7 h-7 bg-surface-100 rounded-lg flex items-center justify-center">
+                    <i data-lucide="file-search" class="w-3.5 h-3.5 text-surface-800"></i>
                 </div>
                 <div>
-                    <p id="sidebarFileName" class="text-sm font-bold text-slate-800 truncate max-w-[260px]">พรีวิวไฟล์</p>
-                    <p id="sidebarFileType" class="text-[10px] text-slate-400 font-medium uppercase">Google Drive Preview</p>
+                    <p id="sidebarFileName" class="text-sm font-bold text-surface-800 truncate max-w-[260px]">พรีวิวไฟล์</p>
+                    <p id="sidebarFileType" class="text-[10px] text-surface-400 font-medium uppercase">Google Drive Preview</p>
                 </div>
             </div>
             <div class="flex items-center gap-1.5">
-                <a id="sidebarOpenLink" href="#" target="_blank" class="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition">
+                <a id="sidebarOpenLink" href="#" target="_blank" class="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-surface-500 hover:text-surface-700 hover:bg-surface-100 rounded-lg transition">
                     <i data-lucide="external-link" class="w-3.5 h-3.5"></i> เปิดแท็บ
                 </a>
-                <button onclick="closeMediaSidebar()" class="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition">
+                <button onclick="closeMediaSidebar()" class="p-1.5 text-surface-400 hover:text-surface-600 hover:bg-surface-100 rounded-lg transition">
                     <i data-lucide="x" class="w-4 h-4"></i>
                 </button>
             </div>
         </div>
-        <iframe id="mediaFrame" src="about:blank" class="flex-1 bg-slate-50"></iframe>
+        <iframe id="mediaFrame" src="about:blank" class="flex-1 bg-surface-50"></iframe>
         <div id="sidebarLoading" class="absolute inset-0 flex flex-col items-center justify-center bg-white gap-3 pointer-events-none">
-            <div class="w-8 h-8 border-2 border-slate-900 border-t-transparent rounded-full spinning"></div>
-            <p class="text-xs text-slate-400 font-medium">กำลังโหลดไฟล์...</p>
+            <div class="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full spinning"></div>
+            <p class="text-xs text-surface-400 font-medium">กำลังโหลดไฟล์...</p>
         </div>
     </aside>
 
     <!-- ═══════════ MOVE MODAL ═══════════ -->
-    <div id="moveModal" class="fixed inset-0 z-[400] hidden flex items-center justify-center p-4">
+    <div id="moveModal" class="fixed inset-0 z-[9999] hidden flex items-center justify-center p-4" style="z-index: 9999 !important;">
         <div class="modal-backdrop absolute inset-0" onclick="closeMoveModal()"></div>
         <div class="bg-white rounded-2xl max-w-sm w-full p-7 relative shadow-2xl slide-up z-10">
-            <button onclick="closeMoveModal()" class="absolute top-5 right-5 p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition">
+            <button onclick="closeMoveModal()" class="absolute top-5 right-5 p-1.5 text-surface-400 hover:text-surface-600 hover:bg-surface-100 rounded-lg transition">
                 <i data-lucide="x" class="w-4 h-4"></i>
             </button>
             <div class="flex items-center gap-3 mb-5">
-                <div class="w-9 h-9 bg-slate-100 border border-slate-200 rounded-xl flex items-center justify-center">
-                    <i data-lucide="folder-symlink" class="w-4.5 h-4.5 text-slate-800"></i>
+                <div class="w-9 h-9 bg-surface-100 border border-surface-200 rounded-xl flex items-center justify-center">
+                    <i data-lucide="folder-symlink" class="w-4.5 h-4.5 text-surface-800"></i>
                 </div>
                 <div>
-                    <h3 class="text-base font-bold text-slate-900">ย้ายหมวดหมู่</h3>
-                    <p class="text-[11px] text-slate-400">เลือกชีตปลายทางที่ต้องการ</p>
+                    <h3 class="text-base font-bold text-surface-900">ย้ายหมวดหมู่</h3>
+                    <p class="text-[11px] text-surface-400">เลือกชีตปลายทางที่ต้องการ</p>
                 </div>
             </div>
 
@@ -715,8 +757,8 @@
                 <input type="hidden" id="moveRow">
 
                 <div>
-                    <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">ชีตปลายทาง</label>
-                    <select id="moveToSheet" required class="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-700 transition appearance-none cursor-pointer">
+                    <label class="block text-[10px] font-bold text-surface-500 uppercase tracking-widest mb-2">ชีตปลายทาง</label>
+                    <select id="moveToSheet" required class="w-full bg-white border border-surface-200 rounded-xl px-4 py-2.5 text-sm text-surface-700 transition appearance-none cursor-pointer">
                         <option value="">-- เลือกชีต --</option>
                     </select>
                 </div>
@@ -728,7 +770,7 @@
 
                 <div class="flex gap-2.5 pt-1">
                     <button type="button" onclick="closeMoveModal()" class="flex-1 py-2.5 btn-ghost text-sm">ยกเลิก</button>
-                    <button type="submit" id="moveSubmitBtn" class="flex-1 py-2.5 btn-primary text-sm flex items-center justify-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white">
+                    <button type="submit" id="moveSubmitBtn" class="flex-1 py-2.5 btn-primary text-sm flex items-center justify-center gap-1.5 bg-brand-600 hover:bg-brand-700 text-white">
                         <i data-lucide="check" class="w-3.5 h-3.5"></i> ย้ายรายการ
                     </button>
                 </div>
@@ -738,7 +780,6 @@
 
     <script>
         // ─── State ───────────────────────────────────────────
-        let myChart = null;
         let globalSheetsList = [];
         let unclearRows = [];
         let allExpenses = [];   // Standardized full expenses from Sheets
@@ -760,7 +801,7 @@
             icon.classList.add('spinning');
 
             document.getElementById('catList').innerHTML =
-                '<div class="text-center py-8 text-slate-400 text-sm">กำลังดึงข้อมูล...</div>';
+                '<div class="text-center py-8 text-surface-400 text-sm">กำลังดึงข้อมูล...</div>';
 
             // 1. Fetch dashboard summaries, unclear scans, and categories
             fetch('/api/dashboard/tax-expense-data')
@@ -775,8 +816,42 @@
                     animateValue('valWht53',   data.total_wht_53);
                     document.getElementById('chartTotalLabel').textContent = formatNum(data.total_expense);
 
+                    // Dynamic Organization details update
+                    if (data.biz_profile) {
+                        const thName = data.biz_profile.business_name_th || 'บริษัท ฮาร์ทวอมมิ่ง จำกัด';
+                        const enName = data.biz_profile.business_name_en || 'Heartwarming Co., Ltd.';
+                        const phone = data.biz_profile.phone || '0636534337';
+
+                        const cNameLabel = document.getElementById('companyNameLabel');
+                        if (cNameLabel) cNameLabel.textContent = thName;
+
+                        const cNameEnLabel = document.getElementById('companyNameEnLabel');
+                        if (cNameEnLabel) cNameEnLabel.textContent = `${enName} · Maha Engine`;
+
+                        const cPhoneLabel = document.getElementById('companyPhoneLabel');
+                        if (cPhoneLabel) {
+                            cPhoneLabel.innerHTML = `<i data-lucide="phone" class="w-3.5 h-3.5 text-surface-400"></i> ${phone}`;
+                            if (window.lucide) window.lucide.createIcons();
+                        }
+
+                        const editCNameLabel = document.getElementById('editModalCompanyNameLabel');
+                        if (editCNameLabel) editCNameLabel.textContent = thName;
+
+                        const editCNameEnLabel = document.getElementById('editModalCompanyNameEnLabel');
+                        if (editCNameEnLabel) editCNameEnLabel.textContent = enName;
+                    }
+
                     globalSheetsList = data.sheets_list || [];
                     unclearRows = data.unclear_scans || [];
+
+                    if (data.spreadsheet_url) {
+                        const sheetsLink = document.getElementById('dashboardSheetsLink');
+                        if (sheetsLink) sheetsLink.href = data.spreadsheet_url;
+                    }
+                    if (data.drive_folder_url) {
+                        const driveLink = document.getElementById('dashboardDriveLink');
+                        if (driveLink) driveLink.href = data.drive_folder_url;
+                    }
 
                     renderCategories(data.categories, data.total_expense);
                     renderChart(data.categories);
@@ -795,12 +870,48 @@
                         allExpenses = data.expenses || [];
                         populateFilters(allExpenses);
                         applyAllFilters();
+                    } else {
+                        const container = document.getElementById('expenseListGrouped');
+                        if (container) container.innerHTML = `<div class="text-center py-12 text-rose-400 text-sm">${escHtml(data.error || 'เกิดข้อผิดพลาด')}</div>`;
                     }
                 })
                 .catch(err => {
                     icon.classList.remove('spinning');
+                    const container = document.getElementById('expenseListGrouped');
+                    if (container) container.innerHTML = '<div class="text-center py-12 text-rose-400 text-sm">ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้</div>';
                     console.error(err);
                 });
+        }
+
+        function renderCategories(categories, totalExpense) {
+            const list = document.getElementById('catList');
+            if (!list) return;
+            
+            if (!categories || categories.length === 0) {
+                list.innerHTML = '<div class="text-center py-8 text-surface-400 text-sm">ไม่มีข้อมูลหมวดหมู่</div>';
+                return;
+            }
+            
+            list.innerHTML = categories.map(cat => {
+                const name = cat.name || cat.category || 'อื่นๆ';
+                const amount = cat.value || cat.amount || 0;
+                const pct = totalExpense > 0 ? ((amount / totalExpense) * 100).toFixed(1) : '0.0';
+                
+                return `
+                    <div class="space-y-1.5 p-3 rounded-2xl bg-surface-50/50 dark:bg-surface-800/20 border border-surface-100 dark:border-surface-800/30 hover:border-brand-500/30 transition-all">
+                        <div class="flex items-center justify-between text-xs">
+                            <span class="font-bold text-surface-700 dark:text-surface-300">${escHtml(name)}</span>
+                            <div class="flex items-center gap-2">
+                                <span class="font-black text-surface-900 dark:text-white">฿${formatNum(amount)}</span>
+                                <span class="text-[10px] text-brand-600 font-bold bg-brand-50 dark:bg-brand-950/40 px-1.5 py-0.5 rounded">${pct}%</span>
+                            </div>
+                        </div>
+                        <div class="w-full h-2 bg-surface-100 dark:bg-surface-800 rounded-full overflow-hidden">
+                            <div class="h-full bg-brand-600 rounded-full" style="width: ${pct}%"></div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
         }
 
         // ─── POPULATE FILTERS ────────────────────────────────
@@ -897,6 +1008,49 @@
             return dStr.replace(/\//g, '').replace(/-/g, '').trim();
         }
 
+        // ─── BADGE RENDERING HELPERS (Idea 3 & 5) ────────
+        function renderVerificationBadge(status) {
+            if (!status || status === '-') return '<span class="text-[10px] text-surface-300">-</span>';
+            if (status.includes('Verified') || status.includes('สลิปแท้')) {
+                return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-sm">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                    สลิปแท้
+                </span>`;
+            }
+            if (status.includes('ยอดไม่ตรง') || status.includes('⚠️')) {
+                return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 shadow-sm" title="${escHtml(status)}">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"></path></svg>
+                    ยอดไม่ตรง
+                </span>`;
+            }
+            if (status.includes('หัก ณ ที่จ่าย')) {
+                return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-50 text-violet-700 border border-violet-200 shadow-sm">WHT</span>`;
+            }
+            return `<span class="text-[10px] text-surface-400">${escHtml(status)}</span>`;
+        }
+
+        function renderBatchBadge(batchId) {
+            if (!batchId || batchId === '-') return '<span class="text-[10px] text-surface-300">-</span>';
+            return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-sm cursor-pointer" onclick="event.stopPropagation(); filterByBatch('${escAttr(batchId)}')" title="คลิกเพื่อดูเอกสารในกลุ่มเดียวกัน">
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
+                ${escHtml(batchId)}
+            </span>`;
+        }
+
+        function filterByBatch(batchId) {
+            // Filter and show only expenses with this batch ID
+            const filtered = allExpenses.filter(e => e.batch_id === batchId);
+            if (filtered.length > 0) {
+                renderGroupedExpenses(filtered);
+                // Show a toast/notification
+                const toast = document.createElement('div');
+                toast.className = 'fixed bottom-4 right-4 bg-indigo-600 text-white px-4 py-2 rounded-xl shadow-lg text-xs font-bold z-50 animate-slide-up';
+                toast.textContent = `กรองเอกสารกลุ่ม ${batchId} (${filtered.length} รายการ)`;
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 3000);
+            }
+        }
+
         // ─── RENDERING ALL EXPENSES (GROUPED BY MONTH) ────────
         function renderGroupedExpenses(expenses) {
             const container = document.getElementById('expenseListGrouped');
@@ -933,28 +1087,30 @@
                     
                     return `
                     <tr class="table-row-hover transition cursor-pointer" onclick="openEditModalFromRow(${JSON.stringify(item).replace(/"/g, '&quot;')})">
-                        <td class="px-6 py-4 text-xs text-slate-500 whitespace-nowrap">${escHtml(item.date)}</td>
+                        <td class="px-6 py-4 text-xs text-surface-500 whitespace-nowrap">${escHtml(item.date)}</td>
                         <td class="px-6 py-4 whitespace-nowrap">
                             <span class="px-2.5 py-0.5 rounded text-[10px] font-bold ${docTypeClass}">${escHtml(item.sheet_name)}</span>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap">
-                            <p class="text-xs font-bold text-slate-800 truncate max-w-[180px]">${escHtml(item.merchant)}</p>
+                            <p class="text-xs font-bold text-surface-800 truncate max-w-[180px]">${escHtml(item.merchant)}</p>
                         </td>
                         <td class="px-6 py-4">
-                            <p class="text-xs text-slate-600 truncate max-w-[240px]">${escHtml(item.details)}</p>
+                            <p class="text-xs text-surface-600 truncate max-w-[240px]">${escHtml(item.details)}</p>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap">
-                            <p class="text-xs text-slate-700 font-semibold">${escHtml(item.line_sender_name || 'ไม่ระบุ')}</p>
+                            <p class="text-xs text-surface-700 font-semibold">${escHtml(item.line_sender_name || 'ไม่ระบุ')}</p>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap">
                             <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${statusBadgeClass}">${escHtml(item.status)}</span>
                         </td>
-                        <td class="px-6 py-4 text-xs font-extrabold text-slate-900 whitespace-nowrap tabular-nums">฿${formatNum(item.net_amount)}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">${renderVerificationBadge(item.verification_status)}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">${renderBatchBadge(item.batch_id)}</td>
+                        <td class="px-6 py-4 text-xs font-extrabold text-surface-900 whitespace-nowrap tabular-nums">฿${formatNum(item.net_amount)}</td>
                         <td class="px-6 py-4 text-right whitespace-nowrap" onclick="event.stopPropagation()">
-                            <button onclick="openEditModalFromRow(${JSON.stringify(item).replace(/"/g, '&quot;')})" class="p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition mr-1.5" title="ดูรายละเอียด/แก้ไข">
+                            <button onclick="openEditModalFromRow(${JSON.stringify(item).replace(/"/g, '&quot;')})" class="p-1.5 text-surface-400 hover:text-surface-900 hover:bg-surface-100 rounded-lg transition mr-1.5" title="ดูรายละเอียด/แก้ไข">
                                 <i data-lucide="edit-3" class="w-4.5 h-4.5"></i>
                             </button>
-                            <button onclick="deleteRowDirect('${escAttr(item.sheet_name)}', ${item.row_index})" class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition">
+                            <button onclick="deleteRowDirect('${escAttr(item.sheet_name)}', ${item.row_index})" class="p-1.5 text-surface-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition">
                                 <i data-lucide="trash-2" class="w-4.5 h-4.5"></i>
                             </button>
                         </td>
@@ -965,26 +1121,28 @@
                 <div class="pt-6 first:pt-0">
                     <div class="flex items-center justify-between mb-3 px-2">
                         <div class="flex items-center gap-2">
-                            <h4 class="text-xs font-extrabold text-slate-950 uppercase tracking-wide">${monthNameTH}</h4>
+                            <h4 class="text-xs font-extrabold text-surface-950 uppercase tracking-wide">${monthNameTH}</h4>
                             <span class="badge-slate px-2 py-0.5 rounded-full text-[9px] font-bold">${items.length} รายการ</span>
                         </div>
-                        <span class="text-xs font-bold text-slate-800">ยอดรวม ฿${formatNum(monthTotal)}</span>
+                        <span class="text-xs font-bold text-surface-800">ยอดรวม ฿${formatNum(monthTotal)}</span>
                     </div>
-                    <div class="overflow-x-auto border border-slate-100 rounded-xl">
+                    <div class="overflow-x-auto border border-surface-100 rounded-xl">
                         <table class="w-full text-left">
                             <thead>
-                                <tr class="bg-slate-50 border-b border-slate-100">
-                                    <th class="px-6 py-3 text-[9px] font-bold text-slate-400 uppercase tracking-wider">วันที่</th>
-                                    <th class="px-6 py-3 text-[9px] font-bold text-slate-400 uppercase tracking-wider">ประเภทเอกสาร</th>
-                                    <th class="px-6 py-3 text-[9px] font-bold text-slate-400 uppercase tracking-wider">ร้านค้า</th>
-                                    <th class="px-6 py-3 text-[9px] font-bold text-slate-400 uppercase tracking-wider">รายละเอียด</th>
-                                    <th class="px-6 py-3 text-[9px] font-bold text-slate-400 uppercase tracking-wider">ผู้ขออนุญาตเบิกจ่าย</th>
-                                    <th class="px-6 py-3 text-[9px] font-bold text-slate-400 uppercase tracking-wider">สถานะการจ่าย</th>
-                                    <th class="px-6 py-3 text-[9px] font-bold text-slate-400 uppercase tracking-wider">ยอดชำระ</th>
-                                    <th class="px-6 py-3 text-[9px] font-bold text-slate-400 uppercase tracking-wider text-right">จัดการ</th>
+                                <tr class="bg-surface-50 border-b border-surface-100">
+                                    <th class="px-6 py-3 text-[9px] font-bold text-surface-400 uppercase tracking-wider">วันที่</th>
+                                    <th class="px-6 py-3 text-[9px] font-bold text-surface-400 uppercase tracking-wider">ประเภทเอกสาร</th>
+                                    <th class="px-6 py-3 text-[9px] font-bold text-surface-400 uppercase tracking-wider">ร้านค้า</th>
+                                    <th class="px-6 py-3 text-[9px] font-bold text-surface-400 uppercase tracking-wider">รายละเอียด</th>
+                                    <th class="px-6 py-3 text-[9px] font-bold text-surface-400 uppercase tracking-wider">ผู้ขออนุญาตเบิกจ่าย</th>
+                                    <th class="px-6 py-3 text-[9px] font-bold text-surface-400 uppercase tracking-wider">สถานะการจ่าย</th>
+                                    <th class="px-6 py-3 text-[9px] font-bold text-surface-400 uppercase tracking-wider">ตรวจสอบ</th>
+                                    <th class="px-6 py-3 text-[9px] font-bold text-surface-400 uppercase tracking-wider">กลุ่ม</th>
+                                    <th class="px-6 py-3 text-[9px] font-bold text-surface-400 uppercase tracking-wider">ยอดชำระ</th>
+                                    <th class="px-6 py-3 text-[9px] font-bold text-surface-400 uppercase tracking-wider text-right">จัดการ</th>
                                 </tr>
                             </thead>
-                            <tbody class="divide-y divide-slate-50 bg-white">
+                            <tbody class="divide-y divide-surface-50 bg-white">
                                 ${rowsHtml}
                             </tbody>
                         </table>
@@ -997,7 +1155,7 @@
 
         // Helper to extract sorting group key "YYYY-MM"
         function getMonthGroupName(dateStr) {
-            if (!dateStr || dateStr === '-') return '2026-05';
+            if (!dateStr || dateStr === '-') return 'unknown';
             const clean = dateStr.replace(/\//g, '-').trim(); // handle both DD-MM-YYYY and YYYY-MM-DD
             const parts = clean.split('-');
             if (parts.length === 3) {
@@ -1008,7 +1166,7 @@
                 // If YYYY-MM-DD
                 return `${parts[0]}-${parts[1]}`;
             }
-            return '2026-05';
+            return 'unknown';
         }
 
         const MONTH_TH = {
@@ -1017,9 +1175,10 @@
             '09': 'กันยายน', '10': 'ตุลาคม', '11': 'พฤศจิกายน', '12': 'ธันวาคม'
         };
         function formatGroupNameTH(key) {
+            if (key === 'unknown') return 'ไม่ระบุเดือน/ไม่พบวันที่';
             const parts = key.split('-');
             const yearTH = parseInt(parts[0]) + 543;
-            const monthName = MONTH_TH[parts[1]] || 'พฤษภาคม';
+            const monthName = MONTH_TH[parts[1]] || 'ไม่ระบุ';
             return `${monthName} ${yearTH}`;
         }
 
@@ -1038,18 +1197,18 @@
             tbody.innerHTML = items.map(item => {
                 return `
                 <tr class="table-row-hover transition cursor-pointer" onclick="openEditModalFromRow(${JSON.stringify(item).replace(/"/g, '&quot;')})">
-                    <td class="px-6 py-4 text-xs text-slate-500 whitespace-nowrap">${escHtml(item.date)}</td>
-                    <td class="px-6 py-4 whitespace-nowrap font-bold text-slate-800">${escHtml(item.merchant)}</td>
-                    <td class="px-6 py-4 text-xs text-slate-600">${escHtml(item.details)}</td>
-                    <td class="px-6 py-4 text-xs font-bold text-slate-800 tabular-nums">฿${formatNum(item.gross_amount)}</td>
+                    <td class="px-6 py-4 text-xs text-surface-500 whitespace-nowrap">${escHtml(item.date)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap font-bold text-surface-800">${escHtml(item.merchant)}</td>
+                    <td class="px-6 py-4 text-xs text-surface-600">${escHtml(item.details)}</td>
+                    <td class="px-6 py-4 text-xs font-bold text-surface-800 tabular-nums">฿${formatNum(item.gross_amount)}</td>
                     <td class="px-6 py-4 text-xs font-bold text-emerald-600 tabular-nums">฿${formatNum(item.vat_amount)}</td>
                     <td class="px-6 py-4 text-xs font-bold text-amber-600 tabular-nums">฿${formatNum(item.wht_amount)}</td>
-                    <td class="px-6 py-4 text-xs font-extrabold text-slate-900 tabular-nums">฿${formatNum(item.net_amount)}</td>
+                    <td class="px-6 py-4 text-xs font-extrabold text-surface-900 tabular-nums">฿${formatNum(item.net_amount)}</td>
                     <td class="px-6 py-4 text-right whitespace-nowrap" onclick="event.stopPropagation()">
-                        <button onclick="openEditModalFromRow(${JSON.stringify(item).replace(/"/g, '&quot;')})" class="p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition mr-1.5" title="ดูรายละเอียด/แก้ไข">
+                        <button onclick="openEditModalFromRow(${JSON.stringify(item).replace(/"/g, '&quot;')})" class="p-1.5 text-surface-400 hover:text-surface-900 hover:bg-surface-100 rounded-lg transition mr-1.5" title="ดูรายละเอียด/แก้ไข">
                             <i data-lucide="edit-3" class="w-4.5 h-4.5"></i>
                         </button>
-                        <button onclick="deleteRowDirect('${escAttr(item.sheet_name)}', ${item.row_index})" class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition">
+                        <button onclick="deleteRowDirect('${escAttr(item.sheet_name)}', ${item.row_index})" class="p-1.5 text-surface-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition">
                             <i data-lucide="trash-2" class="w-4.5 h-4.5"></i>
                         </button>
                     </td>
@@ -1075,12 +1234,12 @@
                 const fileHtml = buildFileButton(item);
                 return `
                 <tr class="table-row-hover transition">
-                    <td class="px-6 py-4 text-xs text-slate-500 whitespace-nowrap">${escHtml(item.date)}</td>
+                    <td class="px-6 py-4 text-xs text-surface-500 whitespace-nowrap">${escHtml(item.date)}</td>
                     <td class="px-6 py-4">
-                        <p class="text-xs font-bold text-slate-800">${escHtml(item.vendor)}</p>
-                        <p class="text-[9px] text-slate-400 font-medium uppercase mt-0.5">${escHtml(item.sheet)} &middot; แถว ${item.row}</p>
+                        <p class="text-xs font-bold text-surface-800">${escHtml(item.vendor)}</p>
+                        <p class="text-[9px] text-surface-400 font-medium uppercase mt-0.5">${escHtml(item.sheet)} &middot; แถว ${item.row}</p>
                     </td>
-                    <td class="px-6 py-4 text-xs font-bold text-slate-800 tabular-nums">฿${formatNum(item.amount)}</td>
+                    <td class="px-6 py-4 text-xs font-bold text-surface-800 tabular-nums">฿${formatNum(item.amount)}</td>
                     <td class="px-6 py-4">
                         <span class="badge-amber px-2 py-0.5 rounded-md text-[9px] font-bold">${escHtml(item.issues)}</span>
                     </td>
@@ -1098,10 +1257,10 @@
         }
 
         function buildFileButton(item) {
-            if (!item.link) return `<span class="text-[10px] text-slate-400 italic">ไม่มีไฟล์</span>`;
+            if (!item.link) return `<span class="text-[10px] text-surface-400 italic">ไม่มีไฟล์</span>`;
             return `
                 <button onclick="openMediaSidebar('${escAttr(item.link)}', '${escAttr(item.vendor)}', false)"
-                    class="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition">
+                    class="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-semibold text-surface-600 bg-white border border-surface-200 hover:bg-surface-50 rounded-lg transition">
                     <i data-lucide="file-text" class="w-3 h-3"></i> ดูไฟล์
                 </button>`;
         }
@@ -1360,7 +1519,7 @@
         // ─── MEDIA SIDEBAR ───────────────────────────────────
         function openMediaSidebar(rawUrl, name) {
             const sidebar  = document.getElementById('mediaSidebar');
-            const overlay  = document.getElementById('sidebarOverlay');
+            const overlay  = document.getElementById('mediaSidebarOverlay');
             const frame    = document.getElementById('mediaFrame');
             const loading  = document.getElementById('sidebarLoading');
             const openLink = document.getElementById('sidebarOpenLink');
@@ -1382,7 +1541,7 @@
 
         function closeMediaSidebar() {
             const sidebar = document.getElementById('mediaSidebar');
-            const overlay = document.getElementById('sidebarOverlay');
+            const overlay = document.getElementById('mediaSidebarOverlay');
             const frame   = document.getElementById('mediaFrame');
 
             sidebar.classList.remove('open');

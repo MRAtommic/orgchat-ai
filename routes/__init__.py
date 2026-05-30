@@ -9,6 +9,7 @@ from routes.chat import chat_bp
 from routes.social import social_bp
 from routes.admin import admin_bp
 from routes.misc import misc_bp
+from routes.features import features_bp
 
 ALL_BLUEPRINTS = [
     auth_bp,
@@ -16,4 +17,5 @@ ALL_BLUEPRINTS = [
     social_bp,
     admin_bp,
     misc_bp,
+    features_bp,
 ]

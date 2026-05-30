@@ -255,14 +255,31 @@
         <div class="mt-16 text-center">
             <p class="text-sm text-slate-400">
                 ต้องการ Plan พิเศษสำหรับองค์กร?
-                <a href="mailto:contact@orgchat.ai" class="text-emerald-600 font-semibold hover:underline">ติดต่อทีมงาน</a>
+                <a href="mailto:mxmm2547@gmail.com" class="text-emerald-600 font-semibold hover:underline">ติดต่อทีมงาน</a>
             </p>
         </div>
 
     </main>
 
+    <!-- In-page error toast แทน alert() -->
+    <div id="pricing-error-toast" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-50 max-w-sm w-full mx-4">
+        <div class="bg-red-600 text-white text-sm font-semibold px-4 py-3 rounded-2xl shadow-xl flex items-center gap-3">
+            <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <span id="pricing-error-msg"></span>
+        </div>
+    </div>
+
     <script>
         window.onload = () => lucide.createIcons();
+
+        let _errorTimer = null;
+        function showPricingError(msg) {
+            const toast = document.getElementById('pricing-error-toast');
+            document.getElementById('pricing-error-msg').textContent = msg;
+            toast.classList.remove('hidden');
+            clearTimeout(_errorTimer);
+            _errorTimer = setTimeout(() => toast.classList.add('hidden'), 5000);
+        }
 
         async function checkout(plan, btn) {
             const original = btn.innerHTML;
@@ -278,29 +295,21 @@
                     window.location.href = `/signup?plan=${plan}`;
                     return;
                 }
-                
                 let data;
-                try {
-                    data = await res.json();
-                } catch (jsonErr) {
-                    const txt = await res.text();
-                    console.error("Non-JSON Response:", txt);
-                    alert(`ไม่สามารถเชื่อมต่อระบบชำระเงินได้ (Status: ${res.status}). รายละเอียด: ${txt.substring(0, 100)}`);
-                    btn.disabled = false;
-                    btn.innerHTML = original;
-                    return;
-                }
+                try { data = await res.json(); }
+                catch { showPricingError(`เชื่อมต่อระบบชำระเงินไม่ได้ (${res.status})`); btn.disabled = false; btn.innerHTML = original; return; }
 
                 if (data.ok && data.url) {
                     window.location.href = data.url;
+                } else if (data.needs_org) {
+                    window.location.href = '/onboarding';
                 } else {
-                    alert(data.error || 'เกิดข้อผิดพลาด กรุณาลองใหม่');
+                    showPricingError(data.error || 'เกิดข้อผิดพลาด กรุณาลองใหม่');
                     btn.disabled = false;
                     btn.innerHTML = original;
                 }
             } catch (e) {
-                console.error("Fetch checkout error:", e);
-                alert(`ไม่สามารถเชื่อมต่อระบบชำระเงินได้: ${e.message}`);
+                showPricingError('ไม่สามารถเชื่อมต่อระบบชำระเงินได้');
                 btn.disabled = false;
                 btn.innerHTML = original;
             }
@@ -320,29 +329,21 @@
                     window.location.href = `/signup?plan=${plan}`;
                     return;
                 }
-                
                 let data;
-                try {
-                    data = await res.json();
-                } catch (jsonErr) {
-                    const txt = await res.text();
-                    console.error("Non-JSON Response:", txt);
-                    alert(`ไม่สามารถเชื่อมต่อระบบชำระเงินได้ (Status: ${res.status}). รายละเอียด: ${txt.substring(0, 100)}`);
-                    btn.disabled = false;
-                    btn.innerHTML = original;
-                    return;
-                }
+                try { data = await res.json(); }
+                catch { showPricingError(`เชื่อมต่อระบบชำระเงินไม่ได้ (${res.status})`); btn.disabled = false; btn.innerHTML = original; return; }
 
                 if (data.ok && data.url) {
                     window.location.href = data.url;
+                } else if (data.needs_org) {
+                    window.location.href = '/onboarding';
                 } else {
-                    alert(data.error || 'เกิดข้อผิดพลาด กรุณาลองใหม่');
+                    showPricingError(data.error || 'เกิดข้อผิดพลาด กรุณาลองใหม่');
                     btn.disabled = false;
                     btn.innerHTML = original;
                 }
             } catch (e) {
-                console.error("Fetch PromptPay error:", e);
-                alert(`ไม่สามารถเชื่อมต่อระบบชำระเงินได้: ${e.message}`);
+                showPricingError('ไม่สามารถเชื่อมต่อระบบชำระเงินได้');
                 btn.disabled = false;
                 btn.innerHTML = original;
             }

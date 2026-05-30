@@ -4,317 +4,692 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>แพลนของฉัน — OrgChat AI</title>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Sarabun:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
+        :root {
+            --free:    #64748b;
+            --pro:     #059669;
+            --business:#6366f1;
+        }
         body { font-family: 'Outfit', 'Sarabun', sans-serif; }
-        .stat-card { background:#fff; border:1px solid #e2e8f0; border-radius:1rem; }
-        .usage-bar-bg { background:#f1f5f9; border-radius:9999px; height:6px; overflow:hidden; }
-        .usage-bar-fill { height:100%; border-radius:9999px; transition: width 0.8s ease; }
+
+        /* ── Usage bar ── */
+        .usage-track { background:#f1f5f9; border-radius:9999px; height:7px; overflow:hidden; }
+        .usage-fill  { height:100%; border-radius:9999px; transition:width .9s cubic-bezier(.4,0,.2,1); }
+
+        /* ── Plan cards ── */
+        .plan-card { border:2px solid #e2e8f0; border-radius:1.25rem; background:#fff; transition:all .2s; }
+        .plan-card.active      { border-color:#059669; box-shadow:0 0 0 4px #d1fae5; }
+        .plan-card.plan-business.active { border-color:#6366f1; box-shadow:0 0 0 4px #e0e7ff; }
+        .plan-card:hover:not(.active) { border-color:#cbd5e1; box-shadow:0 4px 16px rgba(0,0,0,.07); }
+
+        /* ── Modal ── */
+        .modal-overlay {
+            position:fixed; inset:0; background:rgba(0,0,0,.55);
+            display:flex; align-items:center; justify-content:center;
+            z-index:999; opacity:0; pointer-events:none; transition:opacity .2s;
+        }
+        .modal-overlay.open { opacity:1; pointer-events:all; }
+        .modal-box { background:#fff; border-radius:1.5rem; padding:2rem; max-width:420px; width:90%;
+                     transform:translateY(20px); transition:transform .2s; box-shadow:0 24px 64px rgba(0,0,0,.18); }
+        .modal-overlay.open .modal-box { transform:translateY(0); }
+
+        /* ── Spinner ── */
         @keyframes spin { to { transform:rotate(360deg); } }
-        .spinning { animation: spin 0.8s linear infinite; }
-        .btn-primary { background:#059669; color:#fff; border-radius:.75rem; font-weight:700; padding:.625rem 1.25rem; font-size:.875rem; transition:background .15s; border:none; cursor:pointer; }
-        .btn-primary:hover { background:#047857; }
-        .btn-primary:disabled { background:#a7f3d0; cursor:not-allowed; }
-        .btn-ghost { background:#f1f5f9; color:#475569; border-radius:.75rem; font-weight:600; padding:.625rem 1.25rem; font-size:.875rem; border:1px solid #e2e8f0; cursor:pointer; transition:background .15s; }
-        .btn-ghost:hover { background:#e2e8f0; }
+        .spin { animation:spin .7s linear infinite; }
+
+        /* ── Buttons ── */
+        .btn { display:inline-flex; align-items:center; gap:.4rem; border-radius:.75rem;
+               font-weight:700; font-size:.875rem; padding:.625rem 1.25rem;
+               border:none; cursor:pointer; transition:all .15s; }
+        .btn-emerald { background:#059669; color:#fff; }
+        .btn-emerald:hover { background:#047857; }
+        .btn-emerald:disabled { background:#a7f3d0; cursor:not-allowed; }
+        .btn-indigo  { background:#6366f1; color:#fff; }
+        .btn-indigo:hover  { background:#4f46e5; }
+        .btn-slate   { background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; }
+        .btn-slate:hover   { background:#e2e8f0; }
+        .btn-red     { background:#fff; color:#dc2626; border:1px solid #fca5a5; }
+        .btn-red:hover     { background:#fef2f2; border-color:#dc2626; }
+        .btn-outline { background:transparent; color:#059669; border:2px solid #059669; }
+        .btn-outline:hover { background:#ecfdf5; }
+
+        /* ── Feature pill ── */
+        .feat-on  { color:#065f46; background:#d1fae5; border:1px solid #a7f3d0; border-radius:9999px;
+                    font-size:.7rem; font-weight:700; padding:.15rem .6rem; display:inline-flex; align-items:center; gap:.25rem; }
+        .feat-off { color:#94a3b8; background:#f8fafc; border:1px solid #e2e8f0; border-radius:9999px;
+                    font-size:.7rem; font-weight:700; padding:.15rem .6rem; display:inline-flex; align-items:center; gap:.25rem; }
+
+        /* ── Skeleton ── */
+        .sk { background:linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%);
+              background-size:200% 100%; animation:sk 1.4s infinite; border-radius:.75rem; }
+        @keyframes sk { to { background-position:-200% 0; } }
+
+        /* ── Badge ── */
+        .badge-free     { background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0; }
+        .badge-pro      { background:#d1fae5; color:#065f46; border:1px solid #6ee7b7; }
+        .badge-business { background:#e0e7ff; color:#3730a3; border:1px solid #a5b4fc; }
+        .plan-badge { font-size:.7rem; font-weight:800; letter-spacing:.07em; text-transform:uppercase;
+                      padding:.2rem .65rem; border-radius:9999px; }
+
+        /* ── Gradient text ── */
+        .grad-pro { background:linear-gradient(135deg,#059669,#34d399); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+        .grad-biz { background:linear-gradient(135deg,#6366f1,#a78bfa); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+
+        /* ── Featured Plan Card (Pro) ── */
+        .plan-card.plan-pro-featured {
+            border-color: #10b981;
+            box-shadow: 0 10px 25px -5px rgba(16, 185, 129, 0.15), 0 8px 10px -6px rgba(16, 185, 129, 0.15);
+            position: relative;
+        }
+        @media (min-width: 768px) {
+            .plan-card.plan-pro-featured {
+                transform: translateY(-8px) scale(1.03);
+            }
+        }
     </style>
 </head>
 <body class="bg-slate-50 min-h-screen">
 
-    <!-- NAV -->
-    <nav class="bg-white border-b border-slate-200 px-6 py-3.5">
-        <div class="max-w-4xl mx-auto flex items-center justify-between">
-            <div class="flex items-center gap-2.5">
-                <div class="w-8 h-8 bg-emerald-600 rounded-xl flex items-center justify-center">
-                    <i data-lucide="zap" class="w-4 h-4 text-white"></i>
-                </div>
-                <span class="text-base font-bold text-slate-900">OrgChat AI</span>
+<!-- ══════════════════════ NAV ══════════════════════ -->
+<nav class="sticky top-0 z-50 bg-white/90 backdrop-blur border-b border-slate-200">
+    <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 bg-emerald-600 rounded-xl flex items-center justify-center">
+                <i data-lucide="zap" class="w-4 h-4 text-white"></i>
             </div>
+            <span class="font-extrabold text-slate-900 text-base tracking-tight">OrgChat AI</span>
+        </div>
+        <div class="flex items-center gap-3">
+            <a href="/" class="text-sm font-semibold text-slate-500 hover:text-slate-800 transition flex items-center gap-1">
+                <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> หน้าหลัก
+            </a>
+        </div>
+    </div>
+</nav>
+
+<!-- ══════════════════════ TOAST ══════════════════════ -->
+<div id="toast" class="fixed top-5 right-5 z-[1000] hidden">
+    <div id="toastInner" class="flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-xl text-sm font-semibold max-w-xs">
+        <i id="toastIcon" class="w-4 h-4 flex-shrink-0"></i>
+        <span id="toastMsg"></span>
+    </div>
+</div>
+
+<!-- ══════════════════════ PAYMENT BANNER ══════════════════════ -->
+<div id="payBanner" class="hidden max-w-5xl mx-auto px-4 pt-4"></div>
+
+<!-- ══════════════════════ MAIN ══════════════════════ -->
+<main class="max-w-5xl mx-auto px-4 py-7 space-y-5" id="main">
+    <!-- skeleton -->
+    <div id="skeleton" class="space-y-4">
+        <div class="sk h-36"></div>
+        <div class="grid grid-cols-2 gap-4"><div class="sk h-28"></div><div class="sk h-28"></div></div>
+        <div class="sk h-44"></div>
+        <div class="sk h-64"></div>
+    </div>
+    <div id="content" class="hidden space-y-5"></div>
+</main>
+
+<!-- ══════════════════════ CANCEL MODAL ══════════════════════ -->
+<div class="modal-overlay" id="cancelModal">
+    <div class="modal-box" style="max-width:460px">
+        <div class="w-12 h-12 bg-rose-100 rounded-2xl flex items-center justify-center mb-4">
+            <i data-lucide="alert-triangle" class="w-6 h-6 text-rose-500"></i>
+        </div>
+        <h2 class="text-xl font-extrabold text-slate-900 mb-2">ยกเลิกแผนการใช้งาน</h2>
+        <div class="text-sm text-slate-600 mb-6 space-y-3 leading-relaxed">
+            <p>หากคุณชำระเงินผ่าน <strong>บัตรเครดิต (Stripe)</strong> กรุณาจัดการหรือยกเลิกการสมัครใช้งานอย่างปลอดภัยผ่านทาง **Stripe Customer Portal** ได้โดยตรง เพื่อความถูกต้องของข้อมูลการเงินค่ะ</p>
+            <p class="text-xs text-slate-500 bg-slate-50 p-2.5 rounded-xl border border-slate-100">💡 สำหรับผู้ใช้ที่ชำระเงินผ่าน <strong>PromptPay</strong> แผนนี้เป็นการชำระครั้งเดียว (30 วัน) และจะสิ้นสุดลงโดยอัตโนมัติเมื่อครบกำหนดโดยไม่มีการเก็บเงินซ้ำค่ะ</p>
+        </div>
+        <div class="flex flex-col gap-2">
+            <button class="btn btn-emerald w-full justify-center py-3" onclick="closeModal('cancelModal'); openPortal();">
+                <i data-lucide="credit-card" class="w-4 h-4"></i> ไปที่หน้าจัดการ Stripe Portal
+            </button>
+            <div class="flex gap-2">
+                <button class="btn btn-red flex-1 justify-center py-2" id="confirmCancelBtn" onclick="doCancelPlan()">
+                    <i data-lucide="x-circle" class="w-3.5 h-3.5"></i> ยืนยันยกเลิกในระบบ
+                </button>
+                <button class="btn btn-slate flex-1 justify-center py-2" onclick="closeModal('cancelModal')">ปิดหน้าต่าง</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════ UPGRADE MODAL ══════════════════════ -->
+<div class="modal-overlay" id="upgradeModal">
+    <div class="modal-box" style="max-width:520px">
+        <div class="flex items-center justify-between mb-5">
+            <h2 class="text-xl font-extrabold text-slate-900">เลือกวิธีชำระเงิน</h2>
+            <button onclick="closeModal('upgradeModal')" class="text-slate-400 hover:text-slate-700 p-1">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+        <div id="upgradeModalBody" class="space-y-3"></div>
+    </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════
+// CONFIG
+// ════════════════════════════════════════════════════════
+const PLANS = {
+    free:     { label:'Free',  labelTh:'ฟรี',    price:0,   color:'#64748b', icon:'star',        badge:'badge-free' },
+    pro:      { label:'Pro',   labelTh:'โปร',    price:299, color:'#059669', icon:'zap',         badge:'badge-pro' },
+    business: { label:'Ultra', labelTh:'อัลตร้า',price:599, color:'#6366f1', icon:'building-2',  badge:'badge-business' },
+};
+const FEATURES = [
+    { key:'google_sheets',        label:'Google Sheets',      icon:'table-2' },
+    { key:'financial_dashboard',  label:'Dashboard การเงิน',  icon:'bar-chart-2' },
+    { key:'line_bot',             label:'LINE Bot',            icon:'message-circle' },
+    { key:'export',               label:'Export รายงาน',       icon:'download' },
+    { key:'priority_support',     label:'Priority Support',    icon:'headphones' },
+];
+
+let _currentPlan = 'free';
+let _pendingUpgradePlan = null;
+let _checkoutActive = false;
+
+// ════════════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', () => {
+    lucide.createIcons();
+    handlePaymentReturn();
+    loadBilling();
+});
+
+// ════════════════════════════════════════════════════════
+// PAYMENT RETURN BANNER
+// ════════════════════════════════════════════════════════
+function handlePaymentReturn() {
+    const p = new URLSearchParams(location.search);
+    const res = p.get('payment'), plan = p.get('plan');
+    const el = document.getElementById('payBanner');
+    if (res === 'success') {
+        el.className = 'max-w-5xl mx-auto px-4 pt-4';
+        el.innerHTML = `<div class="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-sm">
+            <div class="w-9 h-9 bg-emerald-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                <i data-lucide="check-circle" class="w-5 h-5 text-emerald-600"></i>
+            </div>
+            <div>
+                <p class="font-extrabold text-emerald-800">ชำระเงินสำเร็จ!</p>
+                <p class="text-emerald-600 text-xs mt-0.5">แพลนถูกอัปเกรดเป็น <strong>${PLANS[plan]?.label || plan}</strong> แล้วค่ะ ระบบจะอัปเดตภายใน 1–2 นาที</p>
+            </div>
+        </div>`;
+        lucide.createIcons();
+        history.replaceState({}, '', '/billing');
+    } else if (res === 'cancel') {
+        el.className = 'max-w-5xl mx-auto px-4 pt-4';
+        el.innerHTML = `<div id="cancelBanner" class="flex items-center justify-between gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl text-sm">
             <div class="flex items-center gap-3">
-                <a href="/" class="text-sm font-semibold text-slate-500 hover:text-slate-700 transition flex items-center gap-1.5">
-                    <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> กลับหน้าหลัก
-                </a>
-                <a href="/pricing" class="text-sm font-semibold text-emerald-600 hover:text-emerald-700 transition">ดูทุก Plan</a>
+                <i data-lucide="info" class="w-4 h-4 text-amber-500"></i>
+                <span class="text-amber-700">ยกเลิกการชำระเงินแล้วค่ะ ยังสามารถอัปเกรดได้ทุกเมื่อ</span>
+            </div>
+            <button onclick="document.getElementById('cancelBanner').remove()" class="text-amber-400 hover:text-amber-600 p-1"><i data-lucide="x" class="w-4 h-4"></i></button>
+        </div>`;
+        lucide.createIcons();
+        history.replaceState({}, '', '/billing');
+        setTimeout(() => { const b=document.getElementById('cancelBanner'); if(b) b.remove(); }, 8000);
+    }
+}
+
+// ════════════════════════════════════════════════════════
+// LOAD BILLING
+// ════════════════════════════════════════════════════════
+async function loadBilling() {
+    try {
+        const r = await fetch('/api/billing/status');
+        if (r.status === 401) { showAuthWall(); return; }
+        const d = await r.json();
+        if (!d.ok) throw new Error(d.error || 'โหลดข้อมูลไม่สำเร็จ');
+        _currentPlan = d.plan;
+        renderAll(d);
+    } catch(e) {
+        showErr(e.message);
+    }
+}
+
+// ════════════════════════════════════════════════════════
+// RENDER ALL
+// ════════════════════════════════════════════════════════
+function renderAll(d) {
+    document.getElementById('skeleton').classList.add('hidden');
+    const c = document.getElementById('content');
+    c.classList.remove('hidden');
+    c.innerHTML = [
+        renderPlanHeader(d),
+        renderUsage(d),
+        renderPlanCards(d),
+        renderFeatures(d),
+        renderFooter(),
+    ].join('');
+    lucide.createIcons();
+}
+
+// ── Plan Header ─────────────────────────────────────────
+function renderPlanHeader(d) {
+    const plan = d.plan;
+    const cfg  = PLANS[plan] || PLANS.free;
+    const isPaid = plan !== 'free';
+
+    const expiryHtml = d.plan_expires_at
+        ? `<span class="text-xs text-slate-500 flex items-center gap-1"><i data-lucide="calendar" class="w-3.5 h-3.5"></i>ต่ออายุ: ${fmtDate(d.plan_expires_at)}</span>`
+        : (isPaid ? `<span class="text-xs text-teal-600 flex items-center gap-1"><i data-lucide="infinity" class="w-3.5 h-3.5"></i>ไม่มีกำหนดหมดอายุ</span>` : '');
+
+    const expiredTag = d.is_expired
+        ? `<span class="plan-badge bg-rose-100 text-rose-600 border border-rose-200 ml-2">หมดอายุ</span>` : '';
+
+    let actions = '';
+    if (plan === 'free') {
+        actions = `<button class="btn btn-emerald" onclick="openUpgradeModal('pro')"><i data-lucide="zap" class="w-4 h-4"></i>อัปเกรด Pro — ฿299/เดือน</button>
+                   <button class="btn btn-slate"   onclick="openUpgradeModal('business')"><i data-lucide="building-2" class="w-4 h-4"></i>Ultra — ฿599/เดือน</button>`;
+    } else if (plan === 'pro') {
+        actions = `<button class="btn btn-indigo"  onclick="openUpgradeModal('business')"><i data-lucide="arrow-up" class="w-4 h-4"></i>อัปเกรดเป็น Ultra</button>
+                   <button class="btn btn-slate"   onclick="openPortal()"><i data-lucide="credit-card" class="w-4 h-4"></i>จัดการ Subscription (ผ่าน Stripe)</button>`;
+    } else {
+        actions = `<button class="btn btn-slate"   onclick="openPortal()"><i data-lucide="credit-card" class="w-4 h-4"></i>จัดการ Subscription (ผ่าน Stripe)</button>`;
+    }
+
+    const cancelLink = isPaid
+        ? `<button onclick="openModal('cancelModal')" class="text-xs text-slate-400 hover:text-rose-500 mt-2 block text-left transition-colors underline decoration-dotted">ยกเลิกแผนการสมัคร</button>`
+        : '';
+
+    return `
+    <div class="bg-white border border-slate-200 rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-5">
+        <div class="flex items-center gap-4">
+            <div class="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0"
+                 style="background:${cfg.color}18;border:2px solid ${cfg.color}35">
+                <i data-lucide="${cfg.icon}" class="w-6 h-6" style="color:${cfg.color}"></i>
+            </div>
+            <div>
+                <p class="text-[10px] font-bold text-slate-500 uppercase tracking-[.12em] mb-0.5">แพลนปัจจุบัน</p>
+                <div class="flex items-center gap-2 flex-wrap">
+                    <h1 class="text-3xl font-black text-slate-900">${cfg.label}</h1>
+                    <span class="plan-badge ${cfg.badge}">${cfg.labelTh}</span>
+                    ${expiredTag}
+                </div>
+                <div class="flex items-center gap-3 mt-1 flex-wrap">
+                    <span class="text-sm font-semibold text-slate-500">฿${cfg.price.toLocaleString()}/เดือน</span>
+                    ${expiryHtml}
+                </div>
+                ${cancelLink}
             </div>
         </div>
-    </nav>
+        <div class="flex flex-wrap gap-2 sm:justify-end">${actions}</div>
+    </div>`;
+}
 
-    <!-- Payment result banner -->
-    <div id="paymentBanner" class="hidden max-w-4xl mx-auto px-4 pt-5"></div>
+// ── Usage ───────────────────────────────────────────────
+function renderUsage(d) {
+    const u = d.usage;
+    // kb_files and max_users are now {used, limit} objects
+    const kbStat  = typeof u.kb_files  === 'object' ? u.kb_files  : { used: 0, limit: u.kb_files };
+    const memStat = typeof u.max_users === 'object' ? u.max_users : { used: 0, limit: u.max_users };
+    const kbPct   = kbStat.limit === -1 ? 100 : kbStat.limit > 0 ? Math.min(Math.round((kbStat.used / kbStat.limit) * 100), 100) : 0;
+    const memPct  = memStat.limit === -1 ? 100 : memStat.limit > 0 ? Math.min(Math.round((memStat.used / memStat.limit) * 100), 100) : 0;
+    Object.assign(kbStat, { pct: kbPct });
+    Object.assign(memStat, { pct: memPct });
 
-    <main class="max-w-4xl mx-auto px-4 py-8 space-y-5" id="mainContent">
-        <div class="py-24 flex flex-col items-center gap-3">
-            <div class="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full spinning"></div>
-            <p class="text-sm text-slate-400">กำลังโหลดข้อมูลแพลน...</p>
+    return `
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        ${usageCard('บันทึกค่าใช้จ่าย',      u.expenses, 'receipt',        'รายการ')}
+        ${usageCard('AI ถามตอบ',              u.ai_queries, 'message-circle','ครั้ง')}
+        ${usageCard('ไฟล์ Knowledge Base',    kbStat,     'files',          'ไฟล์')}
+        ${usageCard('สมาชิกในทีม',            memStat,    'users',          'คน')}
+    </div>`;
+}
+
+function usageCard(label, stat, icon, unit) {
+    const unlimited = stat.limit === -1;
+    const pct   = unlimited ? 100 : Math.min(stat.pct ?? 0, 100);
+    const barC  = pct >= 90 ? '#e11d48' : pct >= 70 ? '#d97706' : '#0d9488';
+    const fillC = unlimited ? '#2dd4bf' : barC;
+    const labelColor = unlimited ? 'text-teal-600' : pct >= 90 ? 'text-rose-600' : 'text-slate-500';
+    const labelText  = unlimited ? 'ไม่จำกัด (Unlimited)' : `${pct}% ของโควต้า`;
+
+    return `
+    <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+        <div class="flex items-center gap-2 mb-3">
+            <i data-lucide="${icon}" class="w-4 h-4 text-slate-500"></i>
+            <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">${label}</p>
         </div>
-    </main>
+        <div class="flex items-baseline gap-1.5 mb-3">
+            <span class="text-3xl font-black text-slate-900">${(stat.used ?? 0).toLocaleString()}</span>
+            <span class="text-sm text-slate-500 font-medium">
+                ${unlimited ? '<span class="text-teal-600 font-bold">/ ไม่จำกัด</span>' : `/ ${stat.limit.toLocaleString()} ${unit}`}
+            </span>
+        </div>
+        <div class="usage-track">
+            <div class="usage-fill" style="width:${pct}%;background:${fillC}"></div>
+        </div>
+        <p class="text-[10px] mt-1.5 font-semibold text-right ${labelColor}">
+            ${labelText}
+        </p>
+    </div>`;
+}
 
-    <script>
-        const PLAN_COLOR = { free:'#64748b', pro:'#059669', business:'#0f172a' };
-        const PLAN_LABEL = { free:'Free', pro:'Pro', business:'Ultra' };
-        const PLAN_PRICE = { free:'฿0', pro:'฿299', business:'฿599' };
+// ── Plan Cards (Compare / Switch) ───────────────────────
+function renderPlanCards(d) {
+    const cur = d.plan;
+    const rows = Object.entries(PLANS).map(([key, cfg]) => {
+        const isCurrent = key === cur;
+        const isLower   = planRank(key) <= planRank(cur) && !isCurrent;
+        let cardClass = `plan-card relative flex flex-col gap-4 p-5 ${key === 'business' ? 'plan-business' : ''}`;
+        if (isCurrent) {
+            cardClass += ' active';
+        }
+        if (key === 'pro') {
+            cardClass += ' plan-pro-featured ring-2 ring-emerald-500/20';
+        }
 
-        window.onload = function() {
+        const limits = {
+            free:     ['10 รายการ','35 ครั้ง','5 ไฟล์','1 คน'],
+            pro:      ['ไม่จำกัด','ไม่จำกัด','100 ไฟล์','3 คน'],
+            business: ['ไม่จำกัด','ไม่จำกัด','ไม่จำกัด','10 คน'],
+        }[key];
+
+        const feats = {
+            free:     [false, false, false, false, false],
+            pro:      [true,  true,  true,  false, false],
+            business: [true,  true,  true,  true,  true],
+        }[key];
+
+        let btnHtml = '';
+        if (isCurrent) {
+            btnHtml = `<div class="btn btn-emerald opacity-90 justify-center w-full pointer-events-none">
+                <i data-lucide="check" class="w-4 h-4"></i> แพลนปัจจุบัน</div>`;
+        } else if (isLower) {
+            btnHtml = `<div class="btn btn-slate justify-center w-full pointer-events-none opacity-60">Downgrade ไม่รองรับ</div>`;
+        } else {
+            const btnC = key === 'business' ? 'btn-indigo' : 'btn-emerald';
+            btnHtml = `<button class="btn ${btnC} justify-center w-full" onclick="openUpgradeModal('${key}')">
+                <i data-lucide="zap" class="w-4 h-4"></i> อัปเกรดเป็น ${cfg.label}</button>`;
+        }
+
+        const limitItems = ['บันทึกค่าใช้จ่าย/เดือน','AI ถามตอบ/เดือน','คลังความรู้ (KB)','สมาชิกในทีม']
+            .map((l,i) => `<div class="flex items-center gap-2 text-sm text-slate-600">
+                <i data-lucide="check" class="w-3.5 h-3.5 flex-shrink-0" style="color:${cfg.color}"></i>
+                <span>${l}: <span class="font-bold text-slate-800">${limits[i]}</span></span>
+            </div>`).join('');
+
+        const featItems = FEATURES.map((f,i) => feats[i]
+            ? `<span class="feat-on"><i data-lucide="check" class="w-2.5 h-2.5"></i>${f.label}</span>`
+            : `<span class="feat-off"><i data-lucide="minus" class="w-2.5 h-2.5"></i>${f.label}</span>`
+        ).join('');
+
+        const popularTag = key === 'pro'
+            ? `<span class="absolute -top-3 right-4 bg-gradient-to-r from-amber-500 to-amber-600 text-white text-[10px] font-black px-3 py-1 rounded-full shadow-lg flex items-center gap-1 z-20 border border-amber-300">⭐ ยอดนิยม</span>`
+            : '';
+        const priceHtml  = cfg.price === 0
+            ? `<span class="text-3xl font-black text-slate-900">ฟรี</span>`
+            : `<span class="text-3xl font-black text-slate-900">฿${cfg.price.toLocaleString()}</span><span class="text-slate-500 text-sm">/เดือน</span>`;
+
+        return `
+        <div class="${cardClass}">
+            <div>
+                <div class="flex items-center gap-2 mb-1">
+                    <i data-lucide="${cfg.icon}" class="w-5 h-5" style="color:${cfg.color}"></i>
+                    <span class="font-extrabold text-slate-900 text-lg">${cfg.label}</span>
+                    ${isCurrent ? `<span class="plan-badge ${cfg.badge}">ปัจจุบัน</span>` : ''}
+                </div>
+                <div class="flex items-baseline gap-1.5 mt-2">${priceHtml}</div>
+            </div>
+            <div class="space-y-2 mt-2">${limitItems}</div>
+            <div class="flex flex-wrap gap-1.5 mt-auto pt-2">${featItems}</div>
+            <div class="mt-4">${btnHtml}</div>
+            ${popularTag}
+        </div>`;
+    }).join('');
+
+    return `
+    <div class="bg-white border border-slate-200 rounded-2xl p-6">
+        <h2 class="text-sm font-extrabold text-slate-700 uppercase tracking-widest mb-5 flex items-center gap-2">
+            <i data-lucide="layers" class="w-4 h-4 text-slate-500"></i> เปรียบเทียบแพลน
+        </h2>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">${rows}</div>
+    </div>`;
+}
+
+// ── Features ────────────────────────────────────────────
+function renderFeatures(d) {
+    const rows = FEATURES.map(f => {
+        const on = d.features[f.key];
+        return `
+        <div class="flex items-center justify-between py-3 border-b border-slate-100 last:border-0">
+            <div class="flex items-center gap-2.5 text-sm">
+                <i data-lucide="${f.icon}" class="w-4 h-4 text-slate-400"></i>
+                <span class="font-semibold text-slate-700">${f.label}</span>
+            </div>
+            ${on
+                ? `<span class="feat-on"><i data-lucide="check" class="w-3 h-3"></i>รวมอยู่ในแพลนของคุณ</span>`
+                : `<span class="feat-off"><i data-lucide="lock" class="w-3 h-3"></i>ต้องอัปเกรด</span>`}
+        </div>`;
+    }).join('');
+
+    return `
+    <div class="bg-white border border-slate-200 rounded-2xl p-6">
+        <h2 class="text-sm font-extrabold text-slate-700 uppercase tracking-widest mb-3 flex items-center gap-2">
+            <i data-lucide="sparkles" class="w-4 h-4 text-slate-400"></i> ฟีเจอร์ในแพลนของคุณ
+        </h2>
+        <div class="divide-y divide-slate-100">${rows}</div>
+    </div>`;
+}
+
+// ── Footer ──────────────────────────────────────────────
+function renderFooter() {
+    return `
+    <div class="text-center py-3">
+        <p class="text-xs text-slate-400">
+            ชำระเงินปลอดภัยด้วย <strong class="text-slate-600">Stripe</strong> —
+            รองรับบัตรเครดิต Visa/Mastercard และ PromptPay •
+            <a href="mailto:mxmm2547@gmail.com" class="text-emerald-600 hover:underline font-semibold">ติดต่อทีมงาน</a>
+        </p>
+    </div>`;
+}
+
+// ════════════════════════════════════════════════════════
+// UPGRADE MODAL
+// ════════════════════════════════════════════════════════
+function openUpgradeModal(plan) {
+    _pendingUpgradePlan = plan;
+    const cfg = PLANS[plan];
+    document.getElementById('upgradeModalBody').innerHTML = `
+        <div class="bg-slate-50 border border-slate-100 rounded-2xl p-4 mb-1">
+            <div class="flex items-center gap-3 mb-1">
+                <i data-lucide="${cfg.icon}" class="w-5 h-5" style="color:${cfg.color}"></i>
+                <span class="font-extrabold text-slate-900 text-lg">อัปเกรดเป็น ${cfg.label}</span>
+            </div>
+            <p class="text-2xl font-black text-slate-900">฿${cfg.price.toLocaleString()} <span class="text-base font-semibold text-slate-400">/เดือน</span></p>
+        </div>
+        <p class="text-sm text-slate-500 px-1 mb-3">เลือกช่องทางชำระเงิน</p>
+        <button class="btn btn-emerald w-full justify-center text-base py-3.5 mb-2" id="cardBtn" onclick="doCheckout('card')">
+            <i data-lucide="credit-card" class="w-5 h-5"></i> บัตรเครดิต / Visa / Mastercard
+        </button>
+        <button class="btn btn-outline w-full justify-center text-base py-3.5" id="ppBtn" onclick="doCheckout('promptpay')">
+            <svg class="w-5 h-5" viewBox="0 0 40 40" fill="none">
+                <circle cx="20" cy="20" r="20" fill="#1a1a2e"/>
+                <text x="50%" y="56%" dominant-baseline="middle" text-anchor="middle" fill="#00a651" font-size="8" font-weight="700">PP</text>
+            </svg>
+            PromptPay — จ่ายครั้งเดียว 30 วัน
+        </button>
+        <p class="text-[11px] text-slate-400 text-center mt-3">PromptPay = ชำระครั้งเดียว ต้องต่ออายุเองทุก 30 วัน</p>`;
+    lucide.createIcons();
+    openModal('upgradeModal');
+}
+
+async function doCheckout(method) {
+    if (_checkoutActive) return;
+    _checkoutActive = true;
+
+    const plan = _pendingUpgradePlan;
+    const isCard = method === 'card';
+    const btn = document.getElementById(isCard ? 'cardBtn' : 'ppBtn');
+    const cardBtn = document.getElementById('cardBtn');
+    const ppBtn = document.getElementById('ppBtn');
+
+    const cardLabel = '<i data-lucide="credit-card" class="w-5 h-5"></i> บัตรเครดิต / Visa / Mastercard';
+    const ppLabel   = 'PromptPay — จ่ายครั้งเดียว 30 วัน';
+
+    function resetBtn() {
+        _checkoutActive = false;
+        cardBtn.disabled = false;
+        ppBtn.disabled = false;
+        cardBtn.innerHTML = cardLabel;
+        ppBtn.innerHTML = ppLabel;
+        lucide.createIcons();
+    }
+
+    cardBtn.disabled = true;
+    ppBtn.disabled = true;
+    btn.innerHTML = `<span class="w-4 h-4 border-2 border-white border-t-transparent rounded-full spin"></span> กำลังโหลด...`;
+
+    try {
+        const endpoint = isCard ? '/api/b/c' : '/api/b/cp';
+        const res = await fetch(endpoint, {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({ plan })
+        });
+
+        if (res.status === 401) { window.location.href = `/signup?plan=${plan}`; return; }
+
+        const data = await res.json();
+        if (data.ok && data.url) {
+            window.location.href = data.url;
+        } else if (data.needs_org) {
+            closeModal('upgradeModal');
+            toast('กำลังสร้างองค์กรเริ่มต้นและเตรียมหน้าชำระเงิน...', 'info');
+            setTimeout(() => { window.location.href = '/onboarding'; }, 1500);
+        } else {
+            toast(data.error || 'เกิดข้อผิดพลาด กรุณาลองใหม่', 'error');
+            resetBtn();
+        }
+    } catch(e) {
+        toast('เชื่อมต่อไม่ได้: ' + e.message, 'error');
+        resetBtn();
+    }
+}
+
+// ════════════════════════════════════════════════════════
+// STRIPE PORTAL
+// ════════════════════════════════════════════════════════
+async function openPortal() {
+    toast('กำลังเปิด Subscription Portal...', 'info');
+    try {
+        const res  = await fetch('/api/b/p', { method:'POST' });
+        const data = await res.json();
+        if (data.ok && data.url) {
+            window.location.href = data.url;
+        } else {
+            toast(data.error || 'ไม่สามารถเปิด Portal ได้', 'error');
+        }
+    } catch(e) {
+        toast('เกิดข้อผิดพลาด: ' + e.message, 'error');
+    }
+}
+
+// ════════════════════════════════════════════════════════
+// CANCEL PLAN
+// ════════════════════════════════════════════════════════
+async function doCancelPlan() {
+    const btn = document.getElementById('confirmCancelBtn');
+    btn.disabled = true;
+    btn.innerHTML = `<span class="w-4 h-4 border-2 border-current border-t-transparent rounded-full spin"></span> กำลังยกเลิก...`;
+    try {
+        const res  = await fetch('/api/billing/cancel-plan', { method:'POST' });
+        const data = await res.json();
+        if (data.ok) {
+            closeModal('cancelModal');
+            toast('ยกเลิกแผนสำเร็จ — Downgrade เป็น Free แล้วค่ะ', 'success');
+            setTimeout(loadBilling, 1200);
+        } else {
+            toast(data.error || 'ยกเลิกไม่สำเร็จ', 'error');
+            btn.disabled = false;
+            btn.innerHTML = '<i data-lucide="x-circle" class="w-4 h-4"></i> ยืนยันยกเลิก';
             lucide.createIcons();
-            handlePaymentReturn();
-            loadBillingStatus();
-        };
-
-        // ─── Handle redirect back from Stripe ────────────────────────────────
-        function handlePaymentReturn() {
-            const params = new URLSearchParams(location.search);
-            const result = params.get('payment');
-            const plan   = params.get('plan');
-            const banner = document.getElementById('paymentBanner');
-
-            if (result === 'success') {
-                banner.className = 'max-w-4xl mx-auto px-4 pt-5';
-                banner.innerHTML = `
-                    <div class="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-sm">
-                        <div class="w-8 h-8 bg-emerald-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                            <i data-lucide="check-circle" class="w-4 h-4 text-emerald-600"></i>
-                        </div>
-                        <div>
-                            <p class="font-bold text-emerald-800">ชำระเงินสำเร็จ!</p>
-                            <p class="text-emerald-600 text-xs mt-0.5">Plan ของคุณถูกอัปเกรดเป็น <strong>${PLAN_LABEL[plan] || plan}</strong> แล้วค่ะ ระบบจะอัปเดตภายใน 1-2 นาที</p>
-                        </div>
-                    </div>`;
-                lucide.createIcons();
-                history.replaceState({}, '', '/billing');
-            } else if (result === 'cancel') {
-                banner.className = 'max-w-4xl mx-auto px-4 pt-5';
-                banner.innerHTML = `
-                    <div class="flex items-center gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm">
-                        <i data-lucide="info" class="w-4 h-4 text-amber-500 flex-shrink-0"></i>
-                        <p class="text-amber-700">ยกเลิกการชำระเงินแล้วค่ะ ยังสามารถอัปเกรดได้ทุกเมื่อ</p>
-                    </div>`;
-                lucide.createIcons();
-                history.replaceState({}, '', '/billing');
-            }
         }
+    } catch(e) {
+        toast('เกิดข้อผิดพลาด: ' + e.message, 'error');
+        btn.disabled = false;
+    }
+}
 
-        // ─── Load billing data ────────────────────────────────────────────────
-        function loadBillingStatus() {
-            fetch('/api/billing/status')
-                .then(r => r.json())
-                .then(data => {
-                    if (!data.ok) { showError(data.error); return; }
-                    renderBilling(data);
-                })
-                .catch(e => showError(e.message));
-        }
+// ════════════════════════════════════════════════════════
+// HELPERS
+// ════════════════════════════════════════════════════════
+function planRank(p) { return { free:0, pro:1, business:2 }[p] ?? 0; }
 
-        function renderBilling(d) {
-            const main = document.getElementById('mainContent');
-            const plan  = d.plan;
-            const usage = d.usage;
-            const color = PLAN_COLOR[plan] || '#64748b';
-            const isPaid = plan !== 'free';
+function fmtDate(iso) {
+    try { return new Date(iso).toLocaleDateString('th-TH', { year:'numeric', month:'long', day:'numeric' }); }
+    catch { return iso; }
+}
 
-            const expiresHtml = d.plan_expires_at
-                ? `<span class="text-xs text-slate-400 font-medium">ต่ออายุ: ${fmtDate(d.plan_expires_at)}</span>`
-                : (isPaid ? `<span class="text-xs text-emerald-600 font-medium">ไม่มีกำหนดหมดอายุ</span>` : '');
+function openModal(id)  {
+    document.getElementById(id).classList.add('open');
+    document.body.style.overflow = 'hidden';
+}
+function closeModal(id) {
+    document.getElementById(id).classList.remove('open');
+    document.body.style.overflow = '';
+}
+// Close modal on overlay click
+document.querySelectorAll('.modal-overlay').forEach(el => {
+    el.addEventListener('click', e => { if(e.target === el) closeModal(el.id); });
+});
 
-            const expiredBadge = d.is_expired
-                ? `<span class="ml-2 text-xs text-rose-500 font-bold bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">หมดอายุ</span>` : '';
+let _toastTimer = null;
+function toast(msg, type='info') {
+    const el   = document.getElementById('toast');
+    const inner= document.getElementById('toastInner');
+    const icon = document.getElementById('toastIcon');
+    const txt  = document.getElementById('toastMsg');
 
-            // Action buttons
-            let actionHtml = '';
-            if (plan === 'free') {
-                actionHtml = `
-                    <button onclick="checkout('pro')"   id="btn-pro"      class="btn-primary">อัปเกรดเป็น Pro — ฿299/เดือน</button>
-                    <button onclick="checkout('business')" id="btn-business" class="btn-ghost">Ultra — ฿599/เดือน</button>`;
-            } else if (plan === 'pro') {
-                actionHtml = `
-                    <button onclick="checkout('business')" id="btn-business" class="btn-primary">อัปเกรดเป็น Ultra — ฿599/เดือน</button>
-                    <button onclick="openPortal()" class="btn-ghost">จัดการ Subscription</button>`;
-            } else {
-                actionHtml = `<button onclick="openPortal()" class="btn-ghost">จัดการ Subscription</button>`;
-            }
+    const _styleMap = {
+        success:{ bg:'#d1fae5', border:'#6ee7b7', text:'#065f46', ic:'check-circle' },
+        error:  { bg:'#fee2e2', border:'#fca5a5', text:'#991b1b', ic:'alert-triangle' },
+        info:   { bg:'#dbeafe', border:'#93c5fd', text:'#1e3a8a', ic:'info' },
+    };
+    const styles = _styleMap[type] || _styleMap.info;
 
-            main.innerHTML = `
-            <!-- Plan Header -->
-            <div class="stat-card p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div class="flex items-center gap-4">
-                    <div class="w-12 h-12 rounded-2xl flex items-center justify-center" style="background:${color}15;border:1.5px solid ${color}30">
-                        <i data-lucide="${plan==='business'?'building-2':plan==='pro'?'zap':'star'}" class="w-5 h-5" style="color:${color}"></i>
-                    </div>
-                    <div>
-                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">แพลนปัจจุบัน</p>
-                        <div class="flex items-center gap-2 flex-wrap">
-                            <h1 class="text-2xl font-extrabold text-slate-900">${PLAN_LABEL[plan] || plan}</h1>
-                            ${expiredBadge}
-                        </div>
-                        ${expiresHtml}
-                    </div>
-                </div>
-                <div class="flex flex-wrap gap-2">
-                    ${actionHtml}
-                    <a href="/pricing" class="btn-ghost">ดูทุก Plan</a>
-                </div>
-            </div>
+    inner.style.background  = styles.bg;
+    inner.style.border      = `1px solid ${styles.border}`;
+    inner.style.color       = styles.text;
+    icon.setAttribute('data-lucide', styles.ic);
+    txt.textContent = msg;
+    lucide.createIcons();
 
-            <!-- Usage -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                ${usageCard('บันทึกค่าใช้จ่าย', usage.expenses, 'receipt', 'รายการ/เดือน')}
-                ${usageCard('AI ถามตอบ', usage.ai_queries, 'message-circle', 'ครั้ง/เดือน')}
-            </div>
+    el.classList.remove('hidden');
+    if (_toastTimer) clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(() => el.classList.add('hidden'), 4500);
+}
 
-            <!-- Features -->
-            <div class="stat-card p-6">
-                <h3 class="text-sm font-bold text-slate-700 uppercase tracking-widest mb-5">รายละเอียด Plan</h3>
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    ${limitBadge('สมาชิกสูงสุด', usage.max_users)}
-                    ${limitBadge('Knowledge Base', usage.kb_files)}
-                    ${featureBadge('Google Sheets', d.features.google_sheets)}
-                    ${featureBadge('LINE Bot', d.features.line_bot)}
-                    ${featureBadge('Dashboard', d.features.financial_dashboard)}
-                    ${featureBadge('Export รายงาน', d.features.export)}
-                    ${featureBadge('Priority Support', d.features.priority_support)}
-                </div>
-            </div>
+function showErr(msg) {
+    document.getElementById('skeleton').classList.add('hidden');
+    const c = document.getElementById('content');
+    c.classList.remove('hidden');
+    const isAuth = msg.includes('401') || msg.includes('login') || msg.includes('เข้าสู่');
+    c.innerHTML = `
+    <div class="py-24 flex flex-col items-center gap-4 text-center">
+        <div class="w-16 h-16 bg-rose-50 rounded-2xl flex items-center justify-center">
+            <i data-lucide="alert-triangle" class="w-8 h-8 text-rose-400"></i>
+        </div>
+        <p class="text-slate-500 text-sm max-w-xs">${msg}</p>
+        <div class="flex gap-3 mt-1">
+            ${isAuth
+                ? `<a href="/" class="btn btn-emerald">เข้าสู่ระบบ</a>`
+                : `<button onclick="loadBilling()" class="btn btn-emerald">ลองใหม่</button>`}
+            <a href="/" class="btn btn-slate">กลับหน้าหลัก</a>
+        </div>
+    </div>`;
+    lucide.createIcons();
+}
 
-            <!-- Stripe note -->
-            <div class="text-center py-2">
-                <p class="text-xs text-slate-400">
-                    ชำระเงินปลอดภัยด้วย
-                    <strong class="text-slate-600">Stripe</strong> —
-                    รองรับบัตรเครดิต Visa/Mastercard •
-                    <a href="mailto:contact@orgchat.ai" class="text-emerald-600 hover:underline font-semibold">ติดต่อทีมงาน</a>
-                    สำหรับ PromptPay หรือใบแจ้งหนี้
-                </p>
-            </div>`;
-
-            lucide.createIcons();
-        }
-
-        // ─── Checkout ────────────────────────────────────────────────────────
-        async function checkout(plan) {
-            const btn = document.getElementById(`btn-${plan}`);
-            const originalText = btn ? (btn.dataset.label || btn.textContent) : 'อัปเกรด';
-            if (btn) { btn.disabled = true; btn.textContent = 'กำลังโหลด...'; }
-
-            try {
-                const res = await fetch('/api/b/c', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ plan })
-                });
-
-                if (res.status === 401) {
-                    window.location.href = `/signup?plan=${plan}`;
-                    return;
-                }
-
-                let data;
-                try {
-                    data = await res.json();
-                } catch (jsonErr) {
-                    const txt = await res.text();
-                    console.error("Non-JSON Response:", txt);
-                    alert(`ไม่สามารถเชื่อมต่อระบบชำระเงินได้ (Status: ${res.status}). รายละเอียด: ${txt.substring(0, 100)}`);
-                    if (btn) { btn.disabled = false; btn.textContent = originalText; }
-                    return;
-                }
-
-                if (data.ok && data.url) {
-                    window.location.href = data.url;
-                } else {
-                    alert('เกิดข้อผิดพลาด: ' + (data.error || 'ไม่ทราบสาเหตุ'));
-                    if (btn) { btn.disabled = false; btn.textContent = originalText; }
-                }
-            } catch (e) {
-                console.error("Checkout fetch error:", e);
-                alert('เกิดข้อผิดพลาด: ' + e.message);
-                if (btn) { btn.disabled = false; btn.textContent = originalText; }
-            }
-        }
-
-        // ─── Stripe Customer Portal ───────────────────────────────────────────
-        async function openPortal() {
-            try {
-                const res = await fetch('/api/b/p', { method: 'POST' });
-                
-                let data;
-                try {
-                    data = await res.json();
-                } catch (jsonErr) {
-                    const txt = await res.text();
-                    console.error("Non-JSON Response:", txt);
-                    alert(`ไม่สามารถเปิด Subscription Portal ได้ (Status: ${res.status}). รายละเอียด: ${txt.substring(0, 100)}`);
-                    return;
-                }
-
-                if (data.ok && data.url) {
-                    window.location.href = data.url;
-                } else {
-                    alert('ไม่สามารถเปิด Subscription Portal ได้: ' + (data.error || ''));
-                }
-            } catch (e) {
-                console.error("OpenPortal fetch error:", e);
-                alert('เกิดข้อผิดพลาด: ' + e.message);
-            }
-        }
-
-        // ─── UI helpers ──────────────────────────────────────────────────────
-        function usageCard(label, stat, icon, unit) {
-            const unlimited = stat.limit === -1;
-            const pct = unlimited ? 0 : Math.min(stat.pct, 100);
-            const barColor = pct >= 90 ? '#ef4444' : pct >= 70 ? '#f59e0b' : '#059669';
-            const limitLabel = unlimited
-                ? `<span class="text-emerald-600 font-bold text-xs">ไม่จำกัด</span>`
-                : `<span class="text-slate-400 text-xs">/ ${stat.limit.toLocaleString()} ${unit}</span>`;
-
-            return `
-            <div class="stat-card p-5">
-                <div class="flex items-center gap-2 mb-3">
-                    <i data-lucide="${icon}" class="w-4 h-4 text-slate-400"></i>
-                    <p class="text-xs font-bold text-slate-500 uppercase tracking-wider">${label}</p>
-                </div>
-                <div class="flex items-baseline gap-1.5 mb-3">
-                    <span class="text-2xl font-extrabold text-slate-900">${stat.used.toLocaleString()}</span>
-                    ${limitLabel}
-                </div>
-                <div class="usage-bar-bg">
-                    <div class="usage-bar-fill" style="width:${unlimited?100:pct}%;background:${unlimited?'#d1fae5':barColor};"></div>
-                </div>
-                <p class="text-[10px] mt-1.5 font-medium text-right ${unlimited?'text-emerald-500':'text-slate-400'}">
-                    ${unlimited ? 'Unlimited' : pct + '% ของโควต้า'}
-                </p>
-            </div>`;
-        }
-
-        function limitBadge(label, val) {
-            const display = val === -1 ? 'ไม่จำกัด' : val.toLocaleString();
-            return `
-            <div class="bg-slate-50 border border-slate-100 rounded-xl p-3 text-center">
-                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">${label}</p>
-                <p class="text-lg font-extrabold ${val===-1?'text-emerald-600':'text-slate-800'}">${display}</p>
-            </div>`;
-        }
-
-        function featureBadge(label, enabled) {
-            return `
-            <div class="bg-slate-50 border border-slate-100 rounded-xl p-3 text-center">
-                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">${label}</p>
-                ${enabled
-                    ? `<span class="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full"><i data-lucide="check" class="w-3 h-3"></i>รวมอยู่</span>`
-                    : `<span class="inline-flex items-center gap-1 text-[11px] font-bold text-slate-400 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-full"><i data-lucide="x" class="w-3 h-3"></i>ไม่รวม</span>`
-                }
-            </div>`;
-        }
-
-        function fmtDate(iso) {
-            try { return new Date(iso).toLocaleDateString('th-TH', {year:'numeric',month:'long',day:'numeric'}); }
-            catch { return iso; }
-        }
-
-        function showError(msg) {
-            document.getElementById('mainContent').innerHTML =
-                `<div class="py-24 text-center text-rose-400 text-sm">เกิดข้อผิดพลาด: ${msg}</div>`;
-        }
-    </script>
+function showAuthWall() {
+    showErr('กรุณาเข้าสู่ระบบก่อนดูข้อมูลแพลน');
+}
+</script>
 </body>
 </html>

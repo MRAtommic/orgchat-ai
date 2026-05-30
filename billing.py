@@ -87,27 +87,33 @@ def _get_conn():
 def init_billing_tables():
     """Run once at startup to ensure billing tables exist."""
     conn = _get_conn()
-    cur = conn.cursor()
-
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS usage_tracking (
-            org_id      INTEGER NOT NULL,
-            year_month  TEXT    NOT NULL,
-            expense_count    INTEGER DEFAULT 0,
-            ai_query_count   INTEGER DEFAULT 0,
-            updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (org_id, year_month)
-        )
-    """)
-
-    # Migration: add plan_expires_at to organizations if not exists
     try:
-        cur.execute("ALTER TABLE organizations ADD COLUMN plan_expires_at DATETIME")
-    except Exception:
-        pass
+        cur = conn.cursor()
 
-    conn.commit()
-    conn.close()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS usage_tracking (
+                org_id      INTEGER NOT NULL,
+                year_month  TEXT    NOT NULL,
+                expense_count    INTEGER DEFAULT 0,
+                ai_query_count   INTEGER DEFAULT 0,
+                updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (org_id, year_month)
+            )
+        """)
+
+        # Migrations: add columns to organizations if not exists
+        for _col_sql in [
+            "ALTER TABLE organizations ADD COLUMN plan_expires_at DATETIME",
+            "ALTER TABLE organizations ADD COLUMN plan_expiry_notified INTEGER DEFAULT 0",
+        ]:
+            try:
+                cur.execute(_col_sql)
+            except Exception:
+                pass
+
+        conn.commit()
+    finally:
+        conn.close()
 
 
 # ─── Plan resolution ─────────────────────────────────────────────────────────
@@ -140,6 +146,26 @@ def get_effective_plan(org_id: int) -> str:
             if exp_dt.tzinfo is None:
                 exp_dt = exp_dt.replace(tzinfo=timezone.utc)
             if exp_dt < datetime.now(timezone.utc):
+                # Downgrade DB — check flag ก่อนเพื่อ notify แค่ครั้งเดียว
+                try:
+                    _sync = _get_conn()
+                    _flag = _sync.execute(
+                        "SELECT plan_expiry_notified FROM organizations WHERE id=?", (org_id,)
+                    ).fetchone()
+                    already_notified = bool(_flag and _flag["plan_expiry_notified"])
+                    _sync.execute(
+                        "UPDATE organizations SET plan='free', plan_expires_at=NULL, plan_expiry_notified=1 WHERE id=?",
+                        (org_id,)
+                    )
+                    _sync.commit()
+                    _sync.close()
+                    if not already_notified:
+                        import threading
+                        threading.Thread(
+                            target=_send_expiry_notification, args=(org_id,), daemon=True
+                        ).start()
+                except Exception:
+                    pass
                 return "free"
         except Exception:
             pass
@@ -251,12 +277,68 @@ def set_org_plan(org_id: int, plan: str, expires_at: str = None):
     if plan not in PLANS:
         raise ValueError(f"Unknown plan: {plan}")
     conn = _get_conn()
-    conn.execute(
-        "UPDATE organizations SET plan=?, plan_expires_at=? WHERE id=?",
-        (plan, expires_at, org_id),
-    )
+    if plan != "free" and expires_at:
+        # ใช้ MAX เพื่อป้องกัน redirect fallback ทับ expires_at ที่ webhook ตั้งไว้ถูกต้องแล้ว
+        # รีเซ็ต plan_expiry_notified เมื่อ upgrade ใหม่ เพื่อให้แจ้งเตือนได้อีกครั้งถ้าหมดอายุ
+        conn.execute(
+            """UPDATE organizations
+               SET plan=?,
+                   plan_expires_at=CASE
+                       WHEN plan_expires_at IS NULL OR plan_expires_at < ? THEN ?
+                       ELSE plan_expires_at
+                   END,
+                   plan_expiry_notified=0
+               WHERE id=?""",
+            (plan, expires_at, expires_at, org_id),
+        )
+    else:
+        conn.execute(
+            "UPDATE organizations SET plan=?, plan_expires_at=? WHERE id=?",
+            (plan, expires_at, org_id),
+        )
     conn.commit()
     conn.close()
+
+
+def _send_expiry_notification(org_id: int) -> None:
+    """ส่ง LINE notification ให้ org admin เมื่อ plan หมดอายุ (PromptPay/time-based)."""
+    try:
+        import requests as _req
+        tok = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "").strip()
+        base = os.environ.get("BASE_URL", "https://openchat.sbs")
+        if not tok:
+            return
+        conn = _get_conn()
+        org_row = conn.execute("SELECT name FROM organizations WHERE id=?", (org_id,)).fetchone()
+        org_name = org_row["name"] if org_row else f"Org #{org_id}"
+        admins = conn.execute(
+            "SELECT om.username, up.line_user_id FROM organization_members om "
+            "LEFT JOIN user_profiles up ON om.username = up.username "
+            "WHERE om.organization_id=? AND om.role='admin'",
+            (org_id,)
+        ).fetchall()
+        conn.close()
+        msg = (
+            f"⚠️ แจ้งเตือนจาก OrgChat AI\n\n"
+            f"แพลนขององค์กร '{org_name}' หมดอายุแล้ว\n"
+            f"ฟีเจอร์พรีเมียมถูกระงับชั่วคราว\n\n"
+            f"กรุณาต่ออายุที่: {base}/billing"
+        )
+        for row in admins:
+            line_uid = row["line_user_id"] if row["line_user_id"] else None
+            if not line_uid:
+                continue
+            try:
+                _req.post(
+                    "https://api.line.me/v2/bot/message/push",
+                    headers={"Authorization": f"Bearer {tok}", "Content-Type": "application/json"},
+                    json={"to": line_uid, "messages": [{"type": "text", "text": msg}]},
+                    timeout=10,
+                )
+            except Exception:
+                pass
+    except Exception:
+        pass
 
 
 def get_billing_status(org_id: int) -> dict:
@@ -315,16 +397,18 @@ def require_plan(min_plan: str):
     def decorator(f):
         @wraps(f)
         def wrapper(*args, **kwargs):
-            org_id = session.get("org_id", 1)
-            plan = get_effective_plan(org_id)
+            from routes.shared import get_current_org_id
+            org_id = get_current_org_id()
+            plan = get_effective_plan(org_id) if org_id else "free"
             if not meets_plan(plan, min_plan):
                 required_cfg = get_plan_config(min_plan)
                 return jsonify({
                     "ok": False,
                     "error": "upgrade_required",
-                    "message": f"ฟีเจอร์นี้ต้องการ Plan {required_cfg['name']} ขึ้นไป",
+                    "message": f"ฟีเจอร์นี้ต้องการ Plan {required_cfg['name']} ขึ้นไป กรุณาอัปเกรดเพื่อใช้งาน",
                     "required_plan": min_plan,
                     "current_plan": plan,
+                    "upgrade_url": "/billing",
                 }), 403
             return f(*args, **kwargs)
         return wrapper
@@ -336,14 +420,16 @@ def require_feature(feature: str):
     def decorator(f):
         @wraps(f)
         def wrapper(*args, **kwargs):
-            org_id = session.get("org_id", 1)
-            if not has_feature(org_id, feature):
-                plan = get_effective_plan(org_id)
+            from routes.shared import get_current_org_id
+            org_id = get_current_org_id()
+            if not org_id or not has_feature(org_id, feature):
+                plan = get_effective_plan(org_id) if org_id else "free"
                 return jsonify({
                     "ok": False,
                     "error": "feature_not_available",
-                    "message": f"ฟีเจอร์ '{feature}' ไม่รวมอยู่ใน Plan {get_plan_config(plan)['name']}",
+                    "message": f"ฟีเจอร์นี้ไม่รวมอยู่ใน Plan {get_plan_config(plan)['name']} กรุณาอัปเกรด Plan เพื่อใช้งาน",
                     "current_plan": plan,
+                    "upgrade_url": "/billing",
                 }), 403
             return f(*args, **kwargs)
         return wrapper

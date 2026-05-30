@@ -25,7 +25,7 @@
   "schemas": {
     "บันทึกค่าใช้จ่าย": {
       "headers": [
-        "เวลาที่บันทึก", "หมวดหมู่", "วันที่", "ประเภทค่าใช้จ่าย", "จำนวนเงิน", "ผู้รับเงิน", "รายละเอียด/บันทึกช่วยจำ", "สรุปจาก AI", "ไฟล์อ้างอิง", "ลิงก์ไฟล์", "ผู้ส่ง (LINE User)"
+        "เวลาที่บันทึก", "หมวดหมู่", "วันที่", "ประเภทค่าใช้จ่าย", "จำนวนเงิน", "ผู้รับเงิน", "รายละเอียด/บันทึกช่วยจำ", "สรุปจาก AI", "รหัสกลุ่ม (Batch ID)", "การตรวจสอบ (WHT/QR)", "ไฟล์อ้างอิง", "ลิงก์ไฟล์", "ผู้ส่ง (LINE User)"
       ],
       "columns": [
         {"source": "current_datetime"},
@@ -36,6 +36,8 @@
         {"source": "ai_keys:receiver"},
         {"source": "ai_keys:memo"},
         {"source": "summary"},
+        {"source": "batch_id"},
+        {"source": "verification_status"},
         {"source": "original_filename"},
         {"source": "file_link"},
         {"source": "line_sender_name"}
@@ -45,7 +47,7 @@
       "headers": [
         "เวลาที่บันทึก", "หมวดหมู่", "วันที่บันทึก", "เวลาที่บันทึก", "AI Model", 
         "เลขบัตรประชาชน", "ชื่อ (ไทย)", "นามสกุล (ไทย)", "ชื่อ (อังกฤษ)", "นามสกุล (อังกฤษ)", 
-        "วันเกิด", "เพศ", "ที่อยู่", "วันหมดอายุ", "Laser ID", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด", "ผู้ส่ง (LINE User)"
+        "วันเกิด", "เพศ", "ที่อยู่", "วันหมดอายุ", "Laser ID", "รหัสกลุ่ม (Batch ID)", "การตรวจสอบ (WHT/QR)", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด", "ผู้ส่ง (LINE User)"
       ],
       "columns": [
         {"source": "current_datetime"},
@@ -56,13 +58,15 @@
         {"source": "ai_keys:id_number,tax_id", "cleaner": "id"},
         {"source": "id_card_first_name_th"},
         {"source": "id_card_last_name_th"},
-        {"source": "ai_keys:first_name_en,name_en"},
-        {"source": "ai_keys:last_name_en,surname_en"},
+        {"source": "id_card_first_name_en"},
+        {"source": "id_card_last_name_en"},
         {"source": "ai_keys:birth_date,birthday,dob"},
         {"source": "ai_keys:gender,sex"},
         {"source": "ai_keys:address"},
         {"source": "ai_keys:expiry_date,expired_date,expiry"},
         {"source": "ai_keys:laser_id,laser,ref_number"},
+        {"source": "batch_id"},
+        {"source": "verification_status"},
         {"source": "original_filename"},
         {"source": "file_link"},
         {"source": "const:-"},
@@ -73,7 +77,7 @@
       "headers": [
         "เวลาที่บันทึก", "วันที่เอกสาร", "เวลา/วันที่มีผล", "รายการ", "รายละเอียด", 
         "ถอน/เงินออก", "ฝาก/เงินเข้า", "ค่าธรรมเนียม", "ยอดคงเหลือ", "ช่องทาง", 
-        "เลขที่อ้างอิง", "คู่ค้า/ผู้โอน", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "ผู้ส่ง (LINE User)"
+        "เลขที่อ้างอิง", "คู่ค้า/ผู้โอน", "รหัสกลุ่ม (Batch ID)", "การตรวจสอบ (WHT/QR)", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "ผู้ส่ง (LINE User)"
       ],
       "columns": [
         {"source": "current_datetime"},
@@ -86,8 +90,10 @@
         {"source": "ai_keys:fee,ค่าธรรมเนียม", "cleaner": "float"},
         {"source": "ai_keys:balance,ยอดคงเหลือ", "cleaner": "float"},
         {"source": "statement_channel"},
-        {"source": "ai_keys:ref,ref_number,เลขที่อ้างอิง", "cleaner": "id"},
+        {"source": "ai_keys:ref,ref_number,เลขที่อ้างอิง", "cleaner": "literal"},
         {"source": "ai_keys:counterparty,sender,receiver,คู่ค้า"},
+        {"source": "batch_id"},
+        {"source": "verification_status"},
         {"source": "original_filename"},
         {"source": "file_link"},
         {"source": "line_sender_name"}
@@ -98,7 +104,7 @@
         "เวลาที่บันทึก", "หมวดหมู่", "วันที่ในเอกสาร", "ผู้ส่ง/ร้านค้า", "รหัสสาขา", 
         "เลขผู้เสียภาษี", "ที่อยู่คู่ค้า", "ผู้รับ", "ช่องทางการติดต่อ", "จำนวนเงินสุทธิ", 
         "ยอดก่อนภาษี", "ส่วนลด", "VAT", "หัก ณ ที่จ่าย", "ประเภท หัก ณ ที่จ่าย", "เลขที่อ้างอิง", 
-        "ตามใบกำกับ", "สรุปจาก AI", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด", "ผู้ส่ง (LINE User)"
+        "ตามใบกำกับ", "สรุปจาก AI", "รหัสกลุ่ม (Batch ID)", "การตรวจสอบ (WHT/QR)", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด", "ผู้ส่ง (LINE User)"
       ],
       "columns": [
         {"source": "current_datetime"},
@@ -109,16 +115,18 @@
         {"source": "ai_keys:tax_id", "cleaner": "id"},
         {"source": "ai_keys:address"},
         {"source": "receiver_name_fallback"},
-        {"source": "ai_keys:contact,phone,email"},
+        {"source": "ai_keys:contact,phone,email", "cleaner": "literal"},
         {"source": "ai_keys:net_amount", "cleaner": "float"},
         {"source": "ai_keys:gross_amount", "cleaner": "float"},
         {"source": "ai_keys:discount_amount", "cleaner": "float"},
         {"source": "ai_keys:vat_amount", "cleaner": "float"},
         {"source": "ai_keys:wht_amount", "cleaner": "float"},
         {"source": "wht_type_smart"},
-        {"source": "ai_keys:ref_number"},
+        {"source": "ai_keys:ref_number", "cleaner": "literal"},
         {"source": "invoice_follow_up"},
         {"source": "summary"},
+        {"source": "batch_id"},
+        {"source": "verification_status"},
         {"source": "original_filename"},
         {"source": "file_link"},
         {"source": "const:-"},
@@ -129,7 +137,7 @@
       "headers": [
         "เวลาที่บันทึก", "หมวดหมู่", "วันที่ในเอกสาร", "เวลาในเอกสาร", "ผู้ส่ง/ร้านค้า", 
         "ผู้รับ", "จำนวนเงินสุทธิ", "ยอดก่อนภาษี", "หัก ณ ที่จ่าย", "เลขที่อ้างอิง", 
-        "ธนาคารต้นทาง", "ธนาคารปลายทาง", "บันทึกช่วยจำ", "สรุปจาก AI", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด", "ผู้ส่ง (LINE User)"
+        "ธนาคารต้นทาง", "ธนาคารปลายทาง", "บันทึกช่วยจำ", "สรุปจาก AI", "รหัสกลุ่ม (Batch ID)", "การตรวจสอบ (WHT/QR)", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด", "ผู้ส่ง (LINE User)"
       ],
       "columns": [
         {"source": "current_datetime"},
@@ -141,11 +149,13 @@
         {"source": "ai_keys:net_amount", "cleaner": "float"},
         {"source": "ai_keys:gross_amount", "cleaner": "float"},
         {"source": "ai_keys:wht_amount", "cleaner": "float"},
-        {"source": "ai_keys:ref_number"},
+        {"source": "ai_keys:ref_number", "cleaner": "literal"},
         {"source": "ai_keys:sender_bank,bank_from"},
         {"source": "ai_keys:receiver_bank,bank_to"},
         {"source": "ai_keys:memo"},
         {"source": "summary"},
+        {"source": "batch_id"},
+        {"source": "verification_status"},
         {"source": "original_filename"},
         {"source": "file_link"},
         {"source": "const:-"},
@@ -154,7 +164,7 @@
     },
     "ใบหัก ณ ที่จ่าย": {
       "headers": [
-        "เวลาที่บันทึก", "หมวดหมู่", "วันที่ในเอกสาร", "ผู้มีหน้าที่หักภาษี (ผู้จ่ายเงิน)", "ผู้ถูกหักภาษี (ผู้รับเงิน)", "จำนวนเงินสุทธิ", "ยอดก่อนภาษี", "จำนวนภาษีที่หัก", "อัตราภาษี", "ประเภทเงินได้", "เลขที่อ้างอิง", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด", "ผู้ส่ง (LINE User)"
+        "เวลาที่บันทึก", "หมวดหมู่", "วันที่ในเอกสาร", "ผู้มีหน้าที่หักภาษี (ผู้จ่ายเงิน)", "ผู้ถูกหักภาษี (ผู้รับเงิน)", "จำนวนเงินสุทธิ", "ยอดก่อนภาษี", "จำนวนภาษีที่หัก", "อัตราภาษี", "ประเภทเงินได้", "เลขที่อ้างอิง", "รหัสกลุ่ม (Batch ID)", "การตรวจสอบ (WHT/QR)", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด", "ผู้ส่ง (LINE User)"
       ],
       "columns": [
         {"source": "current_datetime"},
@@ -167,7 +177,9 @@
         {"source": "ai_keys:wht_amount", "cleaner": "float"},
         {"source": "ai_keys:wht_rate,wht_percent"},
         {"source": "ai_keys:wht_type,income_type"},
-        {"source": "ai_keys:ref_number"},
+        {"source": "ai_keys:ref_number", "cleaner": "literal"},
+        {"source": "batch_id"},
+        {"source": "verification_status"},
         {"source": "original_filename"},
         {"source": "file_link"},
         {"source": "const:-"},
@@ -177,7 +189,7 @@
     "ใบเสนอราคา": {
       "headers": [
         "เวลาที่บันทึก", "วันที่เอกสาร", "ผู้เสนอราคา", "ลูกค้า", "ยอดเงินสุทธิ", 
-        "สถานะ", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด", "ผู้ส่ง (LINE User)"
+        "สถานะ", "รหัสกลุ่ม (Batch ID)", "การตรวจสอบ (WHT/QR)", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด", "ผู้ส่ง (LINE User)"
       ],
       "columns": [
         {"source": "current_datetime"},
@@ -186,6 +198,8 @@
         {"source": "receiver_name_fallback"},
         {"source": "ai_keys:net_amount", "cleaner": "float"},
         {"source": "const:รออนุมัติ"},
+        {"source": "batch_id"},
+        {"source": "verification_status"},
         {"source": "original_filename"},
         {"source": "file_link"},
         {"source": "const:-"},
@@ -202,11 +216,11 @@
       "columns": [
         {"source": "peak_seq"},
         {"source": "peak_doc_date"},
-        {"source": "ai_keys:ref_number"},
+        {"source": "ai_keys:ref_number", "cleaner": "literal"},
         {"source": "ai_keys:sender_name,sender,vendor,merchant,payee_name,ผู้รับเงิน,ร้านค้า,ผู้ส่ง"},
         {"source": "ai_keys:tax_id", "cleaner": "id"},
         {"source": "ai_keys:branch", "cleaner": "branch"},
-        {"source": "ai_keys:invoice_number,ref_number,เลขที่อ้างอิง"},
+        {"source": "ai_keys:invoice_number,ref_number,เลขที่อ้างอิง", "cleaner": "literal"},
         {"source": "peak_invoice_date"},
         {"source": "peak_invoice_date"},
         {"source": "peak_price_type"},
@@ -228,13 +242,15 @@
     },
     "default": {
       "headers": [
-        "เวลาที่บันทึก", "หมวดหมู่", "วันที่ในเอกสาร", "สรุปข้อมูล", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด", "ผู้ส่ง (LINE User)"
+        "เวลาที่บันทึก", "หมวดหมู่", "วันที่ในเอกสาร", "สรุปข้อมูล", "รหัสกลุ่ม (Batch ID)", "การตรวจสอบ (WHT/QR)", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด", "ผู้ส่ง (LINE User)"
       ],
       "columns": [
         {"source": "current_datetime"},
         {"source": "sheet_name"},
         {"source": "ai_keys:date"},
         {"source": "summary"},
+        {"source": "batch_id"},
+        {"source": "verification_status"},
         {"source": "original_filename"},
         {"source": "file_link"},
         {"source": "const:-"},

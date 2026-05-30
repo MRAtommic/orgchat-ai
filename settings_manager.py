@@ -1,8 +1,10 @@
 import os
 import re
+from pathlib import Path
 from dotenv import load_dotenv
 
-ENV_PATH = ".env"
+# Absolute path เทียบกับ directory ของไฟล์นี้ ป้องกันการ resolve ผิดที่เมื่อ cwd ต่างกัน
+ENV_PATH = str(Path(__file__).parent / ".env")
 
 def get_settings():
     """Read .env file and return a dictionary of settings."""

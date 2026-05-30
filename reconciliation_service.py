@@ -150,19 +150,41 @@ class ReconciliationService:
         # 4. RECONCILIATION: Chain matching
         # ═══════════════════════════════════════
         if df_mp.empty:
-            result = pd.DataFrame()
+            if not df_ship.empty:
+                # If no Marketplace files, use Shipnity as base
+                result = df_ship.copy()
+                # Ensure marketplace columns exist
+                if 'mp_order_id' not in result.columns: result['mp_order_id'] = ''
+                result['status_mp'] = ''
+                result['platform'] = ''
+                result['amount_mp'] = 0
+            else:
+                result = pd.DataFrame()
         elif df_ship.empty:
             result = df_mp.copy()
             result['shipnity_id'] = ''
             result['shipnity_invoice'] = ''
             result['amount_shipnity'] = 0
         else:
+            # Full chain matching
             result = pd.merge(
                 df_mp,
                 df_ship[df_ship['mp_order_id'] != ''],
                 on='mp_order_id',
                 how='left'
             )
+            
+            # Find Shipnity orders that don't have a matching Marketplace ID (Manual orders)
+            mp_ids_in_ship = set(df_ship[df_ship['mp_order_id'] != '']['mp_order_id'].tolist())
+            all_mp_ids = set(df_mp['mp_order_id'].tolist())
+            
+            # Manual orders in Shipnity (no mp_order_id or mp_order_id not in marketplace file)
+            manual_ship = df_ship[(df_ship['mp_order_id'] == '') | (~df_ship['mp_order_id'].isin(all_mp_ids))].copy()
+            if not manual_ship.empty:
+                manual_ship['status_mp'] = ''
+                manual_ship['platform'] = ''
+                manual_ship['amount_mp'] = 0
+                result = pd.concat([result, manual_ship], ignore_index=True)
 
         if not result.empty and not df_peak.empty and 'shipnity_id' in result.columns:
             result = pd.merge(result, df_peak, on='shipnity_id', how='left')

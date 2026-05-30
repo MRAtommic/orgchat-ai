@@ -39,7 +39,7 @@ def parse_to_yyyymmdd(date_str):
             if year > 2500:
                 year -= 543
             return f"{year:04d}{parsed.month:02d}{parsed.day:02d}"
-        except:
+        except Exception:
             continue
             
     # Regular expression fallback if not perfectly matching simple formats
@@ -54,8 +54,12 @@ def parse_to_yyyymmdd(date_str):
             else:
                 day, month, year = int(d1), int(d2), int(d3)
                 if year < 100:
-                    year += 2000
-            
+                    # Logic: If year is >= 60, assume it's BE short year (e.g., 67 -> 2567)
+                    # If year is < 60, assume it's AD short year (e.g., 24 -> 2024)
+                    if year >= 60:
+                        year += 2500
+                    else:
+                        year += 2000
             if year > 2400:
                 year -= 543
             
@@ -303,14 +307,36 @@ class GoogleWorkspaceManager:
                 "ใบหักณที่จ่าย": "ใบหัก ณ ที่จ่าย",
                 "หนังสือรับรองการหักภาษี ณ ที่จ่าย": "ใบหัก ณ ที่จ่าย",
                 "peak": "peak",
-                "Import_Expenses": "peak"
+                "Import_Expenses": "peak",
+                "General_Expense": "บันทึกค่าใช้จ่าย",
+                "Expense": "บันทึกค่าใช้จ่าย"
             },
             "schemas": {
+                "บันทึกค่าใช้จ่าย": {
+                    "headers": [
+                        "เวลาที่บันทึก", "หมวดหมู่", "วันที่", "ประเภทค่าใช้จ่าย", "จำนวนเงิน", "ผู้รับเงิน", "รายละเอียด/บันทึกช่วยจำ", "สรุปจาก AI", "รหัสกลุ่ม (Batch ID)", "การตรวจสอบ (WHT/QR)", "ไฟล์อ้างอิง", "ลิงก์ไฟล์", "ผู้ส่ง (LINE User)"
+                    ],
+                    "columns": [
+                        {"source": "current_datetime"},
+                        {"source": "const:บันทึกค่าใช้จ่าย"},
+                        {"source": "ai_keys:date"},
+                        {"source": "ai_keys:income_type"},
+                        {"source": "ai_keys:net_amount", "cleaner": "float"},
+                        {"source": "ai_keys:receiver"},
+                        {"source": "ai_keys:memo"},
+                        {"source": "summary"},
+                        {"source": "batch_id"},
+                        {"source": "verification_status"},
+                        {"source": "original_filename"},
+                        {"source": "file_link"},
+                        {"source": "line_sender_name"}
+                    ]
+                },
                 "บัตรประชาชน": {
                     "headers": [
                         "เวลาที่บันทึก", "หมวดหมู่", "วันที่บันทึก", "เวลาที่บันทึก", "AI Model", 
                         "เลขบัตรประชาชน", "ชื่อ (ไทย)", "นามสกุล (ไทย)", "ชื่อ (อังกฤษ)", "นามสกุล (อังกฤษ)", 
-                        "วันเกิด", "เพศ", "ที่อยู่", "วันหมดอายุ", "Laser ID", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด"
+                        "วันเกิด", "เพศ", "ที่อยู่", "วันหมดอายุ", "Laser ID", "รหัสกลุ่ม (Batch ID)", "การตรวจสอบ (WHT/QR)", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด", "ผู้ส่ง (LINE User)"
                     ],
                     "columns": [
                         {"source": "current_datetime"},
@@ -321,23 +347,26 @@ class GoogleWorkspaceManager:
                         {"source": "ai_keys:id_number,tax_id", "cleaner": "id"},
                         {"source": "id_card_first_name_th"},
                         {"source": "id_card_last_name_th"},
-                        {"source": "ai_keys:first_name_en,name_en"},
-                        {"source": "ai_keys:last_name_en,surname_en"},
+                        {"source": "id_card_first_name_en"},
+                        {"source": "id_card_last_name_en"},
                         {"source": "ai_keys:birth_date,birthday,dob"},
                         {"source": "ai_keys:gender,sex"},
                         {"source": "ai_keys:address"},
                         {"source": "ai_keys:expiry_date,expired_date,expiry"},
                         {"source": "ai_keys:laser_id,laser,ref_number"},
+                        {"source": "batch_id"},
+                        {"source": "verification_status"},
                         {"source": "original_filename"},
                         {"source": "file_link"},
-                        {"source": "const:-"}
+                        {"source": "const:-"},
+                        {"source": "line_sender_name"}
                     ]
                 },
                 "สเตตเมนต์": {
                     "headers": [
                         "เวลาที่บันทึก", "วันที่เอกสาร", "เวลา/วันที่มีผล", "รายการ", "รายละเอียด", 
                         "ถอน/เงินออก", "ฝาก/เงินเข้า", "ค่าธรรมเนียม", "ยอดคงเหลือ", "ช่องทาง", 
-                        "เลขที่อ้างอิง", "คู่ค้า/ผู้โอน", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์"
+                        "เลขที่อ้างอิง", "คู่ค้า/ผู้โอน", "รหัสกลุ่ม (Batch ID)", "การตรวจสอบ (WHT/QR)", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "ผู้ส่ง (LINE User)"
                     ],
                     "columns": [
                         {"source": "current_datetime"},
@@ -350,10 +379,13 @@ class GoogleWorkspaceManager:
                         {"source": "ai_keys:fee,ค่าธรรมเนียม", "cleaner": "float"},
                         {"source": "ai_keys:balance,ยอดคงเหลือ", "cleaner": "float"},
                         {"source": "statement_channel"},
-                        {"source": "ai_keys:ref,ref_number,เลขที่อ้างอิง", "cleaner": "id"},
+                        {"source": "ai_keys:ref,ref_number,เลขที่อ้างอิง", "cleaner": "literal"},
                         {"source": "ai_keys:counterparty,sender,receiver,คู่ค้า"},
+                        {"source": "batch_id"},
+                        {"source": "verification_status"},
                         {"source": "original_filename"},
-                        {"source": "file_link"}
+                        {"source": "file_link"},
+                        {"source": "line_sender_name"}
                     ]
                 },
                 "ใบเสร็จ/ใบกำกับภาษี": {
@@ -361,7 +393,7 @@ class GoogleWorkspaceManager:
                         "เวลาที่บันทึก", "หมวดหมู่", "วันที่ในเอกสาร", "ผู้ส่ง/ร้านค้า", "รหัสสาขา", 
                         "เลขผู้เสียภาษี", "ที่อยู่คู่ค้า", "ผู้รับ", "ช่องทางการติดต่อ", "จำนวนเงินสุทธิ", 
                         "ยอดก่อนภาษี", "ส่วนลด", "VAT", "หัก ณ ที่จ่าย", "ประเภท หัก ณ ที่จ่าย", "เลขที่อ้างอิง", 
-                        "ตามใบกำกับ", "สรุปจาก AI", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด"
+                        "ตามใบกำกับ", "สรุปจาก AI", "รหัสกลุ่ม (Batch ID)", "การตรวจสอบ (WHT/QR)", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด", "ผู้ส่ง (LINE User)"
                     ],
                     "columns": [
                         {"source": "current_datetime"},
@@ -372,26 +404,29 @@ class GoogleWorkspaceManager:
                         {"source": "ai_keys:tax_id", "cleaner": "id"},
                         {"source": "ai_keys:address"},
                         {"source": "receiver_name_fallback"},
-                        {"source": "ai_keys:contact,phone,email"},
+                        {"source": "ai_keys:contact,phone,email", "cleaner": "literal"},
                         {"source": "ai_keys:net_amount", "cleaner": "float"},
                         {"source": "ai_keys:gross_amount", "cleaner": "float"},
                         {"source": "ai_keys:discount_amount", "cleaner": "float"},
                         {"source": "ai_keys:vat_amount", "cleaner": "float"},
                         {"source": "ai_keys:wht_amount", "cleaner": "float"},
                         {"source": "wht_type_smart"},
-                        {"source": "ai_keys:ref_number"},
+                        {"source": "ai_keys:ref_number", "cleaner": "literal"},
                         {"source": "invoice_follow_up"},
                         {"source": "summary"},
+                        {"source": "batch_id"},
+                        {"source": "verification_status"},
                         {"source": "original_filename"},
                         {"source": "file_link"},
-                        {"source": "const:-"}
+                        {"source": "const:-"},
+                        {"source": "line_sender_name"}
                     ]
                 },
                 "สลิปโอนเงิน": {
                     "headers": [
                         "เวลาที่บันทึก", "หมวดหมู่", "วันที่ในเอกสาร", "เวลาในเอกสาร", "ผู้ส่ง/ร้านค้า", 
                         "ผู้รับ", "จำนวนเงินสุทธิ", "ยอดก่อนภาษี", "หัก ณ ที่จ่าย", "เลขที่อ้างอิง", 
-                        "ธนาคารต้นทาง", "ธนาคารปลายทาง", "บันทึกช่วยจำ", "สรุปจาก AI", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด"
+                        "ธนาคารต้นทาง", "ธนาคารปลายทาง", "บันทึกช่วยจำ", "สรุปจาก AI", "รหัสกลุ่ม (Batch ID)", "การตรวจสอบ (WHT/QR)", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด", "ผู้ส่ง (LINE User)"
                     ],
                     "columns": [
                         {"source": "current_datetime"},
@@ -403,19 +438,22 @@ class GoogleWorkspaceManager:
                         {"source": "ai_keys:net_amount", "cleaner": "float"},
                         {"source": "ai_keys:gross_amount", "cleaner": "float"},
                         {"source": "ai_keys:wht_amount", "cleaner": "float"},
-                        {"source": "ai_keys:ref_number"},
+                        {"source": "ai_keys:ref_number", "cleaner": "literal"},
                         {"source": "ai_keys:sender_bank,bank_from"},
                         {"source": "ai_keys:receiver_bank,bank_to"},
                         {"source": "ai_keys:memo"},
                         {"source": "summary"},
+                        {"source": "batch_id"},
+                        {"source": "verification_status"},
                         {"source": "original_filename"},
                         {"source": "file_link"},
-                        {"source": "const:-"}
+                        {"source": "const:-"},
+                        {"source": "line_sender_name"}
                     ]
                 },
                 "ใบหัก ณ ที่จ่าย": {
                     "headers": [
-                        "เวลาที่บันทึก", "หมวดหมู่", "วันที่ในเอกสาร", "ผู้มีหน้าที่หักภาษี (ผู้จ่ายเงิน)", "ผู้ถูกหักภาษี (ผู้รับเงิน)", "จำนวนเงินสุทธิ", "ยอดก่อนภาษี", "จำนวนภาษีที่หัก", "อัตราภาษี", "ประเภทเงินได้", "เลขที่อ้างอิง", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด"
+                        "เวลาที่บันทึก", "หมวดหมู่", "วันที่ในเอกสาร", "ผู้มีหน้าที่หักภาษี (ผู้จ่ายเงิน)", "ผู้ถูกหักภาษี (ผู้รับเงิน)", "จำนวนเงินสุทธิ", "ยอดก่อนภาษี", "จำนวนภาษีที่หัก", "อัตราภาษี", "ประเภทเงินได้", "เลขที่อ้างอิง", "รหัสกลุ่ม (Batch ID)", "การตรวจสอบ (WHT/QR)", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด", "ผู้ส่ง (LINE User)"
                     ],
                     "columns": [
                         {"source": "current_datetime"},
@@ -428,14 +466,17 @@ class GoogleWorkspaceManager:
                         {"source": "ai_keys:wht_amount", "cleaner": "float"},
                         {"source": "ai_keys:wht_rate,wht_percent"},
                         {"source": "ai_keys:wht_type,income_type"},
-                        {"source": "ai_keys:ref_number"},
+                        {"source": "ai_keys:ref_number", "cleaner": "literal"},
+                        {"source": "batch_id"},
+                        {"source": "verification_status"},
                         {"source": "original_filename"},
                         {"source": "file_link"},
-                        {"source": "const:-"}
+                        {"source": "const:-"},
+                        {"source": "line_sender_name"}
                     ]
                 },
                 "ใบเสนอราคา": {
-                    "headers": ["เวลาที่บันทึก", "วันที่เอกสาร", "ผู้เสนอราคา", "ลูกค้า", "ยอดเงินสุทธิ", "สถานะ", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด"],
+                    "headers": ["เวลาที่บันทึก", "วันที่เอกสาร", "ผู้เสนอราคา", "ลูกค้า", "ยอดเงินสุทธิ", "สถานะ", "รหัสกลุ่ม (Batch ID)", "การตรวจสอบ (WHT/QR)", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด", "ผู้ส่ง (LINE User)"],
                     "columns": [
                         {"source": "current_datetime"},
                         {"source": "ai_keys:date"},
@@ -443,9 +484,12 @@ class GoogleWorkspaceManager:
                         {"source": "receiver_name_fallback"},
                         {"source": "ai_keys:net_amount", "cleaner": "float"},
                         {"source": "const:รออนุมัติ"},
+                        {"source": "batch_id"},
+                        {"source": "verification_status"},
                         {"source": "original_filename"},
                         {"source": "file_link"},
-                        {"source": "const:-"}
+                        {"source": "const:-"},
+                        {"source": "line_sender_name"}
                     ]
                 },
                 "peak": {
@@ -483,14 +527,18 @@ class GoogleWorkspaceManager:
                     ]
                 },
                 "default": {
-                    "headers": ["เวลาที่บันทึก", "หมวดหมู่", "วันที่ในเอกสาร", "สรุปข้อมูล", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด"],
+                    "headers": ["เวลาที่บันทึก", "หมวดหมู่", "วันที่ในเอกสาร", "สรุปข้อมูล", "รหัสกลุ่ม (Batch ID)", "การตรวจสอบ (WHT/QR)", "ไฟล์ต้นฉบับ", "ลิงก์ไฟล์", "AI ถูก/ผิด", "ผู้ส่ง (LINE User)"],
                     "columns": [
                         {"source": "current_datetime"},
                         {"source": "sheet_name"},
                         {"source": "ai_keys:date"},
                         {"source": "summary"},
+                        {"source": "batch_id"},
+                        {"source": "verification_status"},
+                        {"source": "original_filename"},
                         {"source": "file_link"},
-                        {"source": "const:-"}
+                        {"source": "const:-"},
+                        {"source": "line_sender_name"}
                     ]
                 }
             }
@@ -579,7 +627,8 @@ class GoogleWorkspaceManager:
                     self._local.creds = creds
                 
             thread_creds = getattr(self._local, 'creds', None)
-            if not thread_creds or not thread_creds.valid:
+            is_service_acct = isinstance(thread_creds, service_account.Credentials)
+            if not thread_creds or (not is_service_acct and not thread_creds.valid):
                 logger.error("No valid credentials found for the thread.")
                 self._local.drive_service = None
                 self._local.sheets_service = None
@@ -1116,6 +1165,15 @@ class GoogleWorkspaceManager:
 
         org_id = getattr(self._local, 'org_id', None)
         username = getattr(self._local, 'username', None)
+
+        # Proactively verify/recreate parent if it's the root parent folder
+        if not parent_id or parent_id == self.parent_folder_id:
+            try:
+                p_id = self._verify_or_recreate_parent(p_id)
+            except Exception as pe:
+                logger.error(f"❌ list_subfolders parent verification failed: {pe}")
+                return []
+
         cache_key = f"{org_id}:{username}:{p_id}"
 
         # Return from cache if fresh — skip Drive API round-trip
@@ -1124,24 +1182,27 @@ class GoogleWorkspaceManager:
             return cached['folders']
 
         try:
-            # 1. Try list directly — skip proactive parent verification on every call.
-            #    If parent was deleted Google returns 400/404; we catch and recover below.
-            query = f"'{p_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+            # 1. Try list directly - list BOTH folders and files
+            query = f"'{p_id}' in parents and trashed = false"
             try:
-                results = self.drive_service.files().list(q=query, fields="files(id, name)", supportsAllDrives=True).execute()
+                results = self.drive_service.files().list(
+                    q=query, 
+                    fields="files(id, name, mimeType, iconLink, thumbnailLink, webViewLink)", 
+                    supportsAllDrives=True
+                ).execute()
             except HttpError as he:
                 if he.resp.status in (400, 404):
                     # Parent gone or invalid — verify/recreate and retry once
                     logger.info(f"⚠️ list_subfolders parent {p_id} returned {he.resp.status} — recreating")
                     p_id = self._verify_or_recreate_parent(p_id)
                     results = self.drive_service.files().list(
-                        q=f"'{p_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
-                        fields="files(id, name)", supportsAllDrives=True
+                        q=f"'{p_id}' in parents and trashed = false",
+                        fields="files(id, name, mimeType, iconLink, thumbnailLink, webViewLink)", 
+                        supportsAllDrives=True
                     ).execute()
                 else:
                     raise
             existing_folders = results.get('files', [])
-            existing_names = {f['name'] for f in existing_folders}
             
             # 2. Define essential folders matching the luxury minimal structure
             essential_folders = [
@@ -1156,17 +1217,25 @@ class GoogleWorkspaceManager:
                 "อื่นๆ"
             ]
             
-            # If no folders exist yet, create only the essential set as first-time setup
-            if not existing_folders:
+            # Check if any folders exist in the returned list
+            has_folders = any(f.get('mimeType') == 'application/vnd.google-apps.folder' for f in existing_folders)
+            if not has_folders:
                 new_folders = []
                 for folder_name in essential_folders:
                     try:
                         fid = self._get_or_create_folder(folder_name, p_id)
-                        new_folders.append({'id': fid, 'name': folder_name})
+                        new_folders.append({
+                            'id': fid, 
+                            'name': folder_name,
+                            'mimeType': 'application/vnd.google-apps.folder',
+                            'iconLink': '',
+                            'thumbnailLink': '',
+                            'webViewLink': ''
+                        })
                     except Exception as ce:
                         logger.error(f"Error creating essential folder {folder_name}: {ce}")
                 # Don't cache first-time setup result; let next request re-verify
-                return new_folders
+                return new_folders + [f for f in existing_folders if f.get('mimeType') != 'application/vnd.google-apps.folder']
 
             # Store in cache before returning
             GoogleWorkspaceManager._subfolder_cache[cache_key] = {"folders": existing_folders, "ts": time.time()}
@@ -1218,7 +1287,7 @@ class GoogleWorkspaceManager:
                                 if not slip_wht_present and slip_wht_val != '-':
                                     if float(slip_wht_val.replace(',', '').strip()) > 0:
                                         slip_wht_present = True
-                            except:
+                            except Exception:
                                 pass
                             slips.append({
                                 'index': r_idx,
@@ -1259,7 +1328,7 @@ class GoogleWorkspaceManager:
                             
                             try:
                                 net_amt = float(str(row[i_idx_amt]).replace(',', '').strip()) if row[i_idx_amt] != '-' else 0.0
-                            except:
+                            except Exception:
                                 pass
                                 
                             if len(row) > i_idx_wht:
@@ -1271,12 +1340,12 @@ class GoogleWorkspaceManager:
                                         wht_val = float(val_str.replace(',', '').strip())
                                         if wht_val > 0:
                                             wht_present = True
-                                    except:
+                                    except Exception:
                                         pass
                                         
                             try:
                                 gross_val = float(str(row[i_idx_gross]).replace(',', '').strip()) if len(row) > i_idx_gross and row[i_idx_gross] != '-' else 0.0
-                            except:
+                            except Exception:
                                 pass
 
                             invoices.append({
@@ -1337,9 +1406,9 @@ class GoogleWorkspaceManager:
                             parsed = dt.strptime(d_str, fmt)
                             if parsed.year > 2500: parsed = parsed.replace(year=parsed.year - 543)
                             return parsed
-                        except: continue
+                        except Exception: continue
                     return None
-                except: return None
+                except Exception: return None
 
             matches = []
             matched_slip_indices = set()
@@ -1359,7 +1428,7 @@ class GoogleWorkspaceManager:
                     if slip['index'] in matched_slip_indices: continue
                     try:
                         slip_amt = float(slip['amount'])
-                    except:
+                    except Exception:
                         slip_amt = 0
                     
                     if abs(slip_amt - s_amount) < 5.0:
@@ -1502,7 +1571,7 @@ class GoogleWorkspaceManager:
                 matched_inv = None
                 try:
                     slip_amt = float(slip['amount'])
-                except:
+                except Exception:
                     slip_amt = 0
 
                 for inv in invoices:
@@ -1581,7 +1650,7 @@ class GoogleWorkspaceManager:
                     spreadsheetId=self.spreadsheet_id, 
                     body={'requests': [{'addSheet': {'properties': {'title': sheet_name}}}]}
                 ).execute()
-            except: pass
+            except Exception: pass
 
             self.sheets_service.spreadsheets().values().update(
                 spreadsheetId=self.spreadsheet_id, range=f"'{sheet_name}'!A1",
@@ -1610,14 +1679,14 @@ class GoogleWorkspaceManager:
         try:
             try:
                 self.sheets_service.spreadsheets().batchUpdate(spreadsheetId=self.spreadsheet_id, body={'requests': [{'addSheet': {'properties': {'title': sheet_name}}}]}).execute()
-            except: pass
+            except Exception: pass
 
             dashboard_data = [
                 ["สรุปภาพรวมบัญชี", "", "", f"อัปเดตล่าสุด: {datetime.now().strftime('%d/%m/%Y %H:%M')}"],
                 ["", "", "", ""],
                 ["💰 ยอดค่าใช้จ่ายแยกตามหมวดหมู่", "", "🧾 สรุปภาษีประจำเดือน", ""],
                 ["หมวดหมู่", "ยอดรวมสุทธิ", "รายการภาษี", "ยอดรวม"],
-                ["สลิปโอนเงิน", "=SUM('สลิปโอนเงิน'!I:I)", "VAT (7%) รวม", "=SUM('ใบเสร็จ/ใบกำกับภาษี'!M:M)"],
+                ["สลิปโอนเงิน", "=SUM('สลิปโอนเงิน'!G:G)", "VAT (7%) รวม", "=SUM('ใบเสร็จ/ใบกำกับภาษี'!M:M)"],
                 ["สเตตเมนต์ (ถอน)", "=SUM('สเตตเมนต์'!F:F)", "WHT รวม", "=SUM('ใบเสร็จ/ใบกำกับภาษี'!N:N)"],
                 ["ใบเสร็จ/ใบกำกับภาษี", "=SUM('ใบเสร็จ/ใบกำกับภาษี'!J:J)", "", ""],
                 ["ยอดรวมทั้งหมด", "=B5+B6+B7", "⚠️ จ่ายเต็มแต่ลืมหัก WHT", "=COUNTIF('สรุปกระทบยอด'!H:H, \"*ระวัง*\")"],
@@ -1647,6 +1716,28 @@ class GoogleWorkspaceManager:
 
         import json
         try:
+            def clean_val(v):
+                if v is None or v == '-': return 0.0
+                try: return float(str(v).replace(',', '').strip())
+                except Exception: return 0.0
+                
+            def clean_id(v):
+                if v is None: return '-'
+                s = str(v).replace('-', '').replace(' ', '').strip()
+                if not s or s == '-': return '-'
+                s_digits = re.sub(r'\D', '', s)
+                if len(s_digits) in [10, 13]:
+                    return f"'{s_digits}"
+                return s
+
+            def clean_branch(v):
+                if v is None: return "00000"
+                s = str(v).replace('-', '').replace(' ', '').strip()
+                if not s or s == '-': return "00000"
+                s_digits = re.sub(r'\D', '', s)
+                if not s_digits: return "00000"
+                return f"'{int(s_digits):05d}"
+
             ext = data.get('extracted_data', {})
             raw_category = ext.get('category', 'Others')
             
@@ -1715,6 +1806,12 @@ class GoogleWorkspaceManager:
             except Exception as e:
                 logger.warning(f"⚠️ Could not fetch spreadsheet metadata: {e}")
 
+            # Retrieve schema config for this sheet
+            schemas = registry.get("schemas", {})
+            schema_config = schemas.get(sheet_name, schemas.get("default", {}))
+            headers = schema_config.get("headers", [])
+            columns_def = schema_config.get("columns", [])
+
             # --- 🛡️ Duplicate Slip Detection by Ref Number ---
             ref_val = get_val(['ref', 'ref_number', 'เลขที่อ้างอิง', 'transaction_id'])
             if ref_val and str(ref_val).strip() != '-':
@@ -1722,11 +1819,12 @@ class GoogleWorkspaceManager:
                 if cleaned_ref and len(cleaned_ref) >= 6:
                     if sheet_name in existing_sheets:
                         try:
-                            res_val = self.sheets_service.spreadsheets().values().get(
-                                spreadsheetId=self.spreadsheet_id, 
-                                range=f"'{sheet_name}'!A1:Z1000"
-                            ).execute()
-                            existing_rows = res_val.get('values', [])
+                            if 'existing_rows' not in locals():
+                                res_val = self.sheets_service.spreadsheets().values().get(
+                                    spreadsheetId=self.spreadsheet_id, 
+                                    range=f"'{sheet_name}'!A1:Z1000"
+                                ).execute()
+                                existing_rows = res_val.get('values', [])
                             
                             for r_idx, row_data in enumerate(existing_rows):
                                 if r_idx == 0: continue # Skip header
@@ -1745,6 +1843,103 @@ class GoogleWorkspaceManager:
                                             }
                         except Exception as e:
                             logger.error(f"Failed to check duplicate: {e}")
+
+            # --- 🛡️ Fallback Duplicate Slip Detection by Date, Net Amount, Time, and Sender/Receiver ---
+            if sheet_name in existing_sheets:
+                try:
+                    if 'existing_rows' not in locals():
+                        res_val = self.sheets_service.spreadsheets().values().get(
+                            spreadsheetId=self.spreadsheet_id, 
+                            range=f"'{sheet_name}'!A1:Z1000"
+                        ).execute()
+                        existing_rows = res_val.get('values', [])
+                    
+                    new_date_raw = get_val('date')
+                    new_time_raw = get_val('time')
+                    new_net_amt = clean_val(get_val('net_amount'))
+                    new_rec_raw = get_val('receiver')
+                    new_send_raw = get_val('sender')
+                    
+                    def clean_str_match(s):
+                        if not s or s == '-': return ""
+                        return str(s).replace('/', '').replace('-', '').replace(' ', '').replace(':', '').upper().strip()
+                    
+                    target_date = clean_str_match(new_date_raw)
+                    target_time = clean_str_match(new_time_raw)[:5] if new_time_raw else ""
+                    target_rec = clean_str_match(new_rec_raw)
+                    target_send = clean_str_match(new_send_raw)
+                    
+                    if target_date and new_net_amt > 0:
+                        idx_date = -1
+                        idx_time = -1
+                        idx_net_amt = -1
+                        idx_receiver = -1
+                        idx_sender = -1
+                        
+                        for h_idx, h in enumerate(headers):
+                            h_clean = str(h).strip()
+                            if "วันที่" in h_clean and "บันทึก" not in h_clean:
+                                idx_date = h_idx
+                            elif "เวลา" in h_clean and "บันทึก" not in h_clean:
+                                idx_time = h_idx
+                            elif "ผู้รับ" in h_clean or "ลูกค้า" in h_clean:
+                                idx_receiver = h_idx
+                            elif "ผู้ส่ง" in h_clean or "ร้านค้า" in h_clean:
+                                idx_sender = h_idx
+                            elif any(k in h_clean for k in ["สุทธิ", "จำนวนเงินสุทธิ", "จำนวนเงิน", "ยอดเงิน"]):
+                                idx_net_amt = h_idx
+                                
+                        for r_idx, row_data in enumerate(existing_rows):
+                            if r_idx == 0: continue
+                            
+                            row_date_val = ""
+                            if idx_date != -1 and idx_date < len(row_data):
+                                row_date_val = clean_str_match(row_data[idx_date])
+                                
+                            row_amt_val = 0.0
+                            if idx_net_amt != -1 and idx_net_amt < len(row_data):
+                                row_amt_val = clean_val(row_data[idx_net_amt])
+                                
+                            row_time_val = ""
+                            if idx_time != -1 and idx_time < len(row_data):
+                                row_time_val = clean_str_match(row_data[idx_time])[:5]
+                                
+                            row_rec_val = ""
+                            if idx_receiver != -1 and idx_receiver < len(row_data):
+                                row_rec_val = clean_str_match(row_data[idx_receiver])
+                            row_send_val = ""
+                            if idx_sender != -1 and idx_sender < len(row_data):
+                                row_send_val = clean_str_match(row_data[idx_sender])
+                                
+                            date_matches = (row_date_val == target_date)
+                            amt_matches = (abs(row_amt_val - new_net_amt) < 0.01)
+                            
+                            time_matches = True
+                            if target_time and row_time_val:
+                                time_matches = (row_time_val == target_time)
+                                
+                            name_matches = False
+                            if target_rec:
+                                if target_rec in row_rec_val or row_rec_val in target_rec or target_rec in row_send_val or row_send_val in target_rec:
+                                    name_matches = True
+                            if target_send and not name_matches:
+                                if target_send in row_rec_val or row_rec_val in target_send or target_send in row_send_val or row_send_val in target_send:
+                                    name_matches = True
+                            if not target_rec and not target_send:
+                                name_matches = True
+                                
+                            if date_matches and amt_matches and time_matches and name_matches:
+                                logger.warning(f"⚠️ Duplicate slip detected by fallback check! Date: {new_date_raw}, Amt: {new_net_amt} at row {r_idx + 1}")
+                                return {
+                                    "ok": False, 
+                                    "error": "duplicate", 
+                                    "sheet": sheet_name, 
+                                    "row": r_idx + 1, 
+                                    "ref_number": ref_val or f"FALLBACK-{target_date}-{new_net_amt}",
+                                    "data": row_data
+                                }
+                except Exception as ex:
+                    logger.error(f"Failed to check fallback duplicate: {ex}")
             
             # Retrieve schema config for this sheet
             schemas = registry.get("schemas", {})
@@ -1752,28 +1947,6 @@ class GoogleWorkspaceManager:
             
             headers = schema_config.get("headers", [])
             columns_def = schema_config.get("columns", [])
-            
-            def clean_val(v):
-                if v is None or v == '-': return 0.0
-                try: return float(str(v).replace(',', '').strip())
-                except: return 0.0
-                
-            def clean_id(v):
-                if v is None: return '-'
-                s = str(v).replace('-', '').replace(' ', '').strip()
-                if not s or s == '-': return '-'
-                s_digits = re.sub(r'\D', '', s)
-                if len(s_digits) in [10, 13]:
-                    return f"'{s_digits}"
-                return s
-
-            def clean_branch(v):
-                if v is None: return "00000"
-                s = str(v).replace('-', '').replace(' ', '').strip()
-                if not s or s == '-': return "00000"
-                s_digits = re.sub(r'\D', '', s)
-                if not s_digits: return "00000"
-                return f"'{int(s_digits):05d}"
 
             # Custom Value Extractor based on source string
             def extract_field_value(col_def, context_ext=None, context_data=None, col_idx=None, target_sheet_name=None):
@@ -1781,6 +1954,32 @@ class GoogleWorkspaceManager:
                 if context_data is None: context_data = data
                 if target_sheet_name is None: target_sheet_name = sheet_name
                 
+                if target_sheet_name == "peak" and context_ext is not None:
+                    # Check if our own company is listed as the sender/vendor
+                    sender_val = str(context_ext.get('sender_name', context_ext.get('sender', ''))).strip()
+                    if not sender_val or sender_val == '-':
+                        sender_val = str(context_ext.get('company_name', '')).strip()
+                    if any(x in sender_val for x in ["ฮาร์ทวอมมิ่ง", "ฮาร์ทกวมมิ่ง", "ฮาร์ทออมมิ่ง", "heart warming", "heartwarming", "heart moving", "heartmoving"]):
+                        # Swap sender/receiver keys in a copy of context_ext so that all queries get swapped values!
+                        swapped = dict(context_ext)
+                        
+                        # Swap names
+                        swapped['sender'] = context_ext.get('receiver', context_ext.get('payee', '-'))
+                        swapped['sender_name'] = context_ext.get('receiver_name', context_ext.get('payee_name', '-'))
+                        swapped['receiver'] = context_ext.get('sender', '-')
+                        swapped['receiver_name'] = context_ext.get('sender_name', '-')
+                        
+                        # Swap tax IDs
+                        swapped['tax_id'] = context_ext.get('receiver_tax_id', '-')
+                        if swapped['tax_id'] == '-':
+                            swapped['tax_id'] = context_ext.get('receiver_id', '-')
+                        
+                        # Swap addresses
+                        swapped['address'] = context_ext.get('receiver_address', '-')
+                        swapped['sender_address'] = context_ext.get('address', '-')
+                        
+                        context_ext = swapped
+
                 src = col_def.get("source", "")
                 cleaner = col_def.get("cleaner", "")
                 
@@ -1791,8 +1990,12 @@ class GoogleWorkspaceManager:
                     target_headers = target_schema.get("headers", [])
                     if col_idx < len(target_headers):
                         h_name = target_headers[col_idx]
-                        if any(x in h_name for x in ["หัก ณ ที่จ่าย", "จำนวนภาษีที่หัก"]):
-                            is_wht_col = True
+                        # Only override for simple "หัก ณ ที่จ่าย" status columns, NOT for Type, Amount or Rate columns
+                        # ALSO: Do NOT override when the column definition expects a numeric float amount
+                        if any(x in h_name for x in ["หัก ณ ที่จ่าย", "จำนวนภาษีที่หัก"]) and not any(x in h_name for x in ["ประเภท", "จำนวน", "อัตรา"]):
+                            col_def_chk = target_schema.get("columns", [])[col_idx] if col_idx < len(target_schema.get("columns", [])) else {}
+                            if col_def_chk.get("cleaner") != "float" and "amount" not in col_def_chk.get("source", ""):
+                                is_wht_col = True
                 
                 if is_wht_col:
                     has_wht = False
@@ -1910,6 +2113,10 @@ class GoogleWorkspaceManager:
                     val = context_data.get('ai_model', '-')
                 elif src == "file_link":
                     val = context_data.get('file_link', '-')
+                elif src == "batch_id":
+                    val = context_data.get('batch_id', '-')
+                elif src == "verification_status":
+                    val = context_data.get('verification_status', '-')
                 elif src == "summary":
                     val = context_data.get('summary', '-')
                 elif src == "sheet_name":
@@ -1979,16 +2186,17 @@ class GoogleWorkspaceManager:
                     has_vat = (vat_val > 0) or (not _is_wht and _vrate_str not in ['-', '', '0', '0%', 'no', 'no vat', 'none'])
                     gross_val = clean_val(local_get_val(['gross_amount', 'amount_before_vat', 'before_vat']))
                     net_val = clean_val(local_get_val(['net_amount', 'total_amount', 'amount']))
+                    discount_val = clean_val(local_get_val(['discount_amount', 'discount']))
                     # Sanity check: if gross looks wrong (e.g. AI put WHT amount there), ignore it
                     if has_vat and gross_val > 0 and net_val > 0 and (gross_val < net_val * 0.5 or gross_val > net_val * 1.5):
                         gross_val = 0
                     if has_vat:
                         if gross_val > 0:
-                            val = gross_val
+                            val = gross_val - discount_val
                         else:
                             val = round(net_val / 1.07, 2)
                     else:
-                        val = net_val if net_val > 0 else gross_val
+                        val = gross_val if gross_val > 0 else net_val
                 elif src == "peak_vat_rate":
                     vat_val = clean_val(local_get_val(['vat_amount', 'vat', 'tax_amount', 'tax']))
                     wht_check = clean_val(local_get_val(['wht_amount', 'wht']))
@@ -2002,25 +2210,38 @@ class GoogleWorkspaceManager:
                     val = "7%" if has_vat else "NO"
                 elif src == "peak_wht_rate":
                     wht_rate_val = local_get_val(['wht_rate', 'wht_percent', 'wht_percent_rate'])
+                    wht_amt = clean_val(local_get_val(['wht_amount', 'wht']))
+                    
+                    final_rate_num = None
                     if wht_rate_val and str(wht_rate_val).strip() != '-':
-                        s = str(wht_rate_val).replace('%', '').strip()
                         try:
-                            w_num = float(s)
-                            if w_num > 0:
-                                if w_num.is_integer():
-                                    val = f"{int(w_num)}%"
-                                else:
-                                    val = f"{w_num}%"
-                            else:
-                                val = "0"
-                        except:
-                            val = "0"
-                    else:
-                        wht_amt = clean_val(local_get_val(['wht_amount', 'wht']))
-                        if wht_amt > 0:
-                            val = "3%"
+                            final_rate_num = float(str(wht_rate_val).replace('%', '').strip())
+                        except Exception: pass
+                    
+                    # If AI missed the rate but got the amount, calculate it!
+                    if (not final_rate_num or final_rate_num <= 0) and wht_amt > 0:
+                        gross_amt = clean_val(local_get_val(['gross_amount', 'amount_before_vat', 'before_vat']))
+                        net_amt = clean_val(local_get_val(['net_amount', 'total_amount', 'amount']))
+                        base_amt = gross_amt if gross_amt > 0 else net_amt
+                        if base_amt > 0:
+                            computed = (wht_amt / base_amt) * 100
+                            # Snap to common Thai WHT rates with 0.3% tolerance
+                            for common_rate in [1.0, 1.5, 2.0, 3.0, 5.0, 10.0, 15.0]:
+                                if abs(computed - common_rate) <= 0.3:
+                                    final_rate_num = common_rate
+                                    break
+                            if not final_rate_num:
+                                final_rate_num = round(computed, 1)
+
+                    if final_rate_num and final_rate_num > 0:
+                        if float(final_rate_num).is_integer():
+                            val = f"{int(final_rate_num)}%"
                         else:
-                            val = "0"
+                            val = f"{final_rate_num}%"
+                    elif wht_amt > 0:
+                        val = "3%" # Fallback to most common
+                    else:
+                        val = "0"
                 elif src == "peak_payment_channel":
                     val = local_get_val(['payment_channel', 'payment_method', 'channel'], "")
                     if val == '-': val = ""
@@ -2062,7 +2283,7 @@ class GoogleWorkspaceManager:
                     if wht_rate_raw and str(wht_rate_raw).strip() not in ['-', '']:
                         try:
                             wht_rate_num = float(str(wht_rate_raw).replace('%', '').strip())
-                        except:
+                        except Exception:
                             wht_rate_num = None
                     # Step 2: if AI returned generic text or no rate, compute from amounts
                     if not wht_rate_num or wht_rate_num <= 0:
@@ -2083,7 +2304,8 @@ class GoogleWorkspaceManager:
                             wht_rate_num = 3.0  # default to 3% ค่าบริการ when amount exists but no base
                     # Step 3: format output
                     if not wht_rate_num or wht_rate_num <= 0:
-                        val = "-"
+                        # Step 4: Final fallback to text-based type from AI
+                        val = local_get_val(['income_type', 'wht_type', 'wht_type_text'], '-')
                     else:
                         income_type = _WHT_RATE_MAP.get(wht_rate_num, "")
                         rate_str = f"{int(wht_rate_num)}%" if float(wht_rate_num).is_integer() else f"{wht_rate_num}%"
@@ -2101,7 +2323,7 @@ class GoogleWorkspaceManager:
                                 name_part = s_name_part.split('_', 3)[-1].replace('.jpg', '').replace('.png', '').replace('_', ' ')
                                 if name_part:
                                     full_name_th = name_part
-                            except: pass
+                            except Exception: pass
 
                     if f_name_th == '-' and full_name_th != '-':
                         parts = full_name_th.split(' ', 2)
@@ -2121,13 +2343,32 @@ class GoogleWorkspaceManager:
                                 name_part = s_name_part.split('_', 3)[-1].replace('.jpg', '').replace('.png', '').replace('_', ' ')
                                 if name_part:
                                     full_name_th = name_part
-                            except: pass
+                            except Exception: pass
 
                     if l_name_th == '-' and full_name_th != '-':
                         parts = full_name_th.split(' ', 2)
                         if len(parts) >= 2:
                             l_name_th = parts[-1]
                     val = l_name_th
+                
+                elif src == "id_card_first_name_en":
+                    full_name_en = local_get_val(['first_name_en', 'name_en', 'full_name_en'])
+                    f_name_en = local_get_val('first_name_en')
+                    if f_name_en == '-' and full_name_en != '-':
+                        parts = full_name_en.split(' ')
+                        if len(parts) >= 2:
+                            f_name_en = parts[0]
+                        else:
+                            f_name_en = full_name_en
+                    val = f_name_en
+                elif src == "id_card_last_name_en":
+                    full_name_en = local_get_val(['first_name_en', 'name_en', 'full_name_en'])
+                    l_name_en = local_get_val(['last_name_en', 'surname_en'])
+                    if l_name_en == '-' and full_name_en != '-':
+                        parts = full_name_en.split(' ')
+                        if len(parts) >= 2:
+                            l_name_en = " ".join(parts[1:])
+                    val = l_name_en
                 
                 # Special cases for Statement Transaction looping
                 elif src == "statement_date":
@@ -2212,6 +2453,32 @@ class GoogleWorkspaceManager:
 
             # Append the data
             try:
+                # Sanitize values to prevent Google Sheets from auto-converting phone numbers or throwing formula errors
+                sanitized_rows = []
+                for r in rows:
+                    sanitized_row = []
+                    for val in r:
+                        if isinstance(val, str):
+                            val_stripped = val.strip()
+                            if val_stripped and val_stripped != '-':
+                                # 1. Starts with formula characters (=, +, -, @)
+                                if val_stripped.startswith(('=', '+', '-', '@')):
+                                    sanitized_row.append(f"'{val}")
+                                # 2. Starts with '0' and represents a phone/ID (excluding '0.5' etc.)
+                                elif val_stripped.startswith('0') and len(val_stripped) > 1 and not val_stripped.startswith('0.'):
+                                    if any(c.isdigit() for c in val_stripped):
+                                        sanitized_row.append(f"'{val}")
+                                    else:
+                                        sanitized_row.append(val)
+                                else:
+                                    sanitized_row.append(val)
+                            else:
+                                sanitized_row.append(val)
+                        else:
+                            sanitized_row.append(val)
+                    sanitized_rows.append(sanitized_row)
+                rows = sanitized_rows
+
                 logger.info(f"📝 Appending row to {sheet_name} (Length: {len(rows[0])}): {rows[0][:10]}...")
                 result = self._sheet_exec(lambda: self.sheets_service.spreadsheets().values().append(
                     spreadsheetId=self.spreadsheet_id,
@@ -2320,7 +2587,7 @@ class GoogleWorkspaceManager:
                             self.sheets_service.spreadsheets().batchUpdate(spreadsheetId=self.spreadsheet_id, body={'requests': [{'deleteSheet': {'sheetId': s_id}}]}).execute()
                             logger.info(f"🗑 Deleted default sheet: {title}")
                             break
-            except: pass
+            except Exception: pass
         except Exception as e:
             logger.error(f"Logging error: {e}")
             return {"ok": False, "error": str(e)}
@@ -2350,6 +2617,18 @@ class GoogleWorkspaceManager:
                 col_letter = chr(65 + col_idx) if col_idx < 26 else f"A{chr(65 + (col_idx - 26))}"
                 cell_range = f"'{sheet_name}'!{col_letter}{row_index}"
                 
+                # Sanitize new_value to prevent Google Sheets from auto-converting phone numbers or throwing formula errors
+                if isinstance(new_value, str):
+                    val_stripped = new_value.strip()
+                    if val_stripped and val_stripped != '-':
+                        # 1. Starts with formula characters (=, +, -, @)
+                        if val_stripped.startswith(('=', '+', '-', '@')):
+                            new_value = f"'{new_value}"
+                        # 2. Starts with '0' and represents a phone/ID (excluding '0.5' etc.)
+                        elif val_stripped.startswith('0') and len(val_stripped) > 1 and not val_stripped.startswith('0.'):
+                            if any(c.isdigit() for c in val_stripped):
+                                new_value = f"'{new_value}"
+
                 self.sheets_service.spreadsheets().values().update(
                     spreadsheetId=self.spreadsheet_id,
                     range=cell_range,
@@ -2510,7 +2789,7 @@ class GoogleWorkspaceManager:
                                 
                                 cat = str(row[idx_cat]).strip() or "ทั่วไป"
                                 categories_breakdown[cat] = categories_breakdown.get(cat, 0.0) + amt
-                        except:
+                        except Exception:
                             pass
             
             # We will also parse ใบเสร็จ/ใบกำกับภาษี if it exists
@@ -2537,7 +2816,7 @@ class GoogleWorkspaceManager:
                                 
                                 cat = str(row[idx_cat]).strip() or "ใบเสร็จรับเงิน"
                                 categories_breakdown[cat] = categories_breakdown.get(cat, 0.0) + amt
-                        except:
+                        except Exception:
                             pass
 
             if return_raw:
@@ -2734,3 +3013,172 @@ def rename_file(file_id, new_name): return google_manager.rename_file(file_id, n
 def delete_file(file_id): return google_manager.delete_file(file_id)
 def list_folder_contents(folder_id=None): return google_manager.list_subfolders(folder_id)
 def move_row_between_sheets(from_sheet, row_index, to_sheet): return google_manager.move_row_between_sheets(from_sheet, row_index, to_sheet)
+
+def sync_drive_logs_from_sheets(org_id, username=None):
+    """
+    Synchronizes the local SQLite drive_logs table with the live records in Google Sheets
+    to resolve any database drift.
+    """
+    logger.info(f"🔄 Starting drive_logs sync from Google Sheets for org_id={org_id}, username={username}...")
+    try:
+        import database
+        
+        # Set context
+        google_manager.set_context(username, org_id)
+        
+        if not google_manager.sheets_service or not google_manager.spreadsheet_id:
+            logger.warning(f"⚠️ Google Sheets not connected or no spreadsheet_id found for org_id={org_id}. Sync skipped.")
+            return False
+
+        def clean_float(val):
+            if not val or str(val).strip() == '-':
+                return 0.0
+            try:
+                s = str(val).replace(',', '').strip()
+                is_negative = False
+                if s.startswith('(') and s.endswith(')'):
+                    is_negative = True
+                    s = s[1:-1]
+                elif s.startswith('-'):
+                    is_negative = True
+                    s = s[1:]
+                import re
+                clean_str = re.sub(r'[^\d.]', '', s)
+                result = float(clean_str) if clean_str else 0.0
+                return -result if is_negative else result
+            except Exception:
+                return 0.0
+
+        def parse_time_to_db(time_str):
+            if not time_str or str(time_str).strip() in ['-', '']:
+                return None
+            s = str(time_str).strip()
+            # Try parsing various formats
+            for fmt in ("%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%d/%m/%y %H:%M", "%d/%m/%y %H:%M:%S"):
+                try:
+                    from datetime import datetime as dt
+                    parsed = dt.strptime(s, fmt)
+                    # Handle Buddhist Era years (e.g. 2569 -> 2026)
+                    year = parsed.year
+                    if year > 2500:
+                        year -= 543
+                    return f"{year:04d}-{parsed.month:02d}-{parsed.day:02d} {parsed.hour:02d}:{parsed.minute:02d}:{parsed.second:02d}"
+                except Exception:
+                    continue
+            return None
+
+        # Fetch spreadsheet metadata
+        spreadsheet = google_manager.sheets_service.spreadsheets().get(
+            spreadsheetId=google_manager.spreadsheet_id
+        ).execute()
+        sheet_titles = [s['properties']['title'] for s in spreadsheet.get('sheets', [])]
+        
+        target_sheets = ["ใบเสร็จ/ใบกำกับภาษี", "บันทึกค่าใช้จ่าย", "สลิปโอนเงิน", "ใบหัก ณ ที่จ่าย", "บัตรประชาชน", "สเตตเมนต์", "ใบเสนอราคา", "peak"]
+        db_rows = []
+
+        for s_title in target_sheets:
+            if s_title not in sheet_titles:
+                continue
+            
+            try:
+                res = google_manager.sheets_service.spreadsheets().values().get(
+                    spreadsheetId=google_manager.spreadsheet_id, range=f"'{s_title}'!A1:Z"
+                ).execute()
+                vals = res.get('values', [])
+                if not vals or len(vals) <= 1:
+                    continue
+                
+                header = vals[0]
+                
+                # Find column indexes dynamically
+                idx_date = next((i for i, h in enumerate(header) if "วันที่" in h), -1)
+                idx_amt = next((i for i, h in enumerate(header) if any(x in h for x in ["สุทธิ", "ยอดเงิน", "จำนวนเงิน", "มูลค่ารวมภาษี", "จำนวนเงินที่ชำระ"])), -1)
+                idx_cat = next((i for i, h in enumerate(header) if any(x in h for x in ["หมวดหมู่", "ประเภท", "บัญชี"])), -1)
+                idx_summary = next((i for i, h in enumerate(header) if any(x in h for x in ["สรุปจาก AI", "คำอธิบาย", "หมายเหตุ", "บันทึกช่วยจำ", "รายละเอียด"])), -1)
+                idx_link = next((i for i, h in enumerate(header) if any(x in h for x in ["ลิงก์ไฟล์", "ลิงก์ drive", "ลิงก์"])), -1)
+                idx_user = next((i for i, h in enumerate(header) if any(x in h for x in ["ผู้ส่ง", "user_id", "LINE User"])), -1)
+                idx_file = next((i for i, h in enumerate(header) if any(x in h for x in ["ไฟล์ต้นฉบับ", "ไฟล์อ้างอิง", "ชื่อไฟล์", "ไฟล์"])), -1)
+                idx_timestamp = next((i for i, h in enumerate(header) if "เวลาที่บันทึก" in h or "เวลาบันทึก" in h), 0)
+
+                for row in vals[1:]:
+                    if len(row) == 0:
+                        continue
+                    
+                    # Extract date
+                    doc_date = str(row[idx_date]).strip() if (idx_date != -1 and idx_date < len(row)) else "-"
+                    
+                    # Extract amount
+                    amt = clean_float(row[idx_amt] if (idx_amt != -1 and idx_amt < len(row)) else 0.0)
+                    
+                    # Extract category
+                    cat_val = str(row[idx_cat]).strip() if (idx_cat != -1 and idx_cat < len(row)) else s_title
+                    if not cat_val or cat_val == '-': 
+                        cat_val = s_title
+                        
+                    # Extract summary
+                    summary = str(row[idx_summary]).strip() if (idx_summary != -1 and idx_summary < len(row)) else ""
+                    
+                    # Extract link
+                    link_val = str(row[idx_link]).strip() if (idx_link != -1 and idx_link < len(row)) else ""
+                    
+                    # Extract user
+                    user_val = str(row[idx_user]).strip() if (idx_user != -1 and idx_user < len(row)) else ""
+                    
+                    # Extract filename
+                    file_val = str(row[idx_file]).strip() if (idx_file != -1 and idx_file < len(row)) else ""
+                    if not file_val or file_val == '-':
+                        # Fallback: parse from link or use a placeholder
+                        file_val = f"file_{s_title}.pdf"
+                        
+                    # Extract timestamp
+                    ts_val = str(row[idx_timestamp]).strip() if (idx_timestamp != -1 and idx_timestamp < len(row)) else ""
+                    created_at = parse_time_to_db(ts_val)
+                    if not created_at:
+                        from datetime import datetime as dt
+                        created_at = dt.now().strftime("%Y-%m-%d %H:%M:%S")
+                    
+                    db_rows.append((
+                        file_val,     # filename
+                        cat_val,      # category
+                        amt,          # amount
+                        doc_date,     # doc_date
+                        summary,      # summary
+                        link_val,     # file_link
+                        user_val,     # user_id
+                        org_id,       # org_id
+                        created_at    # created_at
+                    ))
+            except Exception as se:
+                logger.error(f"❌ Error syncing sheet '{s_title}': {se}")
+
+        # Update SQLite database
+        conn = database._get_conn()
+        cursor = conn.cursor()
+        
+        # Start transaction
+        cursor.execute("BEGIN TRANSACTION")
+        try:
+            # Delete old logs for this org
+            cursor.execute("DELETE FROM drive_logs WHERE org_id = ?", (org_id,))
+            
+            # Insert synced logs
+            if db_rows:
+                cursor.executemany("""
+                    INSERT INTO drive_logs (filename, category, amount, doc_date, summary, file_link, user_id, org_id, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, db_rows)
+                
+            cursor.execute("COMMIT")
+            logger.info(f"✅ Successfully synced {len(db_rows)} logs from Google Sheets to SQLite drive_logs table.")
+            return True
+        except Exception as dbe:
+            cursor.execute("ROLLBACK")
+            logger.error(f"❌ Database Transaction Error during sync: {dbe}")
+            return False
+        finally:
+            conn.close()
+            
+    except Exception as e:
+        logger.error(f"❌ General Error in sync_drive_logs_from_sheets: {e}", exc_info=True)
+        return False
+

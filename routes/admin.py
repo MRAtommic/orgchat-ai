@@ -6,6 +6,7 @@ Expense Form, Reconciliation
 """
 from flask import Blueprint, request, jsonify, render_template, render_template_string, send_from_directory, send_file, abort, redirect, session
 import os
+from pathlib import Path
 import sys
 import io
 import uuid
@@ -38,7 +39,7 @@ from reconciliation_service import ReconciliationService
 import settings_manager
 
 from routes.shared import (
-    VERSION, socketio, _limiter, login_required, admin_required, superadmin_required,
+    VERSION, socketio, _limiter, login_required, admin_required, superadmin_required, org_admin_required,
     PENDING_LINE_LINKS, _OAUTH_STATES, _store_oauth_state, _pop_oauth_state,
     send_push_notification, batch_send_push_notification,
     get_weather_context, THAI_HOLIDAYS_2026, get_current_time,
@@ -58,6 +59,9 @@ logger = logging.getLogger("OrgChatAI.Admin")
 
 admin_bp = Blueprint('admin', __name__)
 
+_recon_cache: dict = {}
+_recon_lock = threading.Lock()
+
 @admin_bp.route("/api/admin/line/settings", methods=["GET", "POST"])
 @admin_required
 def admin_line_settings():
@@ -71,7 +75,7 @@ def admin_line_settings():
 
 
 @admin_bp.route("/api/org/line/register-group", methods=["POST"])
-@login_required
+@org_admin_required
 def register_line_group_api():
     data = request.get_json(force=True) or {}
     group_id = (data.get("group_id") or "").strip()
@@ -85,46 +89,94 @@ def register_line_group_api():
 
 
 @admin_bp.route("/api/org/line/groups", methods=["GET"])
-@login_required
+@org_admin_required
 def list_line_groups_api():
     org_id = get_current_org_id()
     groups = database.get_line_groups_for_org(org_id)
     return jsonify({"ok": True, "groups": groups})
 
 
+@admin_bp.route("/api/org/line/sync-group-names", methods=["POST"])
+@org_admin_required
+def sync_line_group_names():
+    """Call LINE getGroupSummary API for each registered group and save real name + picture."""
+    import requests as _req
+    org_id = get_current_org_id()
+    if not org_id:
+        return jsonify({"ok": False, "error": "ไม่พบองค์กร"}), 400
+    config = database.get_line_config()
+    token = config.get("channel_access_token", "")
+    if not token:
+        return jsonify({"ok": False, "error": "ยังไม่ได้ตั้งค่า LINE Channel Access Token ในแผงควบคุม"}), 400
+    groups = database.get_line_groups_for_org(org_id)
+    results = []
+    for g in groups:
+        gid = g["group_id"]
+        try:
+            r = _req.get(
+                f"https://api.line.me/v2/bot/group/{gid}/summary",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=8
+            )
+            if r.status_code == 200:
+                info = r.json()
+                real_name = info.get("groupName", "")
+                picture_url = info.get("pictureUrl", "")
+                database.update_line_group_real_info(gid, real_name, picture_url)
+                results.append({"group_id": gid, "real_name": real_name, "picture_url": picture_url, "ok": True})
+            elif r.status_code == 404:
+                results.append({"group_id": gid, "ok": False, "error": "ไม่พบกลุ่มนี้ใน LINE (บอทอาจถูกลบออกจากกลุ่มแล้ว)"})
+            else:
+                results.append({"group_id": gid, "ok": False, "error": f"LINE API ตอบกลับ {r.status_code}"})
+        except Exception as e:
+            logger.error(f"[LINE group sync] {gid}: {e}")
+            results.append({"group_id": gid, "ok": False, "error": "เกิดข้อผิดพลาดในการติดต่อ LINE API"})
+    return jsonify({"ok": True, "results": results})
+
+
 @admin_bp.route("/api/org/line/groups/<group_id>", methods=["DELETE"])
-@login_required
+@org_admin_required
 def delete_line_group_api(group_id):
     org_id = get_current_org_id()
-    import sqlite3 as _sq
-    conn = _sq.connect(database.DB_PATH)
-    conn.execute("DELETE FROM line_group_mappings WHERE group_id=? AND org_id=?", (group_id, org_id))
-    conn.commit()
-    conn.close()
+    conn = database._get_conn()
+    try:
+        conn.execute("DELETE FROM line_group_mappings WHERE group_id=? AND org_id=?", (group_id, org_id))
+        conn.commit()
+    finally:
+        conn.close()
     return jsonify({"ok": True})
 
 
 @admin_bp.route("/admin/line-groups")
 @login_required
 def admin_line_groups_page():
-    return render_template("admin_line_groups.html")
+    user = session.get("user")
+    org_id = get_current_org_id()
+    settings = database.get_user_setting(user)
+    
+    is_global_admin = settings.get("role") == "admin"
+    is_organization_admin = org_id and database.is_org_admin(org_id, user)
+    
+    if not is_global_admin and not is_organization_admin:
+        return redirect("/?error=permission_denied"), 403
+    line_bot_id = os.environ.get("LINE_BOT_BASIC_ID", "").strip()
+    return render_template("admin_line_groups.html", line_bot_id=line_bot_id)
 
 
 @admin_bp.route("/api/admin/line/broadcast-history")
 @admin_required
 def get_broadcast_history():
+    """Retrieve filtered broadcast history for the current org."""
     try:
-        conn = database._get_conn()
-        conn.row_factory = sqlite3.Row
-        try:
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM line_broadcast_history ORDER BY timestamp DESC LIMIT 50")
-            rows = [dict(r) for r in cursor.fetchall()]
-            return jsonify({"ok": True, "history": rows})
-        finally:
-            conn.close()
+        org_id = get_current_org_id()
+        if not org_id:
+            return jsonify({"ok": False, "error": "ไม่พบข้อมูลองค์กร"}), 404
+            
+        history = database.get_line_broadcast_history(org_id, limit=50)
+        return jsonify({"ok": True, "history": history})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
+        logger.error(f"[LINE broadcast history] {e}")
+        return jsonify({"ok": False, "error": "ไม่สามารถดึงประวัติการประกาศได้"})
 
 
 @admin_bp.route("/api/admin/line/broadcast", methods=["POST"])
@@ -133,12 +185,16 @@ def api_line_broadcast():
     data = request.json
     text = data.get("text", "").strip()
     user = session.get("user", "Unknown")
+    org_id = get_current_org_id()
+    
     if not text:
         return jsonify({"success": False, "error": "กรุณาระบุข้อความประกาศค่ะ"}), 400
     
     def run_broadcast():
         success = broadcast_line_announcement(title="ประกาศจากแอดมิน", text=text)
-        logger.info(f"Broadcast from {user}: {text} - {'Success' if success else 'Failed'}")
+        status = "success" if success else "failed"
+        database.save_line_broadcast(user, org_id, text, status)
+        logger.info(f"Broadcast from {user} (Org: {org_id}): {text} - {status}")
         
     threading.Thread(target=run_broadcast).start()
     return jsonify({"success": True, "message": "กำลังส่งประกาศในพื้นหลังค่ะพี่!"})
@@ -147,26 +203,87 @@ def api_line_broadcast():
 @admin_bp.route("/billing")
 @login_required
 def billing_page():
-    return render_template("billing.html")
+    params = request.query_string.decode("utf-8")
+    target = "/?view=plan"
+    if params:
+        target += f"&{params}"
+    return redirect(target)
 
 
 @admin_bp.route("/api/billing/status")
 @login_required
 def billing_status():
     org_id = get_current_org_id()
-    return jsonify({"ok": True, **billing.get_billing_status(org_id)})
+    status = billing.get_billing_status(org_id)
+
+    # Enrich with actual live counts (not stored in billing module to avoid circular deps)
+    kb_used = 0
+    members_used = 0
+    if org_id:
+        try:
+            kb_used = len([f for f in rag_engine.list_files() if f.get("organization_id", 1) == org_id])
+        except Exception:
+            pass
+        try:
+            members_used = len(database.get_org_members(org_id))
+        except Exception:
+            pass
+
+    status["usage"]["kb_files"] = {
+        "used":  kb_used,
+        "limit": status["usage"]["kb_files"],
+    }
+    status["usage"]["max_users"] = {
+        "used":  members_used,
+        "limit": status["usage"]["max_users"],
+    }
+
+    # คำนวณ downgrade warnings — แจ้ง user ล่วงหน้าถ้า downgrade จะทำให้เกิน limit
+    downgrade_warnings = []
+    current_plan = status.get("plan", "free")
+    if current_plan != "free":
+        free_limits = billing.get_plan_config("free")["limits"]
+        usage = status.get("usage", {})
+        ai_used  = usage.get("ai_queries", {}).get("used", 0)
+        exp_used = usage.get("expenses", {}).get("used", 0)
+        if ai_used > free_limits["ai_queries_per_month"]:
+            downgrade_warnings.append(f"AI queries: ใช้ไป {ai_used} ครั้ง (Free limit: {free_limits['ai_queries_per_month']})")
+        if exp_used > free_limits["expenses_per_month"]:
+            downgrade_warnings.append(f"รายจ่าย: บันทึกไป {exp_used} รายการ (Free limit: {free_limits['expenses_per_month']})")
+        if members_used > free_limits["max_users"]:
+            downgrade_warnings.append(f"สมาชิก: มี {members_used} คน (Free limit: {free_limits['max_users']} คน)")
+        if kb_used > free_limits["kb_files"]:
+            downgrade_warnings.append(f"ไฟล์ KB: มี {kb_used} ไฟล์ (Free limit: {free_limits['kb_files']} ไฟล์)")
+
+    # is_paid — PromptPay polling ใน onboarding.html ใช้ field นี้
+    return jsonify({
+        "ok": True,
+        "is_paid": status.get("plan", "free") != "free",
+        "downgrade_warnings": downgrade_warnings,
+        **status,
+    })
+
+
+@admin_bp.route("/plan")
+@login_required
+def plan_page():
+    params = request.query_string.decode("utf-8")
+    target = "/?view=plan"
+    if params:
+        target += f"&{params}"
+    return redirect(target)
 
 
 @admin_bp.route("/admin/customers")
 @login_required
-@admin_required
+@superadmin_required
 def admin_customers_page():
     return render_template("admin_customers.html")
 
 
 @admin_bp.route("/api/admin/orgs")
 @login_required
-@admin_required
+@superadmin_required
 def admin_list_orgs():
     orgs = database.get_all_orgs_with_stats()
     for o in orgs:
@@ -176,7 +293,7 @@ def admin_list_orgs():
 
 @admin_bp.route("/api/admin/billing/set-plan", methods=["POST"])
 @login_required
-@admin_required
+@superadmin_required
 def admin_set_plan():
     data = request.get_json()
     org_id   = int(data.get("org_id", get_current_org_id()))
@@ -202,22 +319,45 @@ def billing_checkout():
     if plan not in ("pro", "business"):
         return jsonify({"ok": False, "error": "ไม่รู้จัก plan นี้"}), 400
 
+    username = session.get("user")
     org_id = get_current_org_id()
+    if not org_id:
+        try:
+            org_name = f"องค์กรของ {username}"
+            org_id, slug = database.create_organization(org_name, username)
+            session["org_id"] = org_id
+            session["org_role"] = "admin"
+            logger.info(f"[Checkout Auto-Org] Created org {org_name} (id={org_id}) for user {username}")
+        except Exception as e:
+            logger.error(f"[Checkout Auto-Org] Failed to create org: {e}")
+            return jsonify({"ok": False, "error": "ไม่สามารถสร้างบัญชีองค์กรอัตโนมัติได้ กรุณาลองใหม่"}), 500
+
     stripe_info = database.get_org_stripe_info(org_id)
-    base = request.host_url.rstrip("/")
+
+    # Double-payment guard — ถ้ามี active subscription อยู่แล้ว → เปิด portal แทน
+    if stripe_info.get("subscription_id"):
+        current_plan = billing.get_effective_plan(org_id)
+        if current_plan != "free":
+            return jsonify({
+                "ok": False,
+                "error": "คุณมี subscription ที่ active อยู่แล้ว กรุณาจัดการผ่านหน้า billing",
+                "redirect": "/billing",
+            }), 409
+
+    base = os.environ.get("BASE_URL", "").rstrip("/") or request.host_url.rstrip("/")
 
     try:
         checkout_session = payment.create_checkout_session(
             org_id=org_id,
             plan=plan,
             customer_id=stripe_info.get("customer_id"),
-            success_url=f"{base}/onboarding?plan={plan}&payment=success&org_id={org_id}",
-            cancel_url=f"{base}/billing?payment=cancel",
+            success_url=f"{base}/onboarding?plan={plan}&payment=success&org_id={org_id}&sid={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{base}/pricing?cancelled=1",   # BS-3: หน้า public ไม่ต้อง login
         )
         return jsonify({"ok": True, "url": checkout_session.url})
     except Exception as e:
         logger.error(f"[Stripe] checkout error: {e}")
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return jsonify({"ok": False, "error": "ไม่สามารถสร้างช่องทางชำระเงินได้ กรุณาลองใหม่"}), 500
 
 
 @admin_bp.route("/api/billing/checkout-promptpay", methods=["POST"])
@@ -233,22 +373,34 @@ def billing_checkout_promptpay():
     if plan not in ("pro", "business"):
         return jsonify({"ok": False, "error": "ไม่รู้จัก plan นี้"}), 400
 
+    username = session.get("user")
     org_id = get_current_org_id()
+    if not org_id:
+        try:
+            org_name = f"องค์กรของ {username}"
+            org_id, slug = database.create_organization(org_name, username)
+            session["org_id"] = org_id
+            session["org_role"] = "admin"
+            logger.info(f"[Checkout Auto-Org] Created org {org_name} (id={org_id}) for user {username}")
+        except Exception as e:
+            logger.error(f"[Checkout Auto-Org] Failed to create org: {e}")
+            return jsonify({"ok": False, "error": "ไม่สามารถสร้างบัญชีองค์กรอัตโนมัติได้ กรุณาลองใหม่"}), 500
+
     stripe_info = database.get_org_stripe_info(org_id)
-    base = request.host_url.rstrip("/")
+    base = os.environ.get("BASE_URL", "").rstrip("/") or request.host_url.rstrip("/")
 
     try:
         checkout_session = payment.create_promptpay_checkout(
             org_id=org_id,
             plan=plan,
             customer_id=stripe_info.get("customer_id"),
-            success_url=f"{base}/onboarding?plan={plan}&payment=success&method=promptpay&org_id={org_id}",
+            success_url=f"{base}/onboarding?plan={plan}&payment=success&method=promptpay&org_id={org_id}&sid={{CHECKOUT_SESSION_ID}}",
             cancel_url=f"{base}/pricing",
         )
         return jsonify({"ok": True, "url": checkout_session.url})
     except Exception as e:
         logger.error(f"[Stripe PromptPay] checkout error: {e}")
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return jsonify({"ok": False, "error": "ไม่สามารถสร้างช่องทางชำระเงินได้ กรุณาลองใหม่"}), 500
 
 
 @admin_bp.route("/api/billing/portal", methods=["POST"])
@@ -264,12 +416,112 @@ def billing_portal():
         return jsonify({"ok": False, "error": "ไม่พบข้อมูล Stripe — กรุณาสมัครแพลนก่อน"}), 404
 
     try:
-        base = request.host_url.rstrip("/")
+        base = os.environ.get("BASE_URL", "").rstrip("/") or request.host_url.rstrip("/")
         portal = payment.create_portal_session(customer_id, f"{base}/billing")
         return jsonify({"ok": True, "url": portal.url})
     except Exception as e:
         logger.error(f"[Stripe] portal error: {e}")
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return jsonify({"ok": False, "error": "ไม่สามารถเปิดหน้าจัดการการชำระเงินได้ กรุณาลองใหม่"}), 500
+
+
+@admin_bp.route("/api/billing/cancel-plan", methods=["POST"])
+@login_required
+def billing_cancel_plan():
+    """
+    ยกเลิก plan:
+    - Stripe subscription → cancel_at_period_end=True (ยังใช้ได้ถึงสิ้นรอบ, webhook จัดการ)
+    - PromptPay (ไม่มี sub_id) → ใช้ได้ถึง expires_at แล้วหมดเอง ไม่ต้องทำอะไร
+    """
+    me = session.get("user")
+    org_id = get_current_org_id()
+    if not org_id:
+        return jsonify({"ok": False, "error": "ไม่พบองค์กร"}), 404
+    if not database.is_org_admin(org_id, me) and not is_admin():
+        return jsonify({"ok": False, "error": "เฉพาะ Admin องค์กรเท่านั้นที่ยกเลิกแผนได้"}), 403
+    current_plan = billing.get_effective_plan(org_id)
+    if current_plan == "free":
+        return jsonify({"ok": False, "error": "แผนปัจจุบันเป็น Free อยู่แล้ว"}), 400
+
+    stripe_info = database.get_org_stripe_info(org_id)
+    sub_id = stripe_info.get("subscription_id")
+
+    if sub_id and payment.is_configured():
+        # ─── Stripe subscription: cancel at period end ───────────────
+        # user ยังใช้ได้ถึงสิ้นรอบ, webhook จะ set free เมื่อ subscription deleted
+        try:
+            import stripe as _stripe
+            _stripe.Subscription.modify(
+                sub_id,
+                cancel_at_period_end=True,
+                api_key=os.environ.get("STRIPE_SECRET_KEY", "")
+            )
+            logger.info(f"[Billing] org {org_id} Stripe sub {sub_id} set cancel_at_period_end by {me}")
+            return jsonify({
+                "ok": True,
+                "plan": current_plan,
+                "message": "ยกเลิกแล้ว — คุณยังสามารถใช้งานได้จนถึงสิ้นรอบการเรียกเก็บเงิน",
+                "cancel_at_period_end": True,
+            })
+        except Exception as _se:
+            logger.error(f"[Billing] Stripe cancel error: {_se}")
+            # Stripe ไม่ตอบ → ตัด access ทันทีเป็น fallback
+            billing.set_org_plan(org_id, "free", None)
+            logger.info(f"[Billing] org {org_id} force-free (Stripe cancel failed) by {me}")
+            return jsonify({"ok": True, "plan": "free", "message": "ยกเลิกแผนแล้ว (force)"})
+    else:
+        # ─── PromptPay / no subscription: ใช้ได้ถึง expires_at เดิม ──
+        # ไม่ต้องเปลี่ยน plan → ระบบจะ downgrade อัตโนมัติเมื่อ expires_at ถึง
+        expires_at = stripe_info.get("plan_expires_at") or None
+        logger.info(f"[Billing] org {org_id} PromptPay cancel noted by {me}, expires {expires_at}")
+        return jsonify({
+            "ok": True,
+            "plan": current_plan,
+            "message": "ยกเลิกแล้ว — คุณยังสามารถใช้งานได้จนถึงวันหมดอายุ ไม่มีการเรียกเก็บเงินเพิ่ม",
+            "cancel_at_period_end": True,
+        })
+
+
+def _notify_plan_downgrade_line(org_id: int, reason: str) -> None:
+    """ส่ง LINE notification ให้ org admin เมื่อ Stripe downgrade plan เป็น free"""
+    try:
+        import requests as _req
+        tok  = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "").strip()
+        base = os.environ.get("BASE_URL", "https://openchat.sbs")
+        if not tok:
+            return
+        org_row  = database.get_org_by_id(org_id)
+        org_name = org_row.get("name", f"Org #{org_id}") if org_row else f"Org #{org_id}"
+        members  = database.get_org_members(org_id)
+        reason_map = {
+            "canceled":  "ยกเลิกการสมัครสมาชิก",
+            "deleted":   "ยกเลิกการสมัครสมาชิก",
+            "past_due":  "ชำระเงินไม่สำเร็จ",
+            "unpaid":    "ค้างชำระ",
+        }
+        reason_th = reason_map.get(reason, reason)
+        msg = (
+            f"⚠️ แจ้งเตือนจาก OrgChat AI\n\n"
+            f"แพลนขององค์กร '{org_name}' ถูกปรับลงเป็น Free\n"
+            f"สาเหตุ: {reason_th}\n\n"
+            f"กรุณาต่ออายุที่: {base}/billing"
+        )
+        for m in members:
+            if m.get("role") != "admin":
+                continue
+            line_uid = database.get_line_user_id_for_username(m["username"])
+            if not line_uid:
+                continue
+            try:
+                _req.post(
+                    "https://api.line.me/v2/bot/message/push",
+                    headers={"Authorization": f"Bearer {tok}", "Content-Type": "application/json"},
+                    json={"to": line_uid, "messages": [{"type": "text", "text": msg}]},
+                    timeout=10,
+                )
+            except Exception:
+                pass
+    except Exception as _ne:
+        logger.error(f"[notify_downgrade] org={org_id} reason={reason}: {_ne}")
 
 
 @admin_bp.route("/api/billing/webhook", methods=["POST"])
@@ -282,7 +534,18 @@ def stripe_webhook():
         event = payment.construct_webhook_event(payload, sig)
     except Exception as e:
         logger.warning(f"[Stripe webhook] invalid signature: {e}")
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"error": "Invalid webhook signature"}), 400
+
+    event_id = event.get("id", "")
+
+    # Atomic claim: only the first worker (or first delivery) processes this event.
+    # stripe_try_claim_event uses INSERT OR IGNORE — concurrent duplicate deliveries
+    # will get claimed=False and skip processing safely.
+    if event_id:
+        claimed = database.stripe_try_claim_event(event_id)
+        if not claimed:
+            logger.info(f"[Stripe webhook] duplicate event skipped: {event_id}")
+            return jsonify({"ok": True})
 
     etype = event["type"]
     obj   = event["data"]["object"]
@@ -291,65 +554,109 @@ def stripe_webhook():
     elif obj is not None:
         obj = dict(obj)
 
-    if etype == "checkout.session.completed":
-        meta            = obj.get("metadata", {})
-        org_id          = int(meta.get("org_id", 0))
-        plan            = meta.get("plan", "pro")
-        customer_id     = obj.get("customer")
-        subscription_id = obj.get("subscription")
-        payment_type    = meta.get("payment_type", "")
+    try:
+        if etype == "checkout.session.completed":
+            meta            = obj.get("metadata", {})
+            org_id          = int(meta.get("org_id", 0))
+            plan            = meta.get("plan", "pro")
+            customer_id     = obj.get("customer")
+            subscription_id = obj.get("subscription")
+            payment_type    = meta.get("payment_type", "")
 
-        if not org_id:
-            logger.error(f"[Stripe webhook] checkout.session.completed missing org_id — session {obj.get('id')}")
-            return jsonify({"error": "missing org_id in metadata"}), 400
+            if not org_id:
+                logger.error(f"[Stripe webhook] checkout.session.completed missing org_id — session {obj.get('id')}")
+                return jsonify({"ok": True})  # bad metadata — retrying won't help
 
-        if plan not in billing.PLANS or plan == "free":
-            logger.error(f"[Stripe webhook] invalid plan in metadata: {plan!r}")
-            return jsonify({"error": "invalid plan in metadata"}), 400
+            if plan not in billing.PLANS or plan == "free":
+                logger.error(f"[Stripe webhook] invalid plan in metadata: {plan!r}")
+                return jsonify({"ok": True})  # bad metadata — retrying won't help
 
-        if org_id:
+            if not database.get_org_by_id(org_id):
+                logger.error(f"[Stripe webhook] org_id={org_id} does not exist — ignoring event")
+                return jsonify({"ok": True})  # org deleted — retrying won't help
+
             if payment_type == "promptpay" or not subscription_id:
-                # One-time payment (PromptPay) → grant plan for N days
-                from datetime import timedelta as _td
+                from datetime import timedelta as _td, timezone as _tz
                 days = int(meta.get("days", "30"))
-                from datetime import timezone as _tz
                 end_iso = (datetime.now(_tz.utc) + _td(days=days)).isoformat()
                 billing.set_org_plan(org_id, plan, end_iso)
                 if customer_id:
                     database.set_org_stripe_info(org_id, customer_id, None, end_iso)
                 logger.info(f"[Stripe PromptPay] Org {org_id} → {plan} for {days} days (expires {end_iso})")
             else:
-                # Subscription (credit card)
                 end_iso = payment.get_subscription_period_end(subscription_id)
+                if not end_iso:
+                    # Stripe API ไม่ตอบ → fallback 35 วัน (monthly + 5-day buffer)
+                    # Stripe จะส่ง invoice.payment_succeeded ครั้งถัดไปพร้อม end_iso จริง
+                    from datetime import timedelta as _td2, timezone as _tz2
+                    end_iso = (datetime.now(_tz2.utc) + _td2(days=35)).isoformat()
+                    logger.warning(f"[Stripe] Could not get period_end for sub {subscription_id} — using 35d fallback")
                 billing.set_org_plan(org_id, plan, end_iso)
                 database.set_org_stripe_info(org_id, customer_id, subscription_id, end_iso)
                 logger.info(f"[Stripe] Org {org_id} → {plan} (expires {end_iso})")
 
-    elif etype in ("customer.subscription.updated", "invoice.payment_succeeded"):
-        meta   = obj.get("metadata", {})
-        org_id = int(meta.get("org_id", 0))
-        if org_id:
-            plan   = meta.get("plan", "pro")
-            if plan not in billing.PLANS or plan == "free":
-                logger.warning(f"[Stripe webhook] {etype} invalid plan {plan!r} for org {org_id} — skipping")
-                return jsonify({"ok": True})
-            sub_id = obj.get("id") if etype == "customer.subscription.updated" else obj.get("subscription")
-            status = obj.get("status") if etype == "customer.subscription.updated" else "active"
-            if status in ("active", "trialing"):
-                end_iso = payment.get_subscription_period_end(sub_id) if sub_id else None
-                billing.set_org_plan(org_id, plan, end_iso)
-                if sub_id:
-                    database.set_org_stripe_info(org_id, obj.get("customer", ""), sub_id, end_iso)
-            elif status in ("canceled", "unpaid", "past_due"):
-                billing.set_org_plan(org_id, "free")
-                logger.info(f"[Stripe] Org {org_id} → free (status={status})")
+        elif etype in ("customer.subscription.updated", "invoice.payment_succeeded"):
+            meta   = obj.get("metadata", {}) or {}
+            org_id = int(meta.get("org_id", 0))
 
-    elif etype == "customer.subscription.deleted":
-        meta   = obj.get("metadata", {})
-        org_id = int(meta.get("org_id", 0))
-        if org_id:
-            billing.set_org_plan(org_id, "free")
-            logger.info(f"[Stripe] Org {org_id} → free (subscription deleted)")
+            # invoice.payment_succeeded: invoice object ไม่มี org_id ใน metadata
+            # → fallback ดึง metadata จาก subscription object แทน
+            if not org_id and etype == "invoice.payment_succeeded":
+                _inv_sub_id = obj.get("subscription")
+                if _inv_sub_id and payment.is_configured():
+                    try:
+                        import stripe as _stripe
+                        _sub = _stripe.Subscription.retrieve(
+                            _inv_sub_id,
+                            api_key=os.environ.get("STRIPE_SECRET_KEY", "")
+                        )
+                        meta = (_sub.get("metadata") or {})
+                        org_id = int(meta.get("org_id", 0))
+                        logger.info(f"[Stripe webhook] invoice fallback: org_id={org_id} from sub {_inv_sub_id}")
+                    except Exception as _inv_e:
+                        logger.warning(f"[Stripe webhook] invoice sub lookup failed: {_inv_e}")
+
+            if org_id:
+                plan = meta.get("plan", "")
+                if not plan or plan not in billing.PLANS or plan == "free":
+                    logger.warning(f"[Stripe webhook] {etype} missing/invalid plan {plan!r} for org {org_id} — skipping")
+                    return jsonify({"ok": True})
+                sub_id = obj.get("id") if etype == "customer.subscription.updated" else obj.get("subscription")
+                status = obj.get("status") if etype == "customer.subscription.updated" else "active"
+                if status in ("active", "trialing"):
+                    end_iso = payment.get_subscription_period_end(sub_id) if sub_id else None
+                    if not end_iso:
+                        from datetime import timedelta as _td3, timezone as _tz3
+                        end_iso = (datetime.now(_tz3.utc) + _td3(days=35)).isoformat()
+                        logger.warning(f"[Stripe] {etype} period_end missing — 35d fallback for org {org_id}")
+                    billing.set_org_plan(org_id, plan, end_iso)
+                    if sub_id:
+                        database.set_org_stripe_info(org_id, obj.get("customer", ""), sub_id, end_iso)
+                elif status in ("canceled", "unpaid", "past_due"):
+                    billing.set_org_plan(org_id, "free")
+                    logger.info(f"[Stripe] Org {org_id} → free (status={status})")
+                    import threading
+                    threading.Thread(
+                        target=_notify_plan_downgrade_line, args=(org_id, status), daemon=True
+                    ).start()
+
+        elif etype == "customer.subscription.deleted":
+            meta   = obj.get("metadata", {})
+            org_id = int(meta.get("org_id", 0))
+            if org_id:
+                billing.set_org_plan(org_id, "free")
+                logger.info(f"[Stripe] Org {org_id} → free (subscription deleted)")
+                import threading
+                threading.Thread(
+                    target=_notify_plan_downgrade_line, args=(org_id, "deleted"), daemon=True
+                ).start()
+
+    except Exception as _wh_err:
+        # Processing failed — un-claim so Stripe retries
+        logger.error(f"[Stripe webhook] processing error for {event_id}: {_wh_err}", exc_info=True)
+        if event_id:
+            database.stripe_remove_event_claim(event_id)
+        return jsonify({"error": "internal error"}), 500
 
     return jsonify({"ok": True})
 
@@ -362,18 +669,41 @@ def tax_expense_data_api():
     try:
         from google_drive_service import google_manager
         username = session.get("user")
-        org_id = session.get("org_id")
+        user_settings = database.get_user_setting(username)
+        user_role = user_settings.get("role", "user")
+        if user_role != "admin" and not user_settings.get("can_view_financial"):
+            return jsonify({"ok": False, "error": "คุณไม่มีสิทธิ์เข้าถึงแดชบอร์ดรายจ่าย กรุณาติดต่อ Admin"}), 403
+        org_id = get_current_org_id()
         google_manager.set_context(username, org_id)
+
+        # Keep local SQLite logs fully aligned with current sheet content to avoid dashboard drift
+        try:
+            from google_drive_service import sync_drive_logs_from_sheets
+            sync_drive_logs_from_sheets(org_id, username)
+        except Exception as sync_err:
+            logger.warning(f"Failed to sync drive logs from sheets: {sync_err}")
+
+        if not google_manager.sheets_service:
+            return jsonify({"ok": False, "error": "ยังไม่ได้เชื่อมต่อ Google Drive/Sheets — กรุณาให้ Admin ขององค์กรเชื่อมต่อ Google ในหน้า 'จัดการองค์กร'"}), 200
         
         def clean_float(val):
             if not val or str(val).strip() == '-':
                 return 0.0
             try:
-                # Remove commas and non-numeric chars except dot
+                s = str(val).replace(',', '').strip()
+                is_negative = False
+                if s.startswith('(') and s.endswith(')'):
+                    is_negative = True
+                    s = s[1:-1]
+                elif s.startswith('-'):
+                    is_negative = True
+                    s = s[1:]
+                # Remove any remaining non-numeric chars except dot
                 import re
-                clean_str = re.sub(r'[^\d.]', '', str(val).replace(',', ''))
-                return float(clean_str) if clean_str else 0.0
-            except:
+                clean_str = re.sub(r'[^\d.]', '', s)
+                result = float(clean_str) if clean_str else 0.0
+                return -result if is_negative else result
+            except Exception:
                 return 0.0
 
         spreadsheet = google_manager.sheets_service.spreadsheets().get(spreadsheetId=google_manager.spreadsheet_id).execute()
@@ -424,8 +754,11 @@ def tax_expense_data_api():
                     
                     tax_id = str(row[idx_tax_id]).strip() if idx_tax_id < len(row) else ""
                     if wht > 0:
-                        if tax_id.startswith("0"): total_wht_53 += wht
-                        else: total_wht_3 += wht
+                        # Improved WHT classification: 13 digits not starting with 0 is usually Personal (3), else Corporate (53)
+                        if len(tax_id) == 13 and not tax_id.startswith("0"):
+                            total_wht_3 += wht
+                        else:
+                            total_wht_53 += wht
                             
                     ai_summary = str(row[idx_ai_summary]).strip() if idx_ai_summary < len(row) else ""
                     vendor = str(row[idx_rec]).strip() if idx_rec < len(row) else "-"
@@ -471,9 +804,58 @@ def tax_expense_data_api():
                     if not cat_val or cat_val == '-': cat_val = "ทั่วไป"
                     categories_map[cat_val] = categories_map.get(cat_val, 0.0) + amt
 
+        # 3. Process Other Sheets (Transfer Slips, WHT, PEAK)
+        other_sheets = ["สลิปโอนเงิน", "ใบหัก ณ ที่จ่าย", "peak"]
+        for s_title in other_sheets:
+            if s_title not in sheet_titles: continue
+            res = google_manager.sheets_service.spreadsheets().values().get(
+                spreadsheetId=google_manager.spreadsheet_id, range=f"'{s_title}'!A1:Z"
+            ).execute()
+            vals = res.get('values', [])
+            if not vals or len(vals) <= 1: continue
+            
+            header = vals[0]
+            h_map = {h.strip().lower(): i for i, h in enumerate(header)}
+            
+            # Find common columns
+            idx_amt = next((i for i, h in enumerate(header) if "สุทธิ" in h or "ยอดเงิน" in h or "จำนวนเงิน" in h or "มูลค่ารวมภาษี" in h), -1)
+            idx_vat = next((i for i, h in enumerate(header) if "VAT" in h or "ภาษีมูลค่าเพิ่ม" in h), -1)
+            idx_wht = next((i for i, h in enumerate(header) if "หัก ณ ที่จ่าย" in h or "WHT" in h or "ภาษีที่หัก" in h), -1)
+            idx_cat = next((i for i, h in enumerate(header) if "หมวดหมู่" in h or "ประเภท" in h), -1)
+            
+            if idx_amt == -1: continue
+            
+            for row in vals[1:]:
+                amt = clean_float(row[idx_amt] if idx_amt < len(row) else 0.0)
+                if amt == 0: continue
+                
+                # For PEAK or similar, if amount is negative, it's a credit note, should reduce total expense
+                total_expense += amt
+                
+                cat_val = str(row[idx_cat]).strip() if (idx_cat != -1 and idx_cat < len(row)) else s_title
+                if not cat_val or cat_val == '-': cat_val = s_title
+                categories_map[cat_val] = categories_map.get(cat_val, 0.0) + amt
+                
+                if idx_vat != -1:
+                    total_vat += clean_float(row[idx_vat] if idx_vat < len(row) else 0.0)
+                if idx_wht != -1:
+                    wht_val = clean_float(row[idx_wht] if idx_wht < len(row) else 0.0)
+                    total_wht += wht_val
+                    # Simplified WHT split for these sheets as they often lack tax_id in the same row
+                    if wht_val > 0:
+                        total_wht_53 += wht_val 
+
         # Format categories for chart
         categories_list = [{"name": k, "value": v} for k, v in categories_map.items()]
         categories_list = sorted(categories_list, key=lambda x: x['value'], reverse=True)
+
+        spreadsheet_id = google_manager.spreadsheet_id
+        parent_folder_id = google_manager.parent_folder_id
+        
+        spreadsheet_url = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit" if spreadsheet_id else "https://docs.google.com/spreadsheets"
+        drive_folder_url = f"https://drive.google.com/drive/folders/{parent_folder_id}" if parent_folder_id else "https://drive.google.com"
+
+        biz_profile = database.get_org_profile(org_id) if org_id else None
 
         return jsonify({
             "ok": True,
@@ -484,13 +866,19 @@ def tax_expense_data_api():
             "total_wht_53": total_wht_53,
             "categories": categories_list,
             "unclear_scans": unclear_scans,
-            "sheets_list": sheet_titles
+            "sheets_list": sheet_titles,
+            "spreadsheet_url": spreadsheet_url,
+            "drive_folder_url": drive_folder_url,
+            "biz_profile": biz_profile
         })
 
     except Exception as e:
         import traceback
-        print(f"🚨 Dashboard API Error: {e}\n{traceback.format_exc()}")
-        return jsonify({"ok": False, "error": str(e)}), 500
+        from google.auth.exceptions import RefreshError
+        logger.error(f"[Dashboard API] {e}\n{traceback.format_exc()}")
+        if isinstance(e, RefreshError) or 'invalid_grant' in str(e):
+            return jsonify({"ok": False, "error": "Token Google หมดอายุหรือถูก revoke — กรุณาเชื่อมต่อ Google ใหม่อีกครั้ง"}), 200
+        return jsonify({"ok": False, "error": "เกิดข้อผิดพลาดในการดึงข้อมูล Google Sheets"}), 500
 
 
 @admin_bp.route("/api/set_key", methods=["POST"])
@@ -549,28 +937,30 @@ def process_reconciliation():
             "financial": financial
         }
         
-        # Cache data in memory for on-demand download
+        # Cache data in memory for on-demand download (capped at 20 to prevent unbounded growth)
         report_id = uuid.uuid4().hex[:8]
-        if not hasattr(app, '_recon_cache'):
-            app._recon_cache = {}
-        app._recon_cache[report_id] = df_result
+        with _recon_lock:
+            if len(_recon_cache) >= 20:
+                oldest_key = next(iter(_recon_cache))
+                del _recon_cache[oldest_key]
+            _recon_cache[report_id] = df_result
         
         summary["report_url"] = f"/api/reconciliation/download/{report_id}"
         
         return jsonify({"ok": True, "summary": summary})
     except Exception as e:
         import traceback
-        traceback.print_exc()
-        return jsonify({"ok": False, "error": str(e)}), 500
+        logger.error(f"[Reconciliation] {e}\n{traceback.format_exc()}")
+        return jsonify({"ok": False, "error": "เกิดข้อผิดพลาดในการประมวลผลข้อมูล กรุณาลองใหม่"}), 500
 
 
 @admin_bp.route("/api/reconciliation/download/<report_id>")
 @login_required
 def download_recon_report(report_id):
-    if not hasattr(app, '_recon_cache') or report_id not in app._recon_cache:
+    with _recon_lock:
+        df = _recon_cache.get(report_id)
+    if df is None:
         return jsonify({"ok": False, "error": "รายงานหมดอายุ กรุณาประมวลผลใหม่"}), 404
-    
-    df = app._recon_cache[report_id]
     output = io.BytesIO()
     df.to_excel(output, index=False, engine='openpyxl')
     output.seek(0)
@@ -606,7 +996,8 @@ def download_filtered_recon():
             download_name=f'reconciliation_filtered_{uuid.uuid4().hex[:6]}.xlsx'
         )
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        logger.error(f"[Reconciliation download-filtered] {e}")
+        return jsonify({"ok": False, "error": "ไม่สามารถสร้างไฟล์ Excel ได้ กรุณาลองใหม่"}), 500
 
 
 @admin_bp.route("/api/reconciliation/move-row", methods=["POST"])
@@ -630,8 +1021,8 @@ def move_row_between_sheets_api():
             return jsonify({"ok": False, "error": err or "ย้ายไม่สำเร็จ"}), 500
     except Exception as e:
         import traceback
-        print(f"[move-row] Error: {e}\n{traceback.format_exc()}")
-        return jsonify({"ok": False, "error": str(e)}), 500
+        logger.error(f"[move-row] {e}\n{traceback.format_exc()}")
+        return jsonify({"ok": False, "error": "ไม่สามารถย้ายแถวได้ กรุณาลองใหม่"}), 500
 
 
 @admin_bp.route("/api/schedules", methods=["GET", "POST"])
@@ -652,11 +1043,31 @@ def manage_schedules():
         
         if not title or not start_date:
             return jsonify({"ok": False, "error": "Missing title or date"}), 400
-            
+
         org_id = get_current_org_id()
+
+        # ตรวจว่าวันที่เลือกมีคำขอลาที่อนุมัติแล้วหรือไม่
+        leave_warning = None
+        try:
+            _lconn = database._get_conn()
+            try:
+                _leave = _lconn.execute(
+                    """SELECT 1 FROM leave_requests
+                       WHERE username=? AND status='approved'
+                       AND start_date <= ? AND end_date >= ?
+                       LIMIT 1""",
+                    (user, start_date, start_date),
+                ).fetchone()
+            finally:
+                _lconn.close()
+            if _leave:
+                leave_warning = f"วันที่ {start_date} มีการลาที่อนุมัติแล้ว กรุณาตรวจสอบก่อนบันทึก"
+        except Exception:
+            pass
+
         database.add_schedule(user, title, start_date, desc, category, start_time, is_public, status, target_departments=target_depts, target_users=target_users, org_id=org_id)
         visibility_text = "Public" if is_public else "Private"
-        database.log_event(f"Added {visibility_text} schedule: {title} on {start_date}", user=user)
+        database.log_event(f"Added {visibility_text} schedule: {title} on {start_date}", user=user, org_id=org_id)
         
         # --- New Public Event Broadcast ---
         profile = database.get_user_profile(user)
@@ -727,7 +1138,10 @@ def manage_schedules():
                     )
                     batch_send_push_notification(dept_users, 'กิจกรรมใหม่ในแผนก', f'{display_name}: {title}', url='#calendar')
                         
-        return jsonify({"ok": True})
+        result = {"ok": True}
+        if leave_warning:
+            result["warning"] = leave_warning
+        return jsonify(result)
 
     org_id = get_current_org_id()
     return jsonify({"schedules": database.get_schedules(user, org_id=org_id)})
@@ -746,7 +1160,7 @@ def manage_schedule_item(sid):
     if request.method == "DELETE":
         ok = database.delete_schedule(sid, username=user, is_admin=is_admin())
         if ok:
-            database.log_event(f"Schedule deleted: ID {sid}", user=user)
+            database.log_event(f"Schedule deleted: ID {sid}", user=user, org_id=org_id)
             return jsonify({"ok": True})
         return jsonify({"ok": False, "error": "คุณไม่มีสิทธิ์ลบกำหนดการนี้"}), 403
 
@@ -767,7 +1181,7 @@ def manage_schedule_item(sid):
 
         database.update_schedule(sid, title, date, desc, cat, time_val, is_public, status, target_departments=target_depts, target_users=target_users)
         user = session.get("user", "Admin")
-        database.log_event(f"Updated schedule ID: {sid}", user=user)
+        database.log_event(f"Updated schedule ID: {sid}", user=user, org_id=org_id)
         return jsonify({"ok": True})
 
 
@@ -778,7 +1192,7 @@ def toggle_schedule_route(sid):
     if new_status is None:
         return jsonify({"ok": False, "error": "Schedule not found"}), 404
     user = session.get("user", "Admin")
-    database.log_event(f"Toggled schedule status: {sid} to {new_status}", user=user)
+    database.log_event(f"Toggled schedule status: {sid} to {new_status}", user=user, org_id=get_current_org_id())
     return jsonify({"ok": True, "new_status": new_status})
 
 
@@ -787,7 +1201,7 @@ def toggle_schedule_route(sid):
 def delete_past_schedules_route():
     user = session.get("user")
     database.delete_past_schedules(user)
-    database.log_event(f"Cleared all past schedules", user=user)
+    database.log_event(f"Cleared all past schedules", user=user, org_id=get_current_org_id())
     return jsonify({"ok": True})
 
 
@@ -796,7 +1210,7 @@ def delete_past_schedules_route():
 def archive_past_schedules_route():
     user = session.get("user")
     database.archive_past_schedules(user)
-    database.log_event(f"Archived all past schedules", user=user)
+    database.log_event(f"Archived all past schedules", user=user, org_id=get_current_org_id())
     return jsonify({"ok": True})
 
 
@@ -974,6 +1388,88 @@ def admin_system_diagnostics():
     })
 
 
+# ─── AI Persona Management (Admin) ──────────────────────────
+@admin_bp.route("/api/admin/personas", methods=["GET"])
+@org_admin_required
+def admin_get_personas():
+    org_id = get_current_org_id()
+    # Scoped by organization or created by 'System'
+    conn = database._get_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT * FROM ai_personas 
+        WHERE organization_id = ? OR created_by = 'System'
+        ORDER BY name ASC
+    """, (org_id,))
+    columns = [column[0] for column in cursor.description]
+    personas = [dict(zip(columns, row)) for row in cursor.fetchall()]
+    conn.close()
+    return jsonify({"ok": True, "personas": personas})
+
+@admin_bp.route("/api/admin/personas", methods=["POST"])
+@org_admin_required
+def admin_create_persona():
+    org_id = get_current_org_id()
+    data = request.json
+    name = data.get("name")
+    prompt = data.get("prompt")
+    description = data.get("description")
+    icon = data.get("icon")
+
+    if not name or not prompt:
+        return jsonify({"ok": False, "error": "Missing name or prompt"}), 400
+
+    conn = database._get_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO ai_personas (name, system_prompt, description, avatar_url, created_by, organization_id)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (name, prompt, description, icon, session.get("user"), org_id))
+    conn.commit()
+    conn.close()
+    
+    database.log_event(f"Created AI Persona: {name}", user=session.get("user"), org_id=org_id)
+    return jsonify({"ok": True})
+
+@admin_bp.route("/api/admin/personas/<int:pid>", methods=["PUT"])
+@org_admin_required
+def admin_update_persona(pid):
+    org_id = get_current_org_id()
+    data = request.json
+    name = data.get("name")
+    prompt = data.get("prompt")
+    description = data.get("description")
+    icon = data.get("icon")
+
+    # Security check: Ensure persona belongs to this org
+    p = database.get_persona(pid)
+    if not p or (p.get("organization_id") != org_id and p.get("created_by") != 'System' and not session.get("is_superadmin")):
+        return jsonify({"ok": False, "error": "Unauthorized"}), 403
+
+    database.update_persona(pid, name=name, system_prompt=prompt, description=description, avatar_url=icon)
+    database.log_event(f"Updated AI Persona: {name} (ID: {pid})", user=session.get("user"), org_id=org_id)
+    return jsonify({"ok": True})
+
+@admin_bp.route("/api/admin/personas/<int:pid>", methods=["DELETE"])
+@org_admin_required
+def admin_delete_persona(pid):
+    org_id = get_current_org_id()
+    p = database.get_persona(pid)
+    if not p or (p.get("organization_id") != org_id and not session.get("is_superadmin")):
+        return jsonify({"ok": False, "error": "Unauthorized"}), 403
+
+    database.delete_persona(pid)
+    database.log_event(f"Deleted AI Persona (ID: {pid})", user=session.get("user"), org_id=org_id)
+    return jsonify({"ok": True})
+
+# ─── Activity Logs (Admin) ──────────────────────────────────
+@admin_bp.route("/api/admin/logs", methods=["GET"])
+@org_admin_required
+def admin_get_logs():
+    logs = database.get_events(limit=100)
+    return jsonify({"ok": True, "logs": logs})
+
+
 @admin_bp.route("/api/admin/settings", methods=["GET", "POST"])
 @admin_required
 def admin_settings_route():
@@ -1027,7 +1523,7 @@ def admin_create_user_route():
         return jsonify({"ok": False, "error": "กรุณากรอกชื่อผู้ใช้และรหัสผ่าน"}), 400
 
     if database.admin_create_user(username, password, role, display_name=display_name, can_view_kb=can_view_kb, can_edit_kb=can_edit_kb, can_delete_kb=can_delete_kb, department=department, email=email or None):
-        database.log_event(f"Created user: {username} (Role: {role})", user=session.get("user"))
+        database.log_event(f"Created user: {username} (Role: {role})", user=session.get("user"), org_id=get_current_org_id())
         return jsonify({"ok": True})
     return jsonify({"ok": False, "error": "ชื่อผู้ใช้นี้มีอยู่ในระบบแล้ว"}), 400
 
@@ -1042,28 +1538,29 @@ def admin_update_user_route(username):
     can_view_kb = data.get("can_view_kb")
     can_edit_kb = data.get("can_edit_kb")
     can_delete_kb = data.get("can_delete_kb")
+    can_view_financial = data.get("can_view_financial")
     department = data.get("department")
     notes = data.get("notes")
     password = data.get("password")
-    
-    database.admin_update_user(username, display_name, role, is_active, notes, can_view_kb, can_edit_kb, can_delete_kb, department=department)
+
+    database.admin_update_user(username, display_name, role, is_active, notes, can_view_kb, can_edit_kb, can_delete_kb, department=department, can_view_financial=can_view_financial)
     if password:
         database.admin_reset_user_password(username, password)
         
-    database.log_event(f"Updated user details for: {username}", user=session.get("user"))
+    database.log_event(f"Updated user details for: {username}", user=session.get("user"), org_id=get_current_org_id())
     return jsonify({"ok": True})
 
 
 @admin_bp.route("/api/admin/users/<username>/reset-password", methods=["POST"])
 @admin_required
 def admin_reset_password_route(username):
-    data = request.json
+    data = request.get_json() or {}
     password = data.get("password")
     if not password:
         return jsonify({"ok": False, "error": "กรุณากรอกรหัสผ่านใหม่"}), 400
     
     database.admin_reset_user_password(username, password)
-    database.log_event(f"Reset password for: {username}", user=session.get("user"))
+    database.log_event(f"Reset password for: {username}", user=session.get("user"), org_id=get_current_org_id())
     return jsonify({"ok": True})
 
 
@@ -1072,17 +1569,39 @@ def admin_reset_password_route(username):
 def admin_delete_user_route(username):
     if username == session.get("user"):
         return jsonify({"ok": False, "error": "ไม่สามารถลบตัวเองได้"}), 400
-        
+
+    # ป้องกัน orphan org — ถ้าเป็น admin คนเดียวของ org ใดก็ตาม → ห้ามลบ
+    user_orgs = database.get_user_orgs(username) or []
+    for org in user_orgs:
+        if database.is_org_admin(org["id"], username) and database.count_org_admins(org["id"]) <= 1:
+            return jsonify({
+                "ok": False,
+                "error": f"ไม่สามารถลบ '{username}' ได้ เนื่องจากเป็น Admin คนเดียวขององค์กร '{org.get('name', org['id'])}' "
+                         f"กรุณาตั้งสมาชิกคนอื่นเป็น Admin ก่อน"
+            }), 400
+
     if database.admin_delete_user_complete(username):
-        database.log_event(f"Deleted user: {username}", user=session.get("user"))
+        database.log_event(f"Deleted user: {username}", user=session.get("user"), org_id=get_current_org_id())
         return jsonify({"ok": True})
     return jsonify({"ok": False, "error": "ไม่สามารถลบผู้ใช้นี้ได้"}), 400
+
+
+@admin_bp.route("/api/admin/users/<username>/unbind-line", methods=["POST"])
+@admin_required
+def admin_unbind_user_line_route(username):
+    """Unbind (disconnect) LINE account for a user profile by system administrator."""
+    if database.unlink_line_user(username):
+        database.log_event(f"Unbound LINE account for user: {username}", user=session.get("user"), org_id=get_current_org_id())
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "error": "ไม่สามารถยกเลิกการผูกบัญชี LINE ได้ หรือผู้ใช้นี้ยังไม่ได้ผูกบัญชี LINE"}), 400
 
 
 @admin_bp.route("/api/org/members", methods=["POST"])
 @login_required
 def invite_org_member():
-    if session.get("org_role") not in ("admin",):
+    me = session.get("user")
+    org_id = get_current_org_id()
+    if not org_id or not database.is_org_admin(org_id, me):
         return jsonify({"ok": False, "error": "เฉพาะผู้ดูแลองค์กรเท่านั้นที่สามารถเชิญสมาชิกได้"}), 403
     data = request.get_json(force=True)
     username = data.get("username", "").strip()
@@ -1090,27 +1609,19 @@ def invite_org_member():
     role = data.get("role", "member")
     if role not in ("admin", "member"):
         role = "member"
-    org_id = get_current_org_id()
     if not username:
         return jsonify({"ok": False, "error": "กรุณาระบุชื่อผู้ใช้"}), 400
-
-    # ตรวจ quota สมาชิก
-    _mem_plan = billing.get_effective_plan(org_id)
-    _max_users = billing.get_plan_config(_mem_plan)["limits"]["max_users"]
-    if _max_users != -1:
-        _current_members = database.get_org_member_count(org_id)
-        if _current_members >= _max_users:
-            _cfg = billing.get_plan_config(_mem_plan)
-            return jsonify({
-                "ok": False,
-                "error": "user_limit_reached",
-                "message": f"Plan {_cfg['name']} อนุญาตสมาชิกได้สูงสุด {_max_users} คน กรุณาอัปเกรด Plan เพื่อเพิ่มสมาชิก",
-                "current_plan": _mem_plan,
-            }), 403
 
     # ตรวจว่า user มีอยู่ในระบบแล้วไหม
     existing = database.get_user_setting(username)
     user_exists = bool(existing.get("custom_password"))
+
+    # ตรวจว่าเป็นสมาชิกขององค์กรนี้อยู่แล้ว
+    if user_exists and database.is_org_member(org_id, username.lower()):
+        return jsonify({
+            "ok": False,
+            "error": f"'{username}' เป็นสมาชิกขององค์กรนี้อยู่แล้ว",
+        }), 409
 
     if not user_exists:
         if not password:
@@ -1130,28 +1641,34 @@ def invite_org_member():
         if not created:
             return jsonify({"ok": False, "error": "ชื่อผู้ใช้นี้มีอยู่แล้ว (อาจเป็น case ต่างกัน)"}), 400
 
+    # Atomic quota check + insert — ป้องกัน race condition เมื่อ 2 admin เชิญพร้อมกัน
+    _mem_plan = billing.get_effective_plan(org_id)
+    _max_users = billing.get_plan_config(_mem_plan)["limits"]["max_users"]
     try:
-        database.add_org_member(org_id, username.lower(), role=role, invited_by=session.get("user"))
+        ok, reason = database.add_org_member_with_quota(
+            org_id, username.lower(), role=role,
+            invited_by=session.get("user"), max_users=_max_users
+        )
+        if not ok:
+            _cfg = billing.get_plan_config(_mem_plan)
+            return jsonify({
+                "ok": False,
+                "error": "user_limit_reached",
+                "message": f"Plan {_cfg['name']} อนุญาตสมาชิกได้สูงสุด {_max_users} คน กรุณาอัปเกรด Plan เพื่อเพิ่มสมาชิก",
+                "current_plan": _mem_plan,
+                "upgrade_url": "/billing",
+            }), 403
         return jsonify({
             "ok": True,
             "created_new_user": not user_exists,
             "message": f"{'สร้างบัญชีและ' if not user_exists else ''}เพิ่ม {username} เข้าองค์กรสำเร็จ"
         })
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        logger.error(f"[add_org_member] {e}")
+        return jsonify({"ok": False, "error": "ไม่สามารถเพิ่มสมาชิกได้ กรุณาลองใหม่"}), 500
 
 
-@admin_bp.route("/api/org/members/<username>", methods=["DELETE"])
-@login_required
-def remove_org_member_route(username):
-    if session.get("org_role") != "admin":
-        return jsonify({"ok": False, "error": "เฉพาะผู้ดูแลองค์กรเท่านั้นที่สามารถนำสมาชิกออกได้"}), 403
-    org_id = get_current_org_id()
-    current_user = session.get("user")
-    if username.lower() == current_user.lower():
-        return jsonify({"ok": False, "error": "ไม่สามารถนำตัวเองออกได้"}), 400
-    database.remove_org_member(org_id, username)
-    return jsonify({"ok": True})
+
 
 
 @admin_bp.route("/api/admin/analytics", methods=["GET"])
@@ -1212,18 +1729,37 @@ def api_leave_request():
     
     if not s_date or not e_date:
         return jsonify({"ok": False, "error": "กรุณากรอกวันที่เริ่มต้นและวันที่สิ้นสุดการลาให้ครบถ้วนค่ะ"}), 400
-        
+
+    # ตรวจ date logic
+    if s_date > e_date:
+        return jsonify({"ok": False, "error": "วันที่เริ่มต้นต้องไม่เกินวันที่สิ้นสุดค่ะ"}), 400
+
+    # ตรวจ overlap กับใบลาที่มีอยู่
+    overlap = database.check_leave_overlap(user, s_date, e_date)
+    if overlap:
+        return jsonify({
+            "ok": False,
+            "error": f"คุณมีใบลา {overlap['type']} ที่ทับซ้อนช่วง {overlap['start_date']} – {overlap['end_date']} อยู่แล้วค่ะ (สถานะ: {overlap.get('status','รอดำเนินการ')})"
+        }), 400
+
     leave_id = database.create_leave_request(user, l_type, s_date, e_date, reason)
     if leave_id:
-        # Notify admins
-        admins = database.get_all_admins()
-        for admin in admins:
-            if admin.lower() == user.lower(): continue
+        # แจ้ง org admins เท่านั้น — ไม่ใช่ system admins ทั้งหมด
+        org_id = get_current_org_id()
+        if org_id:
+            org_members = database.get_org_members(org_id)
+            notify_targets = [m["username"] for m in org_members
+                              if m.get("role") == "admin" and m["username"].lower() != user.lower()]
+        else:
+            # fallback: system admins ถ้าไม่มี org context
+            notify_targets = [a for a in database.get_all_admins() if a.lower() != user.lower()]
+
+        for admin in notify_targets:
             notification_db.add_notification(
-                admin, 
-                "leave_request", 
-                "คำขอลาหยุดใหม่", 
-                f"คุณพี่ {user} ได้ส่งคำขอลาหยุด {l_type} ตั้งแต่วันที่ {s_date} ถึง {e_date}", 
+                admin,
+                "leave_request",
+                "คำขอลาหยุดใหม่",
+                f"คุณพี่ {user} ได้ส่งคำขอลาหยุด {l_type} ตั้งแต่วันที่ {s_date} ถึง {e_date}",
                 "/#admin"
             )
         return jsonify({"ok": True, "id": leave_id})
@@ -1452,7 +1988,7 @@ def update_admin_settings():
     # Validate keys if necessary, but here we allow general .env updates
     success = settings_manager.update_settings(data)
     if success:
-        database.log_event("อัปเดตการตั้งค่าระบบผ่านหน้าเว็บ", user=session.get("user"))
+        database.log_event("อัปเดตการตั้งค่าระบบผ่านหน้าเว็บ", user=session.get("user"), org_id=get_current_org_id())
         return jsonify({"ok": True})
     return jsonify({"ok": False, "error": "ไม่สามารถอัปเดตการตั้งค่าได้"}), 500
 
@@ -1527,7 +2063,7 @@ def superadmin_set_plan(org_id):
     expires = data.get("expires_at")
     try:
         billing.set_org_plan(org_id, plan, expires)
-        database.log_event(f"[SuperAdmin] Set org {org_id} → plan={plan}", user=session.get("user"))
+        database.log_event(f"[SuperAdmin] Set org {org_id} → plan={plan}", user=session.get("user"), org_id=org_id)
         return jsonify({"ok": True, "plan": plan})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 400
@@ -1540,7 +2076,7 @@ def superadmin_delete_org(org_id):
         return jsonify({"ok": False, "error": "ไม่สามารถลบ org หลักได้"}), 400
     ok = database.superadmin_delete_org(org_id)
     if ok:
-        database.log_event(f"[SuperAdmin] Deleted org {org_id}", user=session.get("user"))
+        database.log_event(f"[SuperAdmin] Deleted org {org_id}", user=session.get("user"), org_id=org_id)
     return jsonify({"ok": ok})
 
 
@@ -1559,7 +2095,7 @@ def superadmin_reset_password(username):
     if len(new_pw) < 6:
         return jsonify({"ok": False, "error": "รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร"}), 400
     database.admin_reset_user_password(username, new_pw)
-    database.log_event(f"[SuperAdmin] Reset password for {username}", user=session.get("user"))
+    database.log_event(f"[SuperAdmin] Reset password for {username}", user=session.get("user"), org_id=get_current_org_id())
     return jsonify({"ok": True})
 
 
@@ -1571,7 +2107,7 @@ def superadmin_toggle_active(username):
     settings = database.get_user_setting(username)
     new_state = not settings.get("is_active", True)
     database.admin_update_user(username, is_active=new_state)
-    database.log_event(f"[SuperAdmin] {'Activated' if new_state else 'Deactivated'} user {username}", user=session.get("user"))
+    database.log_event(f"[SuperAdmin] {'Activated' if new_state else 'Deactivated'} user {username}", user=session.get("user"), org_id=get_current_org_id())
     return jsonify({"ok": True, "is_active": new_state})
 
 
@@ -1585,7 +2121,7 @@ def superadmin_set_role(username):
     if role not in ("user", "admin"):
         return jsonify({"ok": False, "error": "role ไม่ถูกต้อง"}), 400
     database.admin_update_user(username, role=role)
-    database.log_event(f"[SuperAdmin] Set role {username} → {role}", user=session.get("user"))
+    database.log_event(f"[SuperAdmin] Set role {username} → {role}", user=session.get("user"), org_id=get_current_org_id())
     return jsonify({"ok": True, "role": role})
 
 
@@ -1596,7 +2132,7 @@ def superadmin_delete_user(username):
         return jsonify({"ok": False, "error": "ไม่สามารถลบ Admin ได้"}), 400
     ok = database.admin_delete_user_complete(username)
     if ok:
-        database.log_event(f"[SuperAdmin] Deleted user {username}", user=session.get("user"))
+        database.log_event(f"[SuperAdmin] Deleted user {username}", user=session.get("user"), org_id=get_current_org_id())
     return jsonify({"ok": ok})
 
 
@@ -1655,10 +2191,11 @@ def superadmin_create_org():
         slug = result[1] if isinstance(result, (tuple, list)) and len(result) > 1 else ""
         if plan != "free":
             billing.set_org_plan(org_id, plan)
-        database.log_event(f"[SuperAdmin] Created org '{name}' id={org_id}", user=session.get("user"))
+        database.log_event(f"[SuperAdmin] Created org '{name}' id={org_id}", user=session.get("user"), org_id=org_id)
         return jsonify({"ok": True, "org_id": org_id, "slug": slug})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 400
+        logger.error(f"[SuperAdmin create org] {e}")
+        return jsonify({"ok": False, "error": "ชื่อองค์กรนี้มีอยู่แล้ว หรือเกิดข้อผิดพลาด กรุณาลองใหม่"}), 400
 
 
 @admin_bp.route("/api/superadmin/user/create", methods=["POST"])
@@ -1671,14 +2208,14 @@ def superadmin_create_user():
     role = data.get("role", "user")
     if not username or not password:
         return jsonify({"ok": False, "error": "กรุณากรอก username และ password"}), 400
-    if len(password) < 6:
-        return jsonify({"ok": False, "error": "รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร"}), 400
+    if len(password) < 8:
+        return jsonify({"ok": False, "error": "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร"}), 400
     if role not in ("user", "admin"):
         role = "user"
     ok = database.admin_create_user(username=username, password=password, role=role, display_name=display_name)
     if not ok:
         return jsonify({"ok": False, "error": "Username นี้มีอยู่แล้ว"}), 400
-    database.log_event(f"[SuperAdmin] Created user '{username}' role={role}", user=session.get("user"))
+    database.log_event(f"[SuperAdmin] Created user '{username}' role={role}", user=session.get("user"), org_id=get_current_org_id())
     return jsonify({"ok": True})
 
 
@@ -1718,7 +2255,7 @@ def superadmin_broadcast():
     message = (data.get("message") or "").strip()
     if not message:
         return jsonify({"ok": False, "error": "กรุณากรอกข้อความ"}), 400
-    database.log_event(f"[BROADCAST]{title}{message}", user=session.get("user"))
+    database.log_event(f"[BROADCAST]{title}{message}", user=session.get("user"), org_id=get_current_org_id())
     return jsonify({"ok": True})
 
 
@@ -1747,27 +2284,399 @@ def superadmin_clear_cache():
         rag_engine.clear_cache()
     except Exception:
         pass
-    database.log_event("[SuperAdmin] Cleared RAG/KB cache", user=session.get("user"))
+    database.log_event("[SuperAdmin] Cleared RAG/KB cache", user=session.get("user"), org_id=get_current_org_id())
     return jsonify({"ok": True})
 
 
+@admin_bp.route("/api/superadmin/system/kb-cleanup", methods=["POST"])
+@superadmin_required
+def superadmin_kb_cleanup():
+    """ล้างไฟล์ KB ที่ค้างสถานะ 'processing' นานเกิน threshold"""
+    minutes = int(request.get_json(force=True).get("minutes", 30))
+    cleaned = rag_engine.cleanup_stale_processing(max_age_minutes=minutes)
+    database.log_event(f"[SuperAdmin] KB cleanup: {cleaned} stale files fixed", user=session.get("user"))
+    return jsonify({"ok": True, "cleaned": cleaned})
+
+
+@admin_bp.route("/api/superadmin/system/backup", methods=["POST"])
+@superadmin_required
+def superadmin_trigger_backup():
+    """Trigger DB backup ทันที"""
+    try:
+        _backup_sqlite()
+        database.log_event("[SuperAdmin] Manual DB backup triggered", user=session.get("user"))
+        return jsonify({"ok": True, "message": "Backup สำเร็จ"})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@admin_bp.route("/api/superadmin/system/backups")
+@superadmin_required
+def superadmin_list_backups():
+    """รายการไฟล์ backup ทั้งหมด"""
+    import glob as _glob
+    db_path = os.environ.get("DB_PATH", "chat_history.db")
+    backup_dir = os.path.join(os.path.dirname(os.path.abspath(db_path)), "backups")
+    files = sorted(_glob.glob(os.path.join(backup_dir, "chat_history_*.db")), reverse=True)
+    result = []
+    for f in files[:20]:
+        try:
+            stat = os.stat(f)
+            result.append({
+                "name": os.path.basename(f),
+                "size_bytes": stat.st_size,
+                "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+            })
+        except Exception:
+            pass
+    return jsonify({"ok": True, "backups": result, "backup_dir": backup_dir})
+
+
+@admin_bp.route("/api/superadmin/system/scheduler")
+@superadmin_required
+def superadmin_scheduler_status():
+    """ดูสถานะ APScheduler jobs ทั้งหมด"""
+    try:
+        from app_server import _scheduler
+        jobs = []
+        for job in _scheduler.get_jobs():
+            next_run = job.next_run_time
+            jobs.append({
+                "id": job.id,
+                "name": job.name or job.id,
+                "next_run": next_run.isoformat() if next_run else None,
+                "trigger": str(job.trigger),
+                "running": job.next_run_time is not None,
+            })
+        return jsonify({"ok": True, "jobs": jobs, "running": _scheduler.running})
+    except Exception as e:
+        return jsonify({"ok": True, "jobs": [], "error": str(e)})
+
+
+@admin_bp.route("/api/superadmin/system/send-expiry-reminders", methods=["POST"])
+@superadmin_required
+def superadmin_send_expiry_reminders():
+    """Force-trigger plan expiry reminders"""
+    try:
+        check_expiring_plans()
+        database.log_event("[SuperAdmin] Force-sent expiry reminders", user=session.get("user"))
+        return jsonify({"ok": True, "message": "ส่ง reminder เรียบร้อย"})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@admin_bp.route("/api/superadmin/system/health")
+@superadmin_required
+def superadmin_health():
+    """System health: CPU, memory, disk"""
+    import sys, shutil
+    result = {"ok": True}
+    try:
+        import psutil
+        result["cpu_pct"] = psutil.cpu_percent(interval=0.5)
+        mem = psutil.virtual_memory()
+        result["mem_total_mb"] = round(mem.total / 1024 / 1024)
+        result["mem_used_mb"]  = round(mem.used  / 1024 / 1024)
+        result["mem_pct"] = mem.percent
+        disk = shutil.disk_usage("/")
+        result["disk_total_gb"] = round(disk.total / 1024 / 1024 / 1024, 1)
+        result["disk_used_gb"]  = round(disk.used  / 1024 / 1024 / 1024, 1)
+        result["disk_pct"] = round(disk.used / disk.total * 100, 1)
+    except ImportError:
+        result["psutil"] = "not installed — pip install psutil"
+    except Exception as e:
+        result["error"] = str(e)
+    return jsonify(result)
+
+
+@admin_bp.route("/api/superadmin/impersonate/<username>", methods=["POST"])
+@superadmin_required
+def superadmin_impersonate(username):
+    """Login as another user (for debugging). Logs the action."""
+    me = session.get("user")
+    settings = database.get_user_setting(username)
+    if not settings:
+        return jsonify({"ok": False, "error": "ไม่พบผู้ใช้"}), 404
+    if not settings.get("is_active", 1):
+        return jsonify({"ok": False, "error": "บัญชีนี้ถูกระงับ"}), 403
+    database.log_event(f"[SuperAdmin] {me} impersonated user '{username}'", user=me)
+    # Store original admin in session for "exit impersonation"
+    original_admin = me
+    session.clear()
+    session.permanent = True
+    session["user"] = username
+    session["role"] = settings.get("role", "user")
+    session["_impersonated_by"] = original_admin
+    from routes.shared import _set_session_org
+    _set_session_org(username)
+    return jsonify({"ok": True, "message": f"กำลัง login เป็น @{username} — ปิดหน้าต่างนี้แล้วไปหน้าหลัก"})
+
+
+@admin_bp.route("/api/superadmin/exit-impersonate", methods=["POST"])
+@login_required
+def superadmin_exit_impersonate():
+    """ออกจาก impersonation และกลับเป็น superadmin เดิม"""
+    original = session.get("_impersonated_by")
+    if not original:
+        return jsonify({"ok": False, "error": "ไม่ได้อยู่ใน impersonation mode"}), 400
+    current = session.get("user")
+    session.clear()
+    session.permanent = True
+    session["user"] = original
+    _sa_settings = database.get_user_setting(original)
+    session["role"] = _sa_settings.get("role", "admin") if _sa_settings else "admin"
+    database.log_event(f"[SuperAdmin] Exited impersonation of '{current}', restored '{original}'", user=original)
+    return jsonify({"ok": True, "message": f"กลับเป็น @{original} แล้ว"})
+
+
+@admin_bp.route("/api/superadmin/broadcast-targeted", methods=["POST"])
+@superadmin_required
+def superadmin_broadcast_targeted():
+    """ส่ง broadcast ไปเฉพาะ org หรือ plan ที่เลือก"""
+    data = request.get_json(force=True) or {}
+    title   = (data.get("title") or "ประกาศจากผู้ดูแลระบบ").strip()
+    message = (data.get("message") or "").strip()
+    target_org_id = data.get("org_id")    # int หรือ None
+    target_plan   = data.get("plan")      # "free"/"pro"/"business" หรือ None
+    if not message:
+        return jsonify({"ok": False, "error": "กรุณากรอกข้อความ"}), 400
+
+    orgs = database.get_all_orgs_with_stats()
+    notify_count = 0
+    for org in orgs:
+        if target_org_id and org["id"] != int(target_org_id):
+            continue
+        if target_plan and (org.get("plan") or "free") != target_plan:
+            continue
+        usernames = database.get_all_usernames(org_id=org["id"])
+        for uname in usernames:
+            notification_db.add_notification(uname, "broadcast", title, message, "/")
+        notify_count += len(usernames)
+
+    target_desc = f"org_id={target_org_id}" if target_org_id else f"plan={target_plan}" if target_plan else "all"
+    database.log_event(f"[SuperAdmin] Targeted broadcast to {target_desc}: {notify_count} users", user=session.get("user"))
+    return jsonify({"ok": True, "notified": notify_count})
+
+
+@admin_bp.route("/api/superadmin/db/tables")
+@superadmin_required
+def superadmin_db_tables():
+    import sqlite3
+    try:
+        conn = sqlite3.connect(database.DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = [r[0] for r in cursor.fetchall() if not r[0].startswith("sqlite_")]
+        
+        table_info = []
+        for t in tables:
+            cursor.execute(f"SELECT COUNT(*) FROM `{t}`")
+            count = cursor.fetchone()[0]
+            table_info.append({"name": t, "count": count})
+            
+        conn.close()
+        return jsonify({"ok": True, "tables": table_info})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@admin_bp.route("/api/superadmin/db/table/<table_name>")
+@superadmin_required
+def superadmin_db_table_data(table_name):
+    import sqlite3
+    limit = int(request.args.get("limit", 50))
+    offset = int(request.args.get("offset", 0))
+    q = request.args.get("q", "").strip()
+    
+    try:
+        conn = sqlite3.connect(database.DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        # Get schema columns
+        cursor.execute(f"PRAGMA table_info(`{table_name}`)")
+        cols = [{"name": r["name"], "type": r["type"], "pk": r["pk"]} for r in cursor.fetchall()]
+        col_names = [c["name"] for c in cols]
+        
+        # Search query if specified
+        where_clause = ""
+        params = []
+        if q and col_names:
+            where_conditions = []
+            for col in col_names:
+                where_conditions.append(f"`{col}` LIKE ?")
+                params.append(f"%{q}%")
+            where_clause = " WHERE " + " OR ".join(where_conditions)
+            
+        # Count total rows
+        count_query = f"SELECT COUNT(*) FROM `{table_name}`" + where_clause
+        cursor.execute(count_query, params)
+        total = cursor.fetchone()[0]
+        
+        # Get rows
+        select_query = f"SELECT * FROM `{table_name}`" + where_clause + " LIMIT ? OFFSET ?"
+        cursor.execute(select_query, params + [limit, offset])
+        rows = [dict(r) for r in cursor.fetchall()]
+        
+        conn.close()
+        return jsonify({"ok": True, "columns": cols, "rows": rows, "total": total})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@admin_bp.route("/api/superadmin/db/table/<table_name>/row", methods=["POST"])
+@superadmin_required
+def superadmin_db_table_insert(table_name):
+    import sqlite3
+    data = request.get_json() or {}
+    if not data:
+        return jsonify({"ok": False, "error": "ไม่มีข้อมูลส่งมา"}), 400
+        
+    try:
+        conn = sqlite3.connect(database.DB_PATH)
+        cursor = conn.cursor()
+        
+        cols = list(data.keys())
+        placeholders = [f":" + c for c in cols]
+        
+        query = f"INSERT INTO `{table_name}` (" + ", ".join([f"`{c}`" for c in cols]) + ") VALUES (" + ", ".join(placeholders) + ")"
+        cursor.execute(query, data)
+        conn.commit()
+        conn.close()
+        database.log_event(f"[SuperAdmin] Inserted row into {table_name}", user=session.get("user"), org_id=get_current_org_id())
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@admin_bp.route("/api/superadmin/db/table/<table_name>/row/update", methods=["POST"])
+@superadmin_required
+def superadmin_db_table_update(table_name):
+    import sqlite3
+    data = request.get_json() or {}
+    pk_cols = data.get("_pk_cols", {})  # e.g. {"id": 5} or {"username": "mex"}
+    fields = data.get("_fields", {})    # New column values
+    
+    if not pk_cols or not fields:
+        return jsonify({"ok": False, "error": "_pk_cols and _fields required"}), 400
+        
+    try:
+        conn = sqlite3.connect(database.DB_PATH)
+        cursor = conn.cursor()
+        
+        # Build UPDATE query
+        set_parts = []
+        params = []
+        for col, val in fields.items():
+            set_parts.append(f"`{col}` = ?")
+            params.append(val)
+            
+        where_parts = []
+        for col, val in pk_cols.items():
+            where_parts.append(f"`{col}` = ?")
+            params.append(val)
+            
+        query = f"UPDATE `{table_name}` SET " + ", ".join(set_parts) + " WHERE " + " AND ".join(where_parts)
+        cursor.execute(query, params)
+        conn.commit()
+        conn.close()
+        database.log_event(f"[SuperAdmin] Updated row in {table_name} where {pk_cols}", user=session.get("user"), org_id=get_current_org_id())
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@admin_bp.route("/api/superadmin/db/table/<table_name>/row/delete", methods=["POST"])
+@superadmin_required
+def superadmin_db_table_delete(table_name):
+    import sqlite3
+    pk_cols = request.get_json() or {} # e.g. {"id": 5}
+    if not pk_cols:
+        return jsonify({"ok": False, "error": "Primary key columns are required for deletion"}), 400
+        
+    try:
+        conn = sqlite3.connect(database.DB_PATH)
+        cursor = conn.cursor()
+        
+        where_parts = []
+        params = []
+        for col, val in pk_cols.items():
+            where_parts.append(f"`{col}` = ?")
+            params.append(val)
+            
+        query = f"DELETE FROM `{table_name}` WHERE " + " AND ".join(where_parts)
+        cursor.execute(query, params)
+        conn.commit()
+        conn.close()
+        database.log_event(f"[SuperAdmin] Deleted row from {table_name} where {pk_cols}", user=session.get("user"), org_id=get_current_org_id())
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@admin_bp.route("/api/superadmin/db/query", methods=["POST"])
+@superadmin_required
+def superadmin_db_query():
+    import sqlite3
+    data = request.get_json() or {}
+    sql = (data.get("sql") or "").strip()
+    if not sql:
+        return jsonify({"ok": False, "error": "โปรดกรอก SQL query ที่ต้องการสั่งงาน"}), 400
+        
+    try:
+        conn = sqlite3.connect(database.DB_PATH)
+        # Safe limit for superadmin SELECT queries so they don't crash memory
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute(sql)
+        
+        # Check if query returns rows (like SELECT or PRAGMA)
+        is_select = cursor.description is not None
+        
+        if is_select:
+            cols = [desc[0] for desc in cursor.description]
+            # Fetch up to 500 records max for safety
+            rows = cursor.fetchmany(500)
+            rows_dict = [dict(r) for r in rows]
+            conn.close()
+            database.log_event(f"[SuperAdmin] Executed SQL SELECT: {sql[:100]}...", user=session.get("user"), org_id=get_current_org_id())
+            return jsonify({
+                "ok": True, 
+                "is_select": True, 
+                "columns": cols, 
+                "rows": rows_dict, 
+                "total": len(rows_dict),
+                "truncated": len(rows_dict) == 500
+            })
+        else:
+            conn.commit()
+            affected = cursor.rowcount
+            conn.close()
+            database.log_event(f"[SuperAdmin] Executed SQL WRITE: {sql[:100]}...", user=session.get("user"), org_id=get_current_org_id())
+            return jsonify({
+                "ok": True, 
+                "is_select": False, 
+                "affected_rows": affected
+            })
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+
+
 @admin_bp.route('/edit_expense_form', methods=['GET', 'POST'])
+@login_required
 def edit_expense_form():
     sheet = request.args.get('sheet')
     row_str = request.args.get('row')
-    
-    # Enforce tenant context boundaries safely
-    org_id = request.args.get('org_id')
-    username = request.args.get('user')
-    if not org_id:
-        org_id = session.get('org_id')
-    if not username:
-        username = session.get('user')
-        
+
+    # Always use session context — never allow caller to override org/user via URL params
+    org_id = session.get('org_id')
+    username = session.get('user')
+
     if org_id or username:
         try:
             org_id_int = int(org_id) if org_id else None
-        except ValueError:
+        except (ValueError, TypeError):
             org_id_int = None
         google_manager.set_context(username=username, org_id=org_id_int)
     
@@ -1792,7 +2701,7 @@ def edit_expense_form():
                         from datetime import datetime
                         dt = datetime.strptime(val, "%Y-%m-%d")
                         val = dt.strftime("%d/%m/%Y")
-                    except:
+                    except Exception:
                         pass
                 
                 updated_data[col_name] = val
@@ -1955,7 +2864,7 @@ def edit_expense_form():
                         year = int(parts[2])
                         if year < 100: year += 2000
                         val = f"{year:04d}-{month:02d}-{day:02d}"
-                except:
+                except Exception:
                     pass
             elif "จำนวน" in h_lower or "สุทธิ" in h_lower or "เงิน" in h_lower or "ยอด" in h_lower or "ภาษี" in h_lower or "ราคา" in h_lower:
                 input_type = "number"
@@ -2260,10 +3169,17 @@ def api_admin_remove_whitelist(email):
 def api_dashboard_all_expenses():
     """Fetches and standardizes all expense records from Google Sheets."""
     try:
+        _username = session.get("user")
+        _us = database.get_user_setting(_username)
+        if _us.get("role") != "admin" and not _us.get("can_view_financial"):
+            return jsonify({"ok": False, "error": "คุณไม่มีสิทธิ์เข้าถึงแดชบอร์ดรายจ่าย กรุณาติดต่อ Admin"}), 403
         from google_drive_service import google_manager
         username = session.get("user")
-        org_id = session.get("org_id")
+        org_id = get_current_org_id()
         google_manager.set_context(username, org_id)
+
+        if not google_manager.sheets_service:
+            return jsonify({"ok": False, "error": "ยังไม่ได้เชื่อมต่อ Google Drive/Sheets — กรุณาให้ Admin ขององค์กรเชื่อมต่อ Google ในหน้า 'จัดการองค์กร'"}), 200
 
         spreadsheet = google_manager.sheets_service.spreadsheets().get(spreadsheetId=google_manager.spreadsheet_id).execute()
         sheet_titles = [s['properties']['title'] for s in spreadsheet.get('sheets', [])]
@@ -2274,7 +3190,7 @@ def api_dashboard_all_expenses():
         def clean_float_val(v):
             if not v or str(v).strip() == '-': return 0.0
             try: return float(str(v).replace(',', '').replace('฿', '').strip())
-            except: return 0.0
+            except Exception: return 0.0
 
         for sheet_name in target_sheets:
             if sheet_name not in sheet_titles:
@@ -2318,6 +3234,8 @@ def api_dashboard_all_expenses():
                     original_file = get_col_val(row, ["ไฟล์ต้นฉบับ", "ไฟล์อ้างอิง", "original_filename"], default='-')
                     sender_name = get_col_val(row, ["ผู้ส่ง (LINE User)", "line_sender_name"], default='-')
                     status = get_col_val(row, ["สถานะการจ่าย", "สถานะการจ่ายเงิน", "สถานะ", "status"], default='จ่ายแล้ว')
+                    batch_id = get_col_val(row, ["รหัสกลุ่ม (batch id)", "batch_id", "รหัสกลุ่ม"], default='-')
+                    verification_status = get_col_val(row, ["การตรวจสอบ (wht/qr)", "verification_status", "การตรวจสอบ"], default='-')
 
                     all_expenses.append({
                         "sheet_name": sheet_name,
@@ -2339,15 +3257,20 @@ def api_dashboard_all_expenses():
                         "link": link_val,
                         "original_filename": original_file,
                         "line_sender_name": sender_name,
-                        "status": status
+                        "status": status,
+                        "batch_id": batch_id,
+                        "verification_status": verification_status
                     })
             except Exception as se:
                 logger.error(f"Error parsing sheet {sheet_name}: {se}")
 
         return jsonify({"ok": True, "expenses": all_expenses})
     except Exception as e:
+        from google.auth.exceptions import RefreshError
         logger.error(f"Error listing all expenses: {e}")
-        return jsonify({"ok": False, "error": str(e)}), 500
+        if isinstance(e, RefreshError) or 'invalid_grant' in str(e):
+            return jsonify({"ok": False, "error": "Token Google หมดอายุ — กรุณาเชื่อมต่อ Google ใหม่"}), 200
+        return jsonify({"ok": False, "error": "เกิดข้อผิดพลาดในการดึงข้อมูล"}), 500
 
 
 @admin_bp.route("/api/dashboard/update-expense", methods=["POST"])
@@ -2433,7 +3356,7 @@ def api_dashboard_update_expense():
         return jsonify({"ok": True})
     except Exception as e:
         logger.error(f"Error in api_dashboard_update_expense: {e}")
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return jsonify({"ok": False, "error": "ไม่สามารถอัปเดตข้อมูลได้ กรุณาลองใหม่"}), 500
 
 
 @admin_bp.route("/api/dashboard/delete-expense", methods=["POST"])
@@ -2456,6 +3379,78 @@ def api_dashboard_delete_expense():
 
         # Get sheetId
         spreadsheet = google_manager.sheets_service.spreadsheets().get(spreadsheetId=google_manager.spreadsheet_id).execute()
+        
+        # If sheet_name is "ใบเสร็จ/ใบกำกับภาษี", try to find matching row in "peak" and delete it
+        if sheet_name == "ใบเสร็จ/ใบกำกับภาษี":
+            try:
+                # 1. Get the row values from "ใบเสร็จ/ใบกำกับภาษี" to extract the file link
+                res_row = google_manager.sheets_service.spreadsheets().values().get(
+                    spreadsheetId=google_manager.spreadsheet_id,
+                    range=f"'{sheet_name}'!A{row_index}:Z{row_index}"
+                ).execute()
+                row_vals = res_row.get('values', [[]])[0]
+                
+                # Column T (index 19) is "ลิงก์ไฟล์"
+                file_link = None
+                if len(row_vals) > 19:
+                    file_link = str(row_vals[19]).strip()
+                
+                if file_link and file_link != '-' and file_link.startswith('http'):
+                    # 2. Get all rows in "peak" to find the match
+                    res_peak = google_manager.sheets_service.spreadsheets().values().get(
+                        spreadsheetId=google_manager.spreadsheet_id,
+                        range="'peak'!A1:Z"
+                    ).execute()
+                    peak_vals = res_peak.get('values', [])
+                    
+                    if peak_vals and len(peak_vals) > 1:
+                        peak_header = peak_vals[0]
+                        link_col_idx = -1
+                        for idx, h in enumerate(peak_header):
+                            if "ลิงก์" in h or "link" in h.lower():
+                                link_col_idx = idx
+                                break
+                        
+                        if link_col_idx != -1:
+                            peak_row_to_delete = -1
+                            for p_r_idx, p_row in enumerate(peak_vals[1:], start=2):
+                                if len(p_row) > link_col_idx:
+                                    p_link = str(p_row[link_col_idx]).strip()
+                                    if p_link == file_link:
+                                        peak_row_to_delete = p_r_idx
+                                        break
+                            
+                            # 3. If matching row is found in peak, delete it!
+                            if peak_row_to_delete != -1:
+                                peak_sheet_id = None
+                                for s in spreadsheet.get('sheets', []):
+                                    if s['properties']['title'] == 'peak':
+                                        peak_sheet_id = s['properties']['sheetId']
+                                        break
+                                
+                                if peak_sheet_id is not None:
+                                    peak_delete_body = {
+                                        "requests": [
+                                            {
+                                                "deleteDimension": {
+                                                    "range": {
+                                                        "sheetId": peak_sheet_id,
+                                                        "dimension": "ROWS",
+                                                        "startIndex": peak_row_to_delete - 1,
+                                                        "endIndex": peak_row_to_delete
+                                                    }
+                                                }
+                                            }
+                                        ]
+                                    }
+                                    google_manager.sheets_service.spreadsheets().batchUpdate(
+                                        spreadsheetId=google_manager.spreadsheet_id,
+                                        body=peak_delete_body
+                                    ).execute()
+                                    logger.info(f"✅ Automatically deleted corresponding row {peak_row_to_delete} in 'peak' sheet.")
+            except Exception as pe:
+                logger.error(f"⚠️ Failed to delete corresponding row in peak: {pe}")
+
         sheet_id = None
         for s in spreadsheet.get('sheets', []):
             if s['properties']['title'] == sheet_name:
@@ -2491,6 +3486,6 @@ def api_dashboard_delete_expense():
         return jsonify({"ok": True})
     except Exception as e:
         logger.error(f"Error in api_dashboard_delete_expense: {e}")
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return jsonify({"ok": False, "error": "ไม่สามารถลบข้อมูลได้ กรุณาลองใหม่"}), 500
 
 

@@ -71,8 +71,9 @@
                         </div>
                         <div>
                             <label class="block text-xs font-semibold text-slate-600 mb-1.5">ชื่อผู้ใช้ (username)</label>
-                            <input type="text" id="username" class="input-field" placeholder="เช่น somchai" autocomplete="username" required>
-                            <p class="text-xs text-slate-400 mt-1">ตัวเล็ก ไม่มีช่องว่าง</p>
+                            <input type="text" id="username" class="input-field" placeholder="เช่น somchai" autocomplete="username" required
+                               oninput="validateUsername(this)">
+                            <p id="username-hint" class="text-xs text-slate-400 mt-1">ตัวเล็ก a-z, ตัวเลข, _ เท่านั้น (3-30 ตัว)</p>
                         </div>
                         <div>
                             <label class="block text-xs font-semibold text-slate-600 mb-1.5">ชื่อแสดง</label>
@@ -80,7 +81,7 @@
                         </div>
                         <div>
                             <label class="block text-xs font-semibold text-slate-600 mb-1.5">รหัสผ่าน</label>
-                            <input type="password" id="password" class="input-field" placeholder="อย่างน้อย 6 ตัวอักษร" autocomplete="new-password" required>
+                            <input type="password" id="password" class="input-field" placeholder="อย่างน้อย 8 ตัวอักษร" autocomplete="new-password" required>
                         </div>
                         <div>
                             <label class="block text-xs font-semibold text-slate-600 mb-1.5">ยืนยันรหัสผ่าน</label>
@@ -122,6 +123,22 @@
     <script>
         const params = new URLSearchParams(location.search);
         const plan = params.get('plan') || '';
+        let _submitting = false;
+
+        function validateUsername(input) {
+            const hint = document.getElementById('username-hint');
+            const val = input.value;
+            if (!val) { hint.className = 'text-xs text-slate-400 mt-1'; hint.textContent = 'ตัวเล็ก a-z, ตัวเลข, _ เท่านั้น (3-30 ตัว)'; return; }
+            if (/^[a-z0-9_]{3,30}$/.test(val)) {
+                hint.className = 'text-xs text-emerald-600 mt-1';
+                hint.textContent = '✓ username ถูกต้อง';
+                input.style.borderColor = '#059669';
+            } else {
+                hint.className = 'text-xs text-red-500 mt-1';
+                hint.textContent = val.length < 3 ? 'ต้องมีอย่างน้อย 3 ตัวอักษร' : val.length > 30 ? 'ยาวเกิน 30 ตัว' : 'ใช้ได้เฉพาะ a-z, 0-9, _';
+                input.style.borderColor = '#ef4444';
+            }
+        }
 
         // Show plan badge and next-steps hint if plan param present
         if (plan === 'pro' || plan === 'business') {
@@ -138,7 +155,7 @@
                 badge.className = 'plan-badge bg-emerald-100 text-emerald-700';
                 btnText.textContent = 'สร้างบัญชีและชำระเงิน';
             } else {
-                badge.textContent = 'Business — ฿699/เดือน';
+                badge.textContent = 'Ultra — ฿599/เดือน';
                 badge.className = 'plan-badge bg-slate-800 text-white';
                 btnText.textContent = 'สร้างบัญชีและชำระเงิน';
             }
@@ -146,6 +163,7 @@
 
         async function handleSignup(e) {
             e.preventDefault();
+            if (_submitting) return;
             const btn = document.getElementById('submit-btn');
             const errEl = document.getElementById('error-msg');
             errEl.classList.add('hidden');
@@ -160,11 +178,16 @@
                 showError('กรุณากรอกข้อมูลให้ครบ');
                 return;
             }
+            if (password.length < 8) {
+                showError('รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร');
+                return;
+            }
             if (password !== confirm_password) {
                 showError('รหัสผ่านไม่ตรงกัน');
                 return;
             }
 
+            _submitting = true;
             btn.disabled = true;
             document.getElementById('btn-text').textContent = 'กำลังสร้างบัญชี...';
 
@@ -178,6 +201,7 @@
                 if (!data.ok) {
                     showError(data.error || 'เกิดข้อผิดพลาด');
                     btn.disabled = false;
+                    _submitting = false;
                     document.getElementById('btn-text').textContent = plan ? 'สร้างบัญชีและชำระเงิน' : 'สร้างบัญชีและเริ่มใช้งาน';
                     return;
                 }
@@ -186,17 +210,24 @@
                 if (plan === 'pro' || plan === 'business') {
                     // Go to Stripe checkout
                     document.getElementById('btn-text').textContent = 'กำลังไปหน้าชำระเงิน...';
-                    const ckRes = await fetch('/api/billing/checkout', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ plan }),
-                    });
-                    const ckData = await ckRes.json();
-                    if (ckData.ok && ckData.url) {
-                        window.location.href = ckData.url;
-                    } else {
-                        // Checkout failed → go to billing page anyway
-                        window.location.href = '/billing';
+                    try {
+                        const ckRes = await fetch('/api/billing/checkout', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ plan }),
+                        });
+                        const ckData = await ckRes.json();
+                        if (ckData.ok && ckData.url) {
+                            window.location.href = ckData.url;
+                        } else if (ckRes.status === 503) {
+                            // Payment system not configured — go to onboarding instead
+                            window.location.href = '/onboarding';
+                        } else {
+                            // Checkout failed — land on billing page where user can retry
+                            window.location.href = '/billing';
+                        }
+                    } catch (_ckErr) {
+                        window.location.href = '/onboarding';
                     }
                 } else {
                     window.location.href = '/onboarding';
@@ -204,7 +235,8 @@
             } catch (err) {
                 showError('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้');
                 btn.disabled = false;
-                document.getElementById('btn-text').textContent = 'สร้างบัญชีและเริ่มใช้งาน';
+                _submitting = false;
+                document.getElementById('btn-text').textContent = plan ? 'สร้างบัญชีและชำระเงิน' : 'สร้างบัญชีและเริ่มใช้งาน';
             }
         }
 

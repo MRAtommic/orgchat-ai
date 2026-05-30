@@ -29,6 +29,20 @@ def is_configured() -> bool:
     return key.startswith("sk_live_") or key.startswith("sk_test_")
 
 
+def is_test_mode() -> bool:
+    """Returns True if Stripe is in test/sandbox mode (not real payments)."""
+    return (stripe.api_key or "").startswith("sk_test_")
+
+
+def assert_live_mode():
+    """Raise RuntimeError if Stripe is not in live mode — call before real checkouts."""
+    if is_test_mode():
+        raise RuntimeError(
+            "Stripe อยู่ใน TEST MODE — ไม่สามารถรับชำระเงินจริงได้ "
+            "กรุณาเปลี่ยน STRIPE_SECRET_KEY เป็น sk_live_... ใน .env"
+        )
+
+
 def create_checkout_session(org_id: int, plan: str, customer_id: str | None,
                              success_url: str, cancel_url: str):
     price_id = PRICE_IDS.get(plan)
@@ -61,6 +75,10 @@ def create_checkout_session(org_id: int, plan: str, customer_id: str | None,
 def create_promptpay_checkout(org_id: int, plan: str, customer_id: str | None,
                               success_url: str, cancel_url: str):
     """Create Stripe Checkout Session for PromptPay (one-time, 30-day access)."""
+    # ป้องกัน test plan หลุด production — 1 บาทได้ Pro 30 วัน
+    if plan == "test" and not is_test_mode():
+        raise ValueError("plan=test ใช้ได้เฉพาะ Stripe test mode เท่านั้น")
+
     price_id = PROMPTPAY_PRICE_IDS.get(plan)
     if not price_id:
         env_key = "STRIPE_PRICE_TEST_1THB" if plan == "test" else f"STRIPE_PRICE_{plan.upper()}_PROMPTPAY"

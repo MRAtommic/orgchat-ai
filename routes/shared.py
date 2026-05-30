@@ -10,7 +10,7 @@ import time
 import json
 import logging
 import ipaddress
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from pathlib import Path
 from urllib.parse import urlparse
@@ -38,28 +38,59 @@ ALLOWED_EXTENSIONS = {".pdf", ".csv", ".txt", ".md", ".png", ".jpg", ".jpeg", ".
 _executor = ThreadPoolExecutor(max_workers=10)
 
 # ─── SocketIO & Limiter instances (initialized via init_app in factory) ──
-socketio = SocketIO(cors_allowed_origins="*", async_mode='threading', max_http_payload_size=10*1024*1024)
-_limiter = Limiter(key_func=get_remote_address, storage_uri="memory://")
+# CORS origins: ใช้ BASE_URL จาก env ถ้ามี, ไม่อย่างนั้น fallback wildcard (dev only)
+def _build_cors_origins() -> list | str:
+    raw = os.environ.get("CORS_ALLOWED_ORIGINS", "").strip()
+    if raw:
+        return [o.strip() for o in raw.split(",") if o.strip()]
+    base = os.environ.get("BASE_URL", "").rstrip("/")
+    if base:
+        origins = [base]
+        # รองรับ Railway dev URL ด้วย (up.railway.app) ถ้า BASE_URL เป็น custom domain
+        railway = os.environ.get("RAILWAY_STATIC_URL", "").rstrip("/")
+        if railway and railway != base:
+            origins.append(railway)
+        return origins
+    return "*"  # dev fallback เท่านั้น — ต้องตั้ง BASE_URL ใน production
+
+_cors_origins = _build_cors_origins()
+socketio = SocketIO(cors_allowed_origins=_cors_origins, async_mode='threading', max_http_payload_size=2*1024*1024)
+_limiter_storage = os.environ.get("REDIS_URL", "memory://")
+_limiter = Limiter(key_func=get_remote_address, storage_uri=_limiter_storage)
 
 # ─── Online Users Registry ───────────────────────────────────
 online_users_registry = {}  # sid -> username
 
-# ─── OAuth2 States & LINE Linking Tokens ─────────────────────
-PENDING_LINE_LINKS = {}
-_OAUTH_STATES = {}
+# ─── OAuth2 States & LINE Linking Tokens (DB-backed — multi-worker safe) ────
+# PENDING_LINE_LINKS และ _OAUTH_STATES เคยเป็น in-memory dict
+# ตอนนี้ทุก read/write ผ่าน database เพื่อรองรับ multi-worker และ restart
+
+# ยังคง export ชื่อเดิมเป็น compatibility shim (บาง route import โดยตรง)
+PENDING_LINE_LINKS: dict = {}   # ไม่ใช้แล้ว — เก็บไว้แค่ไม่ให้ import error
+_OAUTH_STATES: dict = {}        # ไม่ใช้แล้ว — เก็บไว้แค่ไม่ให้ import error
+
 
 def _store_oauth_state(state: str, data: dict):
-    data["expires"] = time.time() + 600  # 10 minutes
-    _OAUTH_STATES[state] = data
-    # Clean expired
-    now = time.time()
-    for k in list(_OAUTH_STATES.keys()):
-        if _OAUTH_STATES[k]["expires"] < now:
-            _OAUTH_STATES.pop(k, None)
+    """บันทึก OAuth state ลง DB."""
+    try:
+        database.oauth_state_store(state, data)
+    except Exception as _e:
+        logger.warning(f"[oauth_state] DB store failed, falling back to memory: {_e}")
+        data["expires"] = time.time() + 600
+        _OAUTH_STATES[state] = data
+
 
 def _pop_oauth_state(state: str) -> dict | None:
+    """ดึงและลบ OAuth state จาก DB."""
+    try:
+        result = database.oauth_state_pop(state)
+        if result is not None:
+            return result
+    except Exception as _e:
+        logger.warning(f"[oauth_state] DB pop failed, falling back to memory: {_e}")
+    # Fallback: ลองจาก memory เผื่อ DB ล้มเหลว
     entry = _OAUTH_STATES.pop(state, None)
-    if entry and entry["expires"] > time.time():
+    if entry and entry.get("expires", 0) > time.time():
         return entry
     return None
 
@@ -82,9 +113,25 @@ except ImportError:
     google_requests = None
 
 # ─── VAPID Keys for Push Notifications ───────────────────────
-VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "BNW7f7p3Ush_rg9vjIXxz1KTthTsiy3rz17oaygTy1-l4bTQJKpLeYEj4v3jYQkggo1VLa7w7sNb6mWDaIVH5eU")
-VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "iVj1ybjnV5yP34d1BZ9ydP6Ad_m_24FC6AhYkc2On04")
-VAPID_CLAIMS = {"sub": "mailto:" + os.environ.get("VAPID_CONTACT_EMAIL", "admin@openchat.sbs")}
+VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY")
+VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY")
+# VAPID_CONTACT_EMAIL ใช้ email จริงจาก env หรือ derive จาก BASE_URL
+def _vapid_contact_email() -> str:
+    explicit = os.environ.get("VAPID_CONTACT_EMAIL", "").strip()
+    if explicit and "@" in explicit:
+        return explicit
+    base = os.environ.get("BASE_URL", "").rstrip("/")
+    if base:
+        from urllib.parse import urlparse as _up
+        host = _up(base).hostname or ""
+        if host:
+            return f"admin@{host}"
+    return "admin@localhost"  # dev fallback เท่านั้น
+
+VAPID_CLAIMS = {"sub": "mailto:" + _vapid_contact_email()}
+
+if not VAPID_PUBLIC_KEY or not VAPID_PRIVATE_KEY:
+    logger.warning("⚠️ VAPID_PUBLIC_KEY or VAPID_PRIVATE_KEY not set. Web Push Notifications are DISABLED.")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -148,11 +195,23 @@ def admin_required(f):
     def decorated_function(*args, **kwargs):
         if "user" not in session:
             return jsonify({"ok": False, "error": "กรุณาเข้าสู่ระบบก่อนใช้งาน"}), 401
-        
-        user = session.get("user")
-        settings = database.get_user_setting(user)
-        if settings.get("role") != "admin":
+        if session.get("role") != "admin":
             return jsonify({"ok": False, "error": "เฉพาะผู้ดูแลระบบเท่านั้นที่มีสิทธิ์เข้าถึงส่วนนี้"}), 403
+        return f(*args, **kwargs)
+    return decorated_function
+
+def org_admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if "user" not in session:
+            return jsonify({"ok": False, "error": "กรุณาเข้าสู่ระบบก่อนใช้งาน"}), 401
+        me = session.get("user")
+        org_id = get_current_org_id()
+        if not org_id:
+            return jsonify({"ok": False, "error": "คุณยังไม่ได้อยู่ในองค์กร"}), 403
+        # System admin (role="admin") มีสิทธิ์จัดการทุก org โดยอัตโนมัติ
+        if session.get("role") != "admin" and not database.is_org_admin(org_id, me):
+            return jsonify({"ok": False, "error": "เฉพาะ Admin องค์กรเท่านั้นที่มีสิทธิ์เข้าถึงส่วนนี้"}), 403
         return f(*args, **kwargs)
     return decorated_function
 
@@ -200,36 +259,44 @@ def _set_session_org(username: str):
             session["org_id"] = orgs[0]["id"]
             session["org_role"] = orgs[0]["role"]
     else:
-        # ไม่มี org → สร้าง personal org ให้อัตโนมัติ
-        try:
-            personal_org_name = f"personal_{username}"
-            org_id, _ = database.create_organization(personal_org_name, username)
-        except Exception:
-            orgs_retry = database.get_user_orgs(username)
-            org_id = orgs_retry[0]["id"] if orgs_retry else 1
-        session["org_id"] = org_id
-        session["org_role"] = "admin"
+        # ไม่มี org → ไม่สร้างอัตโนมัติ แสดง empty state ให้ user
+        session["org_id"] = None
+        session["org_role"] = None
 
-def get_current_org_id() -> int:
-    """Return the org_id for the current request session."""
+def get_current_org_id():
+    """Return the org_id for the current request session, with optimized membership checking."""
     username = session.get("user")
-    if username:
-        org_id = session.get("org_id")
-        if org_id:
+    if not username:
+        return None
+
+    org_id = session.get("org_id")
+    # Optimize: If we have an org_id in session and it's already verified in this request context, skip DB
+    if org_id:
+        # Simple cache in request context to prevent multiple DB hits in same request
+        if getattr(request, f"_org_verified_{org_id}", False):
+            return org_id
+            
+        try:
+            conn = database._get_conn()
             try:
-                conn = database._get_conn()
                 exists = conn.execute(
-                    "SELECT 1 FROM organization_members WHERE username=? AND organization_id=?",
+                    "SELECT 1 FROM organization_members WHERE username=? COLLATE NOCASE AND organization_id=?",
                     (username, org_id)
                 ).fetchone()
+            finally:
                 conn.close()
-                if not exists:
-                    _set_session_org(username)
-            except Exception:
-                pass
-        else:
-            _set_session_org(username)
-    return session.get("org_id", 1)
+            
+            if exists:
+                setattr(request, f"_org_verified_{org_id}", True)
+                return org_id
+            else:
+                _set_session_org(username)
+        except Exception:
+            pass
+    elif "org_id" not in session:
+        _set_session_org(username)
+        
+    return session.get("org_id")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -261,10 +328,7 @@ def can_delete_knowledge_base():
     return bool(settings.get("can_delete_kb", False))
 
 def is_admin():
-    user = session.get("user")
-    if not user: return False
-    settings = database.get_user_setting(user)
-    return settings.get("role") == "admin"
+    return "user" in session and session.get("role") == "admin"
 
 def get_rag_filter(username, org_id=1):
     """Constructs a ChromaDB filter to restrict AI search based on category permissions and org."""
@@ -294,7 +358,7 @@ def get_rag_filter(username, org_id=1):
             {"$or": [{"category_id": {"$in": allowed_ids}}, *unassigned_filters]}
         ]
     }
-    print(f"🛡️ [AUTH] RAG filter for {username} org={org_id}: {len(allowed_ids)//2} allowed categories.")
+    logger.debug(f"[RAG filter] user={username} org={org_id} allowed_categories={len(allowed_ids)//2}")
     return res
 
 
@@ -405,10 +469,11 @@ def get_weather_context():
 
 
 # ═══════════════════════════════════════════════════════════════
-# Thai Holidays 2026
+# Thai Holidays 2026-2027
 # ═══════════════════════════════════════════════════════════════
 
 THAI_HOLIDAYS_2026 = {
+    # 2026
     "2026-01-01": "วันขึ้นปีใหม่",
     "2026-02-11": "วันมาฆบูชา",
     "2026-04-06": "วันจักรี",
@@ -428,11 +493,33 @@ THAI_HOLIDAYS_2026 = {
     "2026-10-23": "วันปิยมหาราช",
     "2026-12-05": "วันคล้ายวันเฉลิมพระชนมพรรษา ร.9 / วันพ่อแห่งชาติ",
     "2026-12-10": "วันรัฐธรรมนูญ",
-    "2026-12-31": "วันสิ้นปี"
+    "2026-12-31": "วันสิ้นปี",
+    # 2027
+    "2027-01-01": "วันขึ้นปีใหม่",
+    "2027-03-03": "วันมาฆบูชา",
+    "2027-04-06": "วันจักรี",
+    "2027-04-13": "วันสงกรานต์",
+    "2027-04-14": "วันสงกรานต์",
+    "2027-04-15": "วันสงกรานต์",
+    "2027-05-01": "วันแรงงานแห่งชาติ",
+    "2027-05-04": "วันฉัตรมงคล",
+    "2027-05-10": "วันวิสาขบูชา",
+    "2027-06-03": "วันเฉลิมพระชนมพรรษาพระราชินี",
+    "2027-07-07": "วันอาสาฬหบูชา",
+    "2027-07-08": "วันเข้าพรรษา",
+    "2027-07-28": "วันเฉลิมพระชนมพรรษา ร.10",
+    "2027-08-12": "วันแม่แห่งชาติ",
+    "2027-10-13": "วันนวมินทรมหาราช",
+    "2027-10-23": "วันปิยมหาราช",
+    "2027-12-05": "วันคล้ายวันเฉลิมพระชนมพรรษา ร.9 / วันพ่อแห่งชาติ",
+    "2027-12-10": "วันรัฐธรรมนูญ",
+    "2027-12-31": "วันสิ้นปี"
 }
 
 def get_current_time():
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    """Returns current time in Thailand (UTC+7)."""
+    tz_thai = timezone(timedelta(hours=7))
+    return datetime.now(tz_thai).strftime("%Y-%m-%d %H:%M:%S")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -447,3 +534,8 @@ def _load_legacy_users() -> dict:
     return result
 
 USERS = _load_legacy_users()
+if USERS:
+    logger.warning(
+        f"⚠️ LEGACY_USER_* env vars detected ({list(USERS.keys())}) — "
+        "these use plain-text password comparison. Migrate users to DB accounts and remove these env vars."
+    )

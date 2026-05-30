@@ -32,16 +32,16 @@ def hash_password(password: str) -> str:
 
 
 def check_password(password: str, stored: str) -> bool:
-    """Verify a password against stored hash (or plaintext fallback)."""
+    """Verify a password against stored hash. Plaintext fallback is disabled for security."""
     if not password or not stored:
         return False
-    if BCRYPT_AVAILABLE and stored.startswith("$2b$"):
+    if BCRYPT_AVAILABLE and (stored.startswith("$2b$") or stored.startswith("$2a$")):
         try:
             return bcrypt.checkpw(password.encode("utf-8"), stored.encode("utf-8"))
         except Exception:
             return False
-    # Fallback: plaintext comparison (for legacy or non-bcrypt installs)
-    return password == stored
+    # For security, we only allow bcrypt hashes for database accounts.
+    return False
 
 import os
 import re
@@ -352,6 +352,21 @@ def init_db():
     cursor.execute("PRAGMA journal_mode=WAL;")
     cursor.execute("PRAGMA synchronous=NORMAL;")
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS line_broadcast_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            org_id INTEGER DEFAULT 1,
+            text TEXT NOT NULL,
+            status TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    try:
+        cursor.execute("ALTER TABLE line_broadcast_history ADD COLUMN org_id INTEGER DEFAULT 1")
+    except sqlite3.OperationalError:
+        pass
+
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT DEFAULT 'Admin',
@@ -442,6 +457,8 @@ def init_db():
             background_url TEXT,
             department TEXT DEFAULT 'General',
             position TEXT,
+            spreadsheet_id TEXT,
+            drive_folder_id TEXT,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -635,10 +652,15 @@ def init_db():
             avatar_url TEXT,
             is_active INTEGER DEFAULT 1,
             created_by TEXT,
+            organization_id INTEGER DEFAULT 1,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(scope_category_id) REFERENCES kb_categories(id) ON DELETE SET NULL
         )
     """)
+    # Migration: Add organization_id to ai_personas if not exists
+    try:
+        cursor.execute("ALTER TABLE ai_personas ADD COLUMN organization_id INTEGER DEFAULT 1")
+    except sqlite3.OperationalError: pass
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS user_settings (
             username TEXT PRIMARY KEY,
@@ -694,6 +716,9 @@ def init_db():
     except sqlite3.OperationalError: pass
     try:
         cursor.execute("ALTER TABLE user_settings ADD COLUMN email TEXT")
+    except sqlite3.OperationalError: pass
+    try:
+        cursor.execute("ALTER TABLE user_settings ADD COLUMN can_view_financial INTEGER DEFAULT 0")
     except sqlite3.OperationalError: pass
 
     # Migration: Add category_id to knowledge_base
@@ -883,11 +908,17 @@ def init_db():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            event_text TEXT NOT NULL,
-            user TEXT DEFAULT 'System',
+            event_text TEXT,
+            user TEXT,
+            organization_id INTEGER DEFAULT 1,
             time DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    try:
+        cursor.execute("ALTER TABLE events ADD COLUMN organization_id INTEGER DEFAULT 1")
+    except Exception:
+        pass
+
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_time ON events(time)")
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS lunch_places (
@@ -959,6 +990,8 @@ def init_db():
             plan TEXT DEFAULT 'free',
             max_users INTEGER DEFAULT 10,
             trial_ends_at DATETIME,
+            spreadsheet_id TEXT,
+            drive_folder_id TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -1003,6 +1036,25 @@ def init_db():
             FOREIGN KEY(organization_id) REFERENCES organizations(id) ON DELETE CASCADE
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS organization_profiles (
+            org_id INTEGER PRIMARY KEY,
+            business_type TEXT,
+            vat_status TEXT,
+            branch_type TEXT,
+            business_name_th TEXT,
+            business_name_en TEXT,
+            tax_id TEXT,
+            address_line1 TEXT,
+            address_line2 TEXT,
+            district TEXT,
+            province TEXT,
+            zipcode TEXT,
+            phone TEXT,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(org_id) REFERENCES organizations(id) ON DELETE CASCADE
+        )
+    """)
     # Add organization_id columns to key tables (migrations)
     for tbl in ("messages", "schedules", "posts", "chat_rooms", "wiki_pages"):
         try:
@@ -1020,6 +1072,38 @@ def init_db():
             PRIMARY KEY (org_id, year_month)
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS qr_login_tokens (
+            token      TEXT PRIMARY KEY,
+            status     TEXT DEFAULT 'pending',
+            username   TEXT,
+            created_at REAL NOT NULL,
+            expires_at REAL NOT NULL
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS stripe_processed_events (
+            event_id     TEXT PRIMARY KEY,
+            processed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    # DB-backed LINE link tokens (แทน in-memory PENDING_LINE_LINKS)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS pending_line_links (
+            token        TEXT PRIMARY KEY,
+            line_user_id TEXT NOT NULL,
+            expires_at   REAL NOT NULL
+        )
+    """)
+    # DB-backed OAuth2 states (แทน in-memory _OAUTH_STATES)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS oauth_states (
+            state       TEXT PRIMARY KEY,
+            data_json   TEXT NOT NULL,
+            expires_at  REAL NOT NULL
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_org_members_username ON organization_members(username)")
     # Migration: plan_expires_at, Stripe fields on organizations
     for col_sql in [
         "ALTER TABLE organizations ADD COLUMN plan_expires_at DATETIME",
@@ -1043,29 +1127,156 @@ def init_db():
             FOREIGN KEY(organization_id) REFERENCES organizations(id) ON DELETE CASCADE
         )
     """)
+    try:
+        cursor.execute("ALTER TABLE organization_allowed_emails ADD COLUMN role TEXT DEFAULT 'member'")
+    except Exception:
+        pass
 
     # Migration: add org_id to line_group_mappings for multi-tenant support
     try:
         cursor.execute("ALTER TABLE line_group_mappings ADD COLUMN org_id INTEGER")
     except Exception:
         pass
+    # Migration: store real LINE group name and picture fetched from LINE API
+    try:
+        cursor.execute("ALTER TABLE line_group_mappings ADD COLUMN line_real_name TEXT")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE line_group_mappings ADD COLUMN line_picture_url TEXT")
+    except Exception:
+        pass
 
     # Seed default organization
     cursor.execute("INSERT OR IGNORE INTO organizations (id, name, slug, plan) VALUES (1, 'Default Organization', 'default', 'free')")
-    # Add all existing users to default org
+    # Add existing users to default org ONLY IF they do not belong to any organization yet
     cursor.execute("SELECT username FROM user_profiles")
     for (uname,) in cursor.fetchall():
-        cursor.execute("""
-            INSERT OR IGNORE INTO organization_members (organization_id, username, role)
-            VALUES (1, ?, CASE WHEN lower(?) = 'admin' THEN 'admin' ELSE 'member' END)
-        """, (uname, uname))
+        cursor.execute("SELECT 1 FROM organization_members WHERE username = ? COLLATE NOCASE", (uname,))
+        if not cursor.fetchone():
+            cursor.execute("""
+                INSERT OR IGNORE INTO organization_members (organization_id, username, role)
+                VALUES (1, ?, CASE WHEN lower(?) = 'admin' THEN 'admin' ELSE 'member' END)
+            """, (uname, uname))
     # Also seed from user_settings
     cursor.execute("SELECT username FROM user_settings")
     for (uname,) in cursor.fetchall():
-        cursor.execute("""
-            INSERT OR IGNORE INTO organization_members (organization_id, username, role)
-            VALUES (1, ?, CASE WHEN lower(?) = 'admin' THEN 'admin' ELSE 'member' END)
-        """, (uname, uname))
+        cursor.execute("SELECT 1 FROM organization_members WHERE username = ? COLLATE NOCASE", (uname,))
+        if not cursor.fetchone():
+            cursor.execute("""
+                INSERT OR IGNORE INTO organization_members (organization_id, username, role)
+                VALUES (1, ?, CASE WHEN lower(?) = 'admin' THEN 'admin' ELSE 'member' END)
+            """, (uname, uname))
+
+    # ══════════════════════════════════════════════════════
+    # Feature: Quotation / Invoice
+    # ══════════════════════════════════════════════════════
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS quotations (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            org_id          INTEGER NOT NULL,
+            quotation_no    TEXT NOT NULL,
+            type            TEXT DEFAULT 'quotation',   -- quotation | invoice
+            customer_name   TEXT NOT NULL,
+            customer_company TEXT DEFAULT '',
+            customer_address TEXT DEFAULT '',
+            customer_tax_id  TEXT DEFAULT '',
+            customer_email   TEXT DEFAULT '',
+            customer_phone   TEXT DEFAULT '',
+            items           TEXT DEFAULT '[]',           -- JSON [{name,qty,unit,price}]
+            subtotal        REAL DEFAULT 0,
+            discount        REAL DEFAULT 0,
+            vat_rate        REAL DEFAULT 7,
+            vat_amount      REAL DEFAULT 0,
+            wht_rate        REAL DEFAULT 0,
+            wht_amount      REAL DEFAULT 0,
+            total           REAL DEFAULT 0,
+            status          TEXT DEFAULT 'draft',        -- draft|sent|approved|rejected|paid
+            notes           TEXT DEFAULT '',
+            valid_until     TEXT DEFAULT '',
+            created_by      TEXT NOT NULL,
+            created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_quotations_org ON quotations(org_id, created_at)")
+
+    # ══════════════════════════════════════════════════════
+    # Feature: CRM — Customers & Deals
+    # ══════════════════════════════════════════════════════
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS crm_customers (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            org_id      INTEGER NOT NULL,
+            name        TEXT NOT NULL,
+            company     TEXT DEFAULT '',
+            email       TEXT DEFAULT '',
+            phone       TEXT DEFAULT '',
+            address     TEXT DEFAULT '',
+            tax_id      TEXT DEFAULT '',
+            tags        TEXT DEFAULT '[]',
+            notes       TEXT DEFAULT '',
+            created_by  TEXT,
+            created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_crm_customers_org ON crm_customers(org_id)")
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS crm_deals (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            org_id          INTEGER NOT NULL,
+            customer_id     INTEGER,
+            title           TEXT NOT NULL,
+            value           REAL DEFAULT 0,
+            stage           TEXT DEFAULT 'lead',  -- lead|qualified|proposal|negotiation|won|lost
+            probability     INTEGER DEFAULT 50,
+            expected_close  TEXT DEFAULT '',
+            assigned_to     TEXT DEFAULT '',
+            notes           TEXT DEFAULT '',
+            created_by      TEXT,
+            created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(customer_id) REFERENCES crm_customers(id) ON DELETE SET NULL
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_crm_deals_org ON crm_deals(org_id, stage)")
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS crm_activities (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            org_id      INTEGER NOT NULL,
+            deal_id     INTEGER,
+            customer_id INTEGER,
+            type        TEXT DEFAULT 'note',   -- note|call|email|meeting
+            content     TEXT NOT NULL,
+            created_by  TEXT,
+            created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(deal_id) REFERENCES crm_deals(id) ON DELETE CASCADE
+        )
+    """)
+
+    # ══════════════════════════════════════════════════════
+    # Feature: Meeting Notes
+    # ══════════════════════════════════════════════════════
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS meeting_notes (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            org_id          INTEGER NOT NULL,
+            title           TEXT NOT NULL,
+            audio_filename  TEXT DEFAULT '',
+            transcript      TEXT DEFAULT '',
+            summary         TEXT DEFAULT '',
+            action_items    TEXT DEFAULT '[]',   -- JSON [{task, assignee, due}]
+            participants    TEXT DEFAULT '',
+            meeting_date    TEXT DEFAULT '',
+            wiki_page_id    INTEGER DEFAULT NULL,
+            created_by      TEXT,
+            created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_meeting_notes_org ON meeting_notes(org_id, created_at)")
 
     conn.commit()
     conn.close()
@@ -1078,7 +1289,7 @@ def get_user_orgs(username: str) -> list:
         SELECT o.id, o.name, o.slug, o.plan, om.role
         FROM organizations o
         JOIN organization_members om ON o.id = om.organization_id
-        WHERE om.username = ?
+        WHERE om.username = ? COLLATE NOCASE
         ORDER BY o.id
     """, (username,))
     rows = cursor.fetchall()
@@ -1196,7 +1407,7 @@ def get_user_primary_org_id(username: str) -> int | None:
     conn = _get_conn()
     cur = conn.cursor()
     cur.execute(
-        "SELECT organization_id FROM organization_members WHERE username = ? ORDER BY organization_id LIMIT 1",
+        "SELECT organization_id FROM organization_members WHERE username = ? COLLATE NOCASE ORDER BY organization_id LIMIT 1",
         (username,)
     )
     row = cur.fetchone()
@@ -1226,12 +1437,72 @@ def get_line_groups_for_org(org_id: int) -> list:
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
     cur.execute(
-        "SELECT group_id, group_name, owner_username, created_at FROM line_group_mappings WHERE org_id = ? ORDER BY created_at DESC",
+        "SELECT group_id, group_name, owner_username, created_at, line_real_name, line_picture_url FROM line_group_mappings WHERE org_id = ? ORDER BY created_at DESC",
         (org_id,)
     )
     rows = cur.fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def update_line_group_real_info(group_id: str, real_name: str, picture_url: str = None):
+    """Update the real LINE group name and picture fetched from LINE API."""
+    conn = _get_conn()
+    conn.execute(
+        "UPDATE line_group_mappings SET line_real_name=?, line_picture_url=? WHERE group_id=?",
+        (real_name, picture_url, group_id)
+    )
+    conn.commit()
+    conn.close()
+
+
+def signup_create_user_and_org(username: str, password: str, display_name: str, org_name: str) -> tuple:
+    """
+    Atomically creates user + org in a single transaction.
+    Returns (org_id, slug). Raises ValueError("username_exists") or other exceptions on failure.
+    """
+    import re as _re
+    hashed_pw = hash_password(password)
+    slug = _re.sub(r'[^a-z0-9]+', '-', org_name.lower()).strip('-') or 'org'
+
+    conn = _get_conn()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT username FROM user_profiles WHERE username = ? COLLATE NOCASE", (username,))
+        if cursor.fetchone():
+            raise ValueError("username_exists")
+
+        base_slug = slug
+        suffix = 1
+        while True:
+            cursor.execute("SELECT id FROM organizations WHERE slug = ?", (slug,))
+            if not cursor.fetchone():
+                break
+            slug = f"{base_slug}-{suffix}"
+            suffix += 1
+
+        cursor.execute(
+            "INSERT INTO user_profiles (username, display_name, department) VALUES (?, ?, 'General')",
+            (username, display_name),
+        )
+        cursor.execute(
+            "INSERT INTO user_settings (username, role, custom_password, can_view_kb, can_edit_kb, can_delete_kb, is_active) VALUES (?, 'user', ?, 1, 1, 1, 1)",
+            (username, hashed_pw),
+        )
+        cursor.execute("INSERT OR IGNORE INTO room_members (room_id, username) VALUES (1, ?)", (username,))
+        cursor.execute("INSERT INTO organizations (name, slug) VALUES (?, ?)", (org_name, slug))
+        org_id = cursor.lastrowid
+        cursor.execute(
+            "INSERT OR IGNORE INTO organization_members (organization_id, username, role) VALUES (?, ?, 'admin')",
+            (org_id, username),
+        )
+        conn.commit()
+        return org_id, slug
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def create_organization(name: str, owner_username: str) -> tuple:
@@ -1255,7 +1526,10 @@ def create_organization(name: str, owner_username: str) -> tuple:
     """, (org_id, owner_username))
     cursor.execute("""
         INSERT OR IGNORE INTO user_settings (username, role, is_active)
-        VALUES (?, 'user', 1)
+        VALUES (?, 'admin', 1)
+    """, (owner_username,))
+    cursor.execute("""
+        UPDATE user_settings SET role = 'admin' WHERE username = ?
     """, (owner_username,))
     conn.commit()
     conn.close()
@@ -1277,15 +1551,65 @@ def add_org_member(org_id: int, username: str, role: str = 'member', invited_by:
     conn.close()
 
 
+def add_org_member_with_quota(org_id: int, username: str, role: str,
+                               invited_by: str, max_users: int) -> tuple[bool, str]:
+    """Atomically check member quota then insert.
+    Returns (True, "") on success, (False, reason) if quota exceeded or already member.
+    Uses BEGIN IMMEDIATE so concurrent invites can't both slip past the limit.
+    """
+    conn = sqlite3.connect(DB_PATH, timeout=30, isolation_level=None)
+    conn.execute("PRAGMA busy_timeout=30000")
+    conn.execute("PRAGMA journal_mode=WAL")
+    cur = conn.cursor()
+    try:
+        cur.execute("BEGIN IMMEDIATE")
+        if max_users != -1:
+            count = cur.execute(
+                "SELECT COUNT(*) FROM organization_members WHERE organization_id = ?", (org_id,)
+            ).fetchone()[0]
+            if count >= max_users:
+                cur.execute("ROLLBACK")
+                return False, "quota_exceeded"
+        cur.execute(
+            "INSERT OR IGNORE INTO organization_members (organization_id, username, role, invited_by) VALUES (?, ?, ?, ?)",
+            (org_id, username, role, invited_by),
+        )
+        cur.execute(
+            "INSERT OR IGNORE INTO user_settings (username, role, is_active) VALUES (?, 'user', 1)",
+            (username,),
+        )
+        cur.execute("COMMIT")
+        return True, ""
+    except Exception:
+        try:
+            cur.execute("ROLLBACK")
+        except Exception:
+            pass
+        raise
+    finally:
+        conn.close()
+
+
 def get_org_members(org_id: int) -> list:
     conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("""
         SELECT om.username, om.role, om.joined_at,
                COALESCE(up.display_name, om.username) as display_name,
-               up.avatar_url, up.department, up.position
+               up.avatar_url, up.department, up.position, om.invited_by,
+               COALESCE(s.is_active, 1) as is_active,
+               COALESCE(s.can_view_financial, 0) as can_view_financial,
+               s.email,
+               COALESCE(s.can_view_kb, 0) as can_view_kb,
+               COALESCE(s.can_edit_kb, 0) as can_edit_kb,
+               COALESCE(s.can_delete_kb, 0) as can_delete_kb,
+               s.notes,
+               CASE WHEN gt.username IS NOT NULL THEN 1 ELSE 0 END as google_connected,
+               gt.google_email
         FROM organization_members om
         LEFT JOIN user_profiles up ON om.username = up.username
+        LEFT JOIN user_settings s ON om.username = s.username
+        LEFT JOIN user_google_tokens gt ON om.username = gt.username
         WHERE om.organization_id = ?
         ORDER BY CASE om.role WHEN 'admin' THEN 0 ELSE 1 END, om.joined_at
     """, (org_id,))
@@ -1293,26 +1617,127 @@ def get_org_members(org_id: int) -> list:
     conn.close()
     return [{"username": r[0], "role": r[1], "joined_at": r[2],
              "display_name": r[3], "avatar_url": r[4],
-             "department": r[5], "position": r[6]} for r in rows]
+             "department": r[5], "position": r[6], "invited_by": r[7],
+             "is_active": bool(r[8]), "can_view_financial": bool(r[9]),
+             "email": r[10] or "",
+             "can_view_kb": bool(r[11]), "can_edit_kb": bool(r[12]), "can_delete_kb": bool(r[13]),
+             "notes": r[14] or "",
+             "google_connected": bool(r[15]),
+             "google_email": r[16] or ""} for r in rows]
 
 
 def is_org_admin(org_id: int, username: str) -> bool:
     conn = _get_conn()
     cursor = conn.cursor()
-    cursor.execute("SELECT role FROM organization_members WHERE organization_id = ? AND username = ?", (org_id, username))
+    cursor.execute("SELECT role FROM organization_members WHERE organization_id = ? AND username = ? COLLATE NOCASE", (org_id, username))
     row = cursor.fetchone()
     conn.close()
     return row is not None and row[0] == 'admin'
 
 
+def is_org_member(org_id: int, username: str) -> bool:
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT 1 FROM organization_members WHERE organization_id = ? AND username = ? COLLATE NOCASE", (org_id, username))
+    row = cursor.fetchone()
+    conn.close()
+    return row is not None
+
+
 def remove_org_member(org_id: int, username: str) -> bool:
     conn = _get_conn()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM organization_members WHERE organization_id = ? AND username = ?", (org_id, username))
+    cursor.execute("DELETE FROM organization_members WHERE organization_id = ? AND username = ? COLLATE NOCASE", (org_id, username))
     affected = cursor.rowcount
     conn.commit()
     conn.close()
     return affected > 0
+
+
+def update_org_member_role(org_id: int, username: str, new_role: str) -> bool:
+    """Change a member's role within an organization. Returns True if a row was updated."""
+    if new_role not in ('admin', 'member'):
+        return False
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE organization_members SET role = ? WHERE organization_id = ? AND username = ? COLLATE NOCASE",
+        (new_role, org_id, username)
+    )
+    affected = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return affected > 0
+
+
+def get_org_profile(org_id: int) -> dict | None:
+    """Get business profile for a specific organization."""
+    conn = _get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(organization_profiles)")
+        cols = [r[1] for r in cursor.fetchall()]
+        if cols:
+            if "logo_url" not in cols:
+                conn.execute("ALTER TABLE organization_profiles ADD COLUMN logo_url TEXT")
+            if "signature_url" not in cols:
+                conn.execute("ALTER TABLE organization_profiles ADD COLUMN signature_url TEXT")
+            conn.commit()
+    except Exception as e:
+        print(f"Migration error for organization_profiles: {e}")
+        
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM organization_profiles WHERE org_id = ?", (org_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def update_org_profile(org_id: int, data: dict) -> bool:
+    """Insert or update business profile for a specific organization."""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT 1 FROM organization_profiles WHERE org_id = ?", (org_id,))
+        exists = cursor.fetchone()
+        
+        fields = [
+            "business_type", "vat_status", "branch_type", "business_name_th",
+            "business_name_en", "tax_id", "address_line1", "address_line2",
+            "district", "province", "zipcode", "phone", "logo_url", "signature_url"
+        ]
+        
+        if not exists:
+            query = f"INSERT INTO organization_profiles (org_id, {', '.join(fields)}) VALUES (?, {', '.join(['?'] * len(fields))})"
+            values = [org_id] + [data.get(f, "") for f in fields]
+            cursor.execute(query, values)
+        else:
+            set_clause = ", ".join([f"{f} = ?" for f in fields])
+            query = f"UPDATE organization_profiles SET {set_clause}, updated_at = CURRENT_TIMESTAMP WHERE org_id = ?"
+            values = [data.get(f, "") for f in fields] + [org_id]
+            cursor.execute(query, values)
+            
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Error updating org profile: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def count_org_admins(org_id: int) -> int:
+    """Count how many admins are in an organization."""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT COUNT(*) FROM organization_members WHERE organization_id = ? AND role = 'admin'",
+        (org_id,)
+    )
+    count = cursor.fetchone()[0]
+    conn.close()
+    return count
 
 
 # --- Whitelist Feature ---
@@ -1320,16 +1745,26 @@ def remove_org_member(org_id: int, username: str) -> bool:
 def get_whitelist_emails(org_id: int) -> list:
     conn = _get_conn()
     cursor = conn.cursor()
-    cursor.execute("SELECT email, added_by, created_at FROM organization_allowed_emails WHERE organization_id = ? ORDER BY created_at DESC", (org_id,))
-    rows = cursor.fetchall()
+    try:
+        cursor.execute("SELECT email, added_by, created_at, role FROM organization_allowed_emails WHERE organization_id = ? ORDER BY created_at DESC", (org_id,))
+        rows = cursor.fetchall()
+        emails = [{"email": r[0], "added_by": r[1], "created_at": r[2], "role": r[3] or "member"} for r in rows]
+    except Exception:
+        cursor.execute("SELECT email, added_by, created_at FROM organization_allowed_emails WHERE organization_id = ? ORDER BY created_at DESC", (org_id,))
+        rows = cursor.fetchall()
+        emails = [{"email": r[0], "added_by": r[1], "created_at": r[2], "role": "member"} for r in rows]
     conn.close()
-    return [{"email": r[0], "added_by": r[1], "created_at": r[2]} for r in rows]
+    return emails
 
-def add_whitelist_email(org_id: int, email: str, added_by: str) -> bool:
+def add_whitelist_email(org_id: int, email: str, added_by: str, role: str = "member") -> bool:
     conn = _get_conn()
     cursor = conn.cursor()
     try:
-        cursor.execute("INSERT INTO organization_allowed_emails (organization_id, email, added_by) VALUES (?, ?, ?)", (org_id, email, added_by))
+        try:
+            cursor.execute("INSERT INTO organization_allowed_emails (organization_id, email, added_by, role) VALUES (?, ?, ?, ?)", (org_id, email, added_by, role))
+        except sqlite3.OperationalError:
+            # Fallback if role column doesn't exist yet
+            cursor.execute("INSERT INTO organization_allowed_emails (organization_id, email, added_by) VALUES (?, ?, ?)", (org_id, email, added_by))
         conn.commit()
         success = True
     except sqlite3.IntegrityError:
@@ -1345,6 +1780,21 @@ def remove_whitelist_email(org_id: int, email: str) -> bool:
     conn.commit()
     conn.close()
     return affected > 0
+
+def get_email_whitelisted_organizations(email: str) -> list:
+    conn = _get_conn()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT organization_id, added_by, created_at, role FROM organization_allowed_emails WHERE email = ? COLLATE NOCASE", (email,))
+        rows = cursor.fetchall()
+        orgs = [{"organization_id": r[0], "added_by": r[1], "created_at": r[2], "role": r[3] or "member"} for r in rows]
+    except Exception:
+        # Fallback if role doesn't exist
+        cursor.execute("SELECT organization_id, added_by, created_at FROM organization_allowed_emails WHERE email = ? COLLATE NOCASE", (email,))
+        rows = cursor.fetchall()
+        orgs = [{"organization_id": r[0], "added_by": r[1], "created_at": r[2], "role": "member"} for r in rows]
+    conn.close()
+    return orgs
 
 def is_email_allowed(org_id: int, email: str) -> bool:
     conn = _get_conn()
@@ -2000,15 +2450,15 @@ def delete_wiki_page(slug, org_id=1):
     conn.close()
     return ok
 
-def get_stats(username="Admin"):
+def get_stats(username="Admin", org_id=1):
     conn = _get_conn()
     cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM messages WHERE role = 'user' AND username = ?", (username,))
+    cursor.execute("SELECT COUNT(*) FROM messages WHERE role = 'user' AND username = ? AND organization_id = ?", (username, org_id))
     total_queries = cursor.fetchone()[0]
-    
-    cursor.execute("SELECT feedback, COUNT(*) FROM messages WHERE role = 'bot' AND username = ? GROUP BY feedback", (username,))
+
+    cursor.execute("SELECT feedback, COUNT(*) FROM messages WHERE role = 'bot' AND username = ? AND organization_id = ? GROUP BY feedback", (username, org_id))
     feedback_stats = cursor.fetchall() # List of (val, count)
-    
+
     conn.close()
     return {
         "total_queries": total_queries,
@@ -2038,20 +2488,20 @@ def remove_push_subscription(username, subscription_json):
     conn.commit()
     conn.close()
 
-def log_event(event_text, user="System"):
+def log_event(event_text, user="System", org_id=1):
     try:
         conn = _get_conn()
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO events (event_text, user) VALUES (?, ?)", (event_text, user))
+        cursor.execute("INSERT INTO events (event_text, user, organization_id) VALUES (?, ?, ?)", (event_text, user, org_id))
         conn.commit()
         conn.close()
     except Exception as e:
         print(f"⚠️ Failed to log event: {e}")
 
-def get_events(limit=20):
+def get_events(limit=20, org_id=1):
     conn = _get_conn()
     cursor = conn.cursor()
-    cursor.execute("SELECT datetime(time, 'localtime'), event_text, user FROM events ORDER BY time DESC LIMIT ?", (limit,))
+    cursor.execute("SELECT datetime(time, 'localtime'), event_text, user FROM events WHERE organization_id = ? ORDER BY time DESC LIMIT ?", (org_id, limit))
     rows = cursor.fetchall()
     conn.close()
     return [{"time": r[0], "event": r[1], "user": r[2]} for r in rows]
@@ -2238,6 +2688,15 @@ def get_posts(category=None, org_id=1):
         p["poll"] = get_poll_for_post(p["id"])
         posts.append(p)
     return posts
+
+def get_post(post_id: int) -> dict | None:
+    """ดึงโพสต์เดียว — ใช้ตรวจ ownership ก่อน update/delete"""
+    conn = _get_conn()
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("SELECT id, author, content, category FROM posts WHERE id=?", (post_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
 
 def update_post(post_id, content, category, link=None):
     conn = _get_conn()
@@ -2625,6 +3084,20 @@ def link_line_user(username, line_user_id):
         print(f"Error linking LINE user: {e}")
         return False
 
+def unlink_line_user(username):
+    """Unlink a LINE user ID from an OrgChat username by setting line_user_id to NULL."""
+    try:
+        conn = _get_conn()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE user_profiles SET line_user_id = NULL WHERE username = ? COLLATE NOCASE", (username,))
+        count = cursor.rowcount
+        conn.commit()
+        conn.close()
+        return count > 0
+    except Exception as e:
+        print(f"Error unlinking LINE user {username}: {e}")
+        return False
+
 def get_line_id_by_username(username):
     """Get the linked LINE ID for a specific OrgChat user."""
     try:
@@ -2933,11 +3406,105 @@ def get_daily_activities(org_id=1):
 
     return {"posts": posts_data, "schedules": schedules_data}
 
+def get_executive_summary_data(org_id=1):
+    """
+    Aggregates comprehensive data for the Executive Daily Brief.
+    Includes: Expenses, Leave Requests, Pending Tasks, and New Feed Posts.
+    """
+    conn = _get_conn()
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    
+    # 1. Financial Summary (Last 24h)
+    cursor.execute("""
+        SELECT SUM(amount) as total, COUNT(*) as count 
+        FROM drive_logs 
+        WHERE org_id = ? AND created_at >= datetime('now', '-1 day')
+    """, (org_id,))
+    finance = cursor.fetchone()
+    
+    # 2. HR Summary (Leaves today or starting today)
+    cursor.execute("""
+        SELECT l.username, up.display_name, l.leave_type, l.reason
+        FROM leave_requests l
+        LEFT JOIN user_profiles up ON l.username = up.username
+        WHERE l.status = 'approved' 
+          AND date('now') BETWEEN l.start_date AND l.end_date
+    """)
+    leaves = cursor.fetchall()
+    
+    # 3. Tasks/Schedules Summary (Due today)
+    cursor.execute("""
+        SELECT title, start_time, category 
+        FROM schedules 
+        WHERE organization_id = ? AND start_date = date('now')
+        ORDER BY start_time ASC
+    """, (org_id,))
+    tasks = cursor.fetchall()
+    
+    # 4. Social Feed (Last 24h)
+    cursor.execute("""
+        SELECT p.content, up.display_name
+        FROM posts p
+        LEFT JOIN user_profiles up ON p.author = up.username
+        WHERE p.organization_id = ? AND p.timestamp >= datetime('now', '-1 day')
+        ORDER BY p.timestamp DESC LIMIT 5
+    """, (org_id,))
+    posts = cursor.fetchall()
+    
+    conn.close()
+    
+    return {
+        "finance": {"total_amount": finance['total'] or 0, "count": finance['count']},
+        "leaves": [dict(r) for r in leaves],
+        "tasks": [dict(r) for r in tasks],
+        "posts": [dict(r) for r in posts]
+    }
+
+def get_cash_flow_projection(org_id=1):
+    """
+    Analyzes last 3 months of expenses and predicts next month's spending.
+    """
+    conn = _get_conn()
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    
+    # Get last 4 months of data (including current)
+    cursor.execute("""
+        SELECT strftime('%Y-%m', created_at) as month, SUM(amount) as total
+        FROM drive_logs
+        WHERE org_id = ? AND created_at >= date('now', '-4 months')
+        GROUP BY month
+        ORDER BY month DESC
+    """, (org_id,))
+    history = cursor.fetchall()
+    
+    # Get top 3 expense categories
+    cursor.execute("""
+        SELECT category, SUM(amount) as total
+        FROM drive_logs
+        WHERE org_id = ? AND created_at >= date('now', '-1 month')
+        GROUP BY category
+        ORDER BY total DESC LIMIT 3
+    """, (org_id,))
+    top_categories = cursor.fetchall()
+    
+    conn.close()
+    
+    totals = [r['total'] for r in history if r['total']]
+    avg_projection = sum(totals) / len(totals) if totals else 0
+    
+    return {
+        "history": [dict(r) for r in history],
+        "projection": avg_projection,
+        "top_categories": [dict(r) for r in top_categories]
+    }
+
 def get_user_setting(username):
     """Get user_settings for a user, returns defaults if not set. Case-insensitive."""
     conn = _get_conn()
     cursor = conn.cursor()
-    cursor.execute("SELECT username, role, is_active, custom_password, notes, can_view_kb, can_edit_kb, can_delete_kb, email FROM user_settings WHERE username = ? COLLATE NOCASE", (username,))
+    cursor.execute("SELECT username, role, is_active, custom_password, notes, can_view_kb, can_edit_kb, can_delete_kb, email, can_view_financial FROM user_settings WHERE username = ? COLLATE NOCASE", (username,))
     row = cursor.fetchone()
     conn.close()
     if row:
@@ -2950,13 +3517,14 @@ def get_user_setting(username):
             "can_view_kb": bool(row[5]),
             "can_edit_kb": bool(row[6]),
             "can_delete_kb": bool(row[7]),
-            "email": row[8] or ""
+            "email": row[8] or "",
+            "can_view_financial": bool(row[9]) if row[9] is not None else False,
         }
-    
+
     # Defaults
     if username.lower() == "admin":
-        return {"username_original": "Admin", "role": "admin", "is_active": 1, "custom_password": None, "notes": "Default Admin", "can_view_kb": True, "can_edit_kb": True, "can_delete_kb": True}
-    return {"username_original": username, "role": "user", "is_active": 1, "custom_password": None, "notes": "", "can_view_kb": False, "can_edit_kb": False, "can_delete_kb": False}
+        return {"username_original": "Admin", "role": "admin", "is_active": 1, "custom_password": None, "notes": "Default Admin", "can_view_kb": True, "can_edit_kb": True, "can_delete_kb": True, "can_view_financial": True}
+    return {"username_original": username, "role": "user", "is_active": 1, "custom_password": None, "notes": "", "can_view_kb": False, "can_edit_kb": False, "can_delete_kb": False, "can_view_financial": False}
 
 def admin_get_all_users(org_id=1):
     """Get all users with their profiles and settings, filtered by org."""
@@ -2971,7 +3539,9 @@ def admin_get_all_users(org_id=1):
                COALESCE(s.can_edit_kb, 0) as can_edit_kb,
                COALESCE(s.can_delete_kb, 0) as can_delete_kb,
                p.department,
-               om.role as org_role
+               om.role as org_role,
+               COALESCE(s.can_view_financial, 0) as can_view_financial,
+               p.line_user_id
         FROM user_profiles p
         JOIN organization_members om ON p.username = om.username COLLATE NOCASE
         LEFT JOIN user_settings s ON p.username = s.username COLLATE NOCASE
@@ -2991,7 +3561,9 @@ def admin_get_all_users(org_id=1):
         "can_edit_kb": bool(r[7]),
         "can_delete_kb": bool(r[8]),
         "department": r[9],
-        "org_role": r[10]
+        "org_role": r[10],
+        "can_view_financial": bool(r[11]),
+        "line_user_id": r[12],
     } for r in rows]
 
 # --- Global App Settings ---
@@ -3018,7 +3590,7 @@ def get_all_app_settings():
     conn.close()
     return {r[0]: r[1] for r in rows}
 
-def admin_update_user(username, display_name=None, role=None, is_active=None, notes=None, can_view_kb=None, can_edit_kb=None, can_delete_kb=None, department=None):
+def admin_update_user(username, display_name=None, role=None, is_active=None, notes=None, can_view_kb=None, can_edit_kb=None, can_delete_kb=None, department=None, can_view_financial=None):
     """Admin updates a user's profile and settings."""
     conn = _get_conn()
     cursor = conn.cursor()
@@ -3053,7 +3625,7 @@ def admin_update_user(username, display_name=None, role=None, is_active=None, no
                 ON CONFLICT(username) DO UPDATE SET department = excluded.department
             """, (username, department))
     # Upsert settings
-    if role is not None or is_active is not None or notes is not None or can_view_kb is not None or can_edit_kb is not None or can_delete_kb is not None:
+    if any(v is not None for v in [role, is_active, notes, can_view_kb, can_edit_kb, can_delete_kb, can_view_financial]):
         cursor.execute("INSERT OR IGNORE INTO user_settings (username) VALUES (?)", (username,))
         if role is not None:
             cursor.execute("UPDATE user_settings SET role = ? WHERE username = ?", (role, username))
@@ -3065,6 +3637,8 @@ def admin_update_user(username, display_name=None, role=None, is_active=None, no
             cursor.execute("UPDATE user_settings SET can_edit_kb = ? WHERE username = ?", (1 if can_edit_kb else 0, username))
         if can_delete_kb is not None:
             cursor.execute("UPDATE user_settings SET can_delete_kb = ? WHERE username = ?", (1 if can_delete_kb else 0, username))
+        if can_view_financial is not None:
+            cursor.execute("UPDATE user_settings SET can_view_financial = ? WHERE username = ?", (1 if can_view_financial else 0, username))
         if notes is not None:
             cursor.execute("UPDATE user_settings SET notes = ?, updated_at = CURRENT_TIMESTAMP WHERE username = ?", (notes, username))
     conn.commit()
@@ -3133,24 +3707,37 @@ def admin_delete_user_complete(username):
         tables = [
             "user_profiles", "user_settings", "user_category_access", 
             "room_members", "likes", "messages", "schedules", 
-            "posts", "comments", "private_messages"
+            "posts", "comments", "private_messages", "organization_members",
+            "room_messages", "group_messages", "push_subscriptions",
+            "user_google_tokens", "user_status", "search_history",
+            "message_read_receipts",
+            "leave_requests", "leave_comments", "expense_claims", "wiki_pages"
         ]
         
+        # Clean up private_message_read_status based on message IDs
+        cursor.execute("""
+            DELETE FROM private_message_read_status 
+            WHERE message_id IN (
+                SELECT id FROM private_messages 
+                WHERE sender = ? COLLATE NOCASE OR recipient = ? COLLATE NOCASE
+            )
+        """, (username, username))
+        
         for table in tables:
-            # Handle special column names if necessary
             col = "username"
             if table == "private_messages":
-                cursor.execute("DELETE FROM private_messages WHERE sender = ? OR recipient = ?", (username, username))
+                cursor.execute("DELETE FROM private_messages WHERE sender = ? COLLATE NOCASE OR recipient = ? COLLATE NOCASE", (username, username))
                 continue
             if table == "likes":
                 col = "user"
-            if table == "comments":
-                col = "author"
-            if table == "posts":
+            if table == "comments" or table == "posts" or table == "wiki_pages":
                 col = "author"
             
-            cursor.execute(f"DELETE FROM {table} WHERE {col} = ?", (username,))
+            cursor.execute(f"DELETE FROM {table} WHERE {col} = ? COLLATE NOCASE", (username,))
             
+        # Clean up kanban_cards
+        cursor.execute("DELETE FROM kanban_cards WHERE assignee = ? COLLATE NOCASE OR created_by = ? COLLATE NOCASE", (username, username))
+        
         conn.commit()
         return True
     except Exception as e:
@@ -3242,16 +3829,32 @@ def superadmin_get_system_stats() -> dict:
 
 
 def superadmin_delete_org(org_id: int) -> bool:
-    """Super admin: delete an org and remove all its members from it."""
+    """Super admin: delete an org and all its associated data."""
     conn = _get_conn()
     try:
-        conn.execute("DELETE FROM organization_members WHERE organization_id=?", (org_id,))
-        conn.execute("DELETE FROM usage_tracking WHERE org_id=?", (org_id,))
+        # ลบข้อมูลทั้งหมดที่เชื่อมกับ org นี้ก่อน แล้วค่อยลบ org
+        tables_with_org_id = [
+            ("messages", "organization_id"),
+            ("schedules", "organization_id"),
+            ("posts", "organization_id"),
+            ("chat_rooms", "organization_id"),
+            ("wiki_pages", "organization_id"),
+            ("org_google_tokens", "org_id"),
+            ("organization_allowed_emails", "organization_id"),
+            ("organization_members", "organization_id"),
+            ("usage_tracking", "org_id"),
+        ]
+        for table, col in tables_with_org_id:
+            try:
+                conn.execute(f"DELETE FROM {table} WHERE {col}=?", (org_id,))
+            except Exception:
+                pass  # ตารางอาจไม่มีอยู่ใน schema เก่า
         conn.execute("DELETE FROM organizations WHERE id=?", (org_id,))
         conn.commit()
         return True
     except Exception as e:
         print(f"[superadmin_delete_org] error: {e}")
+        conn.rollback()
         return False
     finally:
         conn.close()
@@ -3368,6 +3971,28 @@ def get_files_by_category(category_id=None):
 
 # ─── Leave Management Functions ───────────────────────────
 
+def check_leave_overlap(username: str, start_date: str, end_date: str) -> dict | None:
+    """
+    ตรวจว่า user มีใบลาที่ overlap กับช่วงวันที่ที่ขอไหม (status ≠ rejected)
+    คืน dict ของ leave ที่ทับซ้อน หรือ None ถ้าไม่มี
+    """
+    try:
+        conn = _get_conn()
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            """SELECT id, type, start_date, end_date, status FROM leave_requests
+               WHERE username = ?
+                 AND status != 'rejected'
+                 AND start_date <= ? AND end_date >= ?
+               LIMIT 1""",
+            (username, end_date, start_date),
+        ).fetchone()
+        conn.close()
+        return dict(row) if row else None
+    except Exception:
+        return None
+
+
 def create_leave_request(username, leave_type, start_date, end_date, reason):
     """Submit a new leave request."""
     try:
@@ -3414,12 +4039,12 @@ def get_all_leaves(limit=200):
         return []
 
 def update_leave_status(leave_id, status, approver, note=""):
-    """Approve or reject a leave request."""
+    """Approve or reject a leave request. Only transitions from 'pending' to prevent double-approval."""
     try:
         conn = _get_conn()
         cursor = conn.cursor()
         cursor.execute(
-            "UPDATE leave_requests SET status = ?, approved_by = ?, approver_note = ? WHERE id = ?",
+            "UPDATE leave_requests SET status = ?, approved_by = ?, approver_note = ? WHERE id = ? AND status = 'pending'",
             (status, approver, note, leave_id)
         )
         updated = cursor.rowcount > 0
@@ -3427,7 +4052,7 @@ def update_leave_status(leave_id, status, approver, note=""):
         conn.close()
         return updated
     except Exception as e:
-        print(f"[ERROR] update_leave_status: {e}")
+        logging.getLogger("OrgChatAI").error(f"[update_leave_status] {e}")
         return False
 
 def get_user_category_access(username):
@@ -3920,6 +4545,15 @@ def kanban_add_column(title, color="#6366f1", created_by="System"):
     conn.close()
     return col_id
 
+def kanban_get_column(col_id: int) -> dict | None:
+    """ดึงข้อมูล column เดียว — ใช้ตรวจ ownership ก่อน update/delete"""
+    conn = _get_conn()
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("SELECT * FROM kanban_columns WHERE id=?", (col_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
 def kanban_update_column(col_id, title=None, color=None):
     conn = _get_conn()
     cursor = conn.cursor()
@@ -4260,12 +4894,16 @@ def add_expense_claim(line_user_id, username, vendor, amount, expense_date, file
     return claim_id
 
 def get_line_config():
-    """Returns LINE integration configuration from app_settings."""
+    """Returns LINE integration configuration from app_settings with os.environ fallback."""
     from database import get_app_setting
+    import os
+    token = get_app_setting("LINE_CHANNEL_ACCESS_TOKEN", "") or os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
+    secret = get_app_setting("LINE_CHANNEL_SECRET", "") or os.environ.get("LINE_CHANNEL_SECRET", "")
+    webhook = get_app_setting("LINE_WEBHOOK_URL", "") or os.environ.get("LINE_WEBHOOK_URL", "")
     return {
-        "channel_access_token": get_app_setting("LINE_CHANNEL_ACCESS_TOKEN", ""),
-        "channel_secret": get_app_setting("LINE_CHANNEL_SECRET", ""),
-        "webhook_url": get_app_setting("LINE_WEBHOOK_URL", "")
+        "channel_access_token": token.strip(),
+        "channel_secret": secret.strip(),
+        "webhook_url": webhook.strip()
     }
 
 def search_drive_logs(query, limit=5):
@@ -4409,6 +5047,17 @@ def save_org_google_token(org_id: int, google_email: str, access_token: str,
     """Save or update an org's shared Google OAuth2 tokens."""
     try:
         conn = _get_conn()
+        
+        # Check if email is changing
+        cursor = conn.cursor()
+        cursor.execute("SELECT google_email FROM org_google_tokens WHERE org_id = ?", (org_id,))
+        existing_row = cursor.fetchone()
+        
+        # If there was an existing email and it is different from the new one, clear old logs
+        if existing_row and existing_row[0] != google_email:
+            print(f"🔄 Google email changed from {existing_row[0]} to {google_email} for org {org_id}. Clearing old drive logs.")
+            conn.execute("DELETE FROM drive_logs WHERE org_id = ?", (org_id,))
+            
         conn.execute("""
             INSERT INTO org_google_tokens
                 (org_id, google_email, access_token, refresh_token, token_expiry,
@@ -4449,10 +5098,11 @@ def get_org_google_token(org_id: int) -> dict | None:
 
 
 def delete_org_google_token(org_id: int) -> bool:
-    """Remove an org's shared Google OAuth2 tokens (disconnect)."""
+    """Remove an org's shared Google OAuth2 tokens (disconnect) and clear old cached drive logs."""
     try:
         conn = _get_conn()
         conn.execute("DELETE FROM org_google_tokens WHERE org_id = ?", (org_id,))
+        conn.execute("DELETE FROM drive_logs WHERE org_id = ?", (org_id,))
         conn.commit()
         conn.close()
         return True
@@ -4656,15 +5306,24 @@ def create_reset_token(username: str) -> str | None:
 
 
 def validate_reset_token(token: str) -> str | None:
-    """Returns username if token is valid and unused, else None."""
+    """Returns username if token is valid and not yet used, else None."""
     _ensure_reset_table()
     import datetime
     conn = _get_conn()
+    # Opportunistically clean up expired tokens on each check
+    try:
+        conn.execute(
+            "DELETE FROM password_reset_tokens WHERE expires_at < ?",
+            (datetime.datetime.utcnow().isoformat(),),
+        )
+        conn.commit()
+    except Exception:
+        pass
     row = conn.execute(
-        "SELECT username, expires_at, used FROM password_reset_tokens WHERE token = ?", (token,)
+        "SELECT username, expires_at FROM password_reset_tokens WHERE token = ?", (token,)
     ).fetchone()
     conn.close()
-    if not row or row[2]:
+    if not row:
         return None
     try:
         if datetime.datetime.fromisoformat(row[1]) < datetime.datetime.utcnow():
@@ -4675,28 +5334,46 @@ def validate_reset_token(token: str) -> str | None:
 
 
 def consume_reset_token(token: str, new_password: str) -> bool:
-    """Validate token, update password, mark token used. Returns True on success."""
-    username = validate_reset_token(token)
-    if not username:
-        return False
-    new_hash = hash_password(new_password)
-    conn = _get_conn()
-    # Reject if user was deactivated after the token was issued
-    active = conn.execute(
-        "SELECT 1 FROM user_settings WHERE username = ? AND is_active = 1", (username,)
-    ).fetchone()
-    if not active:
+    """Validate + consume token atomically, then update password.
+    Uses BEGIN IMMEDIATE so concurrent requests with the same token
+    are serialized — only the first call succeeds.
+    """
+    import datetime as _dt
+    _ensure_reset_table()
+    conn = sqlite3.connect(DB_PATH, timeout=30, isolation_level=None)
+    conn.execute("PRAGMA busy_timeout=30000")
+    conn.execute("PRAGMA journal_mode=WAL")
+    cur = conn.cursor()
+    try:
+        cur.execute("BEGIN IMMEDIATE")
+        now_iso = _dt.datetime.utcnow().isoformat()
+        row = cur.execute(
+            "SELECT username FROM password_reset_tokens WHERE token = ? AND expires_at > ?",
+            (token, now_iso),
+        ).fetchone()
+        if not row:
+            cur.execute("ROLLBACK")
+            return False
+        username = row[0]
+        active = cur.execute(
+            "SELECT 1 FROM user_settings WHERE username = ? AND is_active = 1", (username,)
+        ).fetchone()
+        if not active:
+            cur.execute("ROLLBACK")
+            return False
+        new_hash = hash_password(new_password)
+        cur.execute("UPDATE user_settings SET custom_password = ? WHERE username = ?", (new_hash, username))
+        cur.execute("DELETE FROM password_reset_tokens WHERE token = ?", (token,))
+        cur.execute("COMMIT")
+        return True
+    except Exception:
+        try:
+            cur.execute("ROLLBACK")
+        except Exception:
+            pass
+        raise
+    finally:
         conn.close()
-        return False
-    conn.execute(
-        "UPDATE user_settings SET custom_password = ? WHERE username = ?", (new_hash, username)
-    )
-    conn.execute(
-        "UPDATE password_reset_tokens SET used = 1 WHERE token = ?", (token,)
-    )
-    conn.commit()
-    conn.close()
-    return True
 
 
 def get_line_user_id_for_username(username: str) -> str | None:
@@ -4707,3 +5384,547 @@ def get_line_user_id_for_username(username: str) -> str | None:
     ).fetchone()
     conn.close()
     return row[0] if row and row[0] else None
+
+
+# ─── Login Attempt Tracking (SQLite-backed, persists across restarts) ─────────
+
+import time as _time_mod
+
+_LOGIN_ATTEMPT_WINDOW = 3600  # 1 ชั่วโมง
+_LOGIN_ATTEMPT_LIMIT  = 20    # max ครั้งต่อ IP ต่อชั่วโมง
+
+
+def _ensure_login_attempts_table(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS login_attempts (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            ip         TEXT    NOT NULL,
+            username   TEXT,
+            success    INTEGER NOT NULL DEFAULT 0,
+            ts         INTEGER NOT NULL
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_login_attempts_ip_ts ON login_attempts(ip, ts)")
+
+
+def record_login_attempt(ip: str, username: str, success: bool) -> None:
+    conn = _get_conn()
+    try:
+        _ensure_login_attempts_table(conn)
+        conn.execute(
+            "INSERT INTO login_attempts (ip, username, success, ts) VALUES (?, ?, ?, ?)",
+            (ip, username, 1 if success else 0, int(_time_mod.time())),
+        )
+        # prune old rows ทุกครั้งที่บันทึก (เก็บแค่ 24 ชม.)
+        conn.execute("DELETE FROM login_attempts WHERE ts < ?", (int(_time_mod.time()) - 86400,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def count_failed_attempts(ip: str, window_seconds: int = _LOGIN_ATTEMPT_WINDOW) -> int:
+    """นับจำนวน login ผิดพลาดจาก IP นี้ในช่วงเวลาที่กำหนด"""
+    conn = _get_conn()
+    try:
+        _ensure_login_attempts_table(conn)
+        cutoff = int(_time_mod.time()) - window_seconds
+        row = conn.execute(
+            "SELECT COUNT(*) FROM login_attempts WHERE ip=? AND success=0 AND ts>?",
+            (ip, cutoff),
+        ).fetchone()
+        return row[0] if row else 0
+    finally:
+        conn.close()
+
+
+# ─── QR Login Token (DB-backed, safe for multi-worker) ───────────────────────
+
+_QR_TTL = 300  # 5 minutes
+
+
+def qr_create_token(token: str) -> None:
+    now = _time_mod.time()
+    conn = _get_conn()
+    conn.execute(
+        "INSERT OR REPLACE INTO qr_login_tokens (token, status, username, created_at, expires_at) VALUES (?, 'pending', NULL, ?, ?)",
+        (token, now, now + _QR_TTL),
+    )
+    conn.execute("DELETE FROM qr_login_tokens WHERE expires_at < ?", (now,))
+    conn.commit()
+    conn.close()
+
+
+def qr_get_token(token: str) -> dict | None:
+    conn = _get_conn()
+    row = conn.execute(
+        "SELECT token, status, username, created_at, expires_at FROM qr_login_tokens WHERE token = ?",
+        (token,),
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {"token": row[0], "status": row[1], "username": row[2],
+            "created_at": row[3], "expires_at": row[4]}
+
+
+def qr_approve_token(token: str, username: str) -> bool:
+    conn = _get_conn()
+    cur = conn.execute(
+        "UPDATE qr_login_tokens SET status='approved', username=? WHERE token=? AND status='pending' AND expires_at > ?",
+        (username, token, _time_mod.time()),
+    )
+    conn.commit()
+    conn.close()
+    return cur.rowcount == 1
+
+
+def qr_consume_token(token: str) -> str | None:
+    """Returns username and deletes token atomically. Returns None if invalid/expired."""
+    conn = _get_conn()
+    row = conn.execute(
+        "SELECT username FROM qr_login_tokens WHERE token=? AND status='approved' AND expires_at > ?",
+        (token, _time_mod.time()),
+    ).fetchone()
+    if row:
+        conn.execute("DELETE FROM qr_login_tokens WHERE token=?", (token,))
+        conn.commit()
+    conn.close()
+    return row[0] if row else None
+
+
+# ─── Stripe Event Idempotency ─────────────────────────────────────────────────
+
+def stripe_is_event_processed(event_id: str) -> bool:
+    conn = _get_conn()
+    row = conn.execute(
+        "SELECT 1 FROM stripe_processed_events WHERE event_id = ?", (event_id,)
+    ).fetchone()
+    conn.close()
+    return row is not None
+
+
+def stripe_mark_event_processed(event_id: str) -> None:
+    conn = _get_conn()
+    conn.execute(
+        "INSERT OR IGNORE INTO stripe_processed_events (event_id) VALUES (?)", (event_id,)
+    )
+    conn.commit()
+    conn.close()
+
+
+def stripe_try_claim_event(event_id: str) -> bool:
+    """Atomically insert event_id. Returns True only if this call claimed it
+    (i.e. no concurrent worker already did). Prevents duplicate processing."""
+    conn = _get_conn()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO stripe_processed_events (event_id) VALUES (?)", (event_id,)
+        )
+        claimed = conn.total_changes > 0
+        conn.commit()
+        return claimed
+    finally:
+        conn.close()
+
+
+def stripe_remove_event_claim(event_id: str) -> None:
+    """Remove a previously claimed event so Stripe can retry on processing failure."""
+    conn = _get_conn()
+    conn.execute("DELETE FROM stripe_processed_events WHERE event_id = ?", (event_id,))
+    conn.commit()
+    conn.close()
+
+
+# ─── Org Membership Check (for session re-validation) ────────────────────────
+
+def get_org_by_id(org_id: int) -> dict | None:
+    """Return org row or None if not found."""
+    conn = _get_conn()
+    row = conn.execute(
+        "SELECT id, name, slug, plan FROM organizations WHERE id=?", (org_id,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def is_org_member_active(org_id: int, username: str) -> bool:
+    """Fast check: is username still a member of org_id?"""
+    conn = _get_conn()
+    row = conn.execute(
+        "SELECT 1 FROM organization_members WHERE organization_id=? AND username=? COLLATE NOCASE",
+        (org_id, username),
+    ).fetchone()
+    conn.close()
+    return row is not None
+
+
+# ─── LINE Broadcast History ──────────────────────────────────────────────────
+
+def save_line_broadcast(username: str, org_id: int, text: str, status: str = "success"):
+    """Log a LINE broadcast event to history."""
+    try:
+        conn = _get_conn()
+        conn.execute(
+            "INSERT INTO line_broadcast_history (username, org_id, text, status) VALUES (?, ?, ?, ?)",
+            (username, org_id, text, status)
+        )
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"❌ Error saving broadcast history: {e}")
+        return False
+
+
+def get_line_broadcast_history(org_id: int, limit: int = 50):
+    """Retrieve broadcast history for a specific organization."""
+    try:
+        conn = _get_conn()
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT * FROM line_broadcast_history WHERE org_id = ? ORDER BY timestamp DESC LIMIT ?",
+            (org_id, limit)
+        ).fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        print(f"❌ Error fetching broadcast history: {e}")
+        return []
+
+
+# ─── DB-backed LINE link tokens ─────────────────────────────────────────────
+
+_LINE_LINK_TTL = 600  # 10 นาที
+
+
+def line_link_create(token: str, line_user_id: str):
+    """สร้าง LINE link token ใน DB (แทน in-memory dict)."""
+    expires_at = time.time() + _LINE_LINK_TTL
+    conn = _get_conn()
+    conn.execute(
+        "INSERT OR REPLACE INTO pending_line_links (token, line_user_id, expires_at) VALUES (?, ?, ?)",
+        (token, line_user_id, expires_at),
+    )
+    conn.commit()
+    conn.close()
+    # ล้าง expired tokens ในโอกาสเดียวกัน
+    _line_link_cleanup()
+
+
+def line_link_get(token: str) -> dict | None:
+    """คืน {'line_user_id': ..., 'timestamp': ...} หรือ None ถ้าไม่มี/หมดอายุ"""
+    conn = _get_conn()
+    row = conn.execute(
+        "SELECT line_user_id, expires_at FROM pending_line_links WHERE token = ?", (token,)
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {"line_user_id": row[0], "timestamp": row[1] - _LINE_LINK_TTL, "expires_at": row[1]}
+
+
+def line_link_delete(token: str):
+    conn = _get_conn()
+    conn.execute("DELETE FROM pending_line_links WHERE token = ?", (token,))
+    conn.commit()
+    conn.close()
+
+
+def _line_link_cleanup():
+    try:
+        conn = _get_conn()
+        conn.execute("DELETE FROM pending_line_links WHERE expires_at < ?", (time.time(),))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+
+# ─── DB-backed OAuth2 states ────────────────────────────────────────────────
+
+_OAUTH_STATE_TTL = 600  # 10 นาที
+
+
+def oauth_state_store(state: str, data: dict):
+    """บันทึก OAuth state ลง DB (แทน in-memory _OAUTH_STATES)."""
+    import json as _json
+    expires_at = time.time() + _OAUTH_STATE_TTL
+    conn = _get_conn()
+    conn.execute(
+        "INSERT OR REPLACE INTO oauth_states (state, data_json, expires_at) VALUES (?, ?, ?)",
+        (state, _json.dumps(data, ensure_ascii=False), expires_at),
+    )
+    conn.commit()
+    conn.close()
+    # ล้าง expired
+    _oauth_state_cleanup()
+
+
+def oauth_state_pop(state: str) -> dict | None:
+    """ดึงและลบ state — คืน data dict หรือ None ถ้าหมดอายุ/ไม่มี"""
+    import json as _json
+    conn = _get_conn()
+    row = conn.execute(
+        "SELECT data_json, expires_at FROM oauth_states WHERE state = ?", (state,)
+    ).fetchone()
+    if row:
+        conn.execute("DELETE FROM oauth_states WHERE state = ?", (state,))
+        conn.commit()
+    conn.close()
+    if not row:
+        return None
+    if time.time() > row[1]:
+        return None
+    return _json.loads(row[0])
+
+
+# ══════════════════════════════════════════════════════════════
+# QUOTATION / INVOICE CRUD
+# ══════════════════════════════════════════════════════════════
+
+def quotation_create(org_id: int, data: dict) -> int:
+    conn = _get_conn()
+    cur = conn.cursor()
+    # auto-generate quotation number
+    ym = __import__('datetime').date.today().strftime('%Y%m')
+    prefix = 'INV' if data.get('type') == 'invoice' else 'QT'
+    cur.execute("SELECT COUNT(*) FROM quotations WHERE org_id=? AND strftime('%Y%m', created_at)=?", (org_id, ym))
+    seq = (cur.fetchone()[0] or 0) + 1
+    qno = data.get('quotation_no') or f"{prefix}{ym}{seq:03d}"
+    cur.execute("""
+        INSERT INTO quotations (org_id, quotation_no, type, customer_name, customer_company,
+            customer_address, customer_tax_id, customer_email, customer_phone,
+            items, subtotal, discount, vat_rate, vat_amount, wht_rate, wht_amount, total,
+            status, notes, valid_until, created_by)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (org_id, qno, data.get('type','quotation'), data.get('customer_name',''),
+         data.get('customer_company',''), data.get('customer_address',''),
+         data.get('customer_tax_id',''), data.get('customer_email',''), data.get('customer_phone',''),
+         __import__('json').dumps(data.get('items',[])),
+         data.get('subtotal',0), data.get('discount',0), data.get('vat_rate',7),
+         data.get('vat_amount',0), data.get('wht_rate',0), data.get('wht_amount',0),
+         data.get('total',0), data.get('status','draft'), data.get('notes',''),
+         data.get('valid_until',''), data.get('created_by',''))
+    )
+    qid = cur.lastrowid
+    conn.commit(); conn.close()
+    return qid
+
+def quotation_list(org_id: int, status: str = None, type_: str = None) -> list:
+    conn = _get_conn(); conn.row_factory = sqlite3.Row; cur = conn.cursor()
+    q = "SELECT * FROM quotations WHERE org_id=?"
+    params = [org_id]
+    if status: q += " AND status=?"; params.append(status)
+    if type_:  q += " AND type=?";   params.append(type_)
+    q += " ORDER BY created_at DESC"
+    rows = [dict(r) for r in cur.execute(q, params).fetchall()]
+    conn.close()
+    import json
+    for r in rows:
+        try: r['items'] = json.loads(r.get('items') or '[]')
+        except: r['items'] = []
+    return rows
+
+def quotation_get(qid: int, org_id: int) -> dict | None:
+    conn = _get_conn(); conn.row_factory = sqlite3.Row
+    row = conn.execute("SELECT * FROM quotations WHERE id=? AND org_id=?", (qid, org_id)).fetchone()
+    conn.close()
+    if not row: return None
+    import json
+    r = dict(row)
+    try: r['items'] = json.loads(r.get('items') or '[]')
+    except: r['items'] = []
+    return r
+
+def quotation_update(qid: int, org_id: int, data: dict) -> bool:
+    import json as _json
+    conn = _get_conn(); cur = conn.cursor()
+    items = data.get('items', [])
+    cur.execute("""UPDATE quotations SET
+        customer_name=?, customer_company=?, customer_address=?, customer_tax_id=?,
+        customer_email=?, customer_phone=?, items=?, subtotal=?, discount=?,
+        vat_rate=?, vat_amount=?, wht_rate=?, wht_amount=?, total=?,
+        status=?, notes=?, valid_until=?, type=?, updated_at=CURRENT_TIMESTAMP
+        WHERE id=? AND org_id=?""",
+        (data.get('customer_name',''), data.get('customer_company',''),
+         data.get('customer_address',''), data.get('customer_tax_id',''),
+         data.get('customer_email',''), data.get('customer_phone',''),
+         _json.dumps(items), data.get('subtotal',0), data.get('discount',0),
+         data.get('vat_rate',7), data.get('vat_amount',0), data.get('wht_rate',0),
+         data.get('wht_amount',0), data.get('total',0),
+         data.get('status','draft'), data.get('notes',''), data.get('valid_until',''),
+         data.get('type','quotation'), qid, org_id)
+    )
+    ok = cur.rowcount > 0; conn.commit(); conn.close(); return ok
+
+def quotation_delete(qid: int, org_id: int) -> bool:
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("DELETE FROM quotations WHERE id=? AND org_id=?", (qid, org_id))
+    ok = cur.rowcount > 0; conn.commit(); conn.close(); return ok
+
+def quotation_set_status(qid: int, org_id: int, status: str) -> bool:
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("UPDATE quotations SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND org_id=?",
+                (status, qid, org_id))
+    ok = cur.rowcount > 0; conn.commit(); conn.close(); return ok
+
+
+# ══════════════════════════════════════════════════════════════
+# CRM CRUD
+# ══════════════════════════════════════════════════════════════
+
+def crm_customer_list(org_id: int, q: str = '') -> list:
+    conn = _get_conn(); conn.row_factory = sqlite3.Row; cur = conn.cursor()
+    if q:
+        rows = cur.execute("SELECT * FROM crm_customers WHERE org_id=? AND (name LIKE ? OR company LIKE ? OR email LIKE ? OR phone LIKE ?) ORDER BY name",
+                           (org_id, f'%{q}%', f'%{q}%', f'%{q}%', f'%{q}%')).fetchall()
+    else:
+        rows = cur.execute("SELECT * FROM crm_customers WHERE org_id=? ORDER BY name", (org_id,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def crm_customer_get(cid: int, org_id: int) -> dict | None:
+    conn = _get_conn(); conn.row_factory = sqlite3.Row
+    row = conn.execute("SELECT * FROM crm_customers WHERE id=? AND org_id=?", (cid, org_id)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def crm_customer_create(org_id: int, data: dict) -> int:
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("""INSERT INTO crm_customers (org_id, name, company, email, phone, address, tax_id, tags, notes, created_by)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (org_id, data.get('name',''), data.get('company',''), data.get('email',''),
+                 data.get('phone',''), data.get('address',''), data.get('tax_id',''),
+                 __import__('json').dumps(data.get('tags',[])), data.get('notes',''), data.get('created_by','')))
+    cid = cur.lastrowid; conn.commit(); conn.close(); return cid
+
+def crm_customer_update(cid: int, org_id: int, data: dict) -> bool:
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("""UPDATE crm_customers SET name=?, company=?, email=?, phone=?, address=?, tax_id=?, tags=?, notes=?, updated_at=CURRENT_TIMESTAMP
+                   WHERE id=? AND org_id=?""",
+                (data.get('name',''), data.get('company',''), data.get('email',''),
+                 data.get('phone',''), data.get('address',''), data.get('tax_id',''),
+                 __import__('json').dumps(data.get('tags',[])), data.get('notes',''), cid, org_id))
+    ok = cur.rowcount > 0; conn.commit(); conn.close(); return ok
+
+def crm_customer_delete(cid: int, org_id: int) -> bool:
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("DELETE FROM crm_customers WHERE id=? AND org_id=?", (cid, org_id))
+    ok = cur.rowcount > 0; conn.commit(); conn.close(); return ok
+
+def crm_deal_list(org_id: int, customer_id: int = None, stage: str = None) -> list:
+    conn = _get_conn(); conn.row_factory = sqlite3.Row; cur = conn.cursor()
+    q = """SELECT d.*, c.name as customer_name, c.company as customer_company
+           FROM crm_deals d LEFT JOIN crm_customers c ON d.customer_id=c.id
+           WHERE d.org_id=?"""
+    params = [org_id]
+    if customer_id: q += " AND d.customer_id=?"; params.append(customer_id)
+    if stage: q += " AND d.stage=?"; params.append(stage)
+    q += " ORDER BY d.created_at DESC"
+    rows = cur.execute(q, params).fetchall()
+    conn.close(); return [dict(r) for r in rows]
+
+def crm_deal_create(org_id: int, data: dict) -> int:
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("""INSERT INTO crm_deals (org_id, customer_id, title, value, stage, probability, expected_close, assigned_to, notes, created_by)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (org_id, data.get('customer_id'), data.get('title',''), data.get('value',0),
+                 data.get('stage','lead'), data.get('probability',50), data.get('expected_close',''),
+                 data.get('assigned_to',''), data.get('notes',''), data.get('created_by','')))
+    did = cur.lastrowid; conn.commit(); conn.close(); return did
+
+def crm_deal_update(did: int, org_id: int, data: dict) -> bool:
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("""UPDATE crm_deals SET customer_id=?, title=?, value=?, stage=?, probability=?, expected_close=?, assigned_to=?, notes=?, updated_at=CURRENT_TIMESTAMP
+                   WHERE id=? AND org_id=?""",
+                (data.get('customer_id'), data.get('title',''), data.get('value',0),
+                 data.get('stage','lead'), data.get('probability',50), data.get('expected_close',''),
+                 data.get('assigned_to',''), data.get('notes',''), did, org_id))
+    ok = cur.rowcount > 0; conn.commit(); conn.close(); return ok
+
+def crm_deal_delete(did: int, org_id: int) -> bool:
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("DELETE FROM crm_deals WHERE id=? AND org_id=?", (did, org_id))
+    ok = cur.rowcount > 0; conn.commit(); conn.close(); return ok
+
+def crm_activity_add(org_id: int, data: dict) -> int:
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("INSERT INTO crm_activities (org_id, deal_id, customer_id, type, content, created_by) VALUES (?,?,?,?,?,?)",
+                (org_id, data.get('deal_id'), data.get('customer_id'), data.get('type','note'),
+                 data.get('content',''), data.get('created_by','')))
+    aid = cur.lastrowid; conn.commit(); conn.close(); return aid
+
+def crm_activities_get(org_id: int, deal_id: int = None, customer_id: int = None) -> list:
+    conn = _get_conn(); conn.row_factory = sqlite3.Row; cur = conn.cursor()
+    q = "SELECT * FROM crm_activities WHERE org_id=?"
+    params = [org_id]
+    if deal_id: q += " AND deal_id=?"; params.append(deal_id)
+    if customer_id: q += " AND customer_id=?"; params.append(customer_id)
+    q += " ORDER BY created_at DESC LIMIT 50"
+    rows = cur.execute(q, params).fetchall()
+    conn.close(); return [dict(r) for r in rows]
+
+
+# ══════════════════════════════════════════════════════════════
+# MEETING NOTES CRUD
+# ══════════════════════════════════════════════════════════════
+
+def meeting_note_create(org_id: int, data: dict) -> int:
+    import json as _j
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("""INSERT INTO meeting_notes (org_id, title, audio_filename, transcript, summary, action_items, participants, meeting_date, created_by)
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                (org_id, data.get('title',''), data.get('audio_filename',''),
+                 data.get('transcript',''), data.get('summary',''),
+                 _j.dumps(data.get('action_items',[])),
+                 data.get('participants',''), data.get('meeting_date',''), data.get('created_by','')))
+    mid = cur.lastrowid; conn.commit(); conn.close(); return mid
+
+def meeting_note_list(org_id: int) -> list:
+    import json as _j
+    conn = _get_conn(); conn.row_factory = sqlite3.Row
+    rows = conn.execute("SELECT * FROM meeting_notes WHERE org_id=? ORDER BY created_at DESC", (org_id,)).fetchall()
+    conn.close()
+    result = []
+    for r in rows:
+        d = dict(r)
+        try: d['action_items'] = _j.loads(d.get('action_items') or '[]')
+        except: d['action_items'] = []
+        result.append(d)
+    return result
+
+def meeting_note_get(mid: int, org_id: int) -> dict | None:
+    import json as _j
+    conn = _get_conn(); conn.row_factory = sqlite3.Row
+    row = conn.execute("SELECT * FROM meeting_notes WHERE id=? AND org_id=?", (mid, org_id)).fetchone()
+    conn.close()
+    if not row: return None
+    d = dict(row)
+    try: d['action_items'] = _j.loads(d.get('action_items') or '[]')
+    except: d['action_items'] = []
+    return d
+
+def meeting_note_update(mid: int, org_id: int, data: dict) -> bool:
+    import json as _j
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("""UPDATE meeting_notes SET title=?, transcript=?, summary=?, action_items=?, participants=?, meeting_date=?, wiki_page_id=?
+                   WHERE id=? AND org_id=?""",
+                (data.get('title',''), data.get('transcript',''), data.get('summary',''),
+                 _j.dumps(data.get('action_items',[])), data.get('participants',''),
+                 data.get('meeting_date',''), data.get('wiki_page_id'), mid, org_id))
+    ok = cur.rowcount > 0; conn.commit(); conn.close(); return ok
+
+def meeting_note_delete(mid: int, org_id: int) -> bool:
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("DELETE FROM meeting_notes WHERE id=? AND org_id=?", (mid, org_id))
+    ok = cur.rowcount > 0; conn.commit(); conn.close(); return ok
+
+
+def _oauth_state_cleanup():
+    try:
+        conn = _get_conn()
+        conn.execute("DELETE FROM oauth_states WHERE expires_at < ?", (time.time(),))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
