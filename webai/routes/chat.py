@@ -3901,6 +3901,7 @@ def get_kb_category_access(cat_id):
 
 @chat_bp.route("/api/kb/search")
 @login_required
+@_limiter.limit("60 per minute")
 def kb_search():
     if not can_view_knowledge_base():
         return jsonify({"ok": False, "error": "คุณไม่มีสิทธิ์ในการค้นหาคลังข้อมูล"}), 403
@@ -4025,6 +4026,7 @@ def view_kb_file(file_id):
 
 @chat_bp.route("/api/export/pdf", methods=["POST"])
 @login_required
+@_limiter.limit("10 per minute; 30 per hour")
 @billing.require_feature("export")
 def export_pdf():
     try:
@@ -4084,6 +4086,7 @@ def download_file(filename):
 
 @chat_bp.route("/api/kb/compare", methods=["POST"])
 @login_required
+@_limiter.limit("15 per minute; 60 per hour")
 def compare_knowledge_base_files():
     if not can_view_knowledge_base():
         return jsonify({"ok": False, "error": "Unauthorized"}), 403
@@ -4412,6 +4415,7 @@ def dashboard_briefing():
 
 @chat_bp.route("/api/summary/generate", methods=["POST"])
 @login_required
+@_limiter.limit("10 per minute; 100 per hour")
 def generate_global_summary():
     data = request.json or {}
     focus = data.get("focus", "").strip()
@@ -4890,6 +4894,7 @@ def get_chat_messages_route(ctype, cid):
 
 @chat_bp.route("/api/chat/send", methods=["POST"])
 @login_required
+@_limiter.limit("60 per minute; 300 per hour")
 def send_unified_message():
     user = session.get("user")
     ctype = request.form.get("type") # 'room' or 'dm'

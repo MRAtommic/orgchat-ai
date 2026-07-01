@@ -309,7 +309,7 @@ def create_app():
     app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB max upload
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
     app.config['SESSION_COOKIE_HTTPONLY'] = True
-    if os.environ.get("BASE_URL", "").startswith("https://"):
+    if os.environ.get("BASE_URL", "").startswith("https://") or os.environ.get("SESSION_COOKIE_SECURE", "").lower() == "true":
         app.config['SESSION_COOKIE_SECURE'] = True
 
     # ─── Proxy Fix ───────────────────────────────────────────
@@ -515,10 +515,21 @@ try:
         """งานสำรอง: กระทบยอดอัตโนมัติทุก 30 นาที กันพลาด"""
         try:
             print(">>> [Scheduler] Running periodic reconciliation...", flush=True)
-            # 1. Reconcile default system-level sheet first
+            # 1. Reconcile default system-level sheet first (skip if credentials are invalid)
             if google_manager.drive_service and google_manager.sheets_service and google_manager.spreadsheet_id:
-                google_manager.auto_reconcile_internal()
-                print(">>> [Scheduler] Periodic reconciliation complete for default sheet.", flush=True)
+                try:
+                    # Pre-check: verify credentials still valid before heavy reconciliation
+                    google_manager.sheets_service.spreadsheets().get(
+                        spreadsheetId=google_manager.spreadsheet_id, fields='spreadsheetId'
+                    ).execute()
+                    google_manager.auto_reconcile_internal()
+                    print(">>> [Scheduler] Periodic reconciliation complete for default sheet.", flush=True)
+                except Exception as cred_err:
+                    err_str = str(cred_err)
+                    if 'invalid_grant' in err_str or 'Invalid JWT' in err_str or '401' in err_str:
+                        logger.info(">>> [Scheduler] Default service account credentials invalid — skipping default reconciliation.")
+                    else:
+                        logger.error(f"Reconciliation error (default sheet): {cred_err}")
             else:
                 print(">>> [Scheduler] Google services or Spreadsheet ID not ready for default sheet.", flush=True)
             

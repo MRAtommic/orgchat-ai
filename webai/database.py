@@ -2286,6 +2286,7 @@ def mark_private_message_as_read(message_id):
         return False
 
 
+@db_transaction_retry()
 def save_message(role, text, sources=None, username="Admin", org_id=1):
     conn = _get_conn()
     cursor = conn.cursor()
@@ -2482,6 +2483,7 @@ def admin_get_all_dm_pairs():
     conn.close()
     return [{"user1": r[0], "user2": r[1], "count": r[2]} for r in rows]
 
+@db_transaction_retry()
 def save_feedback(username="Admin", feedback_val=0):
     """Save feedback for a specific message."""
     conn = _get_conn()
