@@ -1,0 +1,54 @@
+Created At: 2026-05-27T06:51:20Z
+Completed At: 2026-05-27T06:51:20Z
+File Path: `file:///c:/Users/KC_Ketwilai/Downloads/orgchat-ai-main/orgchat-ai-main/webai/templates/index.html`
+Total Lines: 7417
+Total Bytes: 493285
+Showing lines 1880 to 2010
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1880:                     <h3 class="text-xs font-black uppercase tracking-widest text-surface-500">การปรับแต่งแอปพลิเคชัน
+1881:                     </h3>
+1882:                   </div>
+1883:                   <div class="space-y-3">
+1884:                     <label class="text-[10px] font-bold text-surface-400 uppercase tracking-widest">ธีมพื้นหลัง</label>
+1885:                     <div class="grid grid-cols-4 md:grid-cols-6 gap-3">
+1886:                       <button
+1887:                         class="bg-preset-btn w-full aspect-square rounded-xl border-2 border-transparent transition-all overflow-hidden bg-brand-600"
+1888:                         data-bg="linear-gradient(135deg, #2563eb, #1d4ed8)"></button>
+1889:                       <button
+1890:                         class="bg-             
+1891:               <button onclick="openQRScanner()" 
+1892:                 class="btn-primary w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-xs font-black uppercase tracking-widest shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 border-none">
+1893:                 <i data-lucide="camera" class="w-5 h-5"></i> เปิดกล้องสแกน QR Code เพื่อ Login
+1894:               </button>
+1895:             </div>
+1896: 
+1897:             <!-- ═══ Google Drive & Sheets Connection ═══ -->
+1898:             <div id="googleDriveSection" class="p-6 bg-white dark:bg-surface-900 border border-surface-200 
+<truncated 8516 bytes>
+อมต่อ Google
+1986:                   </button>
+1987:                 </div>
+1988:               </div>
+1989:             </div>
+1990: 
+1991:             <!-- App Installation Section -->
+1992:             <div id="pwaInstallSection"
+1993:               class="p-6 bg-white dark:bg-surface-900 border border-surface-200 rounded-xl space-y-4">
+1994:               <h3 class="font-bold text-sm mb-1 uppercase text-surface-500 flex items-center gap-2">
+1995:                 <i data-lucide="smartphone" class="w-4 h-4 text-brand-600"></i> ดาวน์โหลด/ติดตั้ง APK (ผ่าน PWA)
+1996:               </h3>
+1997:               <p class="text-xs text-surface-400">ติดตั้งแอป OrgChat ลงในหน้าจอโฮมเพื่อการใช้งานที่สะดวกเหมือนแอปมือถือ
+1998:                 (ทดแทน APK แบบเดิม)</p>
+1999: 
+2000:               <button id="installAppBtn"
+2001:                 class="btn-primary w-full py-3 text-[11px] font-black uppercase tracking-widest shadow-lg shadow-brand-500/20 flex items-center justify-center gap-2">
+2002:                 <i data-lucide="download-cloud" class="w-4 h-4"></i> ติดตั้งคัดลอกลงมือถือ (APK Style)
+2003:               </button>
+2004:             </div>
+2005:           </div>
+2006:         </section>
+2007: 
+2008:         <!-- Leave Management View -->
+2009:         <section id="view-leave" class="view hidden flex-1 flex flex-col items-center overflow-hidden animate-in fade-in duration-300 w-full">
+2010:           <header class="h-14 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between px-6 bg-white dark:bg-surface-900 sticky top-0 z-10 w-full shrink-0">
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

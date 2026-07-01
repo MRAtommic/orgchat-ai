@@ -1,0 +1,14 @@
+webai/
+chroma_db/
+.git/
+.env
+.venv
+venv/
+node_modules/
+uploads/
+results/
+chat_history.db
+db.sqlite3
+*.db
+*.bak
+exports/

@@ -1,0 +1,44 @@
+Created At: 2026-05-27T06:51:34Z
+Completed At: 2026-05-27T06:51:35Z
+File Path: `file:///c:/Users/KC_Ketwilai/Downloads/orgchat-ai-main/orgchat-ai-main/webai/templates/index.html`
+Total Lines: 7417
+Total Bytes: 493285
+Showing lines 1875 to 1910
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1875: 
+1876:                 <!-- Appearance Section -->
+1877:                 <div class="space-y-4 pt-4">
+1878:                   <div class="flex items-center gap-2 pb-2 border-b border-surface-100 dark:border-surface-800">
+1879:                     <i data-lucide="palette" class="w-4 h-4 text-brand-600"></i>
+1880:                     <h3 class="text-xs font-black uppercase tracking-widest text-surface-500">การปรับแต่งแอปพลิเคชัน
+1881:                     </h3>
+1882:                   </div>
+1883:                   <div class="space-y-3">
+1884:                     <label class="text-[10px] font-bold text-surface-400 uppercase tracking-widest">ธีมพื้นหลัง</label>
+1885:                     <div class="grid grid-cols-4 md:grid-cols-6 gap-3">
+1886:                       <button
+1887:                         class="bg-preset-btn w-full aspect-square rounded-xl border-2 border-transparent transition-all overflow-hidden bg-brand-600"
+1888:                         data-bg="linear-gradient(135deg, #2563eb, #1d4ed8)"></button>
+1889:                       <button
+1890:                         class="bg-             
+1891:               <button onclick="openQRScanner()" 
+1892:                 class="btn-primary w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-xs font-black uppercase tracking-widest shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 border-none">
+1893:                 <i data-lucide="camera" class="w-5 h-5"></i> เปิดกล้องสแกน QR Code เพื่อ Login
+1894:               </button>
+1895:             </div>
+1896: 
+1897:             <!-- ═══ Google Drive & Sheets Connection ═══ -->
+1898:             <div id="googleDriveSection" class="p-6 bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl space-y-4">
+1899:               <h3 class="font-bold text-sm mb-1 uppercase text-surface-500 flex items-center gap-2">
+1900:                 <svg class="w-4 h-4" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
+1901:                   <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+1902:                   <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-20.4 35.3c-.8 1.4-1.2 2.95-1.2 4.5h27.5z" fill="#00ac47"/>
+1903:                   <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.5l5.85 13.95z" fill="#ea4335"/>
+1904:                   <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
+1905:                   <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
+1906:                   <path d="m73.4 26.5-10.1-17.5c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 23.5h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
+1907:                 </svg>
+1908:                 Google Drive & Sheets
+1909:               </h3>
+1910:               <p class="text-xs text-surface-400">
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

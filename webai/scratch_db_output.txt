@@ -1,0 +1,35 @@
+Tables: [('messages',), ('sqlite_sequence',), ('schedules',), ('posts',), ('post_views',), ('comments',), ('likes',), ('user_profiles',), ('group_messages',), ('private_messages',), ('chat_rooms',), ('room_members',), ('room_messages',), ('kb_categories',), ('user_category_access',), ('ai_personas',), ('user_settings',), ('app_settings',), ('push_subscriptions',), ('notifications',), ('polls',), ('poll_options',), ('poll_votes',), ('search_history',), ('user_status',), ('message_read_receipts',), ('private_message_read_status',), ('wiki_pages',), ('leave_requests',), ('events',), ('lunch_places',), ('kanban_columns',), ('kanban_cards',), ('leave_comments',), ('drive_logs',), ('expense_claims',), ('pending_edits',), ('user_google_tokens',), ('line_group_mappings',), ('organizations',), ('organization_members',), ('usage_tracking',), ('organization_allowed_emails',), ('org_google_tokens',), ('db_tasks',), ('password_reset_tokens',), ('qr_login_tokens',), ('stripe_processed_events',), ('organization_profiles',), ('line_broadcast_history',), ('login_attempts',)]
+
+--- Latest 5 from messages ---
+(58, 'kanjanaporn.jat', 'bot', 'เบอร์โดคือเมืองในประเทศฝรั่งเศส นะคะพี่ ☺️', None, 0, '2026-05-29 08:55:34', 14)
+(57, 'kanjanaporn.jat', 'user', 'เบอร์โด', None, 0, '2026-05-29 08:55:33', 14)
+(56, 'mxmm2547', 'bot', 'น้องพั้นซ์ไม่เข้าใจคำว่า "ijuhbui" นะคะพี่ คุณสามารถถามคำถามหรือส่งคำขอใหม่เพื่อให้น้องพั้นซ์ช่วยคุณได้นะคะ', '[{"file_id": "4a437fde05fe5264e1701a7387ac6fb75393772ba38bb2c9c566405af5af4bd7", "name": "titanic.csv", "location": "Rows 1-15", "department": "General", "type": "file"}, {"file_id": "4a437fde05fe5264e1701a7387ac6fb75393772ba38bb2c9c566405af5af4bd7", "name": "titanic.csv", "location": "Rows 16-30", "department": "General", "type": "file"}, {"file_id": "4a437fde05fe5264e1701a7387ac6fb75393772ba38bb2c9c566405af5af4bd7", "name": "titanic.csv", "location": "Rows 46-60", "department": "General", "type": "file"}, {"file_id": "4a437fde05fe5264e1701a7387ac6fb75393772ba38bb2c9c566405af5af4bd7", "name": "titanic.csv", "location": "Rows 61-75", "department": "General", "type": "file"}, {"file_id": "4a437fde05fe5264e1701a7387ac6fb75393772ba38bb2c9c566405af5af4bd7", "name": "titanic.csv", "location": "Rows 31-45", "department": "General", "type": "file"}]', 0, '2026-05-29 08:46:35', 1)
+(55, 'mxmm2547', 'user', 'ijuhbui', None, 0, '2026-05-29 08:46:33', 1)
+(54, 'mxmm2547', 'bot', 'น้องพั้นซ์เข้าใจแล้วว่าพี่ส่งรูปภาพมา แต่น้องพั้นซ์ไม่สามารถอ่านรูปภาพได้เลยนะคะพี่ แต่น้องพั้นซ์สามารถช่วยพี่สรุปข้อมูลจากเอกสารหรือบิลได้ ถ้าพี่ให้รายละเอียดเพิ่มเติมนะคะ', '[{"file_id": "4a437fde05fe5264e1701a7387ac6fb75393772ba38bb2c9c566405af5af4bd7", "name": "titanic.csv", "location": "Rows 1-15", "department": "General", "type": "file"}, {"file_id": "4a437fde05fe5264e1701a7387ac6fb75393772ba38bb2c9c566405af5af4bd7", "name": "titanic.csv", "location": "Rows 16-30", "department": "General", "type": "file"}, {"file_id": "4a437fde05fe5264e1701a7387ac6fb75393772ba38bb2c9c566405af5af4bd7", "name": "titanic.csv", "location": "Rows 61-75", "department": "General", "type": "file"}, {"file_id": "4a437fde05fe5264e1701a7387ac6fb75393772ba38bb2c9c566405af5af4bd7", "name": "titanic.csv", "location": "Rows 46-60", "department": "General", "type": "file"}, {"file_id": "4a437fde05fe5264e1701a7387ac6fb75393772ba38bb2c9c566405af5af4bd7", "name": "titanic.csv", "location": "Rows 241-255", "department": "General", "type": "file"}]', 0, '2026-05-29 07:48:54', 1)
+
+--- Latest 5 from group_messages ---
+
+--- Latest 5 from private_messages ---
+(5, 'AI-Assistant', 'ai.heartwarming', 'ขออภัยค่ะพี่ เกิดข้อผิดพลาดทางเทคนิค กรุณาลองใหม่อีกครั้ง', None, 1, 0, None, '2026-05-28 02:39:07', None)
+(4, 'ai.heartwarming', 'AI-Assistant', 'สวัสดี', None, 0, 0, None, '2026-05-28 02:39:06', None)
+(3, 'Admin', 'mxmm2547', 'Hello', None, 1, 0, None, '2026-05-27 09:09:23', None)
+(2, 'Admin', 'kanjanaporn254829', 'ดะ้', None, 0, 1, None, '2026-05-27 06:43:33', None)
+(1, 'mxmm2547', 'Admin', 'hELLO', None, 1, 0, None, '2026-05-23 02:12:08', None)
+
+--- Latest 5 from room_messages ---
+
+--- Latest 5 from message_read_receipts ---
+
+--- Latest 5 from private_message_read_status ---
+
+--- Latest 5 from drive_logs ---
+(2030, 'SPX Express-TIV-TRSPXADB00-00000-260326-0000080.pdf', '1', 114.0, '20260326', 'ใบเสร็จรับเงิน/ใบกำกับภาษีจาก SPX Express (Thailand) Co., Ltd. ให้กับ บริษัท ฮาร์ทวอมมิ่ง จำกัด ยอดก่อนภาษี 106.54 บาท ภาษีมูลค่าเพิ่ม 7% จำนวน 7.46 บาท รวมเป็นเงินทั้งสิ้น 114.00 บาท', 'https://drive.google.com/file/d/1VqKPbiuDTfx11t1vmIxPGyogqbMpFkDc/view?usp=drivesdk', 'Few', '2026-05-29 09:14:43', 11)
+(2029, 'ฮาร์ทวอมมิ่ง_-_Doc__RV-690300100 (1).pdf', '1', 963.0, '20260304', 'ใบเสร็จรับเงิน/ใบกำกับภาษี จากบริษัท เดย์เวิร์ค (ประเทศไทย) จำกัด ถึง บริษัท ฮาร์ทวอมมิ่ง จำกัด ลงวันที่ 04/03/2026 ยอดก่อนภาษี 917.14 บาท VAT 7% (64.20 บาท) หัก ณ ที่จ่าย 2% (18.34 บาท) ยอดชำระสุทธิ 963.00 บาท', 'https://drive.google.com/file/d/1mPmX36J44Z1nJeaeX3Hx_m_M4O7wkTZt/view?usp=drivesdk', 'Few', '2026-05-29 09:14:43', 11)
+(2028, 'scan (1).pdf', '1', 353.1, '20260303', 'ใบเสร็จรับเงิน/ใบกำกับภาษี จากบริษัท ตำหนักศิลป์ แอดเวอร์ไทซิ่ง จำกัด เลขที่ RTT69/03-123 ลงวันที่ 3 มีนาคม 2569 ขายให้ Heartwarming Co., Ltd. ยอดรวมสุทธิ 353.10 บาท (รวม VAT 7% แล้ว) โดยมีหมายเหตุให้หักภาษี ณ ที่จ่าย 3%', 'https://drive.google.com/file/d/12E9yr5XF2P_Aq9CxJuTqXkwm0RBdLWjK/view?usp=drivesdk', 'Few', '2026-05-29 09:14:43', 11)
+(2027, 'EXP-20260400038.pdf', '3', 7200.0, '20260408', 'ใบสำคัญจ่ายค่าทำความสะอาด เดือนกุมภาพันธ์ ยอดรวม 7,422.68 บาท หัก ณ ที่จ่าย 222.68 บาท ยอดชำระสุทธิ 7,200.00 บาท', 'https://drive.google.com/file/d/1KUHTWrMdEg_uY5Z_SWLM0NvobxhN3TvU/view?usp=drivesdk', 'Few', '2026-05-29 09:14:43', 11)
+(2026, 'บ.ทำถูก_ใบกำกับภาษี_8.4.2569_ส่งของ_18.4.2569 (1).pdf', '1', 15350.54, '20260408', 'ใบกำกับภาษี/ใบเสร็จรับเงิน จากบริษัท ทำถูก จำกัด ให้แก่ บริษัท ฮาร์ทวอมมิ่ง จำกัด ยอดรวม 14,790.00 บาท หักส่วนลด 443.70 บาท ภาษีมูลค่าเพิ่ม 7% จำนวน 1,004.24 บาท ยอดเงินสุทธิ 15,350.54 บาท', 'https://drive.google.com/file/d/1XBGwJKobBAE7HFp8WnB0ISYncUNJj9jL/view?usp=drivesdk', 'Few', '2026-05-29 09:14:43', 11)
+
+--- Latest 5 from qr_login_tokens ---
+
+--- Latest 5 from login_attempts ---
+(1, '2001:44c8:4773:8add:184a:72b8:d6df:8633', 'sin', 1, 1780045028)

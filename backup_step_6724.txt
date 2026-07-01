@@ -1,0 +1,47 @@
+Created At: 2026-05-27T06:49:30Z
+Completed At: 2026-05-27T06:49:30Z
+File Path: `file:///c:/Users/KC_Ketwilai/Downloads/orgchat-ai-main/orgchat-ai-main/webai/templates/index.html`
+Total Lines: 7427
+Total Bytes: 492461
+Showing lines 2000 to 2085
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+2000:               </button>
+2001:             </div>
+2002: 
+2003:             <!-- ═══ Google Drive & Sheets Connection ═══ -->
+2004:             <div id="googleDriveSection" class="p-6 bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl space-y-4">
+2005:               <h3 class="font-bold text-sm mb-1 uppercase text-surface-500 flex items-center gap-2">
+2006:                 <svg class="w-4 h-4" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
+2007:                   <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+2008:                   <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-20.4 35.3c-.8 1.4-1.2 2.95-1.2 4.5h27.5z" fill="#00ac47"/>
+2009:                   <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.5l5.85 13.95z" fill="#ea4335"/>
+2010:                   <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
+2011:                   <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
+2012:                   <path d="m73.4 26.5-10.1-17.5c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 23.5h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
+2013:                 </svg>
+2014:                 Google Drive & Sheets
+2015:               </h3>
+2016:               <p class="text-xs text-surface-400">
+2017:                 เชื่อมต่อ
+<truncated 4715 bytes>
+
+2067:                       class="flex items-center gap-2 p-3 bg-surface-50 dark:bg-surface-800/50 rounded-xl border border-surface-100 dark:border-surface-700 hover:border-brand-300 dark:hover:border-brand-700 transition-all group">
+2068:                       <div class="w-8 h-8 rounded-lg bg-green-50 dark:bg-green-900/30 flex items-center justify-center text-green-600 group-hover:scale-110 transition-transform">
+2069:                         <i data-lucide="table-2" class="w-4 h-4"></i>
+2070:                       </div>
+2071:                       <div>
+2072:                         <p class="text-[10px] font-black uppercase tracking-wider text-surface-400">Google Sheets</p>
+2073:                         <p class="text-[10px] text-brand-600 font-bold">เปิดชีตของฉัน →</p>
+2074:                       </div>
+2075:                     </a>
+2076:                     <a id="googleDriveLink" href="#" target="_blank"
+2077:                       class="flex items-center gap-2 p-3 bg-surface-50 dark:bg-surface-800/50 rounded-xl border border-surface-100 dark:border-surface-700 hover:border-brand-300 dark:hover:border-brand-700 transition-all group">
+2078:                       <div class="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 group-hover:scale-110 transition-transform">
+2079:                         <i data-lucide="hard-drive" class="w-4 h-4"></i>
+2080:                       </div>
+2081:                       <div>
+2082:                         <p class="text-[10px] font-black uppercase tracking-wider text-surface-400">Google Drive</p>
+2083:                         <p class="text-[10px] text-brand-600 font-bold">เปิดไดรฟ์ของฉัน →</p>
+2084:                       </div>
+2085:                     </a>
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

@@ -1,0 +1,16 @@
+[Unit]
+Description=OrgChat AI Server (Raspberry Pi)
+After=network.target
+
+[Service]
+User=YOUR_USERNAME
+Group=www-data
+WorkingDirectory=/home/YOUR_USERNAME/orgchat/webai
+EnvironmentFile=/home/YOUR_USERNAME/orgchat/webai/.env
+Environment="PATH=/home/YOUR_USERNAME/orgchat/webai/venv/bin"
+ExecStart=/home/YOUR_USERNAME/orgchat/webai/venv/bin/gunicorn app_server:app --worker-class gthread --workers 1 --threads 2 --bind 127.0.0.1:8080 --timeout 300
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
