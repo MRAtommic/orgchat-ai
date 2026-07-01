@@ -176,7 +176,7 @@ body {
   }
 
   .dark #navSidebar {
-    background: #0f172a !important;
+    background: #111625 !important;
   }
 
   #navSidebar.open {
@@ -223,7 +223,7 @@ body {
 }
 
 .dark #chatMainArea {
-  background: #020617;
+  background: #0b0f19;
 }
 
 /* Fix for overlapping modals */
@@ -251,8 +251,8 @@ body {
 }
 
 .dark .glass {
-  background: rgba(15, 23, 42, 0.7);
-  border: 1px solid rgba(51, 65, 85, 0.3);
+  background: rgba(17, 22, 37, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .btn-primary {
@@ -289,8 +289,8 @@ body {
 }
 
 .dark .btn-secondary {
-  background-color: #1e293b;
-  border-color: #334155;
+  background-color: #1c2336;
+  border-color: rgba(255, 255, 255, 0.08);
   color: #cbd5e1;
 }
 
@@ -304,8 +304,8 @@ body {
 }
 
 .dark .input-field {
-  background-color: #0f172a;
-  border-color: #334155;
+  background-color: #1c2336;
+  border-color: rgba(255, 255, 255, 0.08);
 }
 
 /* Mobile Touch & Navigation */
@@ -329,8 +329,8 @@ body {
 }
 
   .dark .mobile-header {
-    background: rgba(15, 23, 42, 0.8) !important;
-    border-bottom-color: rgba(30, 41, 59, 0.8);
+    background: rgba(11, 15, 25, 0.8) !important;
+    border-bottom-color: rgba(255, 255, 255, 0.08);
   }
 
 /* Bottom Sheet Style Modals on Mobile */
@@ -467,8 +467,8 @@ body {
 }
 
 .dark .suggestion-chip {
-  background-color: #0f172a;
-  border-color: #334155;
+  background-color: #1c2336;
+  border-color: rgba(255, 255, 255, 0.08);
   color: #cbd5e1;
 }
 
@@ -1149,8 +1149,8 @@ tr:hover .delete-row-btn {
 }
 
 .dark .feed-filter-chip {
-  background: #1e293b;
-  border-color: #334155;
+  background: #1c2336;
+  border-color: rgba(255, 255, 255, 0.08);
   color: #94a3b8;
 }
 
@@ -2276,9 +2276,10 @@ tr:hover .delete-row-btn {
 }
 
 .dark .bubble-them {
-  background: #1e293b !important;
-  color: #f8fafc !important;
-  border: 1px solid #334155 !important;
+  background: rgba(28, 35, 54, 0.45) !important;
+  color: #e2e8f0 !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  backdrop-filter: blur(8px);
 }
 
 /* Feedback Panel Fixes */
@@ -2295,9 +2296,11 @@ tr:hover .delete-row-btn {
 }
 
 .dark .bubble-bot {
-  background: #1e293b !important;
-  color: #f8fafc !important;
-  border: 1px solid #334155 !important;
+  background: rgba(28, 35, 54, 0.7) !important;
+  color: #e2e8f0 !important;
+  border: 1px solid rgba(59, 130, 246, 0.15) !important;
+  box-shadow: inset 0 0 12px rgba(59, 130, 246, 0.03) !important;
+  backdrop-filter: blur(8px);
 }
 
 /* 🎙️ Voice Message Styles */
