@@ -202,6 +202,7 @@ def status():
         "org_role": org_role,
         "has_org": org_id is not None,
         "org_plan": billing.get_effective_plan(org_id) if org_id else None,
+        "org_features": billing.get_plan_config(billing.get_effective_plan(org_id)).get("features", {}) if org_id else {},
         **stats
     })
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"

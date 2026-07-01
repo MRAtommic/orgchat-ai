@@ -363,6 +363,8 @@ async function loadStatus() {
     state.hasOrg = data.has_org === true;
     state.orgId = data.org_id ?? null;
     state.isOrgAdmin = data.org_role === 'admin';
+    state.orgPlan = data.org_plan || 'free';
+    state.orgFeatures = data.org_features || {};
 
     const noOrgEl = document.getElementById('noOrgOverlay');
     if (noOrgEl) noOrgEl.classList.toggle('hidden', state.hasOrg);

@@ -9239,6 +9239,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // ─── DATA LOADING ────────────────────────────────────
         function loadDashboardData() {
+            // ── Feature gate: skip API calls if plan doesn't include financial_dashboard ──
+            if (typeof state !== 'undefined' && state.orgFeatures && !state.orgFeatures.financial_dashboard) {
+                const catList = document.getElementById('catList');
+                if (catList) {
+                    catList.innerHTML = '<div class="text-center py-12 text-slate-400 dark:text-slate-500">' +
+                        '<i data-lucide="lock" class="w-10 h-10 mx-auto mb-3 opacity-50"></i>' +
+                        '<p class="text-sm font-semibold mb-1">ฟีเจอร์แดชบอร์ดการเงิน</p>' +
+                        '<p class="text-xs">ฟีเจอร์นี้ต้องใช้ Plan Pro ขึ้นไป</p>' +
+                        '<a href="/pricing?upgrade=financial_dashboard" class="inline-block mt-3 px-4 py-2 text-xs font-bold text-white bg-brand-600 hover:bg-brand-700 rounded-lg transition">อัปเกรด Plan</a>' +
+                        '</div>';
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                }
+                console.log('📊 Financial dashboard feature not available on current plan — skipping API calls.');
+                return;
+            }
+
             const icon = document.getElementById('refreshIcon');
             if (icon) icon.classList.add('spinning');
 
