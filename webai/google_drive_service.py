@@ -233,6 +233,16 @@ def extract_json_keys_regex(s):
         return info
     return None
 
+
+def _col_idx_to_letter(idx):
+    """Convert 0-based column index to Excel-style letter (0='A', 25='Z', 26='AA')."""
+    letter = ""
+    while idx >= 0:
+        letter = chr(idx % 26 + ord('A')) + letter
+        idx = idx // 26 - 1
+    return letter
+
+
 class GoogleWorkspaceManager:
     """
     Singleton Manager for Google Workspace interactions.
@@ -1613,13 +1623,6 @@ class GoogleWorkspaceManager:
         """Reconciles Bank Statements (Master Reference) ↔ Payment Slips ↔ Invoices (3-Way Match)."""
         if not self.sheets_service or not self.spreadsheet_id: return
         
-        def col_idx_to_letter(idx):
-            letter = ""
-            while idx >= 0:
-                letter = chr(idx % 26 + ord('A')) + letter
-                idx = idx // 26 - 1
-            return letter
-            
         idx_wht = 8  # Default WHT column index for slip
         
         try:
@@ -1871,7 +1874,7 @@ class GoogleWorkspaceManager:
                     # Auto-backfill slip WHT if invoice has WHT and slip doesn't
                     if matched_inv.get('wht_present') and not matched_slip.get('wht_present'):
                         try:
-                            col_letter = col_idx_to_letter(idx_wht)
+                            col_letter = _col_idx_to_letter(idx_wht)
                             sheet_range = f"'{matched_slip['sheet']}'!{col_letter}{matched_slip['index'] + 2}"
                             self.sheets_service.spreadsheets().values().update(
                                 spreadsheetId=self.spreadsheet_id,
@@ -1962,7 +1965,7 @@ class GoogleWorkspaceManager:
                     # Auto-backfill slip WHT if invoice has WHT and slip doesn't
                     if matched_inv.get('wht_present') and not slip.get('wht_present'):
                         try:
-                            col_letter = col_idx_to_letter(idx_wht)
+                            col_letter = _col_idx_to_letter(idx_wht)
                             sheet_range = f"'{slip['sheet']}'!{col_letter}{slip['index'] + 2}"
                             self.sheets_service.spreadsheets().values().update(
                                 spreadsheetId=self.spreadsheet_id,
@@ -2067,7 +2070,7 @@ class GoogleWorkspaceManager:
                     header = res.get('values', [[]])[0]
                     # Find withdrawal index (0-based)
                     idx_out = next((i for i, h in enumerate(header) if "ถอน" in str(h) or "เงินออก" in str(h) or "out" in str(h).lower()), 5)
-                    col_letter = col_idx_to_letter(idx_out)
+                    col_letter = _col_idx_to_letter(idx_out)
                     stmt_sums.append(f"SUM('{s}'!{col_letter}:{col_letter})")
                 except Exception as e:
                     logger.warning(f"Could not resolve dynamic withdrawal column for {s}: {e}")
