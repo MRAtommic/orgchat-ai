@@ -4368,6 +4368,7 @@ def dashboard_data():
 
 @chat_bp.route("/api/dashboard/briefing")
 @login_required
+@_limiter.limit("10 per minute; 30 per hour")
 def dashboard_briefing():
     user = session.get("user")
     activities = database.get_daily_activities(org_id=get_current_org_id())
@@ -4560,6 +4561,7 @@ def generate_global_summary():
 
 @chat_bp.route("/api/summarize_data", methods=["POST"])
 @login_required
+@_limiter.limit("15 per minute; 50 per hour")
 def summarize_data():
     """Generate an AI-powered summary/insight for CSV chart data shown on the viz page."""
     data = request.json or {}
@@ -5721,6 +5723,7 @@ def search_insights_route():
 
 @chat_bp.route("/api/ai/extract-tasks", methods=["POST"])
 @login_required
+@_limiter.limit("20 per minute; 60 per hour")
 def extract_tasks_route():
     data = request.get_json()
     chat_text = data.get("text", "")
