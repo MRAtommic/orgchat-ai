@@ -351,7 +351,7 @@ RULES:
         prompt = """คุณคือ 'พั้น' ผู้ช่วยอัจฉริยะ สกัดข้อมูลจากเอกสารด้วยความแม่นยำ
 EXTRACT JSON ONLY.
 {
-  "category": "Receipt | Slip | Statement | ID_Card | Invoice | Quotation | PaymentVoucher",
+  "category": "Receipt | Slip | Statement | ID_Card | Invoice | Quotation | PaymentVoucher | Other",
   "smart_name": "ประเภท_วันที่_ผู้ส่ง_ยอดเงิน.jpg",
   "extracted_data": {
   "date": "DD/MM/YYYY", "time": "HH:MM",
@@ -403,7 +403,8 @@ RULES:
 4. ID Card: Extract `id_number`, names (TH/EN), `birth_date`, `gender`, `address`, `laser_id`.
 5. ALWAYS extract `appr_code` (Auth Code/Approval Code) to prevent duplicates.
 6. QR Code Slip Verification: Look for the Thai QR Code payload on the transfer slip (usually begins with '000201' and is a long alphanumeric string) and extract the raw EMVCo string payload into 'qr_payload'. If not found or not visible, use "-".
-7. Use "-" for missing string, 0 for missing numbers. No conversational text."""
+7. Use "-" for missing string, 0 for missing numbers. No conversational text.
+8. If the document/image is NOT a financial transaction document (e.g. general photo, screenshot of software/web page, profile picture, non-invoice document), set category to "Other"."""
     
     # 🚀 Prioritize Gemini for Media Analysis
     full_response = ""
