@@ -69,7 +69,7 @@ def create_rich_menu_image():
 
 def setup_rich_menu():
     print("🚀 Starting Rich Menu Setup...")
-    
+    base_url = os.environ.get("BASE_URL", "https://openchat.sbs").rstrip("/")
     # 1. Define Rich Menu Object
     rich_menu_obj = {
         "size": {"width": 2500, "height": 843},
@@ -81,7 +81,7 @@ def setup_rich_menu():
                 "bounds": {"x": 0, "y": 0, "width": 833, "height": 843},
                 "action": {
                     "type": "uri",
-                    "uri": "https://openchat.sbs/dashboard"
+                    "uri": f"{base_url}/dashboard"
                 }
             },
             {

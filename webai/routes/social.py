@@ -101,6 +101,7 @@ def get_link_preview():
 
 @social_bp.route("/api/kanban/auto-generate", methods=["POST"])
 @login_required
+@_limiter.limit("10 per minute; 30 per hour")
 def auto_generate_kanban():
     user = session.get("user", "Admin")
     data = request.get_json(force=True)
@@ -473,6 +474,7 @@ def get_reactions(pid):
 
 @social_bp.route("/api/posts/<int:pid>/summarize", methods=["POST"])
 @login_required
+@_limiter.limit("20 per minute; 60 per hour")
 def summarize_post_route(pid):
     posts = database.get_posts(org_id=get_current_org_id())
     post = next((p for p in posts if p["id"] == pid), None)
@@ -523,6 +525,7 @@ def get_user_vote_route(poll_id):
 
 @social_bp.route("/api/feed/summarize", methods=["POST"])
 @login_required
+@_limiter.limit("10 per minute; 30 per hour")
 def feed_daily_summary():
     user = session.get("user", "Admin")
     data = database.get_daily_activities(org_id=get_current_org_id())
