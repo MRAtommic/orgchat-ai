@@ -1610,7 +1610,7 @@ def onboarding_page():
 
                     if org_id:
                         # ── ใช้ plan จาก Stripe metadata เท่านั้น — ห้ามเชื่อ URL param ──
-                        meta = stripe_cs.metadata or {}
+                        meta = stripe_cs.to_dict().get("metadata", {})
                         target_plan = meta.get("plan", "")
                         if target_plan not in ("pro", "business"):
                             target_plan = None
@@ -1697,7 +1697,7 @@ def _resolve_org_from_session_or_stripe(stripe_cs):
 
     # 2. Stripe metadata fallback (session หาย — ไม่มี username ใน session)
     try:
-        meta_org_id = int(stripe_cs.metadata.get("org_id", 0))
+        meta_org_id = int(stripe_cs.to_dict().get("metadata", {}).get("org_id", 0))
         if meta_org_id and database.get_org_by_id(meta_org_id):
             return meta_org_id
     except Exception:

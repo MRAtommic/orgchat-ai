@@ -300,7 +300,7 @@ def billing_status():
                 sid, api_key=os.environ.get("STRIPE_SECRET_KEY", "")
             )
             if cs.payment_status == "paid" and cs.status == "complete":
-                meta = cs.metadata or {}
+                meta = cs.to_dict().get("metadata", {})
                 target_plan = meta.get("plan", "")
                 if target_plan in ("pro", "business"):
                     meta_org = int(meta.get("org_id", 0))
