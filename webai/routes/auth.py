@@ -1864,6 +1864,42 @@ def update_org_member_role(username):
     return jsonify({"ok": True, "username": username, "role": new_role})
 
 
+@auth_bp.route("/api/org/members/<username>/manager", methods=["POST"])
+@login_required
+def update_org_member_manager_route(username):
+    """Org admin sets or changes another member's manager."""
+    me = session.get("user")
+    org_id = get_current_org_id()
+    if not org_id:
+        return jsonify({"ok": False, "error": "คุณยังไม่ได้อยู่ในองค์กร"}), 403
+    if not database.is_org_admin(org_id, me):
+        return jsonify({"ok": False, "error": "เฉพาะ Admin องค์กรเท่านั้นที่ปรับเปลี่ยนโครงสร้างองค์กรได้"}), 403
+        
+    data = request.get_json(force=True)
+    manager_username = data.get("manager_username", "").strip()
+    
+    # Validation: prevent self-management
+    if username.lower() == manager_username.lower():
+        return jsonify({"ok": False, "error": "ไม่สามารถเลือกตัวเองเป็นหัวหน้าได้"}), 400
+        
+    # Prevent cyclic hierarchy (A reports to B, B reports to A)
+    if manager_username:
+        # Get all members to build a quick validation map
+        members = {m["username"].lower(): m.get("manager_username", "").lower() for m in database.get_org_members(org_id)}
+        curr = manager_username.lower()
+        visited = {username.lower()}
+        while curr:
+            if curr in visited:
+                return jsonify({"ok": False, "error": "ตรวจพบลูปโครงสร้างรายงานแบบวงกลม (Cyclic Hierarchy) ไม่สามารถมอบหมายได้"}), 400
+            visited.add(curr)
+            curr = members.get(curr, "")
+            
+    if database.update_org_member_manager(org_id, username, manager_username if manager_username else None):
+        return jsonify({"ok": True, "username": username, "manager_username": manager_username})
+    else:
+        return jsonify({"ok": False, "error": "ไม่สามารถอัปเดตข้อมูลหัวหน้างานได้"}), 500
+
+
 @auth_bp.route("/api/org/invite", methods=["POST"])
 @login_required
 def invite_org_member():

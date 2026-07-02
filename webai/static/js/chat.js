@@ -7931,7 +7931,7 @@ if (typeof checkAuth === 'function') {
 let _orgMembersCache = [];
 
 function switchOrgTab(tab) {
-  ['members', 'google', 'business'].forEach(t => {
+  ['members', 'tree', 'google', 'business'].forEach(t => {
     const btn = $(`orgTab-${t}`);
     const content = $(`orgTabContent-${t}`);
     const active = t === tab;
@@ -7943,6 +7943,7 @@ function switchOrgTab(tab) {
   if (scrollEl) scrollEl.scrollTop = 0;
   if (tab === 'google') loadOrgGoogleStatus();
   if (tab === 'business') loadOrgBusinessProfile();
+  if (tab === 'tree') renderOrgTree();
 }
 
 async function loadOrgBusinessProfile() {
@@ -14879,3 +14880,322 @@ async function savePeakSettings() {
 
 window.setPeakMode = setPeakMode;
 window.savePeakSettings = savePeakSettings;
+
+/* ══════════════════════════════════════════
+   Organization Tree Chart (ผังองค์กรแบบต้นไม้)
+   ══════════════════════════════════════════ */
+let orgTreeZoomScale = 1.0;
+let orgTreePanX = 0;
+let orgTreePanY = 0;
+let isPanningOrgTree = false;
+let startPanX = 0;
+let startPanY = 0;
+let editingTreeMember = null;
+
+// Zoom and Pan Controls
+function orgTreeZoom(amount) {
+  orgTreeZoomScale = Math.min(Math.max(orgTreeZoomScale * amount, 0.3), 3.0);
+  applyOrgTreeTransform();
+}
+
+function orgTreeZoomReset() {
+  orgTreeZoomScale = 1.0;
+  orgTreePanX = 0;
+  orgTreePanY = 0;
+  applyOrgTreeTransform();
+}
+
+function applyOrgTreeTransform() {
+  const container = document.getElementById("orgTreePanContainer");
+  if (container) {
+    container.style.transform = `translate(${orgTreePanX}px, ${orgTreePanY}px) scale(${orgTreeZoomScale})`;
+  }
+}
+
+// Drag & Pan Canvas handlers
+function initOrgTreeCanvasEvents() {
+  const wrapper = document.getElementById("orgTreeCanvasWrapper");
+  if (!wrapper) return;
+  
+  wrapper.addEventListener("mousedown", (e) => {
+    if (e.target.closest(".org-node-card") || e.target.closest("button") || e.target.closest("select")) {
+      return;
+    }
+    isPanningOrgTree = true;
+    wrapper.style.cursor = "grabbing";
+    startPanX = e.clientX - orgTreePanX;
+    startPanY = e.clientY - orgTreePanY;
+  });
+  
+  window.addEventListener("mousemove", (e) => {
+    if (!isPanningOrgTree) return;
+    orgTreePanX = e.clientX - startPanX;
+    orgTreePanY = e.clientY - startPanY;
+    applyOrgTreeTransform();
+  });
+  
+  window.addEventListener("mouseup", () => {
+    if (isPanningOrgTree) {
+      isPanningOrgTree = false;
+      wrapper.style.cursor = "grab";
+    }
+  });
+
+  wrapper.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
+    orgTreeZoom(zoomFactor);
+  }, { passive: false });
+}
+
+// Render dynamic org tree chart
+async function renderOrgTree() {
+  const wrapper = document.getElementById("orgTreeCanvasWrapper");
+  if (!wrapper) return;
+  
+  if (!wrapper.dataset.eventsInitialized) {
+    initOrgTreeCanvasEvents();
+    wrapper.dataset.eventsInitialized = "true";
+  }
+
+  if (!_orgMembersCache || _orgMembersCache.length === 0) {
+    await loadOrgMembers();
+  }
+
+  const htmlNodesContainer = document.getElementById("orgTreeHtmlNodes");
+  const svgContainer = document.getElementById("orgTreeSvg");
+  if (!htmlNodesContainer || !svgContainer) return;
+
+  htmlNodesContainer.innerHTML = "";
+  svgContainer.innerHTML = "";
+
+  if (_orgMembersCache.length === 0) {
+    htmlNodesContainer.innerHTML = `<div class="absolute inset-0 flex items-center justify-center text-surface-400 font-bold text-xs">ไม่พบข้อมูลสมาชิกในองค์กร</div>`;
+    return;
+  }
+
+  const membersMap = {};
+  _orgMembersCache.forEach(m => {
+    membersMap[m.username.toLowerCase()] = {
+      ...m,
+      children: [],
+      x: 0,
+      y: 0,
+      width: 220,
+      height: 90
+    };
+  });
+
+  const roots = [];
+  Object.values(membersMap).forEach(node => {
+    const parentUsername = (node.manager_username || "").trim().toLowerCase();
+    if (parentUsername && membersMap[parentUsername] && parentUsername !== node.username.toLowerCase()) {
+      membersMap[parentUsername].children.push(node);
+    } else {
+      roots.push(node);
+    }
+  });
+
+  const levelHeight = 160;
+  const siblingWidth = 260;
+
+  function layoutSubtree(node, depth, xOffset) {
+    node.y = 50 + depth * levelHeight;
+    
+    if (node.children.length === 0) {
+      node.x = xOffset;
+      return xOffset + siblingWidth;
+    }
+    
+    let currentX = xOffset;
+    const childXs = [];
+    node.children.forEach(child => {
+      currentX = layoutSubtree(child, depth + 1, currentX);
+      childXs.push(child.x);
+    });
+    
+    const minChildX = Math.min(...childXs);
+    const maxChildX = Math.max(...childXs);
+    node.x = minChildX + (maxChildX - minChildX) / 2;
+    
+    return currentX;
+  }
+
+  let currentOffset = 50;
+  roots.forEach(root => {
+    currentOffset = layoutSubtree(root, 0, currentOffset);
+  });
+
+  if (roots.length > 0) {
+    const canvasWidth = wrapper.clientWidth || 800;
+    orgTreePanX = (canvasWidth / 2) - (roots[0].x + roots[0].width / 2);
+    orgTreePanY = 40;
+    orgTreeZoomScale = 1.0;
+    applyOrgTreeTransform();
+  }
+
+  Object.values(membersMap).forEach(node => {
+    const card = document.createElement("div");
+    card.className = "org-node-card absolute bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 p-3 rounded-2xl shadow-sm flex items-center gap-3 transition-all hover:shadow-md hover:border-indigo-500/50 dark:hover:border-indigo-400/50";
+    card.style.width = `${node.width}px`;
+    card.style.height = `${node.height}px`;
+    card.style.left = `${node.x}px`;
+    card.style.top = `${node.y}px`;
+
+    const isAdmin = node.role === "admin";
+    const roleBadge = isAdmin 
+      ? `<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/50">Admin</span>`
+      : `<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-surface-50 dark:bg-surface-800 text-surface-500 dark:text-surface-400 border border-surface-100 dark:border-surface-700">Member</span>`;
+
+    const avatarUrl = node.avatar_url || '/static/images/default-avatar.png';
+    const deptText = node.department || 'General';
+    const posText = node.position || 'พนักงาน';
+
+    const canEdit = state.isOrgAdmin || state.isAdmin;
+    const editBtn = canEdit 
+      ? `<button onclick="openEditManagerModal('${node.username}')" class="p-1 hover:bg-surface-100 dark:hover:bg-surface-700 rounded-lg text-surface-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors ml-auto cursor-pointer" title="ปรับสายการรายงาน">
+           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75"/></svg>
+         </button>`
+      : "";
+
+    card.innerHTML = `
+      <img src="${avatarUrl}" class="w-10 h-10 rounded-full object-cover border border-surface-200 dark:border-surface-700 flex-shrink-0" onerror="this.src='/static/images/default-avatar.png'">
+      <div class="flex-1 min-w-0 pr-1 flex flex-col justify-center">
+        <div class="flex items-center gap-1.5 mb-0.5">
+          <div class="font-extrabold text-xs text-surface-900 dark:text-white truncate" title="${node.display_name}">${node.display_name}</div>
+          ${roleBadge}
+        </div>
+        <div class="text-[9px] font-bold text-surface-400 dark:text-surface-500 truncate" title="${posText} (${deptText})">${posText} · ${deptText}</div>
+      </div>
+      ${editBtn}
+    `;
+
+    htmlNodesContainer.appendChild(card);
+  });
+
+  Object.values(membersMap).forEach(node => {
+    node.children.forEach(child => {
+      const parentBottomX = node.x + node.width / 2;
+      const parentBottomY = node.y + node.height;
+      const childTopX = child.x + child.width / 2;
+      const childTopY = child.y;
+
+      const midY = (parentBottomY + childTopY) / 2;
+      const pathData = `M ${parentBottomX} ${parentBottomY} 
+                        C ${parentBottomX} ${midY}, 
+                          ${childTopX} ${midY}, 
+                          ${childTopX} ${childTopY}`;
+
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", pathData);
+      path.setAttribute("fill", "none");
+      path.setAttribute("stroke", "#6366f1");
+      path.setAttribute("stroke-width", "2.5");
+      path.setAttribute("stroke-linecap", "round");
+      path.setAttribute("opacity", "0.4");
+      
+      path.addEventListener("mouseenter", () => {
+        path.setAttribute("opacity", "0.9");
+        path.setAttribute("stroke-width", "3.5");
+      });
+      path.addEventListener("mouseleave", () => {
+        path.setAttribute("opacity", "0.4");
+        path.setAttribute("stroke-width", "2.5");
+      });
+
+      svgContainer.appendChild(path);
+    });
+  });
+  
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function openEditManagerModal(username) {
+  const member = _orgMembersCache.find(m => m.username.toLowerCase() === username.toLowerCase());
+  if (!member) return;
+  editingTreeMember = username;
+
+  document.getElementById("editManagerUserAvatar").src = member.avatar_url || '/static/images/default-avatar.png';
+  document.getElementById("editManagerUserDisplayName").textContent = member.display_name || member.username;
+  document.getElementById("editManagerUserPosition").textContent = `${member.position || 'พนักงาน'} · ${member.department || 'General'}`;
+
+  const select = document.getElementById("editManagerSelect");
+  select.innerHTML = '<option value="">ไม่มีหัวหน้างาน (ผู้บริหารสูงสุด)</option>';
+
+  const reportsToMap = {};
+  _orgMembersCache.forEach(m => {
+    reportsToMap[m.username.toLowerCase()] = (m.manager_username || "").trim().toLowerCase();
+  });
+
+  _orgMembersCache.forEach(m => {
+    const candidateUsername = m.username.toLowerCase();
+    
+    if (candidateUsername === username.toLowerCase()) return;
+
+    let curr = candidateUsername;
+    let isCyclic = false;
+    while (curr) {
+      if (curr === username.toLowerCase()) {
+        isCyclic = true;
+        break;
+      }
+      curr = reportsToMap[curr] || "";
+    }
+
+    if (isCyclic) return;
+
+    const opt = document.createElement("option");
+    opt.value = m.username;
+    opt.textContent = `${m.display_name || m.username} (${m.position || 'พนักงาน'})`;
+    if ((member.manager_username || "").toLowerCase() === m.username.toLowerCase()) {
+      opt.selected = true;
+    }
+    select.appendChild(opt);
+  });
+
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+
+  document.getElementById("editManagerModal").classList.remove("hidden");
+}
+
+function closeEditManagerModal() {
+  document.getElementById("editManagerModal").classList.add("hidden");
+  editingTreeMember = null;
+}
+
+async function saveManagerChange() {
+  if (!editingTreeMember) return;
+  const select = document.getElementById("editManagerSelect");
+  const managerUsername = select.value;
+
+  try {
+    const data = await apiFetch(`/api/org/members/${editingTreeMember}/manager`, {
+      method: "POST",
+      body: JSON.stringify({ manager_username: managerUsername })
+    });
+
+    if (data.ok) {
+      toast("ปรับปรุงสายงานสำเร็จแล้วค่ะ! ✨", "success");
+      closeEditManagerModal();
+      
+      const cachedMember = _orgMembersCache.find(m => m.username.toLowerCase() === editingTreeMember.toLowerCase());
+      if (cachedMember) {
+        cachedMember.manager_username = managerUsername;
+      }
+      
+      renderOrgTree();
+    } else {
+      toast(data.error || "เกิดข้อผิดพลาดในการบันทึก", "error");
+    }
+  } catch (e) {
+    console.error("Error saving manager change:", e);
+    toast("เชื่อมต่อเซิร์ฟเวอร์ผิดพลาด", "error");
+  }
+}
+
+window.orgTreeZoom = orgTreeZoom;
+window.orgTreeZoomReset = orgTreeZoomReset;
+window.renderOrgTree = renderOrgTree;
+window.openEditManagerModal = openEditManagerModal;
+window.closeEditManagerModal = closeEditManagerModal;
+window.saveManagerChange = saveManagerChange;

@@ -1108,6 +1108,7 @@ def init_db():
             role TEXT DEFAULT 'member',
             invited_by TEXT,
             joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            manager_username TEXT,
             PRIMARY KEY (organization_id, username),
             FOREIGN KEY(organization_id) REFERENCES organizations(id) ON DELETE CASCADE
         )
@@ -1186,6 +1187,7 @@ def init_db():
         "ALTER TABLE organizations ADD COLUMN stripe_customer_id TEXT",
         "ALTER TABLE organizations ADD COLUMN stripe_subscription_id TEXT",
         "ALTER TABLE organizations ADD COLUMN whitelist_enabled INTEGER DEFAULT 0",
+        "ALTER TABLE organization_members ADD COLUMN manager_username TEXT",
     ]:
         try:
             cursor.execute(col_sql)
@@ -1720,7 +1722,8 @@ def get_org_members(org_id: int) -> list:
                COALESCE(s.can_delete_kb, 0) as can_delete_kb,
                s.notes,
                CASE WHEN gt.username IS NOT NULL THEN 1 ELSE 0 END as google_connected,
-               gt.google_email
+               gt.google_email,
+               om.manager_username
         FROM organization_members om
         LEFT JOIN user_profiles up ON om.username = up.username
         LEFT JOIN user_settings s ON om.username = s.username
@@ -1738,7 +1741,8 @@ def get_org_members(org_id: int) -> list:
              "can_view_kb": bool(r[11]), "can_edit_kb": bool(r[12]), "can_delete_kb": bool(r[13]),
              "notes": r[14] or "",
              "google_connected": bool(r[15]),
-             "google_email": r[16] or ""} for r in rows]
+             "google_email": r[16] or "",
+             "manager_username": r[17] or ""} for r in rows]
 
 
 def is_org_admin(org_id: int, username: str) -> bool:
@@ -1778,6 +1782,22 @@ def update_org_member_role(org_id: int, username: str, new_role: str) -> bool:
     cursor.execute(
         "UPDATE organization_members SET role = ? WHERE organization_id = ? AND username = ? COLLATE NOCASE",
         (new_role, org_id, username)
+    )
+    affected = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return affected > 0
+
+
+def update_org_member_manager(org_id: int, username: str, manager_username: str) -> bool:
+    """Update reports-to manager for a member in an organization."""
+    if username.lower() == (manager_username or "").lower():
+        return False
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE organization_members SET manager_username = ? WHERE organization_id = ? AND username = ? COLLATE NOCASE",
+        (manager_username if manager_username else None, org_id, username)
     )
     affected = cursor.rowcount
     conn.commit()
