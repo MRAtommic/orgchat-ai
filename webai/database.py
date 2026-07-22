@@ -427,6 +427,28 @@ def init_db():
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            org_id INTEGER DEFAULT 1,
+            username TEXT DEFAULT 'System',
+            action TEXT NOT NULL,
+            details TEXT,
+            ip_address TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS org_announcements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            organization_id INTEGER NOT NULL DEFAULT 1,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            priority TEXT DEFAULT 'normal',
+            created_by TEXT DEFAULT 'Admin',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
     try:
         cursor.execute("ALTER TABLE line_broadcast_history ADD COLUMN org_id INTEGER DEFAULT 1")
     except sqlite3.OperationalError:
@@ -618,10 +640,13 @@ def init_db():
             is_read INTEGER DEFAULT 0,
             is_pinned INTEGER DEFAULT 0,
             reply_to_id INTEGER,
+            organization_id INTEGER,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
     try: cursor.execute("ALTER TABLE private_messages ADD COLUMN reply_to_id INTEGER")
+    except sqlite3.OperationalError: pass
+    try: cursor.execute("ALTER TABLE private_messages ADD COLUMN organization_id INTEGER")
     except sqlite3.OperationalError: pass
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS chat_rooms (
@@ -699,10 +724,31 @@ def init_db():
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    # Migration: Add visibility to kb_categories if not exists
+    # Migration: Add visibility & access_level to kb_categories if not exists
     try:
         cursor.execute("ALTER TABLE kb_categories ADD COLUMN visibility TEXT DEFAULT 'public'")
     except sqlite3.OperationalError: pass
+    try:
+        cursor.execute("ALTER TABLE kb_categories ADD COLUMN access_level TEXT DEFAULT 'public'")
+    except sqlite3.OperationalError: pass
+    try:
+        cursor.execute("ALTER TABLE user_settings ADD COLUMN clearance_level TEXT DEFAULT 'employee'")
+    except sqlite3.OperationalError: pass
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            organization_id INTEGER DEFAULT 1,
+            action TEXT NOT NULL,
+            details TEXT,
+            ip_address TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs(username)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_ts ON audit_logs(timestamp)")
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS user_category_access (
@@ -741,6 +787,7 @@ def init_db():
             can_delete_kb INTEGER DEFAULT 0,
             custom_password TEXT,
             notes TEXT,
+            line_permissions TEXT DEFAULT 'report,links,reconcile,search,folder,leave',
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -789,6 +836,9 @@ def init_db():
     except sqlite3.OperationalError: pass
     try:
         cursor.execute("ALTER TABLE user_settings ADD COLUMN can_view_financial INTEGER DEFAULT 0")
+    except sqlite3.OperationalError: pass
+    try:
+        cursor.execute("ALTER TABLE user_settings ADD COLUMN line_permissions TEXT DEFAULT 'report,links,reconcile,search,folder,leave'")
     except sqlite3.OperationalError: pass
 
     # Migration: Add category_id to knowledge_base
@@ -951,6 +1001,7 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_username ON messages(username)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_room_messages_room_id ON room_messages(room_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_private_messages_participants ON private_messages(sender, recipient)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_private_messages_org_id ON private_messages(organization_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_posts_timestamp ON posts(timestamp)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_schedules_date ON schedules(start_date)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_status_online ON user_status(is_online)")
@@ -1202,6 +1253,18 @@ def init_db():
             added_by TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (organization_id, email),
+            FOREIGN KEY(organization_id) REFERENCES organizations(id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS org_announcements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            organization_id INTEGER DEFAULT 1,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            priority TEXT DEFAULT 'normal',
+            created_by TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(organization_id) REFERENCES organizations(id) ON DELETE CASCADE
         )
     """)
@@ -1571,12 +1634,21 @@ def signup_create_user_and_org(username: str, password: str, display_name: str, 
             "INSERT INTO user_settings (username, role, custom_password, can_view_kb, can_edit_kb, can_delete_kb, is_active) VALUES (?, 'user', ?, 1, 1, 1, 1)",
             (username, hashed_pw),
         )
-        cursor.execute("INSERT OR IGNORE INTO room_members (room_id, username) VALUES (1, ?)", (username,))
         cursor.execute("INSERT INTO organizations (name, slug) VALUES (?, ?)", (org_name, slug))
         org_id = cursor.lastrowid
         cursor.execute(
             "INSERT OR IGNORE INTO organization_members (organization_id, username, role) VALUES (?, ?, 'admin')",
             (org_id, username),
+        )
+        # Create organization default room and add the user
+        cursor.execute(
+            "INSERT INTO chat_rooms (name, owner, organization_id) VALUES ('กลุ่มทั่วไป (General)', 'system', ?)",
+            (org_id,)
+        )
+        default_room_id = cursor.lastrowid
+        cursor.execute(
+            "INSERT OR IGNORE INTO room_members (room_id, username) VALUES (?, ?)",
+            (default_room_id, username)
         )
         conn.commit()
         return org_id, slug
@@ -1609,10 +1681,29 @@ def signup_create_user_and_join_org(
             "INSERT INTO user_settings (username, role, custom_password, email, can_view_kb, can_edit_kb, can_delete_kb, is_active) VALUES (?, 'user', ?, ?, 1, 1, 1, 1)",
             (username, hashed_pw, email),
         )
-        cursor.execute("INSERT OR IGNORE INTO room_members (room_id, username) VALUES (1, ?)", (username,))
         cursor.execute(
             "INSERT OR IGNORE INTO organization_members (organization_id, username, role) VALUES (?, ?, ?)",
             (org_id, username, role),
+        )
+        
+        # Get default room for this organization or create one if missing
+        cursor.execute(
+            "SELECT id FROM chat_rooms WHERE organization_id = ? ORDER BY id ASC LIMIT 1",
+            (org_id,)
+        )
+        room_row = cursor.fetchone()
+        if room_row:
+            default_room_id = room_row[0]
+        else:
+            cursor.execute(
+                "INSERT INTO chat_rooms (name, owner, organization_id) VALUES ('กลุ่มทั่วไป (General)', 'system', ?)",
+                (org_id,)
+            )
+            default_room_id = cursor.lastrowid
+
+        cursor.execute(
+            "INSERT OR IGNORE INTO room_members (room_id, username) VALUES (?, ?)",
+            (default_room_id, username)
         )
         conn.commit()
     except Exception:
@@ -1648,6 +1739,18 @@ def create_organization(name: str, owner_username: str) -> tuple:
     cursor.execute("""
         UPDATE user_settings SET role = 'admin' WHERE username = ?
     """, (owner_username,))
+    
+    # Create default room for this organization and add the owner
+    cursor.execute(
+        "INSERT INTO chat_rooms (name, owner, organization_id) VALUES ('กลุ่มทั่วไป (General)', 'system', ?)",
+        (org_id,)
+    )
+    default_room_id = cursor.lastrowid
+    cursor.execute(
+        "INSERT OR IGNORE INTO room_members (room_id, username) VALUES (?, ?)",
+        (default_room_id, owner_username)
+    )
+    
     conn.commit()
     conn.close()
     return org_id, slug
@@ -2445,14 +2548,20 @@ def admin_delete_dm_message(msg_id):
     conn.close()
     return ok
 
-def delete_private_message(msg_id, username=None, is_admin=False):
-    """Delete a private message, verifying ownership or admin status."""
+def delete_private_message(msg_id, username=None, is_admin=False, org_id=None):
+    """Delete a private message, verifying ownership or admin status and organization."""
     conn = _get_conn()
     cursor = conn.cursor()
-    if is_admin or username == "Admin":
-        cursor.execute("DELETE FROM private_messages WHERE id = ?", (msg_id,))
+    if org_id is not None:
+        if is_admin or username == "Admin":
+            cursor.execute("DELETE FROM private_messages WHERE id = ? AND organization_id = ?", (msg_id, org_id))
+        else:
+            cursor.execute("DELETE FROM private_messages WHERE id = ? AND sender = ? AND organization_id = ?", (msg_id, username, org_id))
     else:
-        cursor.execute("DELETE FROM private_messages WHERE id = ? AND sender = ?", (msg_id, username))
+        if is_admin or username == "Admin":
+            cursor.execute("DELETE FROM private_messages WHERE id = ?", (msg_id,))
+        else:
+            cursor.execute("DELETE FROM private_messages WHERE id = ? AND sender = ?", (msg_id, username))
     ok = cursor.rowcount > 0
     conn.commit()
     conn.close()
@@ -3074,12 +3183,26 @@ def get_user_vote(poll_id, username):
 def get_user_profile(username):
     conn = _get_conn()
     cursor = conn.cursor()
-    cursor.execute("SELECT username, display_name, avatar_url, background_url, department FROM user_profiles WHERE username = ?", (username,))
+    cursor.execute("SELECT username, display_name, avatar_url, background_url, department, line_user_id FROM user_profiles WHERE username = ?", (username,))
     row = cursor.fetchone()
     conn.close()
     if row:
-        return {"username": row[0], "display_name": row[1], "avatar_url": row[2], "background_url": row[3], "department": row[4] or "General"}
-    return {"username": username, "display_name": username.capitalize(), "avatar_url": None, "background_url": None, "department": "General"}
+        return {
+            "username": row[0],
+            "display_name": row[1],
+            "avatar_url": row[2],
+            "background_url": row[3],
+            "department": row[4] or "General",
+            "line_user_id": row[5] or ""
+        }
+    return {
+        "username": username,
+        "display_name": username.capitalize(),
+        "avatar_url": None,
+        "background_url": None,
+        "department": "General",
+        "line_user_id": ""
+    }
 
 def update_user_profile(username, display_name=None, avatar_url=None, background_url=None, department=None):
     conn = _get_conn()
@@ -3105,38 +3228,58 @@ def update_user_profile(username, display_name=None, avatar_url=None, background
 
 # --- Unified & Private Chat ---
 @db_transaction_retry()
-def save_dm(sender, recipient, text, attachments=None, reply_to_id=None):
+def save_dm(sender, recipient, text, attachments=None, reply_to_id=None, org_id=None):
     conn = _get_conn()
     cursor = conn.cursor()
     attach_json = json.dumps(attachments) if attachments else None
     cursor.execute("""
-        INSERT INTO private_messages (sender, recipient, text, attachments, reply_to_id) 
-        VALUES (?, ?, ?, ?, ?)
-    """, (sender, recipient, text, attach_json, reply_to_id))
+        INSERT INTO private_messages (sender, recipient, text, attachments, reply_to_id, organization_id) 
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (sender, recipient, text, attach_json, reply_to_id, org_id))
     msg_id = cursor.lastrowid
     conn.commit()
     conn.close()
     return msg_id
 
-def get_dm_history(user1, user2, limit=50):
+def get_dm_history(user1, user2, limit=50, org_id=None):
     conn = _get_conn()
     cursor = conn.cursor()
-    # Updated query to include reply_to_id and fetch replied message info
-    cursor.execute("""
-        SELECT m.id, m.sender, m.text, m.timestamp, p.display_name, p.avatar_url, m.attachments, m.is_pinned,
-               m.reply_to_id, rm.text as reply_text, rm.sender as reply_sender,
-               COALESCE(rs.is_read, 0) as is_read
-        FROM private_messages m
-        LEFT JOIN user_profiles p ON m.sender = p.username COLLATE NOCASE
-        LEFT JOIN private_messages rm ON m.reply_to_id = rm.id
-        LEFT JOIN private_message_read_status rs ON m.id = rs.message_id
-        WHERE 
-            (m.sender = ? COLLATE NOCASE AND m.recipient = ? COLLATE NOCASE) OR 
-            (m.sender = ? COLLATE NOCASE AND m.recipient = ? COLLATE NOCASE) OR
-            (m.sender = 'AI-Assistant' AND m.recipient = ? COLLATE NOCASE AND 
-             EXISTS (SELECT 1 FROM private_messages pm2 WHERE pm2.sender = ? COLLATE NOCASE AND pm2.recipient = ? COLLATE NOCASE LIMIT 1))
-        ORDER BY m.timestamp DESC LIMIT ?
-    """, (user1, user2, user2, user1, user1, user1, user2, limit))
+    # If org_id is provided, enforce org isolation in SQL query
+    if org_id is not None:
+        cursor.execute("""
+            SELECT m.id, m.sender, m.text, m.timestamp, p.display_name, p.avatar_url, m.attachments, m.is_pinned,
+                   m.reply_to_id, rm.text as reply_text, rm.sender as reply_sender,
+                   COALESCE(rs.is_read, 0) as is_read
+            FROM private_messages m
+            LEFT JOIN user_profiles p ON m.sender = p.username COLLATE NOCASE
+            LEFT JOIN private_messages rm ON m.reply_to_id = rm.id
+            LEFT JOIN private_message_read_status rs ON m.id = rs.message_id
+            WHERE 
+                m.organization_id = ? AND (
+                    (m.sender = ? COLLATE NOCASE AND m.recipient = ? COLLATE NOCASE) OR 
+                    (m.sender = ? COLLATE NOCASE AND m.recipient = ? COLLATE NOCASE) OR
+                    (m.sender = 'AI-Assistant' AND m.recipient = ? COLLATE NOCASE AND 
+                     EXISTS (SELECT 1 FROM private_messages pm2 WHERE pm2.sender = ? COLLATE NOCASE AND pm2.recipient = ? COLLATE NOCASE AND pm2.organization_id = ? LIMIT 1))
+                )
+            ORDER BY m.timestamp DESC LIMIT ?
+        """, (org_id, user1, user2, user2, user1, user1, user1, user2, org_id, limit))
+    else:
+        cursor.execute("""
+            SELECT m.id, m.sender, m.text, m.timestamp, p.display_name, p.avatar_url, m.attachments, m.is_pinned,
+                   m.reply_to_id, rm.text as reply_text, rm.sender as reply_sender,
+                   COALESCE(rs.is_read, 0) as is_read
+            FROM private_messages m
+            LEFT JOIN user_profiles p ON m.sender = p.username COLLATE NOCASE
+            LEFT JOIN private_messages rm ON m.reply_to_id = rm.id
+            LEFT JOIN private_message_read_status rs ON m.id = rs.message_id
+            WHERE 
+                (m.sender = ? COLLATE NOCASE AND m.recipient = ? COLLATE NOCASE) OR 
+                (m.sender = ? COLLATE NOCASE AND m.recipient = ? COLLATE NOCASE) OR
+                (m.sender = 'AI-Assistant' AND m.recipient = ? COLLATE NOCASE AND 
+                 EXISTS (SELECT 1 FROM private_messages pm2 WHERE pm2.sender = ? COLLATE NOCASE AND pm2.recipient = ? COLLATE NOCASE LIMIT 1))
+            ORDER BY m.timestamp DESC LIMIT ?
+        """, (user1, user2, user2, user1, user1, user1, user2, limit))
+        
     rows = cursor.fetchall()
     conn.close()
     rows.reverse()
@@ -3350,15 +3493,21 @@ def toggle_room_message_pin(msg_id):
         conn.commit()
     conn.close()
 
-def toggle_private_message_pin(msg_id):
-    """Toggles the pinned status of a private message."""
+def toggle_private_message_pin(msg_id, org_id=None):
+    """Toggles the pinned status of a private message within the given organization."""
     conn = _get_conn()
     cursor = conn.cursor()
-    cursor.execute("SELECT is_pinned FROM private_messages WHERE id = ?", (msg_id,))
+    if org_id is not None:
+        cursor.execute("SELECT is_pinned FROM private_messages WHERE id = ? AND organization_id = ?", (msg_id, org_id))
+    else:
+        cursor.execute("SELECT is_pinned FROM private_messages WHERE id = ?", (msg_id,))
     row = cursor.fetchone()
     if row:
         new_val = 1 if not row[0] else 0
-        cursor.execute("UPDATE private_messages SET is_pinned = ? WHERE id = ?", (new_val, msg_id))
+        if org_id is not None:
+            cursor.execute("UPDATE private_messages SET is_pinned = ? WHERE id = ? AND organization_id = ?", (new_val, msg_id, org_id))
+        else:
+            cursor.execute("UPDATE private_messages SET is_pinned = ? WHERE id = ?", (new_val, msg_id))
         conn.commit()
     conn.close()
 
@@ -3428,10 +3577,20 @@ def get_rooms_for_user(username, org_id=1):
                    ROW_NUMBER() OVER (PARTITION BY CASE WHEN sender = ? COLLATE NOCASE THEN recipient ELSE sender END ORDER BY id DESC) as rn
             FROM private_messages
             WHERE sender = ? COLLATE NOCASE OR recipient = ? COLLATE NOCASE
-        )
+        ) pm
         WHERE rn = 1
+          AND (
+              pm.contact = 'AI-Assistant'
+              OR EXISTS (
+                  SELECT 1 FROM organization_members om1
+                  JOIN organization_members om2 ON om1.organization_id = om2.organization_id
+                  WHERE om1.username = ? COLLATE NOCASE 
+                    AND om2.username = pm.contact COLLATE NOCASE
+                    AND om1.organization_id = ?
+              )
+          )
         ORDER BY timestamp DESC
-    """, (username, username, username, username))
+    """, (username, username, username, username, username, org_id))
     
     contacts = []
     for c in cursor.fetchall():
@@ -3684,7 +3843,8 @@ def admin_get_all_users(org_id=1):
                p.department,
                om.role as org_role,
                COALESCE(s.can_view_financial, 0) as can_view_financial,
-               p.line_user_id
+               p.line_user_id,
+               COALESCE(s.line_permissions, 'report,links,reconcile,search,folder,leave') as line_permissions
         FROM user_profiles p
         JOIN organization_members om ON p.username = om.username COLLATE NOCASE
         LEFT JOIN user_settings s ON p.username = s.username COLLATE NOCASE
@@ -3707,6 +3867,7 @@ def admin_get_all_users(org_id=1):
         "org_role": r[10],
         "can_view_financial": bool(r[11]),
         "line_user_id": r[12],
+        "line_permissions": r[13],
     } for r in rows]
 
 # --- Global App Settings ---
@@ -3733,7 +3894,21 @@ def get_all_app_settings():
     conn.close()
     return {r[0]: r[1] for r in rows}
 
-def admin_update_user(username, display_name=None, role=None, is_active=None, notes=None, can_view_kb=None, can_edit_kb=None, can_delete_kb=None, department=None, can_view_financial=None):
+def get_line_permissions(username: str) -> str:
+    """Retrieve the LINE permissions string for a user."""
+    try:
+        conn = _get_conn()
+        cursor = conn.cursor()
+        cursor.execute("SELECT line_permissions FROM user_settings WHERE username = ? COLLATE NOCASE", (username,))
+        row = cursor.fetchone()
+        conn.close()
+        if row and row[0] is not None:
+            return row[0]
+    except Exception as e:
+        print(f"Error getting LINE permissions for {username}: {e}")
+    return 'report,links,reconcile,search,folder,leave'
+
+def admin_update_user(username, display_name=None, role=None, is_active=None, notes=None, can_view_kb=None, can_edit_kb=None, can_delete_kb=None, department=None, can_view_financial=None, position=None, line_permissions=None):
     """Admin updates a user's profile and settings."""
     conn = _get_conn()
     cursor = conn.cursor()
@@ -3751,24 +3926,20 @@ def admin_update_user(username, display_name=None, role=None, is_active=None, no
             role = "admin" # Force admin role
 
     # Update profile
-    if display_name is not None or department is not None:
-        if display_name is not None and department is not None:
-            cursor.execute("""
-                INSERT INTO user_profiles (username, display_name, department) VALUES (?, ?, ?)
-                ON CONFLICT(username) DO UPDATE SET display_name = excluded.display_name, department = excluded.department
-            """, (username, display_name, department))
-        elif display_name is not None:
-            cursor.execute("""
-                INSERT INTO user_profiles (username, display_name) VALUES (?, ?)
-                ON CONFLICT(username) DO UPDATE SET display_name = excluded.display_name
-            """, (username, display_name))
-        else: # department is not None
-            cursor.execute("""
-                INSERT INTO user_profiles (username, department) VALUES (?, ?)
-                ON CONFLICT(username) DO UPDATE SET department = excluded.department
-            """, (username, department))
+    profile_updates = {}
+    if display_name is not None:
+        profile_updates["display_name"] = display_name
+    if department is not None:
+        profile_updates["department"] = department
+    if position is not None:
+        profile_updates["position"] = position
+
+    if profile_updates:
+        cursor.execute("INSERT OR IGNORE INTO user_profiles (username) VALUES (?)", (username,))
+        for col, val in profile_updates.items():
+            cursor.execute(f"UPDATE user_profiles SET {col} = ? WHERE username = ?", (val, username))
     # Upsert settings
-    if any(v is not None for v in [role, is_active, notes, can_view_kb, can_edit_kb, can_delete_kb, can_view_financial]):
+    if any(v is not None for v in [role, is_active, notes, can_view_kb, can_edit_kb, can_delete_kb, can_view_financial, line_permissions]):
         cursor.execute("INSERT OR IGNORE INTO user_settings (username) VALUES (?)", (username,))
         if role is not None:
             cursor.execute("UPDATE user_settings SET role = ? WHERE username = ?", (role, username))
@@ -3782,6 +3953,8 @@ def admin_update_user(username, display_name=None, role=None, is_active=None, no
             cursor.execute("UPDATE user_settings SET can_delete_kb = ? WHERE username = ?", (1 if can_delete_kb else 0, username))
         if can_view_financial is not None:
             cursor.execute("UPDATE user_settings SET can_view_financial = ? WHERE username = ?", (1 if can_view_financial else 0, username))
+        if line_permissions is not None:
+            cursor.execute("UPDATE user_settings SET line_permissions = ? WHERE username = ?", (line_permissions, username))
         if notes is not None:
             cursor.execute("UPDATE user_settings SET notes = ?, updated_at = CURRENT_TIMESTAMP WHERE username = ?", (notes, username))
     conn.commit()
@@ -4062,19 +4235,26 @@ def get_categories(username=None, org_id=None):
         org_clause = ""
         org_params_single = ()
 
+    # Access & Clearance rank mapping
+    CLEARANCE_MAP = {'employee': 1, 'manager': 2, 'executive': 3, 'admin': 99}
+    ACCESS_MAP = {'public': 0, 'internal': 1, 'confidential': 2, 'executives': 3}
+
+    user_clearance = get_user_clearance_level(username)
+    max_rank = CLEARANCE_MAP.get(user_clearance, 1)
+
     if username == "Admin" or (username and _is_system_admin(username)):
         if has_org_col and org_id is not None:
             cursor.execute(
-                "SELECT id, name, description, created_by, visibility, created_at FROM kb_categories "
+                "SELECT id, name, description, created_by, visibility, created_at, access_level FROM kb_categories "
                 "WHERE (organization_id = ? OR organization_id IS NULL) ORDER BY name ASC",
                 (org_id,)
             )
         else:
-            cursor.execute("SELECT id, name, description, created_by, visibility, created_at FROM kb_categories ORDER BY name ASC")
+            cursor.execute("SELECT id, name, description, created_by, visibility, created_at, access_level FROM kb_categories ORDER BY name ASC")
     elif username:
         if has_org_col and org_id is not None:
             cursor.execute("""
-                SELECT DISTINCT c.id, c.name, c.description, c.created_by, c.visibility, c.created_at
+                SELECT DISTINCT c.id, c.name, c.description, c.created_by, c.visibility, c.created_at, c.access_level
                 FROM kb_categories c
                 LEFT JOIN user_category_access uca ON c.id = uca.category_id
                 WHERE (c.visibility = 'public' OR c.created_by = ? OR (c.visibility = 'restricted' AND uca.username = ?))
@@ -4083,7 +4263,7 @@ def get_categories(username=None, org_id=None):
             """, (username, username, org_id))
         else:
             cursor.execute("""
-                SELECT DISTINCT c.id, c.name, c.description, c.created_by, c.visibility, c.created_at
+                SELECT DISTINCT c.id, c.name, c.description, c.created_by, c.visibility, c.created_at, c.access_level
                 FROM kb_categories c
                 LEFT JOIN user_category_access uca ON c.id = uca.category_id
                 WHERE c.visibility = 'public'
@@ -4094,16 +4274,32 @@ def get_categories(username=None, org_id=None):
     else:
         if has_org_col and org_id is not None:
             cursor.execute(
-                "SELECT id, name, description, created_by, visibility, created_at FROM kb_categories "
+                "SELECT id, name, description, created_by, visibility, created_at, access_level FROM kb_categories "
                 "WHERE visibility = 'public' AND (organization_id = ? OR organization_id IS NULL) ORDER BY name ASC",
                 (org_id,)
             )
         else:
-            cursor.execute("SELECT id, name, description, created_by, visibility, created_at FROM kb_categories WHERE visibility = 'public' ORDER BY name ASC")
+            cursor.execute("SELECT id, name, description, created_by, visibility, created_at, access_level FROM kb_categories WHERE visibility = 'public' ORDER BY name ASC")
 
     rows = cursor.fetchall()
     conn.close()
-    return [{"id": r[0], "name": r[1], "description": r[2], "created_by": r[3], "visibility": r[4], "created_at": r[5]} for r in rows]
+    
+    result = []
+    for r in rows:
+        acc = r[6] if len(r) > 6 and r[6] else 'public'
+        req_rank = ACCESS_MAP.get(acc, 0)
+        # Filter out categories that require higher clearance than user rank
+        if max_rank >= req_rank:
+            result.append({
+                "id": r[0],
+                "name": r[1],
+                "description": r[2],
+                "created_by": r[3],
+                "visibility": r[4],
+                "created_at": r[5],
+                "access_level": acc
+            })
+    return result
 
 def _is_system_admin(username):
     """Quick check if username is system admin (role=admin in user_settings)."""
@@ -4619,21 +4815,31 @@ def edit_room_message(msg_id, new_text, username, is_admin_user=False):
         conn.close()
 
 
-def edit_private_message(msg_id, new_text, username, is_admin_user=False):
-    """Edit a DM message. Returns True on success."""
+def edit_private_message(msg_id, new_text, username, is_admin_user=False, org_id=None):
+    """Edit a DM message within the specific organization. Returns True on success."""
     conn = _get_conn()
     cursor = conn.cursor()
     try:
-        cursor.execute("SELECT sender FROM private_messages WHERE id = ?", (msg_id,))
+        if org_id is not None:
+            cursor.execute("SELECT sender FROM private_messages WHERE id = ? AND organization_id = ?", (msg_id, org_id))
+        else:
+            cursor.execute("SELECT sender FROM private_messages WHERE id = ?", (msg_id,))
         row = cursor.fetchone()
         if not row:
             return False
         if not is_admin_user and row[0].lower() != username.lower():
             return False
-        cursor.execute(
-            "UPDATE private_messages SET text = ?, edited_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (new_text, msg_id)
-        )
+            
+        if org_id is not None:
+            cursor.execute(
+                "UPDATE private_messages SET text = ?, edited_at = CURRENT_TIMESTAMP WHERE id = ? AND organization_id = ?",
+                (new_text, msg_id, org_id)
+            )
+        else:
+            cursor.execute(
+                "UPDATE private_messages SET text = ?, edited_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (new_text, msg_id)
+            )
         conn.commit()
         return True
     finally:
@@ -5598,6 +5804,40 @@ def list_group_mappings(owner_username):
         return []
 
 
+def update_group_mapping_settings(group_id, group_name=None, default_folder_id=None, default_folder_name=None, bot_enabled=None):
+    """Update settings for a specific LINE group mapping."""
+    try:
+        conn = _get_conn()
+        cursor = conn.cursor()
+        updates = []
+        params = []
+        if group_name is not None:
+            updates.append("group_name = ?")
+            params.append(group_name)
+        if default_folder_id is not None:
+            updates.append("default_folder_id = ?")
+            params.append(default_folder_id)
+        if default_folder_name is not None:
+            updates.append("default_folder_name = ?")
+            params.append(default_folder_name)
+        if bot_enabled is not None:
+            updates.append("bot_enabled = ?")
+            params.append(1 if bot_enabled else 0)
+            
+        if not updates:
+            conn.close()
+            return True
+            
+        params.append(group_id)
+        cursor.execute(f"UPDATE line_group_mappings SET {', '.join(updates)} WHERE group_id = ?", params)
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"❌ Error updating group mapping settings: {e}")
+        return False
+
+
 # ─── Password Reset ───────────────────────────────────────────────────────────
 
 def _ensure_reset_table():
@@ -6294,3 +6534,179 @@ def _oauth_state_cleanup():
         conn.close()
     except Exception:
         pass
+
+
+def log_audit_event(username: str, org_id: int, action: str, details: str = "", ip_address: str = ""):
+    try:
+        conn = _get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO audit_logs (username, organization_id, action, details, ip_address)
+            VALUES (?, ?, ?, ?, ?)
+        """, (username or 'System', org_id or 1, action, details or '', ip_address or ''))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"⚠️ Error logging audit event: {e}")
+
+def get_audit_logs(org_id: int = 1, limit: int = 100, offset: int = 0, username: str = None, action: str = None):
+    conn = _get_conn()
+    cur = conn.cursor()
+    query = "SELECT id, username, organization_id, action, details, ip_address, timestamp FROM audit_logs WHERE organization_id = ?"
+    params = [org_id]
+    if username:
+        query += " AND username LIKE ?"
+        params.append(f"%{username}%")
+    if action:
+        query += " AND action = ?"
+        params.append(action)
+    query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+    
+    cur.execute(query, params)
+    rows = cur.fetchall()
+    
+    cur.execute("SELECT COUNT(*) FROM audit_logs WHERE organization_id = ?", (org_id,))
+    total_row = cur.fetchone()
+    total = total_row[0] if total_row else 0
+    conn.close()
+    
+    logs = [{
+        "id": r[0],
+        "username": r[1],
+        "organization_id": r[2],
+        "action": r[3],
+        "details": r[4],
+        "ip_address": r[5],
+        "timestamp": str(r[6])
+    } for r in rows]
+    return logs, total
+
+def get_user_clearance_level(username: str) -> str:
+    if not username:
+        return 'employee'
+    if username == 'Admin':
+        return 'admin'
+    conn = _get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT clearance_level, role FROM user_settings WHERE username = ?", (username,))
+    row = cur.fetchone()
+    conn.close()
+    if row:
+        if row[1] in ['admin', 'superadmin']:
+            return 'admin'
+        return row[0] or 'employee'
+    return 'employee'
+
+def update_user_clearance_level(username: str, clearance_level: str) -> bool:
+    conn = _get_conn()
+    cur = conn.cursor()
+    cur.execute("UPDATE user_settings SET clearance_level = ? WHERE username = ?", (clearance_level, username))
+    ok = cur.rowcount > 0
+    conn.commit()
+    conn.close()
+    return ok
+
+def get_kb_category_access_level(category_id: int) -> str:
+    conn = _get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT access_level FROM kb_categories WHERE id = ?", (category_id,))
+    row = cur.fetchone()
+    conn.close()
+    return row[0] if row and row[0] else 'public'
+
+def create_org_announcement(org_id, title, content, priority, created_by):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO org_announcements (organization_id, title, content, priority, created_by)
+        VALUES (?, ?, ?, ?, ?)
+    """, (org_id, title, content, priority, created_by))
+    ann_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return ann_id
+
+def get_org_announcements(org_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT id, title, content, priority, created_by, datetime(created_at, 'localtime')
+        FROM org_announcements
+        WHERE organization_id = ?
+        ORDER BY id DESC LIMIT 50
+    """, (org_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [{"id": r[0], "title": r[1], "content": r[2], "priority": r[3], "created_by": r[4], "created_at": r[5]} for r in rows]
+
+def delete_org_announcement(ann_id, org_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM org_announcements WHERE id = ? AND organization_id = ?", (ann_id, org_id))
+    conn.commit()
+    conn.close()
+    return True
+
+def update_kb_category_access_level(category_id: int, access_level: str) -> bool:
+    conn = _get_conn()
+    cur = conn.cursor()
+    cur.execute("UPDATE kb_categories SET access_level = ? WHERE id = ?", (access_level, category_id))
+    ok = cur.rowcount > 0
+    conn.commit()
+    conn.close()
+    return ok
+
+def log_event(action, user="System", org_id=1, details="", ip_address="127.0.0.1"):
+    """Log an audit trail event for organization compliance and activity history."""
+    try:
+        conn = _get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO audit_logs (org_id, username, action, details, ip_address) VALUES (?, ?, ?, ?, ?)",
+            (org_id, user or "System", str(action), str(details or ""), ip_address or "127.0.0.1")
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"[log_event error] {e}")
+
+def get_audit_logs(org_id=1, limit=100, offset=0, username_filter=None, action_filter=None):
+    """Retrieve audit logs for an organization with optional filters."""
+    try:
+        conn = _get_conn()
+        cursor = conn.cursor()
+        query = "SELECT id, datetime(timestamp, 'localtime'), username, action, ip_address, details FROM audit_logs WHERE org_id = ?"
+        params = [org_id]
+        if username_filter:
+            query += " AND username LIKE ?"
+            params.append(f"%{username_filter}%")
+        if action_filter:
+            query += " AND action LIKE ?"
+            params.append(f"%{action_filter}%")
+        
+        query += " ORDER BY id DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+        
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        
+        cursor.execute("SELECT COUNT(*) FROM audit_logs WHERE org_id = ?", (org_id,))
+        total_row = cursor.fetchone()
+        total = total_row[0] if total_row else 0
+        conn.close()
+        
+        logs = []
+        for r in rows:
+            logs.append({
+                "id": r[0],
+                "timestamp": str(r[1]),
+                "username": r[2] or "System",
+                "action": r[3] or "",
+                "ip_address": r[4] or "-",
+                "details": r[5] or ""
+            })
+        return logs, total
+    except Exception as e:
+        logger.error(f"[get_audit_logs error] {e}")
+        return [], 0

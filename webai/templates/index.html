@@ -41,7 +41,7 @@
       };
     }
   </script>
-  <link rel="stylesheet" href="/static/style.css?v=2.2" />
+  <link rel="stylesheet" href="/static/style.css?v=3.5" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
@@ -84,6 +84,50 @@
     .dark .animate-shimmer {
       background: linear-gradient(90deg, transparent 25%, rgba(255,255,255,0.05) 50%, transparent 75%);
     }
+
+    /* ─── Sidebar Width Override (beats Tailwind CDN) ─── */
+    /* Desktop: sidebar always starts at 256px */
+    @media (min-width: 1024px) {
+      #navSidebar {
+        width: 256px !important;
+        min-width: 256px !important;
+        max-width: 256px !important;
+        flex-shrink: 0 !important;
+        transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                    min-width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                    max-width 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+      }
+      #navSidebar.collapsed {
+        width: 76px !important;
+        min-width: 76px !important;
+        max-width: 76px !important;
+      }
+    }
+    /* Mobile: sidebar is off-screen (fixed) — content takes full width */
+    @media (max-width: 1023px) {
+      #navSidebar {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        bottom: 0 !important;
+        width: 300px !important;
+        min-width: 300px !important;
+        max-width: 300px !important;
+        z-index: 1000 !important;
+        transform: translateX(-100%) !important;
+        transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
+        flex-shrink: 0 !important;
+      }
+      #navSidebar.collapsed {
+        width: 300px !important;
+        min-width: 300px !important;
+        max-width: 300px !important;
+        transform: translateX(-100%) !important;
+      }
+      #navSidebar.open {
+        transform: translateX(0) !important;
+      }
+    }
   </style>
   <script>
     // Immediate Theme & Sidebar Check
@@ -99,8 +143,8 @@
       }
     })();
   </script>
-  <script src="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0/index.min.js"></script>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0/default.css">
+  <script src="https://unpkg.com/mobile-drag-drop@2.3.0/index.min.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/mobile-drag-drop@2.3.0/default.css">
 </head>
 
 <body class="h-full h-[100dvh] overflow-hidden dark:bg-surface-950 dark:text-surface-100">
@@ -389,7 +433,7 @@
       <div class="space-y-4">
         <!-- Target Employee Details -->
         <div class="flex items-center gap-3 p-3 bg-surface-50 dark:bg-surface-800/50 rounded-xl">
-          <img id="editManagerUserAvatar" src="/static/images/default-avatar.png" class="w-10 h-10 rounded-full object-cover" onerror="this.src='/static/images/default-avatar.png'">
+          <img id="editManagerUserAvatar" src="data:image/svg+xml;utf8,&lt;svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2394a3b8'&gt;&lt;circle cx='12' cy='12' r='12'/&gt;&lt;circle cx='12' cy='9' r='4' fill='%23ffffff'/&gt;&lt;path d='M12 14c-4.4 0-8 3.6-8 8h16c0-4.4-3.6-8-8-8z' fill='%23ffffff'/&gt;&lt;/svg&gt;" class="w-10 h-10 rounded-full object-cover">
           <div>
             <div id="editManagerUserDisplayName" class="font-bold text-xs text-surface-900 dark:text-white">—</div>
             <div id="editManagerUserPosition" class="text-[10px] text-surface-400">—</div>
@@ -545,7 +589,7 @@
     <!-- Mobile Sidebar Overlay -->
     <div id="sidebarOverlay" class="sidebar-overlay"></div>
     <aside id="navSidebar"
-      class="w-64 flex-shrink-0 bg-white dark:bg-surface-900 border-r border-surface-200 dark:border-surface-800 flex flex-col h-full z-50">
+      class="bg-white dark:bg-surface-900 border-r border-surface-200 dark:border-surface-800 flex flex-col h-full z-50">
       <div class="p-6 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between logo-container">
         <div class="flex items-center gap-3">
           <div class="w-8 h-8 bg-brand-600 text-white rounded flex items-center justify-center flex-shrink-0">
@@ -626,6 +670,9 @@
         <button class="nav-item w-full" data-view="kb" id="nav-kb">
           <i data-lucide="database" class="w-4 h-4"></i> <span>คลังความรู้ AI</span>
         </button>
+        <button class="nav-item w-full" data-view="reply-assistant" id="nav-reply-assistant" onclick="showView('reply-assistant')">
+          <i data-lucide="message-square-quote" class="w-4 h-4 text-indigo-500"></i> <span>ช่วยตอบแชทลูกค้า</span>
+        </button>
 
         <!-- เพิ่มเติม (collapsible) -->
         <button id="moreNavToggle" onclick="toggleMoreNav()" class="nav-item w-full text-surface-400 hover:text-surface-700 dark:hover:text-surface-200">
@@ -679,8 +726,8 @@
           <i data-lucide="shield-check" class="w-4 h-4"></i> <span>แผงควบคุม Admin</span>
         </button>
         <button class="nav-item w-full {{ '' if (is_admin or is_org_admin) else 'hidden' }}"
-          data-view="line-groups" id="nav-line-groups" onclick="showView('line-groups'); loadLineGroups()">
-          <i data-lucide="message-square" class="w-4 h-4"></i> <span>LINE Groups</span>
+          data-view="line-groups" id="nav-line-groups" onclick="showView('line-groups'); loadLineGroups(); loadGoogleFoldersForGroupRegister();">
+          <i data-lucide="message-square" class="w-4 h-4"></i> <span>จัดการกลุ่ม LINE</span>
         </button>
         <button class="nav-item w-full {{ '' if is_superadmin else 'hidden' }}"
           data-view="super-admin" id="nav-super-admin" onclick="showView('super-admin')">
@@ -692,10 +739,6 @@
         <button class="nav-item w-full hidden"
           data-view="reconciliation" id="nav-reconciliation">
           <i data-lucide="scale" class="w-4 h-4"></i> <span>ระบบกระทบยอด</span>
-        </button>
-        <button class="nav-item w-full hidden"
-          data-view="line-manager" id="nav-line-manager" onclick="showView('line-manager')">
-          <i data-lucide="message-circle" class="w-4 h-4"></i> <span>จัดการ LINE</span>
         </button>
 
       </nav>
@@ -845,12 +888,12 @@
 
         <!-- Home Dashboard View (Smart Dashboard) -->
         <section id="view-home" class="view hidden flex-1 flex flex-col items-center overflow-y-auto custom-scrollbar animate-in fade-in duration-500 bg-surface-50/50 dark:bg-surface-950/50">
-          <div class="w-full max-w-[1600px] p-6 lg:p-10 space-y-10">
+          <div class="w-full max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6 md:space-y-8">
             
             <!-- Dashboard Header -->
-            <header class="w-full flex items-center justify-between mb-2 animate-in fade-in slide-in-from-top-4 duration-700">
+            <header class="w-full flex items-center justify-between mb-1 animate-in fade-in slide-in-from-top-4 duration-700">
               <div>
-                <h2 class="text-2xl font-black text-surface-900 dark:text-white tracking-tight">Smart Dashboard</h2>
+                <h2 class="text-2xl sm:text-3xl font-black text-surface-900 dark:text-white tracking-tight">Smart Dashboard</h2>
                 <p class="text-xs text-surface-400 font-bold uppercase tracking-widest mt-1">Real-time Intelligence & Operations</p>
               </div>
               <div class="flex items-center gap-3">
@@ -864,33 +907,49 @@
               </div>
             </header>
 
+            <!-- แบนเนอร์เตือนผูก LINE ส่วนตัว (จะถูกควบคุมโดย JS ให้ซ่อนเมื่อเชื่อมต่อแล้ว) -->
+            <div id="myLineBannerAlert" class="hidden w-full p-4 bg-purple-50 dark:bg-purple-950/20 border border-purple-100 dark:border-purple-900/50 rounded-2xl flex items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
+              <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-xl bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center flex-shrink-0">
+                  <i data-lucide="message-circle" class="w-4 h-4 text-purple-600 dark:text-purple-400"></i>
+                </div>
+                <div>
+                  <div class="text-xs font-bold text-purple-900 dark:text-purple-100">ผูกบัญชี LINE ส่วนตัวของพี่หรือยังคะ?</div>
+                  <p class="text-[10px] text-purple-600 dark:text-purple-400 mt-0.5">รับสลิปเงินเดือน สรุปเอกสาร และข่าวสารขององค์กรแบบส่วนตัวเรียลไทม์ได้เลยค่ะ</p>
+                </div>
+              </div>
+              <button onclick="showView('settings')" class="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-lg transition shadow-sm whitespace-nowrap">
+                🔗 ไปผูกบัญชี LINE
+              </button>
+            </div>
+
             <!-- 🌟 AI Hero Section (Daily Intelligence) -->
             <div class="w-full">
               <!-- Full Width: Greeting & Briefing -->
-              <div class="relative overflow-hidden rounded-[3rem] bg-gradient-to-br from-brand-600 to-indigo-700 p-8 md:p-12 text-white shadow-2xl shadow-brand-600/20">
-                <div class="absolute top-0 right-0 p-12 opacity-10 pointer-events-none">
-                  <i data-lucide="sparkles" class="w-48 h-48"></i>
+              <div class="relative overflow-hidden rounded-[2.5rem] bg-gradient-to-br from-brand-600 to-indigo-700 p-6 sm:p-8 md:p-10 text-white shadow-2xl shadow-brand-600/20">
+                <div class="absolute top-0 right-0 p-8 md:p-12 opacity-10 pointer-events-none">
+                  <i data-lucide="sparkles" class="w-36 h-36 md:w-48 md:h-48"></i>
                 </div>
-                <div class="relative z-10 space-y-6">
+                <div class="relative z-10 space-y-4 md:space-y-6">
                   <div class="flex items-center gap-3">
                     <div class="p-2 bg-white/20 backdrop-blur-md rounded-2xl">
                       <i data-lucide="zap" class="w-4 h-4 text-yellow-300"></i>
                     </div>
                     <span class="text-[10px] font-black uppercase tracking-widest text-brand-100">สรุปข่าวสารโดยน้องพั้นซ์</span>
                   </div>
-                  <div class="max-w-3xl space-y-4">
-                    <h1 class="text-3xl md:text-5xl font-black tracking-tight leading-tight" id="dashGreeting">
+                  <div class="max-w-3xl space-y-3">
+                    <h1 class="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black tracking-tight leading-tight" id="dashGreeting">
                       Good Morning, User
                     </h1>
-                    <p class="text-base md:text-xl text-brand-50/80 font-medium leading-relaxed italic" id="dashAISummary">
+                    <p class="text-sm sm:text-base md:text-lg text-brand-50/90 font-medium leading-relaxed italic" id="dashAISummary">
                       คุณมีกำหนดการสำคัญ 3 อย่างในวันนี้ และมีความเคลื่อนไหวใหม่ในแผนกของคุณ...
                     </p>
                   </div>
-                  <div class="flex gap-4 pt-4">
-                    <button onclick="showView('chat')" class="px-8 py-3 bg-white text-brand-700 rounded-2xl text-sm font-black hover:bg-brand-50 transition-all shadow-xl flex items-center gap-2">
+                  <div class="flex flex-wrap gap-3 pt-2">
+                    <button onclick="showView('chat')" class="px-6 py-2.5 bg-white text-brand-700 rounded-2xl text-xs sm:text-sm font-black hover:bg-brand-50 transition-all shadow-xl flex items-center gap-2">
                       <i data-lucide="message-square" class="w-4 h-4"></i> ถาม AI
                     </button>
-                    <button onclick="loadDashboard()" class="px-8 py-3 bg-white/10 backdrop-blur-md border border-white/20 text-white rounded-2xl text-sm font-black hover:bg-white/20 transition-all flex items-center gap-2">
+                    <button onclick="loadDashboard()" class="px-6 py-2.5 bg-white/10 backdrop-blur-md border border-white/20 text-white rounded-2xl text-xs sm:text-sm font-black hover:bg-white/20 transition-all flex items-center gap-2">
                       <i data-lucide="refresh-cw" class="w-4 h-4"></i> รีเฟรช
                     </button>
                   </div>
@@ -898,11 +957,34 @@
               </div>
             </div>
 
+            <!-- 📢 Latest Announcement Banner -->
+            <div id="dashLatestAnnouncement" class="hidden w-full p-6 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border-2 border-amber-500/30 rounded-[2.5rem] flex-col md:flex-row items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4 duration-500 relative overflow-hidden">
+              <div class="absolute right-0 top-0 translate-x-10 -translate-y-6 text-amber-500/5 rotate-12 pointer-events-none">
+                <i data-lucide="megaphone" class="w-40 h-40"></i>
+              </div>
+              <div class="flex items-start gap-4">
+                <div class="w-12 h-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center flex-shrink-0 shadow-lg shadow-amber-500/20">
+                  <i data-lucide="megaphone" class="w-6 h-6 animate-bounce"></i>
+                </div>
+                <div class="space-y-1">
+                  <div class="flex items-center gap-2">
+                    <span class="px-2 py-0.5 rounded bg-amber-500 text-white text-[9px] font-black uppercase tracking-wider" id="dashAnnPriority">สำคัญมาก</span>
+                    <span class="text-[10px] font-bold text-surface-400" id="dashAnnMeta">โพสต์โดย @admin • 2 hours ago</span>
+                  </div>
+                  <h3 class="text-base font-black text-surface-900 dark:text-white" id="dashAnnTitle">หัวข้อประกาศล่าสุด</h3>
+                  <p class="text-xs text-surface-600 dark:text-surface-300 leading-relaxed line-clamp-2 pr-4" id="dashAnnContent">รายละเอียดเนื้อหาประกาศขององค์กรจะปรากฏตรงนี้...</p>
+                </div>
+              </div>
+              <button onclick="showView('org'); loadOrgMembers(); switchOrgTab('announcements');" class="px-6 py-3 bg-surface-900 hover:bg-black dark:bg-surface-800 dark:hover:bg-black text-white text-xs font-black rounded-2xl transition-all shadow-md shrink-0">
+                📢 เปิดดูประกาศทั้งหมด
+              </button>
+            </div>
+
             <!-- 🌦️ Weather Widget -->
-            <div id="weatherCard" class="glass p-6 rounded-[2.5rem] border border-surface-100 dark:border-surface-100/10 bg-white/70 dark:bg-surface-900/70 shadow-xl shadow-brand-500/5 hover:shadow-brand-500/10 hover:-translate-y-1 transition-all cursor-pointer group flex flex-col md:flex-row items-center justify-between gap-6" onclick="showWeatherDetail()">
-              <div class="flex items-center gap-6 w-full md:w-auto">
-                <div id="weatherIconContainer" class="w-20 h-20 bg-gradient-to-br from-brand-50 to-brand-100 dark:from-brand-900/30 dark:to-indigo-900/30 text-brand-600 rounded-3xl flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform duration-500">
-                  <i data-lucide="cloud-sun" id="mainWeatherIcon" class="w-12 h-12"></i>
+            <div id="weatherCard" class="glass p-5 sm:p-6 lg:p-8 rounded-[2.5rem] border border-surface-100 dark:border-surface-100/10 bg-white/70 dark:bg-surface-900/70 shadow-xl shadow-brand-500/5 hover:shadow-brand-500/10 hover:-translate-y-1 transition-all cursor-pointer group flex flex-col lg:flex-row items-center justify-between gap-6" onclick="showWeatherDetail()">
+              <div class="flex items-center gap-4 sm:gap-6 w-full lg:w-auto">
+                <div id="weatherIconContainer" class="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-brand-50 to-brand-100 dark:from-brand-900/30 dark:to-indigo-900/30 text-brand-600 rounded-3xl flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform duration-500 shrink-0">
+                  <i data-lucide="cloud-sun" id="mainWeatherIcon" class="w-10 h-10 sm:w-12 sm:h-12"></i>
                 </div>
                 <div>
                   <div class="flex items-center gap-2 mb-1">
@@ -950,7 +1032,7 @@
             </div>
 
             <!-- 🍱 Lunch & Tips Row -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
               <!-- Lunch Randomizer Card -->
               <div class="glass p-8 rounded-[2.5rem] border border-surface-100 dark:border-surface-800 bg-white dark:bg-surface-900 shadow-xl overflow-hidden group">
                 <div class="flex items-center justify-between mb-6">
@@ -1020,7 +1102,7 @@
             <!-- Row for Stats & Schedule -->
 
             <!-- 📊 Quick Stats Grid -->
-            <div class="grid grid-cols-2 lg:grid-cols-4 gap-6">
+            <div class="grid grid-cols-2 xl:grid-cols-4 gap-6">
               <div class="glass p-6 rounded-3xl border border-surface-100 dark:border-surface-800 bg-white dark:bg-surface-900 shadow-sm hover:shadow-md transition-all">
                 <div class="flex items-start justify-between mb-4">
                   <div class="p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 rounded-xl"><i data-lucide="users" class="w-5 h-5"></i></div>
@@ -1056,7 +1138,7 @@
             </div>
             
             <!-- 📁 Drive Insights [NEW] -->
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 mt-6">
               <!-- Drive Total Files -->
               <div class="glass p-6 rounded-3xl border border-surface-100 dark:border-surface-800 bg-white dark:bg-surface-900 shadow-sm hover:shadow-md transition-all group">
                 <div class="flex items-start justify-between mb-4">
@@ -1394,7 +1476,7 @@
                 </div>
 
                 <!-- File List Grid -->
-                <div id="fileList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 3xl:grid-cols-6 gap-6 auto-rows-min pb-10">
+                <div id="fileList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-3 3xl:grid-cols-4 gap-6 auto-rows-min pb-10">
                   <!-- Files injected here -->
                 </div>
               </div>
@@ -1541,6 +1623,11 @@
               </div>
             </div>
             <div class="flex items-center gap-3">
+              <!-- ปุ่มเปิดและแก้ไข Google Sheets จริง -->
+              <a href="/dashboard" target="_blank"
+                class="text-[10px] font-black text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 uppercase transition-colors flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-950/20 px-3 py-1.5 rounded-lg">
+                <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5 text-emerald-500"></i> จัดการ Google Sheets จริง (แก้ไขได้)
+              </a>
               <button id="downloadChartBtn"
                 class="text-[10px] font-black text-surface-400 hover:text-brand-600 uppercase transition-colors flex items-center gap-1">
                 <i data-lucide="download" class="w-3.5 h-3.5"></i> บันทึกภาพกราฟ
@@ -2335,6 +2422,40 @@
             </div>
             <!-- /บัญชีของฉัน -->
 
+            <!-- LINE Integration Card -->
+            <div class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-3xl overflow-hidden shadow-sm">
+              <div class="px-6 py-4 border-b border-surface-100 dark:border-surface-800 flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-[#06C755]/10 flex items-center justify-center">
+                  <i data-lucide="message-circle" class="w-4 h-4 text-[#06C755]"></i>
+                </div>
+                <h3 class="font-black text-sm uppercase tracking-widest text-surface-900 dark:text-white">การเชื่อมต่อ LINE ส่วนตัว</h3>
+              </div>
+              <div class="p-6 space-y-4">
+                <div class="p-4 bg-surface-50 dark:bg-surface-800/50 rounded-2xl border border-surface-100 dark:border-surface-700 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div>
+                    <div class="text-sm font-bold text-surface-800 dark:text-white flex flex-wrap items-center gap-2">
+                      <span>รับข่าวสารองค์กรและแจ้งเตือนส่วนตัว</span>
+                      <span id="myLineStatusText" class="text-xs font-bold text-surface-500">🔴 กำลังโหลดสถานะ...</span>
+                    </div>
+                    <p id="myLineInstruction" class="text-xs text-surface-500 dark:text-surface-400 mt-1 leading-relaxed">
+                      คุณสามารถผูกบัญชี LINE ส่วนตัวเพื่อรับข้อมูลข่าวสารองค์กร สลิปเงินเดือน เอกสาร และวันสำคัญต่างๆ ได้โดยตรงค่ะ
+                    </p>
+                  </div>
+                  
+                  <div class="flex items-center gap-3">
+                    <!-- ปุ่มเชื่อมต่อ LINE -->
+                    <a href="/api/line/login-init" id="btnMyBindLine" class="flex items-center gap-2 px-4 py-2 bg-[#06C755] hover:bg-[#05a847] text-white text-xs font-bold rounded-xl transition shadow-sm whitespace-nowrap">
+                      <i data-lucide="link" class="w-3.5 h-3.5"></i> เชื่อมต่อ LINE
+                    </a>
+                    <!-- ปุ่มยกเลิกการเชื่อมต่อ -->
+                    <button onclick="unbindMyLine()" id="btnMyUnbindLine" class="flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition shadow-sm hidden whitespace-nowrap">
+                      <i data-lucide="unlink" class="w-3.5 h-3.5"></i> ยกเลิกการผูกบัญชี
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div class="p-6 bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-2xl">
               <h3 class="font-bold text-sm mb-1 uppercase text-surface-500">Google Gemini Connectivity</h3>
               <p class="text-xl font-bold mb-4">Gemini 2.0 Flash AI</p>
@@ -2442,38 +2563,7 @@
               </button>
             </div>
 
-            <!-- ── PEAK API ── -->
-            <div class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-3xl overflow-hidden shadow-sm">
-              <div class="px-6 py-4 border-b border-surface-100 dark:border-surface-800 flex items-center gap-3">
-                <div class="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center">
-                  <i data-lucide="plug" class="w-4 h-4 text-indigo-600"></i>
-                </div>
-                <h3 class="font-black text-sm uppercase tracking-widest text-surface-900 dark:text-white">เชื่อมต่อ PEAK บัญชี (API)</h3>
-                <span id="peakSettingsStatus" class="ml-auto text-[10px] px-2 py-0.5 rounded-full bg-surface-100 dark:bg-surface-800 text-surface-400 font-bold">ยังไม่ได้เชื่อมต่อ</span>
-              </div>
-              <div class="p-6 space-y-4">
-                <p class="text-xs text-surface-500">ตั้งค่าเพื่อดึงข้อมูล invoice จาก PEAK โดยอัตโนมัติ ไม่ต้อง export Excel อีกต่อไป</p>
-                <div>
-                  <label class="block text-[10px] font-black uppercase tracking-widest text-surface-400 mb-1.5">Connect ID</label>
-                  <input id="peakConnectId" type="text" placeholder="เช่น MYAPP-001"
-                    class="w-full bg-surface-50 dark:bg-surface-950 border border-surface-200 dark:border-surface-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 text-surface-900 dark:text-white">
-                </div>
-                <div>
-                  <label class="block text-[10px] font-black uppercase tracking-widest text-surface-400 mb-1.5">Password (สำหรับขอ Client Token)</label>
-                  <input id="peakPassword" type="password" placeholder="••••••••"
-                    class="w-full bg-surface-50 dark:bg-surface-950 border border-surface-200 dark:border-surface-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 text-surface-900 dark:text-white">
-                </div>
-                <div>
-                  <label class="block text-[10px] font-black uppercase tracking-widest text-surface-400 mb-1.5">User Token <span class="normal-case font-normal text-surface-400">(รับจากหน้า External Apps ใน PEAK)</span></label>
-                  <input id="peakUserToken" type="text" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                    class="w-full bg-surface-50 dark:bg-surface-950 border border-surface-200 dark:border-surface-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 font-mono text-xs text-surface-900 dark:text-white">
-                </div>
-                <button onclick="savePeakSettings()"
-                  class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-colors flex items-center justify-center gap-2">
-                  <i data-lucide="save" class="w-4 h-4"></i> บันทึกการตั้งค่า PEAK
-                </button>
-              </div>
-            </div>
+
 
           </div>
         </section>
@@ -2671,6 +2761,59 @@
               </div>
             </div>
 
+            <!-- Audit Logs & Security Compliance Section -->
+            <div class="bg-white dark:bg-surface-900 border border-surface-100 dark:border-surface-800 rounded-2xl p-6 shadow-sm space-y-4">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <div class="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center font-bold">
+                    <i data-lucide="shield-check" class="w-5 h-5"></i>
+                  </div>
+                  <div>
+                    <h3 class="text-sm font-black text-surface-900 dark:text-white">🛡️ ประวัติการใช้งานและความปลอดภัย (Audit Trail)</h3>
+                    <p class="text-[10px] text-surface-400 font-bold uppercase tracking-widest">การสอบถาม AI · การเข้าสู่ระบบ · การดาวน์โหลดไฟล์</p>
+                  </div>
+                </div>
+                <button onclick="exportAuditLogsCSV()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-brand-600 hover:bg-brand-700 transition-all shadow-sm">
+                  <i data-lucide="download" class="w-3.5 h-3.5"></i> ส่งออกรายงาน CSV
+                </button>
+              </div>
+
+              <!-- Filter Bar -->
+              <div class="flex flex-wrap gap-2 items-center text-xs">
+                <input type="text" id="auditSearchInput" placeholder="ค้นหาชื่อผู้ใช้..." onkeyup="loadAuditLogsUI()" class="px-3 py-1.5 rounded-xl border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:border-brand-500">
+                <select id="auditActionFilter" onchange="loadAuditLogsUI()" class="px-3 py-1.5 rounded-xl border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:border-brand-500">
+                  <option value="">ทุกกิจกรรม (All Actions)</option>
+                  <option value="CHAT_QUERY">💬 สอบถาม AI (Chat Query)</option>
+                  <option value="USER_LOGIN">🔑 เข้าสู่ระบบ (Login)</option>
+                  <option value="FILE_UPLOAD">📤 อัปโหลดไฟล์ KB</option>
+                  <option value="UPDATE_CLEARANCE">🔐 ปรับสิทธิ์ความปลอดภัย</option>
+                </select>
+                <button onclick="loadAuditLogsUI()" class="px-3 py-1.5 rounded-xl bg-surface-100 dark:bg-surface-800 hover:bg-surface-200 font-bold text-surface-700 dark:text-surface-300">
+                  รีเฟรช
+                </button>
+              </div>
+
+              <!-- Table -->
+              <div class="overflow-x-auto max-h-72 border border-surface-100 dark:border-surface-800 rounded-xl">
+                <table class="w-full text-left text-xs text-surface-600 dark:text-surface-300">
+                  <thead class="bg-surface-50 dark:bg-surface-800/80 text-[10px] font-black uppercase tracking-widest text-surface-400 sticky top-0">
+                    <tr>
+                      <th class="px-3 py-2">เวลา</th>
+                      <th class="px-3 py-2">ผู้ใช้งาน</th>
+                      <th class="px-3 py-2">กิจกรรม</th>
+                      <th class="px-3 py-2">รายละเอียด</th>
+                      <th class="px-3 py-2">IP Address</th>
+                    </tr>
+                  </thead>
+                  <tbody id="auditLogTableBody" class="divide-y divide-surface-100 dark:divide-surface-800/50 font-medium">
+                    <tr>
+                      <td colspan="5" class="px-4 py-4 text-center text-surface-400">กำลังโหลดประวัติการใช้งาน...</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
             <!-- Analytics Charts -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <!-- Daily Activity Chart -->
@@ -2723,46 +2866,7 @@
               </div>
               </div>
 
-            <!-- LINE OA Broadcast Card [NEW] -->
-            <div class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-2xl overflow-hidden shadow-sm mb-6">
-                <div class="px-6 py-4 border-b border-surface-100 dark:border-surface-800 bg-surface-50 dark:bg-surface-800/50 flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white shadow-md">
-                        <i data-lucide="message-square" class="w-5 h-5"></i>
-                    </div>
-                    <div>
-                        <h3 class="font-bold text-base text-surface-900 dark:text-white">LINE OA Broadcast</h3>
-                        <p class="text-[10px] font-semibold text-surface-500 uppercase tracking-wider">ส่งประกาศถึงผู้ใช้งานทุกคนผ่าน LINE OA</p>
-                    </div>
-                </div>
-                <div class="p-6 space-y-4">
-                    <div class="space-y-2">
-                        <label class="text-[10px] font-black uppercase tracking-widest text-surface-400 px-1">ข้อความประกาศ</label>
-                        <textarea id="lineBroadcastMsg" placeholder="พิมพ์ข้อความที่ต้องการส่งถึงทุกคนใน LINE OA..." 
-                            class="input-field w-full min-h-[120px] resize-none text-sm border-surface-200 dark:border-surface-700 bg-surface-50/50 dark:bg-surface-800/30 rounded-xl p-4 focus:ring-2 focus:ring-emerald-500/20 transition-all outline-none"></textarea>
-                    </div>
-                    <div class="flex flex-col gap-3 p-4 bg-emerald-50/30 dark:bg-emerald-950/10 rounded-xl border border-emerald-100/50 dark:border-emerald-800/30">
-                        <div class="flex items-center justify-between">
-                            <label class="flex items-center gap-2 text-xs font-bold text-surface-700 dark:text-surface-300 cursor-pointer">
-                                <input type="checkbox" id="lineBroadcastScheduleToggle" onchange="document.getElementById('lineBroadcastScheduleTimeContainer').classList.toggle('hidden', !this.checked)" class="rounded text-emerald-600 focus:ring-emerald-500">
-                                <span>ตั้งเวลาส่งล่วงหน้า (Schedule Broadcast)</span>
-                            </label>
-                        </div>
-                        <div id="lineBroadcastScheduleTimeContainer" class="hidden space-y-2">
-                            <label class="text-[10px] font-black uppercase tracking-widest text-surface-400">วันที่และเวลาที่ต้องการส่ง</label>
-                            <input id="lineBroadcastScheduleTime" type="datetime-local" class="w-full px-4 py-2.5 bg-surface-50 dark:bg-surface-800 border-none rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 transition-all text-surface-900 dark:text-white">
-                        </div>
-                    </div>
-                    <div class="flex justify-between items-center bg-emerald-50/50 dark:bg-emerald-900/10 p-3 rounded-xl border border-emerald-100/50 dark:border-emerald-800/30">
-                        <div class="flex items-center gap-2 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-tight">
-                            <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
-                            ระบบจะส่งไปยังทุกคนที่ติดตาม LINE OA
-                        </div>
-                        <button id="lineBroadcastBtn" onclick="sendLineBroadcast('lineBroadcastMsg', 'lineBroadcastBtn', 'lineBroadcastScheduleToggle', 'lineBroadcastScheduleTime')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition-all hover:scale-[1.02] active:scale-[0.98]">
-                            <i data-lucide="send" class="w-4 h-4"></i> ส่งประกาศ
-                        </button>
-                    </div>
-                </div>
-            </div>
+
 
 
 
@@ -3129,6 +3233,18 @@
                 <button id="orgTab-business" onclick="switchOrgTab('business')"
                   class="org-tab px-4 py-2 rounded-xl text-xs font-black transition-all text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-200">
                   <i data-lucide="building" class="w-3.5 h-3.5 inline-block mr-1.5"></i>ข้อมูลธุรกิจ
+                </button>
+                <button id="orgTab-peak" onclick="switchOrgTab('peak')"
+                  class="org-tab px-4 py-2 rounded-xl text-xs font-black transition-all text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-200">
+                  <i data-lucide="plug" class="w-3.5 h-3.5 inline-block mr-1.5 text-indigo-500"></i>เชื่อมต่อ PEAK
+                </button>
+                <button id="orgTab-announcements" onclick="switchOrgTab('announcements')"
+                  class="org-tab px-4 py-2 rounded-xl text-xs font-black transition-all text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-200">
+                  <i data-lucide="megaphone" class="w-3.5 h-3.5 inline-block mr-1.5"></i>ประกาศองค์กร
+                </button>
+                <button id="orgTab-logs" onclick="switchOrgTab('logs')"
+                  class="org-tab px-4 py-2 rounded-xl text-xs font-black transition-all text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-200">
+                  <i data-lucide="history" class="w-3.5 h-3.5 inline-block mr-1.5"></i>บันทึกกิจกรรม
                 </button>
               </div>
 
@@ -3505,6 +3621,111 @@
                   </form>
 
                 </div>
+
+                </div>
+              </div>
+
+              <!-- Tab: PEAK Connection -->
+              <div id="orgTabContent-peak" class="hidden animate-in fade-in duration-300">
+                <div class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-3xl overflow-hidden shadow-sm">
+                  <div class="px-6 py-5 border-b border-surface-100 dark:border-surface-800 flex items-center gap-3 bg-surface-50/50 dark:bg-surface-800/30">
+                    <div class="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 shadow-inner">
+                      <i data-lucide="plug" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                      <h3 class="font-black text-base uppercase tracking-widest text-surface-900 dark:text-white">เชื่อมต่อ PEAK บัญชี (API)</h3>
+                      <p class="text-xs text-surface-400">เชื่อมต่อระบบบัญชี PEAK เพื่อดึงข้อมูล Invoice และทำ Reconcile บัญชีองค์กรอัตโนมัติ</p>
+                    </div>
+                    <span id="peakSettingsStatus" class="ml-auto text-xs px-3 py-1 rounded-full bg-surface-100 dark:bg-surface-800 text-surface-400 font-bold">ยังไม่ได้เชื่อมต่อ</span>
+                  </div>
+                  <div class="p-8 space-y-5">
+                    <div>
+                      <label class="block text-xs font-black uppercase tracking-widest text-surface-400 mb-1.5">Connect ID</label>
+                      <input id="peakConnectId" type="text" placeholder="เช่น MYAPP-001"
+                        class="w-full bg-surface-50 dark:bg-surface-950 border border-surface-200 dark:border-surface-700 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 text-surface-900 dark:text-white font-bold">
+                    </div>
+                    <div>
+                      <label class="block text-xs font-black uppercase tracking-widest text-surface-400 mb-1.5">Password (สำหรับขอ Client Token)</label>
+                      <input id="peakPassword" type="password" placeholder="••••••••"
+                        class="w-full bg-surface-50 dark:bg-surface-950 border border-surface-200 dark:border-surface-700 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 text-surface-900 dark:text-white">
+                    </div>
+                    <div>
+                      <label class="block text-xs font-black uppercase tracking-widest text-surface-400 mb-1.5">User Token <span class="normal-case font-normal text-surface-400">(รับจากหน้า External Apps ใน PEAK)</span></label>
+                      <input id="peakUserToken" type="text" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                        class="w-full bg-surface-50 dark:bg-surface-950 border border-surface-200 dark:border-surface-700 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 font-mono text-xs text-surface-900 dark:text-white">
+                    </div>
+                    <button onclick="savePeakSettings()"
+                      class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest transition-all hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20">
+                      <i data-lucide="save" class="w-4 h-4"></i> บันทึกการตั้งค่า PEAK
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Tab: Announcements -->
+              <div id="orgTabContent-announcements" class="hidden space-y-4">
+                <div class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-3xl p-6 shadow-sm">
+                  <div class="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 class="text-base font-black text-surface-900 dark:text-white">📢 ประกาศข่าวสารองค์กร</h3>
+                      <p class="text-xs text-surface-400">สร้างและแจ้งข่าวสารสำคัญ กฎระเบียบ หรืออัปเดตแก่มวลสมาชิกในองค์กร</p>
+                    </div>
+                    <button onclick="$('createAnnounceForm').classList.toggle('hidden')" class="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5">
+                      <i data-lucide="plus" class="w-4 h-4"></i> สร้างประกาศใหม่
+                    </button>
+                  </div>
+
+                  <!-- New Announcement Form -->
+                  <form id="createAnnounceForm" onsubmit="event.preventDefault(); submitOrgAnnouncement();" class="hidden mb-6 p-4 bg-surface-50 dark:bg-surface-800/50 rounded-2xl border border-surface-200 dark:border-surface-700 space-y-3">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div class="md:col-span-2 space-y-1">
+                        <label class="text-[10px] font-black uppercase text-surface-400">หัวข้อประกาศ</label>
+                        <input id="ann_title" type="text" placeholder="เช่น แจ้งวันหยุดสงกรานต์ หรือ ระเบียบการเบิกค่าใช้จ่ายใหม่" class="input-field w-full text-xs font-bold py-2" required>
+                      </div>
+                      <div class="space-y-1">
+                        <label class="text-[10px] font-black uppercase text-surface-400">ระดับความสำคัญ</label>
+                        <select id="ann_priority" class="input-field w-full text-xs font-bold py-2">
+                          <option value="normal">📢 ข่าวสารทั่วไป</option>
+                          <option value="important">📌 สำคัญมาก</option>
+                          <option value="update">🚀 อัปเดตระบบ/การทำงาน</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div class="space-y-1">
+                      <label class="text-[10px] font-black uppercase text-surface-400">รายละเอียดประกาศ</label>
+                      <textarea id="ann_content" rows="3" placeholder="ระบุรายละเอียดของประกาศ..." class="input-field w-full text-xs font-bold py-2 resize-none" required></textarea>
+                    </div>
+                    <div class="flex justify-end gap-2 pt-1">
+                      <button type="button" onclick="$('createAnnounceForm').classList.add('hidden')" class="px-4 py-2 bg-surface-200 dark:bg-surface-700 text-surface-700 dark:text-surface-300 rounded-xl text-xs font-bold hover:bg-surface-300 transition-all">ยกเลิก</button>
+                      <button type="submit" class="px-5 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold transition-all shadow-md">โพสต์ประกาศ</button>
+                    </div>
+                  </form>
+
+                  <!-- Announcement List -->
+                  <div id="orgAnnouncementList" class="space-y-3">
+                    <div class="text-center py-8 text-surface-400 text-xs">กำลังโหลดรายการประกาศ...</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Tab: Audit Logs -->
+              <div id="orgTabContent-logs" class="hidden space-y-4">
+                <div class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-3xl p-6 shadow-sm">
+                  <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
+                    <div>
+                      <h3 class="text-base font-black text-surface-900 dark:text-white">📜 บันทึกประวัติกิจกรรมองค์กร (Audit Trail)</h3>
+                      <p class="text-xs text-surface-400">ติดตามกิจกรรมย้อนหลัง การแก้ไขข้อมูล การเข้าสู่ระบบ และการจัดการไฟล์ในองค์กร</p>
+                    </div>
+                    <div class="relative w-full md:w-64">
+                      <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-surface-400"></i>
+                      <input id="orgLogSearch" type="text" placeholder="ค้นหาตามชื่อผู้ใช้ หรือกิจกรรม..." oninput="filterOrgLogs(this.value)" class="w-full pl-9 pr-4 py-2 bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl text-xs font-bold focus:ring-2 focus:ring-brand-500/20 outline-none transition-all dark:text-white">
+                    </div>
+                  </div>
+
+                  <div id="orgLogList" class="space-y-2 max-h-[600px] overflow-y-auto custom-scrollbar pr-1">
+                    <div class="text-center py-8 text-surface-400 text-xs">กำลังโหลดบันทึกประวัติกิจกรรม...</div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -3673,7 +3894,7 @@
         </section>
 
         <!-- Whiteboard View -->
-        <section id="view-whiteboard" class="view hidden flex-1 flex flex-col items-center overflow-hidden animate-in fade-in duration-300 w-full h-full">
+        <section id="view-whiteboard" class="view hidden flex-1 flex flex-col overflow-hidden animate-in fade-in duration-300 w-full h-full">
           <header class="h-16 border-b border-surface-200/50 dark:border-surface-800/50 flex items-center justify-between px-4 sm:px-8 bg-white/80 dark:bg-surface-900/80 w-full z-20 backdrop-blur-xl shadow-sm shrink-0">
             <div class="flex items-center gap-3">
               <div class="w-9 h-9 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 shadow-lg shadow-purple-500/20 flex items-center justify-center">
@@ -3749,7 +3970,7 @@
 
         <!-- Kanban Board View -->
         <section id="view-kanban"
-          class="view hidden flex-1 flex flex-col items-center overflow-hidden animate-in fade-in duration-300">
+          class="view hidden flex-1 flex flex-col w-full overflow-hidden animate-in fade-in duration-300">
           <header
             class="h-14 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between px-6 bg-white dark:bg-surface-900 w-full flex-shrink-0">
             <div class="flex items-center gap-3">
@@ -3771,7 +3992,7 @@
             </div>
           </header>
           <div id="kanbanBoard"
-            class="flex-1 flex overflow-x-auto overflow-y-hidden custom-scrollbar p-6 gap-4 items-start">
+            class="flex-1 flex w-full overflow-x-auto overflow-y-hidden custom-scrollbar p-6 gap-4 items-start">
             <!-- Kanban columns injected by JS -->
             <div id="kanbanEmptyState"
               class="flex flex-col items-center justify-center min-h-[300px] w-full text-center text-surface-300">
@@ -3870,6 +4091,134 @@
           </div>
         </section>
 
+        <!-- AI Customer Support Draft Generator View -->
+        <section id="view-reply-assistant" class="view hidden flex-1 flex flex-col overflow-y-auto custom-scrollbar animate-in fade-in duration-500 bg-surface-50/50 dark:bg-surface-950/50 w-full text-slate-800">
+          <div class="max-w-7xl mx-auto w-full px-4 py-6">
+            <!-- Header -->
+            <div class="flex items-center justify-between mb-6">
+              <div>
+                <h1 class="text-xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                  <i data-lucide="message-square-quote" class="w-6 h-6 text-indigo-500"></i> ช่วยตอบแชทลูกค้า
+                </h1>
+                <p class="text-xs text-slate-500 mt-0.5">AI Customer Support Draft Generator สำหรับงานขายและแอดมินบริการลูกค้า</p>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <!-- LEFT: Configuration & Inputs -->
+              <div class="space-y-4">
+                <!-- 1. เลือกคลังข้อมูลอ้างอิง -->
+                <div class="bg-white dark:bg-surface-900 rounded-2xl border border-slate-100 dark:border-surface-800 p-5 shadow-sm">
+                  <div class="flex items-center gap-2 mb-3">
+                    <div class="w-6 h-6 rounded-lg bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                      <i data-lucide="database" class="w-3.5 h-3.5"></i>
+                    </div>
+                    <h3 class="text-xs font-extrabold uppercase tracking-widest text-slate-500">1. เลือกเอกสารอ้างอิง (Knowledge Base)</h3>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1.5">ดึงข้อมูลคำตอบจากเอกสาร:</label>
+                    <select id="raSourceFile" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:bg-surface-800 dark:border-surface-700 dark:text-white">
+                      <option value="">📚 ค้นหาอัตโนมัติจากทุกไฟล์ในคลังความรู้ (Recommended)</option>
+                    </select>
+                    <p class="text-[10px] text-slate-400 mt-1">หากไม่เลือกไฟล์ ระบบจะค้นหาและดึงคำตอบที่ตรงที่สุดจากทุกไฟล์ให้อัตโนมัติค่ะ</p>
+                  </div>
+                </div>
+
+                <!-- 2. เลือกโทนข้อความ -->
+                <div class="bg-white dark:bg-surface-900 rounded-2xl border border-slate-100 dark:border-surface-800 p-5 shadow-sm">
+                  <div class="flex items-center gap-2 mb-3">
+                    <div class="w-6 h-6 rounded-lg bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                      <i data-lucide="smile" class="w-3.5 h-3.5"></i>
+                    </div>
+                    <h3 class="text-xs font-extrabold uppercase tracking-widest text-slate-500">2. เลือกโทนและสไตล์การตอบกลับ</h3>
+                  </div>
+                  <div class="grid grid-cols-2 gap-2">
+                    <label class="relative flex items-center gap-2.5 p-3 rounded-xl border border-slate-100 hover:bg-slate-50 cursor-pointer dark:border-surface-800 dark:hover:bg-surface-800/40">
+                      <input type="radio" name="raTone" value="formal" checked class="text-indigo-600 focus:ring-indigo-400">
+                      <div>
+                        <p class="text-xs font-bold text-slate-800 dark:text-white">💼 ทางการ & สุภาพ</p>
+                        <p class="text-[9px] text-slate-400">มืออาชีพ น่าเชื่อถือ</p>
+                      </div>
+                    </label>
+                    <label class="relative flex items-center gap-2.5 p-3 rounded-xl border border-slate-100 hover:bg-slate-50 cursor-pointer dark:border-surface-800 dark:hover:bg-surface-800/40">
+                      <input type="radio" name="raTone" value="friendly" class="text-indigo-600 focus:ring-indigo-400">
+                      <div>
+                        <p class="text-xs font-bold text-slate-800 dark:text-white">😊 เป็นกันเอง & น่ารัก</p>
+                        <p class="text-[9px] text-slate-400">อบอุ่น อ่อนน้อมถ่อมตน</p>
+                      </div>
+                    </label>
+                    <label class="relative flex items-center gap-2.5 p-3 rounded-xl border border-slate-100 hover:bg-slate-50 cursor-pointer dark:border-surface-800 dark:hover:bg-surface-800/40">
+                      <input type="radio" name="raTone" value="sales" class="text-indigo-600 focus:ring-indigo-400">
+                      <div>
+                        <p class="text-xs font-bold text-slate-800 dark:text-white">🔥 ปิดการขายด่วน</p>
+                        <p class="text-[9px] text-slate-400">โน้มน้าวใจ กระตุ้นยอด</p>
+                      </div>
+                    </label>
+                    <label class="relative flex items-center gap-2.5 p-3 rounded-xl border border-slate-100 hover:bg-slate-50 cursor-pointer dark:border-surface-800 dark:hover:bg-surface-800/40">
+                      <input type="radio" name="raTone" value="concise" class="text-indigo-600 focus:ring-indigo-400">
+                      <div>
+                        <p class="text-xs font-bold text-slate-800 dark:text-white">⚡ กระชับ & ตรงประเด็น</p>
+                        <p class="text-[9px] text-slate-400">สั้น รวดเร็ว ทันใจ</p>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                <!-- 3. ข้อความจากลูกค้า -->
+                <div class="bg-white dark:bg-surface-900 rounded-2xl border border-slate-100 dark:border-surface-800 p-5 shadow-sm">
+                  <div class="flex items-center gap-2 mb-3">
+                    <div class="w-6 h-6 rounded-lg bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                      <i data-lucide="message-square" class="w-3.5 h-3.5"></i>
+                    </div>
+                    <h3 class="text-xs font-extrabold uppercase tracking-widest text-slate-500">3. ข้อความสอบถามของลูกค้า</h3>
+                  </div>
+                  <div class="space-y-3">
+                    <textarea id="raQueryText" rows="4" placeholder="พิมพ์หรือวางข้อความคำถามจากลูกค้าที่นี่ค่ะ... (เช่น ขอทราบข้อมูลโปรโมชั่นเดือนนี้หน่อยค่ะ / สินค้ารับประกันกี่ปีคะ)"
+                      class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:bg-surface-800 dark:border-surface-700 dark:text-white resize-none"></textarea>
+                    
+                    <button onclick="generateAIDraft()" id="raSubmitBtn" class="w-full py-2.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition flex items-center justify-center gap-1.5 shadow-sm">
+                      <i data-lucide="sparkles" class="w-4 h-4"></i> ร่างคำตอบด้วย AI
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- RIGHT: Suggested Reply -->
+              <div class="flex flex-col h-full space-y-4">
+                <div class="bg-white dark:bg-surface-900 rounded-2xl border border-slate-100 dark:border-surface-800 p-5 shadow-sm flex-1 flex flex-col min-h-[300px]">
+                  <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center gap-2">
+                      <div class="w-6 h-6 rounded-lg bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                        <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
+                      </div>
+                      <h3 class="text-xs font-extrabold uppercase tracking-widest text-slate-500">ข้อความร่างสำหรับส่งตอบลูกค้า</h3>
+                    </div>
+                    <button onclick="copyReplyAssistantDraft()" id="raCopyBtn" class="px-2.5 py-1 text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition flex items-center gap-1">
+                      <i data-lucide="copy" class="w-3 h-3"></i> คัดลอกข้อความ
+                    </button>
+                  </div>
+
+                  <div class="flex-1 relative flex flex-col">
+                    <textarea id="raDraftResult" readonly placeholder="ข้อความร่างผลลัพธ์จาก AI จะแสดงที่นี่..."
+                      class="w-full flex-1 p-3 text-sm border border-slate-100 dark:border-surface-800 rounded-xl bg-slate-50/50 dark:bg-surface-950/40 text-slate-700 dark:text-slate-200 focus:outline-none resize-none h-full min-h-[220px]"></textarea>
+                  </div>
+                </div>
+
+                <!-- 💡 AI Sales Tips -->
+                <div class="bg-indigo-50/70 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/30 rounded-2xl p-4 shadow-sm flex items-start gap-3">
+                  <div class="w-8 h-8 rounded-xl bg-indigo-500/10 flex items-center justify-center flex-shrink-0 text-indigo-600">
+                    <i data-lucide="lightbulb" class="w-4 h-4"></i>
+                  </div>
+                  <div class="flex-1">
+                    <p class="text-xs font-bold text-slate-800 dark:text-white mb-0.5">💡 คำแนะนำในการคุย (Sales Closure Guide)</p>
+                    <p id="raTipsResult" class="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed">เลือกอ้างอิงเอกสาร โทนที่ต้องการ และใส่คำถามลูกค้าเพื่อสแกนและแนะนำแนวทางการปิดการขายค่ะ</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <!-- Reconciliation View -->
         <section id="view-reconciliation" class="view hidden flex-1 flex flex-col items-center overflow-hidden animate-in fade-in duration-300">
           <header class="h-14 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between px-6 bg-white dark:bg-surface-900 w-full">
@@ -3954,72 +4303,135 @@
                     </div>
                     <div id="peakApiNotConnected" class="hidden text-[10px] text-amber-500 flex items-center gap-1.5">
                       <i data-lucide="alert-triangle" class="w-3 h-3"></i>
-                      ยังไม่ได้ตั้งค่า PEAK API — <a href="#" onclick="switchView('settings'); return false;" class="underline">ไปตั้งค่า</a>
+                      ยังไม่ได้ตั้งค่า PEAK API — <a href="#" onclick="swi                    <div class="overflow-x-auto rounded-2xl border border-surface-200/50 dark:border-surface-700/50 bg-white/20 dark:bg-surface-950/20">
+                      <table class="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr class="bg-surface-100/50 dark:bg-surface-800/50 border-b border-surface-200/50 dark:border-surface-700/50 text-[10px] font-black uppercase tracking-widest text-surface-400">
+                            <th class="p-3 pl-4">ชื่อกลุ่ม LINE</th>
+                            <th class="p-3">Group ID (LINE)</th>
+                            <th class="p-3">โฟลเดอร์จัดเก็บอัตโนมัติ</th>
+                            <th class="p-3 text-center">สถานะ AI ตอบกลับ</th>
+                            <th class="p-3 text-center">จัดการ</th>
+                          </tr>
+                        </thead>
+                        <tbody id="lineGroupMappingsList" class="divide-y divide-surface-100/50 dark:divide-surface-800/50">
+                          <tr>
+                            <td colspan="5" class="p-8 text-center text-surface-450 italic">
+                              <i data-lucide="loader-2" class="w-5 h-5 animate-spin mx-auto mb-2 opacity-50 text-[#00B900]"></i>
+                              กำลังโหลดข้อมูลแชทกลุ่ม...
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <!-- Local PND53 Scan Control Card -->
-              <div class="glass p-6 rounded-3xl border border-surface-200/50 dark:border-surface-850 bg-gradient-to-br from-indigo-500/5 via-brand-500/5 to-purple-500/5 backdrop-blur-xl shadow-xl flex flex-col md:flex-row items-center justify-between gap-6 transition-all hover:shadow-2xl">
-                <div class="flex items-center gap-4">
-                  <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/30 shrink-0">
-                    <i data-lucide="folder-search" class="w-6 h-6 animate-pulse"></i>
-                  </div>
-                  <div>
-                    <h3 class="text-sm font-black text-surface-900 dark:text-white flex items-center gap-2 flex-wrap">
-                      สแกนและประมวลผล ภ.ง.ด. 53 ในเครื่อง
-                      <span class="px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-500 text-[9px] font-black uppercase tracking-wider border border-indigo-500/20">Local Ingestion</span>
-                    </h3>
-                    <p class="text-[11px] text-surface-500 font-medium mt-1 leading-relaxed max-w-xl">
-                      สแกนไฟล์เอกสาร 'ใบเสร็จรับเงิน/ใบกำกับภาษี' และ 'สลิปโอนเงิน' ในโฟลเดอร์เครื่องเซิร์ฟเวอร์อัตโนมัติ เพื่อนำเข้าระบบ RAG และกระทบยอดบัญชีบน Google Sheets ทันที
-                    </p>
-                  </div>
-                </div>
-                
-                <button id="startLocalScanBtn" class="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-indigo-500/20 flex items-center gap-2 shrink-0">
-                  <i data-lucide="scan" class="w-4 h-4"></i> สแกนโฟลเดอร์ ภงด. 53
-                </button>
-              </div>
+              <script>
+                // LINE Group mapping handlers
+                let _cachedGroupMappings = [];
 
-              <!-- Action Buttons -->
-              <div class="flex justify-center gap-3">
-                <button id="startReconBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-xl shadow-indigo-500/20 flex items-center gap-3">
-                  <i data-lucide="play" class="w-4 h-4"></i> เริ่มการกระทบยอดข้อมูล
-                </button>
-                <button id="resetReconBtn" class="hidden bg-surface-200 dark:bg-surface-800 hover:bg-rose-100 dark:hover:bg-rose-900/30 text-surface-600 dark:text-surface-300 hover:text-rose-600 px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center gap-2">
-                  <i data-lucide="rotate-ccw" class="w-4 h-4"></i> ล้างข้อมูล
-                </button>
-              </div>
-
-              <!-- Summary Dashboard -->
-              <div id="reconSummary" class="hidden space-y-4 animate-in fade-in slide-in-from-bottom-2">
-                <!-- Row 1: Order Stats -->
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div class="bg-white dark:bg-surface-900 p-5 rounded-2xl border border-surface-100 dark:border-surface-800 shadow-sm">
-                    <div class="text-[9px] font-black text-surface-400 uppercase tracking-widest mb-1">รายการทั้งหมด</div>
-                    <div id="reconStatTotal" class="text-2xl font-black text-surface-900 dark:text-white">0</div>
-                  </div>
-                  <div class="bg-white dark:bg-surface-900 p-5 rounded-2xl border border-surface-100 dark:border-surface-800 shadow-sm">
-                    <div class="text-[9px] font-black text-emerald-500 uppercase tracking-widest mb-1">สถานะปกติ</div>
-                    <div id="reconStatNormal" class="text-2xl font-black text-emerald-500">0</div>
-                  </div>
-                  <div class="bg-white dark:bg-surface-900 p-5 rounded-2xl border border-surface-100 dark:border-surface-800 shadow-sm border-l-4 border-l-rose-500">
-                    <div class="text-[9px] font-black text-rose-500 uppercase tracking-widest mb-1">ต้องแก้ไข</div>
-                    <div id="reconStatIssues" class="text-2xl font-black text-rose-600">0</div>
-                  </div>
-                  <div class="bg-white dark:bg-surface-900 p-5 rounded-2xl border border-surface-100 dark:border-surface-800 shadow-sm">
-                    <div class="text-[9px] font-black text-amber-500 uppercase tracking-widest mb-1">ยกเลิก</div>
-                    <div id="reconStatCancelled" class="text-2xl font-black text-amber-500">0</div>
-                  </div>
-                </div>
-                <!-- Row 2: Financial Stats -->
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div class="bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-900/20 dark:to-blue-800/10 p-5 rounded-2xl border border-blue-200/50 dark:border-blue-800/30">
-                    <div class="text-[9px] font-black text-blue-500 uppercase tracking-widest mb-1">💰 ยอดขาย Shipnity</div>
-                    <div id="reconStatShipSales" class="text-lg font-black text-blue-700 dark:text-blue-400">฿0</div>
-                  </div>
-                  <div class="bg-gradient-to-br from-indigo-50 to-indigo-100/50 dark:from-indigo-900/20 dark:to-indigo-800/10 p-5 rounded-2xl border border-indigo-200/50 dark:border-indigo-800/30">
+                async function refreshGroupMappings() {
+                    const listBody = document.getElementById('lineGroupMappingsList');
+                    if (!listBody) return;
+                    
+                    listBody.innerHTML = `
+                      <tr>
+                        <td colspan="5" class="p-8 text-center text-surface-450 italic">
+                          <i data-lucide="loader-2" class="w-5 h-5 animate-spin mx-auto mb-2 opacity-50 text-[#00B900]"></i>
+                          กำลังดึงข้อมูลแชทกลุ่ม...
+                        </td>
+                      </tr>
+                    `;
+                    
+                    try {
+                        const res = await fetch('/api/line/groups');
+                        const data = await res.json();
+                        
+                        if (!data.ok) {
+                            listBody.innerHTML = `
+                              <tr>
+                                <td colspan="5" class="p-8 text-center text-red-500 font-bold">
+                                  ❌ ดึงข้อมูลล้มเหลว: ${data.error || 'Unknown error'}
+                                </td>
+                              </tr>
+                            `;
+                            return;
+                        }
+                        
+                        const mappings = data.mappings || [];
+                        _cachedGroupMappings = mappings;
+                        if (mappings.length === 0) {
+                            listBody.innerHTML = `
+                              <tr>
+                                <td colspan="5" class="p-12 text-center text-surface-400 font-medium">
+                                  <i data-lucide="users" class="w-12 h-12 mx-auto mb-3 opacity-20 text-[#00B900]"></i>
+                                  ยังไม่มีการเชื่อมต่อแชทกลุ่ม LINE เลยค่ะพี่ 
+                                  <p class="text-[10px] text-surface-400 mt-1 uppercase font-black">พิมพ์ "รหัสกลุ่ม" ในกลุ่มแล้วนำมาผูกเพื่อเริ่มใช้งานได้เลยค่ะ!</p>
+                                </td>
+                              </tr>
+                            `;
+                            if (window.lucide) window.lucide.createIcons();
+                            return;
+                        }
+                        
+                        listBody.innerHTML = mappings.map(m => {
+                            const isBotOn = m.bot_enabled !== 0;
+                            return `
+                          <tr class="hover:bg-surface-50/50 dark:hover:bg-surface-800/30 transition-all border-b border-surface-100/50 dark:border-surface-800/50">
+                            <td class="p-3 pl-4 font-bold text-surface-900 dark:text-white flex items-center gap-2">
+                              ${m.line_picture_url ? `<img src="${escapeHtml(m.line_picture_url)}" class="w-7 h-7 rounded-full border border-surface-200 dark:border-surface-700">` : `<div class="w-7 h-7 rounded-full bg-[#00B900]/10 text-[#00B900] flex items-center justify-center font-bold text-xs"><i data-lucide="users" class="w-3.5 h-3.5"></i></div>`}
+                              <div>
+                                <div class="font-bold">${escapeHtml(m.line_real_name || m.group_name || 'แชทกลุ่ม LINE')}</div>
+                                ${m.line_real_name && m.group_name && m.line_real_name !== m.group_name ? `<div class="text-[9px] text-surface-400">ชื่อกำกับ: ${escapeHtml(m.group_name)}</div>` : ''}
+                              </div>
+                            </td>
+                            <td class="p-3 font-mono text-[10px] select-all">${escapeHtml(m.group_id)}</td>
+                            <td class="p-3">
+                              ${m.default_folder_id ? `
+                                <span class="px-2.5 py-1 bg-[#00B900]/10 text-[#00B900] text-[10px] font-bold rounded-lg border border-[#00B900]/20 flex items-center gap-1.5 w-max">
+                                  <i data-lucide="folder" class="w-3.5 h-3.5"></i>
+                                  ${escapeHtml(m.default_folder_name || 'โฟลเดอร์เริ่มต้น')}
+                                </span>
+                              ` : `
+                                <span class="px-2.5 py-1 bg-surface-100 dark:bg-surface-800 text-surface-450 text-[10px] font-bold rounded-lg border border-surface-200 dark:border-surface-700 flex items-center gap-1.5 w-max">
+                                  <i data-lucide="help-circle" class="w-3.5 h-3.5"></i>
+                                  ถามผ่าน LINE ทุกครั้ง
+                                </span>
+                              `}
+                            </td>
+                            <td class="p-3 text-center">
+                              <button onclick="toggleGroupBot('${m.group_id}', ${isBotOn})" class="px-2.5 py-1 rounded-full text-[10px] font-bold border transition-all flex items-center gap-1.5 mx-auto ${isBotOn ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30 hover:bg-emerald-500/20' : 'bg-surface-200 dark:bg-surface-800 text-surface-400 border-surface-300 dark:border-surface-700 hover:bg-surface-300'}">
+                                <span class="w-2 h-2 rounded-full ${isBotOn ? 'bg-emerald-500 animate-pulse' : 'bg-surface-400'}"></span>
+                                ${isBotOn ? 'เปิดทำงาน' : 'ปิดทำงาน'}
+                              </button>
+                            </td>
+                            <td class="p-3 text-center">
+                              <div class="flex items-center justify-center gap-1.5">
+                                <button onclick="openEditLineGroupModal('${m.group_id}')" class="p-2 bg-brand-50 hover:bg-brand-100 text-brand-600 dark:bg-brand-900/20 dark:hover:bg-brand-900/40 rounded-lg border border-brand-200 dark:border-brand-800 transition-all hover:scale-105 active:scale-95" title="ตั้งค่ากลุ่มนี้">
+                                  <i data-lucide="settings" class="w-4 h-4"></i>
+                                </button>
+                                <button onclick="unbindGroup('${m.group_id}')" class="p-2 bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-900/10 dark:hover:bg-rose-900/20 rounded-lg border border-rose-100 dark:border-rose-900/30 transition-all hover:scale-105 active:scale-95" title="ยกเลิกเชื่อมต่อ">
+                                  <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        `;
+                        }).join('');
+                        
+                        if (window.lucide) window.lucide.createIcons();
+                    } catch (err) {
+                        listBody.innerHTML = `
+                          <tr>
+                            <td colspan="5" class="p-8 text-center text-red-500 font-bold">
+                              ❌ เกิดข้อผิดพลาดในการดึงข้อมูล: ${err.message}
+                            </td>
+                          </tr>
+                        `;
+                    }
+                }rounded-2xl border border-indigo-200/50 dark:border-indigo-800/30">
                     <div class="text-[9px] font-black text-indigo-500 uppercase tracking-widest mb-1">📄 มูลค่ารวมภาษี PEAK</div>
                     <div id="reconStatPeakAmount" class="text-lg font-black text-indigo-700 dark:text-indigo-400">฿0</div>
                   </div>
@@ -4450,6 +4862,100 @@
                     }
                 }
 
+                async function toggleGroupBot(groupId, currentBotOn) {
+                    try {
+                        const newStatus = currentBotOn ? 0 : 1;
+                        const res = await fetch(`/api/org/line/groups/${groupId}/toggle-bot`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ bot_enabled: newStatus })
+                        });
+                        const data = await res.json();
+                        if (data.ok) {
+                            toast(newStatus ? 'เปิดการทำงานของ AI ในกลุ่มนี้แล้วค่ะ 🤖✨' : 'ปิดการทำงานของ AI ในกลุ่มนี้ชั่วคราวแล้วค่ะ ⏸️', 'success');
+                            refreshGroupMappings();
+                        } else {
+                            toast('สลับสถานะไม่สำเร็จ: ' + (data.error || 'Unknown error'), 'error');
+                        }
+                    } catch (err) {
+                        toast('เกิดข้อผิดพลาด: ' + err.message, 'error');
+                    }
+                }
+
+                async function openEditLineGroupModal(groupId) {
+                    const m = _cachedGroupMappings.find(g => g.group_id === groupId);
+                    if (!m) {
+                        toast('ไม่พบข้อมูลกลุ่มค่ะ', 'error');
+                        return;
+                    }
+                    
+                    document.getElementById('editGroupModalId').value = m.group_id;
+                    document.getElementById('editGroupModalIdDisplay').textContent = m.group_id;
+                    document.getElementById('editGroupModalName').value = m.group_name || m.line_real_name || '';
+                    document.getElementById('editGroupModalBotEnabled').checked = m.bot_enabled !== 0;
+
+                    // Load folders into modal dropdown
+                    const folderSelect = document.getElementById('editGroupModalFolder');
+                    folderSelect.innerHTML = '<option value="">-- แสดงปุ่มเลือกโฟลเดอร์บน LINE --</option>';
+                    try {
+                        const res = await fetch('/api/google/folders');
+                        const data = await res.json();
+                        if (data.ok && data.folders) {
+                            folderSelect.innerHTML += data.folders.map(f => 
+                                `<option value="${f.id}" ${f.id === m.default_folder_id ? 'selected' : ''}>${escapeHtml(f.name)}</option>`
+                            ).join('');
+                        }
+                    } catch (err) {
+                        console.error(err);
+                    }
+
+                    document.getElementById('editLineGroupModal').classList.remove('hidden');
+                }
+
+                function closeEditLineGroupModal() {
+                    document.getElementById('editLineGroupModal').classList.add('hidden');
+                }
+
+                async function saveLineGroupSettings() {
+                    const groupId = document.getElementById('editGroupModalId').value;
+                    const groupName = document.getElementById('editGroupModalName').value.trim();
+                    const folderSelect = document.getElementById('editGroupModalFolder');
+                    const default_folder_id = folderSelect.value;
+                    const default_folder_name = default_folder_id ? folderSelect.options[folderSelect.selectedIndex].text : '';
+                    const bot_enabled = document.getElementById('editGroupModalBotEnabled').checked ? 1 : 0;
+
+                    const btn = document.getElementById('saveEditGroupBtn');
+                    btn.disabled = true;
+                    btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> กำลังบันทึก...`;
+                    if (window.lucide) window.lucide.createIcons();
+
+                    try {
+                        const res = await fetch(`/api/line/groups/${groupId}/settings`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                group_name: groupName,
+                                default_folder_id: default_folder_id,
+                                default_folder_name: default_folder_name,
+                                bot_enabled: bot_enabled
+                            })
+                        });
+                        const data = await res.json();
+                        if (data.ok) {
+                            toast('ปรับปรุงตั้งค่ากลุ่ม LINE เรียบร้อยแล้วค่ะ ✨💖', 'success');
+                            closeEditLineGroupModal();
+                            refreshGroupMappings();
+                        } else {
+                            toast('บันทึกไม่สำเร็จ: ' + (data.error || 'Unknown error'), 'error');
+                        }
+                    } catch (err) {
+                        toast('เกิดข้อผิดพลาด: ' + err.message, 'error');
+                    } finally {
+                        btn.disabled = false;
+                        btn.innerHTML = `บันทึกการตั้งค่า`;
+                    }
+                }
+
                 // Escape HTML utility
                 function escapeHtml(text) {
                     if (!text) return '';
@@ -4473,6 +4979,57 @@
                     };
                 }
               </script>
+
+              <!-- Edit LINE Group Settings Modal -->
+              <div id="editLineGroupModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[999] flex items-center justify-center hidden p-4 animate-in fade-in duration-200">
+                <div class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-6 relative">
+                  <button onclick="closeEditLineGroupModal()" class="absolute top-6 right-6 text-surface-400 hover:text-surface-600 dark:hover:text-white transition-colors">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                  </button>
+
+                  <div class="flex items-center gap-3 border-b border-surface-100 dark:border-surface-800 pb-4">
+                    <div class="w-10 h-10 rounded-2xl bg-[#00B900]/10 text-[#00B900] flex items-center justify-center font-bold">
+                      <i data-lucide="settings" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                      <h3 class="font-black text-base text-surface-900 dark:text-white leading-none mb-1">ตั้งค่าแชทกลุ่ม LINE</h3>
+                      <p class="text-[10px] font-mono text-surface-400 select-all" id="editGroupModalIdDisplay">C...</p>
+                    </div>
+                  </div>
+
+                  <input type="hidden" id="editGroupModalId">
+
+                  <div class="space-y-4">
+                    <div>
+                      <label class="block text-[10px] font-black uppercase tracking-widest text-surface-400 mb-1.5 ml-1">ชื่อกำกับกลุ่ม LINE</label>
+                      <input type="text" id="editGroupModalName" class="w-full bg-surface-50 dark:bg-surface-950 border border-surface-200 dark:border-surface-700 rounded-xl p-3 text-xs focus:ring-2 focus:ring-[#00B900]/50 outline-none font-bold">
+                    </div>
+
+                    <div>
+                      <label class="block text-[10px] font-black uppercase tracking-widest text-surface-400 mb-1.5 ml-1">โฟลเดอร์จัดเก็บเอกสารอัตโนมัติ (Google Drive)</label>
+                      <select id="editGroupModalFolder" class="w-full bg-surface-50 dark:bg-surface-950 border border-surface-200 dark:border-surface-700 rounded-xl p-3 text-xs focus:ring-2 focus:ring-[#00B900]/50 outline-none cursor-pointer">
+                        <option value="">-- ถามเลือกโฟลเดอร์บน LINE ทุกครั้ง --</option>
+                      </select>
+                    </div>
+
+                    <div class="flex items-center justify-between p-3.5 bg-surface-50 dark:bg-surface-950 rounded-2xl border border-surface-200 dark:border-surface-800">
+                      <div>
+                        <div class="text-xs font-bold text-surface-900 dark:text-white">ตอบกลับอัตโนมัติด้วย AI</div>
+                        <p class="text-[10px] text-surface-400">เมื่อเปิดใช้งาน บอท AI จะช่วยตอบคำถามและประมวลผลไฟล์ในกลุ่มนี้</p>
+                      </div>
+                      <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="editGroupModalBotEnabled" class="sr-only peer">
+                        <div class="w-11 h-6 bg-surface-200 peer-focus:outline-none rounded-full peer dark:bg-surface-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:after:border-surface-600 peer-checked:bg-[#00B900]"></div>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="flex items-center justify-end gap-3 pt-2">
+                    <button onclick="closeEditLineGroupModal()" class="px-5 py-2.5 rounded-xl border border-surface-200 dark:border-surface-700 text-xs font-bold text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-800 transition">ยกเลิก</button>
+                    <button id="saveEditGroupBtn" onclick="saveLineGroupSettings()" class="px-6 py-2.5 rounded-xl bg-[#00B900] hover:bg-[#009900] text-white text-xs font-black uppercase tracking-wider shadow-lg shadow-[#00B900]/20 transition">บันทึกการตั้งค่า</button>
+                  </div>
+                </div>
+              </div>
 
               <!-- Main Dashboard Area -->
               <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -4842,20 +5399,92 @@
           </div>
         </section>
 
-        <!-- LINE Groups View -->
+        <!-- LINE Groups & OA View (Unified LINE Management Center) -->
         <section id="view-line-groups" class="view hidden flex-1 flex flex-col overflow-y-auto animate-in fade-in duration-300 bg-surface-50/50 dark:bg-surface-950/50">
           <header class="h-16 border-b border-surface-200/50 dark:border-surface-800/50 flex items-center justify-between px-6 bg-white/80 dark:bg-surface-900/80 sticky top-0 z-20 backdrop-blur-xl shadow-sm">
             <div class="flex items-center gap-3">
               <div class="w-8 h-8 bg-[#00B900]/10 rounded-xl flex items-center justify-center">
                 <i data-lucide="message-square" class="w-4 h-4 text-[#00B900]"></i>
               </div>
-              <h1 class="font-black text-sm uppercase tracking-widest text-surface-900 dark:text-white">LINE Groups & OA</h1>
+              <div>
+                <h1 class="font-black text-sm uppercase tracking-widest text-surface-900 dark:text-white">ศูนย์จัดการ LINE & OA</h1>
+                <p class="text-[10px] text-surface-400">บรอดแคสต์, ตั้งค่าบอท, และจัดการกลุ่ม LINE ทั้งหมด</p>
+              </div>
             </div>
           </header>
 
-          <div class="max-w-2xl mx-auto w-full px-6 py-8 space-y-6">
+          <div class="max-w-3xl mx-auto w-full px-6 py-8 space-y-6">
 
-            <!-- Add LINE Bot Card -->
+            <!-- 📣 1. LINE OA Broadcast Card -->
+            <div class="bg-white dark:bg-surface-900 border border-emerald-500/30 rounded-2xl overflow-hidden shadow-sm">
+                <div class="px-6 py-4 border-b border-surface-100 dark:border-surface-800 bg-emerald-50/50 dark:bg-emerald-950/20 flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white shadow-md">
+                        <i data-lucide="send" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-base text-surface-900 dark:text-white">LINE OA Broadcast (ส่งประกาศ)</h3>
+                        <p class="text-[10px] font-semibold text-surface-500 uppercase tracking-wider">ส่งข้อความประกาศถึงผู้ใช้งานทุกคนผ่าน LINE Official Account</p>
+                    </div>
+                </div>
+                <div class="p-6 space-y-4">
+                    <div class="space-y-2">
+                        <label class="text-[10px] font-black uppercase tracking-widest text-surface-400 px-1">ข้อความประกาศ</label>
+                        <textarea id="lineBroadcastMsg" placeholder="พิมพ์ข้อความที่ต้องการส่งถึงทุกคนใน LINE OA..." 
+                            class="input-field w-full min-h-[120px] resize-none text-sm border-surface-200 dark:border-surface-700 bg-surface-50/50 dark:bg-surface-800/30 rounded-xl p-4 focus:ring-2 focus:ring-emerald-500/20 transition-all outline-none text-surface-900 dark:text-white"></textarea>
+                    </div>
+                    <div class="flex flex-col gap-3 p-4 bg-emerald-50/30 dark:bg-emerald-950/10 rounded-xl border border-emerald-100/50 dark:border-emerald-800/30">
+                        <div class="flex items-center justify-between">
+                            <label class="flex items-center gap-2 text-xs font-bold text-surface-700 dark:text-surface-300 cursor-pointer">
+                                <input type="checkbox" id="lineBroadcastScheduleToggle" onchange="document.getElementById('lineBroadcastScheduleTimeContainer').classList.toggle('hidden', !this.checked)" class="rounded text-emerald-600 focus:ring-emerald-500">
+                                <span>ตั้งเวลาส่งล่วงหน้า (Schedule Broadcast)</span>
+                            </label>
+                        </div>
+                        <div id="lineBroadcastScheduleTimeContainer" class="hidden space-y-2">
+                            <label class="text-[10px] font-black uppercase tracking-widest text-surface-400">วันที่และเวลาที่ต้องการส่ง</label>
+                            <input id="lineBroadcastScheduleTime" type="datetime-local" class="w-full px-4 py-2.5 bg-surface-50 dark:bg-surface-800 border-none rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 transition-all text-surface-900 dark:text-white">
+                        </div>
+                    </div>
+                    <div class="flex justify-between items-center bg-emerald-50/50 dark:bg-emerald-900/10 p-3 rounded-xl border border-emerald-100/50 dark:border-emerald-800/30">
+                        <div class="flex items-center gap-2 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-tight">
+                            <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
+                            ระบบจะส่งไปยังทุกคนที่ติดตาม LINE OA
+                        </div>
+                        <button id="lineBroadcastBtn" onclick="sendLineBroadcast('lineBroadcastMsg', 'lineBroadcastBtn', 'lineBroadcastScheduleToggle', 'lineBroadcastScheduleTime')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition-all hover:scale-[1.02] active:scale-[0.98]">
+                            <i data-lucide="send" class="w-4 h-4"></i> ส่งประกาศ
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ⚙️ 2. การตั้งค่า LINE OA & Persona (สำหรับ Admin) -->
+            <div class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-2xl p-6 shadow-sm space-y-4">
+              <h2 class="font-bold text-surface-800 dark:text-white text-xs uppercase tracking-widest flex items-center gap-2">
+                <i data-lucide="sliders" class="w-4 h-4 text-emerald-600"></i> การตั้งค่าบอท & AI Persona
+              </h2>
+              <p class="text-xs text-surface-400">กำหนดพฤติกรรม ข้อความต้อนรับ และการเชื่อมต่อ API สำหรับ LINE Official Account</p>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button onclick="openLineSettings()" class="flex items-center gap-3 p-4 bg-surface-50 dark:bg-surface-800/50 hover:bg-surface-100 dark:hover:bg-surface-800 border border-surface-100 dark:border-surface-700/50 rounded-xl transition-all group text-left">
+                  <div class="w-9 h-9 rounded-lg bg-white dark:bg-surface-900 flex items-center justify-center shadow-sm text-emerald-600 group-hover:scale-110 transition-transform">
+                    <i data-lucide="settings" class="w-4 h-4"></i>
+                  </div>
+                  <div>
+                    <div class="text-xs font-bold text-surface-700 dark:text-surface-200">ตั้งค่า LINE OA</div>
+                    <div class="text-[9px] text-surface-400">Greeting & API Keys</div>
+                  </div>
+                </button>
+                <button onclick="openPersonaManager()" class="flex items-center gap-3 p-4 bg-surface-50 dark:bg-surface-800/50 hover:bg-surface-100 dark:hover:bg-surface-800 border border-surface-100 dark:border-surface-700/50 rounded-xl transition-all group text-left">
+                  <div class="w-9 h-9 rounded-lg bg-white dark:bg-surface-900 flex items-center justify-center shadow-sm text-amber-600 group-hover:scale-110 transition-transform">
+                    <i data-lucide="bot" class="w-4 h-4"></i>
+                  </div>
+                  <div>
+                    <div class="text-xs font-bold text-surface-700 dark:text-surface-200">จัดการ AI Persona</div>
+                    <div class="text-[9px] text-surface-400">กำหนดนิสัยและรูปแบบคำตอบ</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            <!-- 📲 3. Add LINE Bot Card & QR Code -->
             {% if line_bot_id %}
             {% set bot_id_clean = line_bot_id.lstrip('@') %}
             <div class="bg-white dark:bg-surface-900 border border-[#00B900] rounded-2xl p-6 flex flex-col sm:flex-row items-center gap-5 shadow-sm">
@@ -4875,7 +5504,7 @@
             </div>
             {% endif %}
 
-            <!-- วิธีหา Group ID -->
+            <!-- 💡 4. วิธีหา Group ID -->
             <div class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-2xl p-5">
               <h3 class="font-bold text-amber-900 dark:text-amber-300 mb-2 text-sm">วิธีหา LINE Group ID</h3>
               <ol class="text-sm text-amber-800 dark:text-amber-400 space-y-1 list-decimal list-inside">
@@ -4886,9 +5515,11 @@
               </ol>
             </div>
 
-            <!-- ฟอร์มเพิ่มกลุ่ม -->
+            <!-- ➕ 5. ฟอร์มเพิ่มและผูกกลุ่ม LINE -->
             <div class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-2xl p-6 shadow-sm">
-              <h2 class="font-bold text-surface-800 dark:text-white mb-4 text-sm uppercase tracking-widest">เพิ่มกลุ่ม LINE</h2>
+              <h2 class="font-bold text-surface-800 dark:text-white mb-4 text-sm uppercase tracking-widest flex items-center gap-2">
+                <i data-lucide="plus-circle" class="w-4 h-4 text-[#00B900]"></i> เพิ่มและผูกกลุ่ม LINE
+              </h2>
               <div class="space-y-3">
                 <div>
                   <label class="block text-xs font-semibold text-surface-500 mb-1">Group ID <span class="text-red-400">*</span></label>
@@ -4896,18 +5527,24 @@
                     class="w-full border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-950 rounded-xl px-3 py-2.5 text-sm font-mono focus:outline-none focus:border-[#00B900] focus:ring-2 focus:ring-[#00B900]/20 text-surface-800 dark:text-white">
                 </div>
                 <div>
-                  <label class="block text-xs font-semibold text-surface-500 mb-1">ชื่อกลุ่ม (เพื่อความสะดวก)</label>
+                  <label class="block text-xs font-semibold text-surface-500 mb-1">ชื่อกลุ่ม (สำหรับแสดงในระบบ)</label>
                   <input id="lg-group-name" type="text" placeholder="เช่น กลุ่มบัญชีร้านเรา"
                     class="w-full border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-950 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#00B900] focus:ring-2 focus:ring-[#00B900]/20 text-surface-800 dark:text-white">
                 </div>
+                <div>
+                  <label class="block text-xs font-semibold text-surface-500 mb-1">โฟลเดอร์จัดเก็บเอกสารอัตโนมัติ (Google Drive)</label>
+                  <select id="lg-group-folder" class="w-full border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-950 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#00B900] focus:ring-2 focus:ring-[#00B900]/20 text-surface-800 dark:text-white cursor-pointer">
+                    <option value="">-- ถามเลือกโฟลเดอร์บน LINE ทุกครั้ง --</option>
+                  </select>
+                </div>
                 <button onclick="registerLineGroup()"
-                  class="w-full bg-[#00B900] hover:bg-[#009900] text-white font-bold py-2.5 rounded-xl text-sm transition-colors flex items-center justify-center gap-2">
-                  <i data-lucide="plus-circle" class="w-4 h-4"></i> เพิ่มกลุ่ม
+                  class="w-full bg-[#00B900] hover:bg-[#009900] text-white font-bold py-2.5 rounded-xl text-sm transition-colors flex items-center justify-center gap-2 shadow-md shadow-[#00B900]/20">
+                  <i data-lucide="plus-circle" class="w-4 h-4"></i> บันทึกผูกกลุ่ม LINE
                 </button>
               </div>
             </div>
 
-            <!-- รายการกลุ่มที่ลงทะเบียน -->
+            <!-- 📋 6. รายการกลุ่มที่ลงทะเบียน -->
             <div class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-2xl shadow-sm overflow-hidden">
               <div class="px-6 py-4 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between gap-3">
                 <h2 class="font-bold text-surface-800 dark:text-white text-sm uppercase tracking-widest">กลุ่มที่ลงทะเบียนแล้ว</h2>
@@ -4928,34 +5565,6 @@
               <ul id="lg-list" class="hidden divide-y divide-surface-100 dark:divide-surface-800"></ul>
             </div>
 
-            <!-- การตั้งค่า LINE OA & Persona (สำหรับ Admin) -->
-            <div class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-2xl p-6 shadow-sm space-y-4">
-              <h2 class="font-bold text-surface-800 dark:text-white text-xs uppercase tracking-widest flex items-center gap-2">
-                <i data-lucide="sliders" class="w-4 h-4 text-emerald-600"></i> การตั้งค่าบอท LINE
-              </h2>
-              <p class="text-xs text-surface-400">กำหนดพฤติกรรมและการเชื่อมต่อข้อมูลสำหรับ LINE Official Account</p>
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <button onclick="openLineSettings()" class="flex items-center gap-3 p-4 bg-surface-50 dark:bg-surface-800/50 hover:bg-surface-100 dark:hover:bg-surface-800 border border-surface-100 dark:border-surface-700/50 rounded-xl transition-all group text-left">
-                  <div class="w-9 h-9 rounded-lg bg-white dark:bg-surface-900 flex items-center justify-center shadow-sm text-emerald-600 group-hover:scale-110 transition-transform">
-                    <i data-lucide="settings" class="w-4 h-4"></i>
-                  </div>
-                  <div>
-                    <div class="text-xs font-bold text-surface-700 dark:text-surface-200">ตั้งค่า LINE OA</div>
-                    <div class="text-[9px] text-surface-400">Greeting & API Keys</div>
-                  </div>
-                </button>
-                <button onclick="openPersonaManager()" class="flex items-center gap-3 p-4 bg-surface-50 dark:bg-surface-800/50 hover:bg-surface-100 dark:hover:bg-surface-800 border border-surface-100 dark:border-surface-700/50 rounded-xl transition-all group text-left">
-                  <div class="w-9 h-9 rounded-lg bg-white dark:bg-surface-900 flex items-center justify-center shadow-sm text-amber-600 group-hover:scale-110 transition-transform">
-                    <i data-lucide="bot" class="w-4 h-4"></i>
-                  </div>
-                  <div>
-                    <div class="text-xs font-bold text-surface-700 dark:text-surface-200">จัดการ AI Persona</div>
-                    <div class="text-[9px] text-surface-400">กำหนดนิสัยของบอท</div>
-                  </div>
-                </button>
-              </div>
-            </div>
-
           </div>
         </section>
 
@@ -4974,6 +5583,10 @@
                 <button onclick="clearRRForm()" class="px-4 py-2 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition flex items-center gap-1.5">
                   <i data-lucide="rotate-ccw" class="w-4 h-4"></i> ล้างข้อมูล
                 </button>
+                <button onclick="$('rrOcrInput').click()" class="px-4 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition flex items-center gap-1.5 shadow-sm">
+                  <i data-lucide="sparkles" class="w-4 h-4"></i> สแกนใบเสร็จด้วย AI
+                </button>
+                <input id="rrOcrInput" type="file" accept="image/*,application/pdf" class="hidden" onchange="scanReceiptWithAI(this)">
                 <button onclick="generateRRPdf()" class="px-4 py-2 text-sm font-bold text-white bg-amber-500 rounded-xl hover:bg-amber-600 transition flex items-center gap-1.5 shadow-sm">
                   <i data-lucide="download" class="w-4 h-4"></i> ดาวน์โหลด PDF
                 </button>
@@ -6655,6 +7268,71 @@
                                 <textarea id="modalField-details" required rows="2" placeholder="ระบุวัตถุประสงค์ในการจ่าย..." class="w-full px-4 py-2.5 text-xs bg-white border border-slate-200 rounded-xl text-slate-700"></textarea>
                             </div>
 
+                            <!-- Category Specific Section: สลิปโอนเงิน -->
+                            <div id="modalSection-slip" class="space-y-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                <h4 class="text-xs font-bold text-slate-900 uppercase tracking-wider">ข้อมูลสลิปโอนเงิน</h4>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">ผู้รับเงิน / บัญชีปลายทาง</label>
+                                        <input type="text" id="modalField-receiver" placeholder="เช่น นาย/บจก. ผู้รับเงิน..." class="w-full px-4 py-2.5 text-xs bg-white border border-slate-200 rounded-xl text-slate-700 font-semibold">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">เวลาที่ทำรายการ</label>
+                                        <input type="text" id="modalField-time" placeholder="เช่น 17:52 น." class="w-full px-4 py-2.5 text-xs bg-white border border-slate-200 rounded-xl text-slate-700">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">ธนาคารต้นทาง</label>
+                                        <input type="text" id="modalField-bankFrom" placeholder="เช่น กรุงเทพ (BBL)" class="w-full px-4 py-2.5 text-xs bg-white border border-slate-200 rounded-xl text-slate-700">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">ธนาคารปลายทาง</label>
+                                        <input type="text" id="modalField-bankTo" placeholder="เช่น กสิกรไทย (KBANK)" class="w-full px-4 py-2.5 text-xs bg-white border border-slate-200 rounded-xl text-slate-700">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">บันทึกช่วยจำ (Memo)</label>
+                                    <input type="text" id="modalField-memo" placeholder="ข้อความบันทึกสลิป..." class="w-full px-4 py-2.5 text-xs bg-white border border-slate-200 rounded-xl text-slate-700">
+                                </div>
+                            </div>
+
+                            <!-- Category Specific Section: ใบหัก ณ ที่จ่าย / WHT -->
+                            <div id="modalSection-wht" class="space-y-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                <h4 class="text-xs font-bold text-slate-900 uppercase tracking-wider">ข้อมูลภาษีหัก ณ ที่จ่าย (WHT)</h4>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">ประเภท หัก ณ ที่จ่าย</label>
+                                        <select id="modalField-whtType" class="w-full px-4 py-2.5 text-xs bg-white border border-slate-200 rounded-xl text-slate-700 font-semibold">
+                                            <option value="-">-- เลือกประเภท หัก ณ ที่จ่าย --</option>
+                                            <option value="1%">1% - ค่าขนส่ง / ค่าเบี้ยประกันภัย</option>
+                                            <option value="2%">2% - ค่าโฆษณา</option>
+                                            <option value="3%">3% - ค่าบริการ / ค่ารับจ้างทำของ / วิชาชีพอิสระ</option>
+                                            <option value="5%">5% - ค่าเช่าอาคาร / สถานที่ / ค่าแสดงนักแสดง</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">อัตราภาษี (%)</label>
+                                        <input type="text" id="modalField-whtRate" placeholder="เช่น 3%" class="w-full px-4 py-2.5 text-xs bg-white border border-slate-200 rounded-xl text-slate-700">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">ผู้มีหน้าที่หักภาษี (ผู้จ่ายเงิน)</label>
+                                        <input type="text" id="modalField-payerName" placeholder="ชื่อบริษัทผู้จ่าย..." class="w-full px-4 py-2.5 text-xs bg-white border border-slate-200 rounded-xl text-slate-700">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">ผู้ถูกหักภาษี (ผู้รับเงิน)</label>
+                                        <input type="text" id="modalField-payeeName" placeholder="ชื่อบุคคล/นิติบุคคลผู้รับเงิน..." class="w-full px-4 py-2.5 text-xs bg-white border border-slate-200 rounded-xl text-slate-700">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Category Specific Section: บันทึกค่าใช้จ่ายทั่วไป -->
+                            <div id="modalSection-expense" class="space-y-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                <h4 class="text-xs font-bold text-slate-900 uppercase tracking-wider">หมวดหมู่และประเภทค่าใช้จ่าย</h4>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">ประเภทค่าใช้จ่าย / ผูกบัญชี</label>
+                                    <input type="text" id="modalField-expenseType" placeholder="เช่น ค่าเดินทาง, ค่าอุปกรณ์สำนักงาน, ค่าสาธารณูปโภค..." class="w-full px-4 py-2.5 text-xs bg-white border border-slate-200 rounded-xl text-slate-700 font-bold">
+                                </div>
+                            </div>
+
                             <!-- Supplier Info -->
                             <div class="border-t border-slate-100 pt-6 space-y-4">
                                 <div class="flex items-center justify-between">
@@ -7182,7 +7860,10 @@
             <div class="flex items-center gap-2">
               <button id="voiceCallBtn" title="โทรเสียง" class="p-3 hover:bg-brand-50 text-brand-600 rounded-2xl transition-all"><i data-lucide="phone" class="w-5 h-5"></i></button>
               <button id="videoCallBtn" title="วิดีโอคอล" class="p-3 hover:bg-brand-50 text-brand-600 rounded-2xl transition-all"><i data-lucide="video" class="w-5 h-5"></i></button>
-              <button id="viewMembersBtn" title="สมาชิก" class="p-3 hover:bg-surface-100 text-surface-500 rounded-2xl transition-all"><i data-lucide="users" class="w-5 h-5"></i></button>
+              <button id="viewMembersBtn" title="สมาชิกในกลุ่ม" class="p-3 hover:bg-surface-100 text-surface-500 rounded-2xl transition-all"><i data-lucide="users" class="w-5 h-5"></i></button>
+              <button id="addMemberBtn" title="เพิ่มสมาชิกเข้ากลุ่ม" class="p-3 hover:bg-emerald-50 text-emerald-600 rounded-2xl transition-all hidden"><i data-lucide="user-plus" class="w-5 h-5"></i></button>
+              <button id="editGroupBtn" title="แก้ไขข้อมูลกลุ่ม" class="p-3 hover:bg-brand-50 text-brand-600 rounded-2xl transition-all hidden"><i data-lucide="settings" class="w-5 h-5"></i></button>
+              <button id="deleteGroupBtn" title="ลบกลุ่มถาวร" class="p-3 hover:bg-red-50 text-red-500 rounded-2xl transition-all hidden"><i data-lucide="trash-2" class="w-5 h-5"></i></button>
               <button onclick="state.groupChat.isOpen=false; $('groupChatModal').classList.add('hidden')" class="p-3 hover:bg-red-50 text-red-500 rounded-2xl transition-all ml-2"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
           </header>
@@ -7286,9 +7967,14 @@
       class="fixed inset-0 z-[10001] flex items-center justify-center p-4 bg-surface-950/80 backdrop-blur-sm hidden animate-in fade-in duration-200">
       <div
         class="bg-white dark:bg-surface-900 w-full max-w-sm rounded-[32px] shadow-2xl border border-surface-200 dark:border-surface-800 p-8 space-y-6 animate-in zoom-in-95 duration-200">
-        <div>
-          <h3 class="text-xl font-black text-surface-900 dark:text-white">สร้างกลุ่มใหม่</h3>
-          <p class="text-xs text-surface-400 mt-1">ตั้งชื่อกลุ่มและเลือกสมาชิกเพื่อเริ่มแชร์ข้อมูล</p>
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="text-xl font-black text-surface-900 dark:text-white">สร้างกลุ่มใหม่</h3>
+            <p class="text-xs text-surface-400 mt-1">ตั้งชื่อกลุ่มและเลือกสมาชิกเพื่อเริ่มแชท</p>
+          </div>
+          <button onclick="createGroupModal.classList.add('hidden'); createGroupModal.classList.remove('flex', 'items-center', 'justify-center')" class="w-10 h-10 flex items-center justify-center bg-surface-100 dark:bg-surface-800 rounded-full text-surface-500 hover:bg-red-50 hover:text-red-500 transition-all">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
         </div>
         <div class="space-y-4">
           <div class="space-y-1.5">
@@ -7320,11 +8006,16 @@
         <div class="flex items-center justify-between">
           <div>
             <h3 class="text-xl font-black text-surface-900 dark:text-white">เริ่มแชทใหม่</h3>
-            <p class="text-xs text-surface-400 mt-1">เลือกเพื่อนร่วมงานเพื่อเริ่มการสนทนาส่วนตัว</p>
+            <p class="text-xs text-surface-400 mt-1">เลือกเพื่อนร่วมงานหรือสร้างกลุ่มใหม่</p>
           </div>
-          <button onclick="startDmModal.classList.add('hidden'); startDmModal.classList.remove('flex', 'items-center', 'justify-center')" class="w-10 h-10 flex items-center justify-center bg-surface-100 dark:bg-surface-800 rounded-full text-surface-500 hover:bg-red-50 hover:text-red-500 transition-all">
-            <i data-lucide="x" class="w-5 h-5"></i>
-          </button>
+          <div class="flex items-center gap-2">
+            <button onclick="startDmModal.classList.add('hidden'); startDmModal.classList.remove('flex', 'items-center', 'justify-center'); openCreateGroup();" class="px-3 py-2 bg-brand-50 dark:bg-brand-900/20 text-brand-600 rounded-2xl text-xs font-bold hover:bg-brand-100 transition-all flex items-center gap-1.5 shadow-sm">
+              <i data-lucide="users" class="w-3.5 h-3.5"></i> + สร้างกลุ่ม
+            </button>
+            <button onclick="startDmModal.classList.add('hidden'); startDmModal.classList.remove('flex', 'items-center', 'justify-center')" class="w-10 h-10 flex items-center justify-center bg-surface-100 dark:bg-surface-800 rounded-full text-surface-500 hover:bg-red-50 hover:text-red-500 transition-all">
+              <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+          </div>
         </div>
         
         <div class="relative">
@@ -7371,7 +8062,7 @@
 
     <!-- ═══ Edit User Modal ═══ -->
     <div id="editUserModal"
-      class="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-surface-950/80 backdrop-blur-md hidden animate-in fade-in duration-300">
+      class="fixed inset-0 z-[10001] flex items-center justify-center p-4 bg-surface-950/80 backdrop-blur-md hidden animate-in fade-in duration-300">
       <div
         class="bg-white dark:bg-surface-900 w-full max-w-md rounded-3xl shadow-2xl border border-surface-200 dark:border-surface-800 overflow-hidden flex flex-col animate-in zoom-in-95 duration-300">
         <!-- Modal Header -->
@@ -7489,6 +8180,39 @@
                   <div class="w-10 h-5 bg-surface-200 peer-focus:outline-none rounded-full peer dark:bg-surface-800 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500 shadow-inner"></div>
                 </label>
               </div>
+            </div>
+          </div>
+
+          <!-- LINE Command Permissions -->
+          <div class="pt-1">
+            <div class="text-[10px] font-black uppercase tracking-widest text-surface-400 mb-2 ml-1 flex items-center gap-2">
+              <i data-lucide="message-square" class="w-3 h-3 text-purple-500"></i> สิทธิ์การสั่งงานผ่าน LINE
+            </div>
+            <div class="grid grid-cols-2 gap-2 bg-surface-50 dark:bg-surface-950 border border-surface-100 dark:border-surface-800 p-4 rounded-2xl">
+              <label class="flex items-center gap-2 cursor-pointer text-xs font-bold dark:text-white">
+                <input type="checkbox" id="linePermReport" class="rounded border-surface-300 dark:border-surface-700 text-brand-600 focus:ring-brand-500 bg-white dark:bg-surface-900">
+                <span>สรุปรายจ่าย (Report)</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer text-xs font-bold dark:text-white">
+                <input type="checkbox" id="linePermLinks" class="rounded border-surface-300 dark:border-surface-700 text-brand-600 focus:ring-brand-500 bg-white dark:bg-surface-900">
+                <span>ขอลิงก์ระบบ (Links)</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer text-xs font-bold dark:text-white">
+                <input type="checkbox" id="linePermReconcile" class="rounded border-surface-300 dark:border-surface-700 text-brand-600 focus:ring-brand-500 bg-white dark:bg-surface-900">
+                <span>กระทบยอด (Reconcile)</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer text-xs font-bold dark:text-white">
+                <input type="checkbox" id="linePermSearch" class="rounded border-surface-300 dark:border-surface-700 text-brand-600 focus:ring-brand-500 bg-white dark:bg-surface-900">
+                <span>ค้นหาไฟล์ (Search)</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer text-xs font-bold dark:text-white">
+                <input type="checkbox" id="linePermFolder" class="rounded border-surface-300 dark:border-surface-700 text-brand-600 focus:ring-brand-500 bg-white dark:bg-surface-900">
+                <span>เลือกโฟลเดอร์ (Folder)</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer text-xs font-bold dark:text-white">
+                <input type="checkbox" id="linePermLeave" class="rounded border-surface-300 dark:border-surface-700 text-brand-600 focus:ring-brand-500 bg-white dark:bg-surface-900">
+                <span>บันทึกวันลา (Leave)</span>
+              </label>
             </div>
           </div>
 
@@ -8367,7 +9091,7 @@
   <!-- Final Modals & Scripts -->
   <!-- ⚙️ Edit Group Modal -->
   <div id="editGroupModal"
-    class="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-surface-950/80 backdrop-blur-sm hidden animate-in fade-in duration-200">
+    class="fixed inset-0 z-[10001] flex items-center justify-center p-4 bg-surface-950/80 backdrop-blur-sm hidden animate-in fade-in duration-200">
     <div
       class="bg-white dark:bg-surface-900 w-full max-w-sm rounded-[32px] shadow-2xl border border-surface-200 dark:border-surface-800 p-8 space-y-6 animate-in zoom-in-95 duration-200">
       <div class="text-center">
@@ -8406,7 +9130,7 @@
 
   <!-- 👁️ File Preview Modal -->
   <div id="filePreviewModal"
-    class="hidden fixed inset-0 z-[300] flex items-center justify-center p-4 md:p-12 bg-surface-950/90 backdrop-blur-xl animate-in fade-in duration-300">
+    class="hidden fixed inset-0 z-[10001] flex items-center justify-center p-4 md:p-12 bg-surface-950/90 backdrop-blur-xl animate-in fade-in duration-300">
     <div class="absolute top-6 right-6 flex gap-3 z-10">
       <button id="closePreviewBtn"
         class="w-10 h-10 bg-white/10 hover:bg-red-500 text-white rounded-full flex items-center justify-center transition-all backdrop-blur-md border border-white/10 shadow-lg">
@@ -9115,6 +9839,58 @@
     </div>
   </div>
 
+  <!-- Modal ตั้งค่ากลุ่ม LINE รายกลุ่ม -->
+  <div id="modal-edit-line-group" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
+      <div class="flex items-center justify-between border-b border-surface-100 dark:border-surface-800 pb-3">
+        <h3 class="font-bold text-surface-800 dark:text-white text-base flex items-center gap-2">
+          <i data-lucide="settings" class="w-5 h-5 text-[#00B900]"></i> ตั้งค่ากลุ่ม LINE
+        </h3>
+        <button onclick="closeEditLineGroupModal()" class="text-surface-400 hover:text-surface-600 dark:hover:text-surface-200">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <input type="hidden" id="edit-lg-group-id">
+
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-surface-500 mb-1">ชื่อกลุ่ม (ที่แสดงในระบบ)</label>
+          <input type="text" id="edit-lg-group-name" placeholder="ชื่อกลุ่มที่ต้องการ"
+            class="w-full border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-950 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#00B900] text-surface-800 dark:text-white">
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-surface-500 mb-1">โฟลเดอร์จัดเก็บอัตโนมัติ (Google Drive)</label>
+          <select id="edit-lg-group-folder" class="w-full border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-950 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#00B900] text-surface-800 dark:text-white cursor-pointer">
+            <option value="">-- ถามเลือกโฟลเดอร์บน LINE ทุกครั้ง --</option>
+          </select>
+          <p class="text-[10px] text-surface-400 mt-1">เมื่อตั้งค่าแล้ว เอกสาร/รูปภาพที่ส่งในกลุ่ม LINE นี้จะถูกเซฟลงโฟลเดอร์นี้ทันทีโดยไม่ต้องเลือกลิสต์</p>
+        </div>
+
+        <div class="flex items-center justify-between p-3 bg-surface-50 dark:bg-surface-800/50 rounded-xl">
+          <div>
+            <div class="text-xs font-bold text-surface-700 dark:text-surface-200">ตอบกลับด้วย AI</div>
+            <div class="text-[10px] text-surface-400">เปิด/ปิด ให้บอทตอบในกลุ่มนี้</div>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" id="edit-lg-bot-enabled" class="sr-only peer">
+            <div class="w-9 h-5 bg-surface-200 peer-focus:outline-none rounded-full peer dark:bg-surface-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-surface-600 peer-checked:bg-emerald-500"></div>
+          </label>
+        </div>
+      </div>
+
+      <div class="pt-2 flex justify-end gap-2">
+        <button onclick="closeEditLineGroupModal()" class="px-4 py-2 text-xs font-semibold text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-800 rounded-xl transition-all">
+          ยกเลิก
+        </button>
+        <button onclick="saveEditLineGroupSettings()" class="px-5 py-2 text-xs font-bold bg-[#00B900] hover:bg-[#009900] text-white rounded-xl shadow-md transition-all">
+          บันทึก
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Image Viewer Modal (Global) -->
   <div id="imageViewerModal" class="hidden fixed inset-0 z-[9999] bg-black/90 flex items-center justify-center animate-in fade-in duration-300">
     <button onclick="document.getElementById('imageViewerModal').classList.add('hidden'); document.getElementById('imageViewerModal').classList.remove('flex', 'items-center', 'justify-center')" 
@@ -9129,6 +9905,28 @@
 <script>
 // ── LINE Groups ──────────────────────────────────────
 let _lgLoaded = false;
+let _orgDriveFoldersCache = [];
+
+async function loadGoogleFoldersForGroupRegister() {
+  const select = document.getElementById('lg-group-folder');
+  if (!select) return;
+  try {
+    const res = await fetch('/api/org/drive/folders');
+    const data = await res.json();
+    if (data.ok && Array.isArray(data.folders)) {
+      _orgDriveFoldersCache = data.folders;
+      select.innerHTML = '<option value="">-- ถามเลือกโฟลเดอร์บน LINE ทุกครั้ง --</option>';
+      data.folders.forEach(f => {
+        const opt = document.createElement('option');
+        opt.value = f.id;
+        opt.textContent = `📁 ${f.name}`;
+        select.appendChild(opt);
+      });
+    }
+  } catch (e) {
+    console.warn('Cannot load Google Drive folders for group select:', e);
+  }
+}
 
 async function loadLineGroups(force = false) {
   if (_lgLoaded && !force) return;
@@ -9148,25 +9946,32 @@ async function loadLineGroups(force = false) {
       data.groups.forEach(g => {
         const li = document.createElement('li');
         li.className = 'flex items-center gap-3 px-6 py-4 hover:bg-surface-50 dark:hover:bg-surface-800/50';
+        
         // รูปกลุ่ม LINE จริง หรือ placeholder สีเขียว
         const picHtml = g.line_picture_url
           ? `<img src="${g.line_picture_url}" class="w-11 h-11 rounded-xl object-cover flex-shrink-0 border border-surface-200 dark:border-surface-700">`
           : `<div class="w-11 h-11 rounded-xl bg-[#00B900] flex items-center justify-center flex-shrink-0"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="w-6 h-6 fill-white"><path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.63-.63h2.386c.346 0 .627.285.627.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.031-.199.031-.211 0-.391-.09-.51-.25l-2.443-3.317v2.94c0 .344-.279.629-.631.629-.346 0-.626-.285-.626-.629V8.108c0-.27.173-.51.43-.595.06-.023.136-.033.194-.033.195 0 .375.104.495.254l2.462 3.33V8.108c0-.345.282-.63.63-.63.345 0 .63.285.63.63v4.771zm-5.741 0c0 .344-.282.629-.631.629-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.63-.63.346 0 .628.285.628.63v4.771zm-2.466.629H4.917c-.345 0-.63-.285-.63-.629V8.108c0-.345.285-.63.63-.63.348 0 .63.285.63.63v4.141h1.756c.348 0 .629.283.629.63 0 .344-.281.629-.629.629M24 10.314C24 4.943 18.615.572 12 .572S0 4.943 0 10.314c0 4.811 4.27 8.842 10.035 9.608.391.082.923.258 1.058.59.12.301.079.766.038 1.08l-.164 1.02c-.045.301-.24 1.186 1.049.645 1.291-.539 6.916-4.078 9.436-6.975C23.176 14.393 24 12.458 24 10.314"/></svg></div>`;
-        // ชื่อแสดงผล: ชื่อจาก LINE API (line_real_name) มาก่อน ไม่งั้นใช้ group_name ที่ตั้งเอง
+        
         const displayName = g.line_real_name || g.group_name || '(ไม่มีชื่อ)';
         const nameSource = g.line_real_name
           ? `<span class="ml-1 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider bg-[#00B900]/15 text-[#00B900] rounded-full">LINE</span>`
           : (g.group_name ? `<span class="ml-1 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider bg-surface-100 dark:bg-surface-700 text-surface-400 rounded-full">ตั้งเอง</span>` : '');
+        
+        const folderTag = g.default_folder_name
+          ? `<span class="inline-flex items-center gap-1 text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800/50 mt-1"><i data-lucide="folder" class="w-3 h-3"></i> ${g.default_folder_name}</span>`
+          : `<span class="text-[10px] text-surface-400 mt-1 block">ถามโฟลเดอร์บน LINE ทุกครั้ง</span>`;
+
         const botEnabled = g.bot_enabled !== undefined ? g.bot_enabled : 1;
         const toggleHtml = `
-          <div class="flex items-center gap-2 mr-3">
-            <span class="text-[10px] font-bold text-surface-500 uppercase tracking-widest">บอท AI</span>
+          <div class="flex items-center gap-2 mr-2">
+            <span class="text-[10px] font-bold text-surface-500 uppercase tracking-widest hidden sm:inline">บอท AI</span>
             <label class="relative inline-flex items-center cursor-pointer">
               <input type="checkbox" value="" class="sr-only peer" ${botEnabled ? 'checked' : ''} onchange="toggleLineGroupBot('${g.group_id}', this.checked)">
               <div class="w-9 h-5 bg-surface-200 peer-focus:outline-none rounded-full peer dark:bg-surface-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-surface-600 peer-checked:bg-emerald-500"></div>
             </label>
           </div>
         `;
+        
         li.innerHTML = `
           ${picHtml}
           <div class="flex-1 min-w-0">
@@ -9177,12 +9982,17 @@ async function loadLineGroups(force = false) {
               ? `<p class="text-[10px] text-surface-400 mt-0.5">ชื่อที่ตั้งเอง: ${g.group_name}</p>`
               : ''}
             <p class="text-[10px] font-mono text-surface-400 mt-0.5 truncate">${g.group_id}</p>
+            ${folderTag}
           </div>
           ${toggleHtml}
-          <button onclick="deleteLineGroup('${g.group_id}')" class="flex-shrink-0 text-xs text-red-400 hover:text-red-600 font-semibold px-3 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">ลบ</button>
+          <button onclick="openEditLineGroupModal('${g.group_id}', '${(g.group_name || '').replace(/'/g, "\\'")}', '${g.default_folder_id || ''}', ${botEnabled})" class="text-xs text-surface-500 hover:text-brand-600 font-semibold px-2.5 py-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors flex items-center gap-1">
+            <i data-lucide="settings" class="w-3.5 h-3.5"></i> ตั้งค่า
+          </button>
+          <button onclick="deleteLineGroup('${g.group_id}')" class="flex-shrink-0 text-xs text-red-400 hover:text-red-600 font-semibold px-2.5 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">ลบ</button>
         `;
         list.appendChild(li);
       });
+      if (window.lucide) window.lucide.createIcons();
     }
     _lgLoaded = true;
   } catch (e) {
@@ -9194,6 +10004,7 @@ async function loadLineGroups(force = false) {
 async function registerLineGroup() {
   const groupId = document.getElementById('lg-group-id').value.trim();
   const groupName = document.getElementById('lg-group-name').value.trim();
+  const defaultFolderId = document.getElementById('lg-group-folder').value;
   if (!groupId) { showLineGroupToast('กรุณาใส่ Group ID', true); return; }
   
   const lineIdPattern = /^[CRU][a-fA-F0-9]{32}$/;
@@ -9204,7 +10015,7 @@ async function registerLineGroup() {
   const res = await fetch('/api/org/line/register-group', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ group_id: groupId, group_name: groupName }),
+    body: JSON.stringify({ group_id: groupId, group_name: groupName, default_folder_id: defaultFolderId }),
   });
   const data = await res.json();
   if (data.ok) {
@@ -9265,6 +10076,57 @@ async function deleteLineGroup(groupId) {
   const data = await res.json();
   if (data.ok) { showLineGroupToast('ลบกลุ่มแล้ว'); loadLineGroups(true); }
   else showLineGroupToast('เกิดข้อผิดพลาด', true);
+}
+
+function openEditLineGroupModal(groupId, groupName, defaultFolderId, botEnabled) {
+  document.getElementById('edit-lg-group-id').value = groupId;
+  document.getElementById('edit-lg-group-name').value = groupName || '';
+  
+  const select = document.getElementById('edit-lg-group-folder');
+  select.innerHTML = '<option value="">-- ถามเลือกโฟลเดอร์บน LINE ทุกครั้ง --</option>';
+  _orgDriveFoldersCache.forEach(f => {
+    const opt = document.createElement('option');
+    opt.value = f.id;
+    opt.textContent = `📁 ${f.name}`;
+    if (f.id === defaultFolderId) opt.selected = true;
+    select.appendChild(opt);
+  });
+  
+  document.getElementById('edit-lg-bot-enabled').checked = !!botEnabled;
+  document.getElementById('modal-edit-line-group').classList.remove('hidden');
+}
+
+function closeEditLineGroupModal() {
+  document.getElementById('modal-edit-line-group').classList.add('hidden');
+}
+
+async function saveEditLineGroupSettings() {
+  const groupId = document.getElementById('edit-lg-group-id').value;
+  const groupName = document.getElementById('edit-lg-group-name').value.trim();
+  const defaultFolderId = document.getElementById('edit-lg-group-folder').value;
+  const botEnabled = document.getElementById('edit-lg-bot-enabled').checked ? 1 : 0;
+  
+  try {
+    const res = await fetch('/api/org/line/groups/' + groupId, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        group_name: groupName,
+        default_folder_id: defaultFolderId,
+        bot_enabled: botEnabled
+      })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      showLineGroupToast('บันทึกการตั้งค่ากลุ่มเรียบร้อย ✅');
+      closeEditLineGroupModal();
+      loadLineGroups(true);
+    } else {
+      showLineGroupToast(data.error || 'เกิดข้อผิดพลาดในการบันทึก', true);
+    }
+  } catch (e) {
+    showLineGroupToast('เกิดข้อผิดพลาดในการเชื่อมต่อ', true);
+  }
 }
 
 function showLineGroupToast(msg, isError = false) {
@@ -9953,6 +10815,36 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('modalField-taxId').value = item.tax_id !== '-' ? item.tax_id : '';
             document.getElementById('modalField-address').value = item.address !== '-' ? item.address : '';
             
+            // Category-specific fields populate
+            const ext = item.extracted_data || {};
+            document.getElementById('modalField-receiver').value = item.receiver || ext.receiver || ext.payee_name || (item.merchant !== '-' ? item.merchant : '');
+            document.getElementById('modalField-time').value = item.time || ext.time || '';
+            document.getElementById('modalField-bankFrom').value = item.bank_from || ext.sender_bank || ext.bank_from || '';
+            document.getElementById('modalField-bankTo').value = item.bank_to || ext.receiver_bank || ext.bank_to || '';
+            document.getElementById('modalField-memo').value = item.memo || ext.memo || '';
+
+            document.getElementById('modalField-whtType').value = item.wht_type || ext.wht_type || '-';
+            document.getElementById('modalField-whtRate').value = item.wht_rate || ext.wht_rate || ext.wht_percent || '';
+            document.getElementById('modalField-payerName').value = item.payer_name || ext.payer_name || '';
+            document.getElementById('modalField-payeeName').value = item.payee_name || ext.payee_name || item.receiver || '';
+
+            document.getElementById('modalField-expenseType').value = item.expense_type || ext.income_type || item.category || '';
+
+            // Toggle category sections based on sheet_name
+            const sName = (item.sheet_name || '').trim();
+            const isSlip = sName === 'สลิปโอนเงิน';
+            const isWht = sName === 'ใบหัก ณ ที่จ่าย';
+            const isReceipt = sName === 'ใบเสร็จ/ใบกำกับภาษี';
+            const isGenExp = sName === 'บันทึกค่าใช้จ่าย';
+
+            const slipSec = document.getElementById('modalSection-slip');
+            const whtSec = document.getElementById('modalSection-wht');
+            const expSec = document.getElementById('modalSection-expense');
+
+            if (slipSec) slipSec.classList.toggle('hidden', !isSlip);
+            if (whtSec) whtSec.classList.toggle('hidden', !isWht && !isReceipt);
+            if (expSec) expSec.classList.toggle('hidden', !isGenExp && !isReceipt);
+
             // Set branch radio
             const branchType = item.branch && item.branch.includes('00000') ? 'สำนักงานใหญ่' : (item.branch !== '-' ? 'สาขา' : 'ไม่มีสาขา');
             document.querySelectorAll('input[name="branch_type"]').forEach(r => {
@@ -10080,7 +10972,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 "gross_amount": document.getElementById('modalField-grossAmount').value,
                 "vat_amount": document.getElementById('modalField-vatAmount').value,
                 "wht_amount": document.getElementById('modalField-whtAmount').value,
-                "ref_number": document.getElementById('modalField-hasTaxInvoice').checked ? document.getElementById('modalField-refNumber').value : '-'
+                "ref_number": document.getElementById('modalField-hasTaxInvoice').checked ? document.getElementById('modalField-refNumber').value : '-',
+                "receiver": document.getElementById('modalField-receiver')?.value || '-',
+                "payer_name": document.getElementById('modalField-payerName')?.value || '-',
+                "payee_name": document.getElementById('modalField-payeeName')?.value || '-',
+                "time": document.getElementById('modalField-time')?.value || '-',
+                "bank_from": document.getElementById('modalField-bankFrom')?.value || '-',
+                "bank_to": document.getElementById('modalField-bankTo')?.value || '-',
+                "memo": document.getElementById('modalField-memo')?.value || '-',
+                "wht_type": document.getElementById('modalField-whtType')?.value || '-',
+                "wht_rate": document.getElementById('modalField-whtRate')?.value || '-',
+                "expense_type": document.getElementById('modalField-expenseType')?.value || '-'
             };
 
             fetch('/api/dashboard/update-expense', {
@@ -10465,40 +11367,35 @@ window.addEventListener('resize',()=>{if(_ta)_ts();});
 // ── HELP CENTER ───────────────────────────────────────────────────
 const HCATS=[
   {id:'ai',  lbl:'AI แชท',         ico:IC.bot,  items:[
-    {q:'วิธีแชทกับ AI',            a:'กดเมนู AI แชท ในแถบซ้าย แล้วพิมพ์คำถามลงในช่องข้อความด้านล่าง AI จะตอบทันทีและอ้างอิงจากเอกสารใน KB ขององค์กรคุณด้วย'},
-    {q:'AI ตอบจากข้อมูลอะไร',      a:'AI ตอบจาก 2 แหล่ง: ความรู้ทั่วไปของโมเดล AI และเอกสารที่คุณอัปโหลดไว้ใน Knowledge Base ขององค์กร'},
-    {q:'ให้ AI สรุปเอกสารได้ไหม',  a:'ได้ ไปที่เมนู สรุปผล แล้วอัปโหลดหรือวางข้อความที่ต้องการ AI จะสรุปเป็นหัวข้อสำคัญๆ ให้'},
-    {q:'ประวัติแชทดูได้ที่ไหน',    a:'กดไอคอนนาฬิกา หรือปุ่ม ประวัติ ในหน้าแชท ระบบบันทึกแยกตามเซสชันไว้ทั้งหมด'},
+    {q:'วิธีถามตอบกับ AI น้องพั้นซ์', a:'พิมพ์คำถามลงในช่องข้อความเพื่อเริ่มสนทนา น้องพั้นซ์จะตอบคำถามโดยประมวลผลร่วมกับเอกสาร นโยบาย และข้อมูลองค์กรที่คุณอัปโหลดไว้ให้อัตโนมัติค่ะ<br><button onclick="closeHelp();showView(\'chat\')" class="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-900 text-white text-[11px] font-bold rounded-lg hover:bg-slate-800 transition mt-2 cursor-pointer">👉 เปิดหน้า AI แชทตอนนี้</button>'},
+    {q:'AI ตอบข้อมูลโดยอ้างอิงจากที่ไหนบ้าง', a:'น้องพั้นซ์จะตอบคำถามโดยอ้างอิงจาก 2 แหล่งข้อมูลหลัก:<br>1. <strong>ความรู้ทั่วไปของโมเดล (Base LLM):</strong> ใช้ตอบงานทั่วไป แปลภาษา หรือคำนวณสูตร<br>2. <strong>คลังข้อมูลองค์กร (Knowledge Base):</strong> เอกสาร PDF, Word, Excel หรือรูปภาพที่คุณอัปโหลดไว้ เพื่อให้ได้คำตอบที่ถูกต้องและเจาะจงตามระเบียบบริษัทของคุณค่ะ'},
+    {q:'ช่วยสรุปและวิเคราะห์เอกสารได้ไหม', a:'<strong>ทำได้แน่นอนค่ะ!</strong> คุณสามารถพิมพ์สั่ง เช่น <em>"ช่วยสรุปไฟล์คู่มือพนักงานให้หน่อย"</em> หรือ <em>"วิเคราะห์ยอดรายจ่ายจากตารางนี้ให้ที"</em> ระบบจะประมวลผลเนื้อหาและแจกแจงเป็นข้อๆ สรุปตัวเลขสำคัญให้ทันทีค่ะ'},
+    {q:'การเข้าใช้งาน AI ส่งผลต่อโควตาอย่างไร', a:'ทุกการถามตอบกับ AI จะถูกนับจำนวนโควตาตามข้อกำหนดของแพลนที่องค์กรเลือกใช้ สามารถตรวจสอบจำนวนโควตาที่ใช้ไปและโควตาคงเหลือประจำเดือนได้ที่หน้าจัดการแพลนค่ะ<br><button onclick="closeHelp();showView(\'plan\')" class="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-900 text-white text-[11px] font-bold rounded-lg hover:bg-slate-800 transition mt-2 cursor-pointer">👉 ตรวจสอบโควตาใช้งาน</button>'},
   ]},
   {id:'kb',  lbl:'คลังความรู้ KB', ico:IC.book, items:[
-    {q:'วิธีอัปโหลดเอกสาร',        a:'ไปที่เมนู คลัง KB กดปุ่ม + อัปโหลด เลือกไฟล์ PDF, Word, Excel หรือรูปภาพ ระบบประมวลผลอัตโนมัติ'},
-    {q:'รองรับไฟล์อะไรบ้าง',       a:'รองรับ PDF, DOCX, XLSX, CSV, TXT, PNG, JPG, JPEG และ WEBP ขนาดไม่เกิน 20 MB ต่อไฟล์'},
-    {q:'จำนวนไฟล์ KB มีจำกัดไหม',  a:'Free 5 ไฟล์ — Pro 100 ไฟล์ — Ultra ไม่จำกัด ดูการใช้งานจริงได้ที่หน้า จัดการแพลน'},
-    {q:'วิธีลบหรืออัปเดตเอกสาร',   a:'ในหน้า KB กดที่ไฟล์แล้วเลือก ลบ หากต้องการอัปเดตให้ลบไฟล์เก่าแล้วอัปโหลดไฟล์ใหม่แทน'},
+    {q:'ขั้นตอนการอัปโหลดเอกสารเข้าระบบ', a:'1. เข้าไปที่เมนู <strong>คลังความรู้ KB</strong><br>2. คลิกปุ่ม <strong>+ อัปโหลดไฟล์</strong> ที่มุมบนขวา<br>3. เลือกไฟล์เอกสารที่ต้องการ ระบบจะทำการประมวลผลข้อความและบันทึกเข้าสู่สมองของ AI ทันทีค่ะ<br><button onclick="closeHelp();showView(\'kb\')" class="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-900 text-white text-[11px] font-bold rounded-lg hover:bg-slate-800 transition mt-2 cursor-pointer">👉 เปิดหน้าคลังความรู้ KB</button>'},
+    {q:'รูปแบบไฟล์และขนาดสูงสุดที่ระบบรองรับ', a:'ระบบรองรับไฟล์หลากหลายประเภทดังนี้:<br>• <strong>เอกสารพิมพ์:</strong> PDF, DOCX (Word), XLSX (Excel), CSV, TXT<br>• <strong>รูปภาพและสแกน:</strong> PNG, JPG, JPEG, WEBP<br>• <strong>ขนาดไฟล์สูงสุด:</strong> ไม่เกิน 20 MB ต่อไฟล์ค่ะ'},
+    {q:'วิธีจัดการ ลบ หรืออัปเดตเอกสารเก่า', a:'เมื่อต้องการแก้ไขหรืออัปเดตข้อมูลเอกสาร ให้คุณลบไฟล์เวอร์ชันเก่าออกก่อนโดยเข้าไปที่หน้าคลังความรู้ KB คลิกที่ปุ่ม <strong>ลบ (ถังขยะ)</strong> บนไฟล์นั้นๆ จากนั้นอัปโหลดไฟล์ตัวใหม่เข้าไปแทนที่ เพื่อไม่ให้ AI นำข้อมูลเก่ามาสับสนกับข้อมูลใหม่ค่ะ'},
   ]},
   {id:'cal', lbl:'ปฏิทินการลา',    ico:IC.cal,  items:[
-    {q:'วิธีสร้างนัดหมาย',          a:'ไปที่เมนู ปฏิทิน กดวันที่ต้องการหรือกดปุ่ม + นัดหมาย กรอกรายละเอียดแล้วกด บันทึก'},
-    {q:'วิธีขอลาหยุด',              a:'ไปที่เมนู การลา กดปุ่ม + ขอลา เลือกประเภทลา วันที่ และเหตุผล ระบบแจ้งเตือน Admin ผ่าน LINE อัตโนมัติ'},
-    {q:'Admin อนุมัติลาที่ไหน',     a:'Admin เข้าเมนู การลา จะเห็นรายการรออนุมัติ กด ✓ อนุมัติ หรือ ✕ ปฏิเสธ พร้อมระบุเหตุผล'},
-    {q:'แจ้งเตือนปฏิทินผ่านอะไร',   a:'แจ้งเตือนผ่าน LINE Bot (ต้องเชื่อมต่อ LINE ก่อน) และแสดงใน Notification ในแอปด้วย'},
+    {q:'การสร้างและบันทึกกิจกรรมองค์กร', a:'คุณสามารถสร้างนัดหมายหรือกิจกรรมสำคัญได้ง่ายๆ โดยคลิกที่วันที่บนปฏิทิน หรือกดปุ่ม <strong>+ เพิ่มกำหนดการ</strong> เพื่อเพิ่มข้อมูลนัดหมาย ซึ่งสามารถแชร์เป็นสาธารณะเพื่อให้ทุกคนเห็น หรือส่งแจ้งเตือนเข้าแชท LINE กลุ่มได้ค่ะ<br><button onclick="closeHelp();showView(\'calendar\')" class="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-900 text-white text-[11px] font-bold rounded-lg hover:bg-slate-800 transition mt-2 cursor-pointer">👉 เปิดปฏิทินองค์กร</button>'},
+    {q:'ขั้นตอนการยื่นใบลาหยุดสำหรับพนักงาน', a:'1. ไปที่เมนู <strong>การลา</strong><br>2. คลิกปุ่ม <strong>+ ขอลาหยุด</strong><br>3. เลือกประเภทการลา (ลาป่วย/ลากิจ/ลาพักร้อน) พร้อมระบุช่วงวันที่ เหตุผล และผู้จัดการที่พิจารณา<br>4. ระบบจะทำการยิงแจ้งเตือนใบขอลาไปยังแอดมินหรือผู้จัดการทันทีค่ะ<br><button onclick="closeHelp();showView(\'leave\')" class="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-900 text-white text-[11px] font-bold rounded-lg hover:bg-slate-800 transition mt-2 cursor-pointer">👉 ยื่นใบลาหยุดตอนนี้</button>'},
+    {q:'การพิจารณาและอนุมัติใบลาของแอดมิน', a:'สำหรับแอดมินหรือหัวหน้างาน สามารถตรวจสอบคำขอลาคงค้างของพนักงานได้ในเมนู <strong>การลา</strong> โดยระบบจะมีปุ่มให้คลิก <strong>อนุมัติ (✓)</strong> หรือ <strong>ปฏิเสธ (✕)</strong> พร้อมช่องให้ใส่เหตุผลประกอบ ซึ่งระบบจะตอบกลับผลการอนุมัติไปยังผู้ขอลาทางหน้าเว็บและ LINE อัตโนมัติค่ะ'},
   ]},
   {id:'fin', lbl:'รายจ่ายการเงิน',  ico:IC.money,items:[
-    {q:'วิธีบันทึกค่าใช้จ่าย',      a:'ไปที่เมนู รายจ่าย กดปุ่ม + เพิ่มรายการ กรอกจำนวน หมวดหมู่ วันที่ หรือถ่ายรูปใบเสร็จให้ AI อ่านให้อัตโนมัติ'},
-    {q:'Dashboard รายจ่ายอยู่ที่ไหน',a:'เมนู Dashboard แสดงกราฟสรุปรายจ่ายแยกตามหมวดหมู่ รายเดือน และเปรียบเทียบย้อนหลัง'},
-    {q:'ส่งออกรายงานได้ไหม',         a:'ได้ (ต้องใช้แพลน Ultra) กดปุ่ม Export ในหน้า Dashboard เพื่อดาวน์โหลดเป็น Excel หรือ PDF'},
-    {q:'ระบบ WHT ใช้งานยังไง',       a:'ในฟอร์มบันทึกรายจ่าย เลือกประเภท มีหัก ณ ที่จ่าย ระบบคำนวณอัตรา WHT ตามประเภทรายจ่ายให้อัตโนมัติ'},
+    {q:'การบันทึกรายจ่ายและสแกนสลิปด้วย AI', a:'1. เข้าสู่เมนู <strong>รายจ่าย & Dashboard</strong><br>2. คลิกปุ่ม <strong>+ เพิ่มรายการรายจ่าย</strong> หรือลากรูปภาพใบเสร็จ/สลิปโอนเงินมาวาง<br>3. AI OCR จะทำการสแกนหายอดเงิน วันที่ และชื่อร้านค้าคู่ค้าเพื่อกรอกฟอร์มให้คุณโดยอัตโนมัติ ช่วยลดความผิดพลาดในการคีย์มือค่ะ<br><button onclick="closeHelp();showView(\'dashboard\')" class="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-900 text-white text-[11px] font-bold rounded-lg hover:bg-slate-800 transition mt-2 cursor-pointer">👉 บันทึกรายจ่าย & แดชบอร์ด</button>'},
+    {q:'การบันทึกหัก ณ ที่จ่าย (WHT)', a:'เมื่อทำการเพิ่มรายจ่ายประเภทการจ้างงานหรือจ้างบริการ คุณสามารถเปิดสวิตช์ <strong>มีหัก ณ ที่จ่าย</strong> เพื่อเลือกระบุอัตราภาษีหัก ณ ที่จ่าย เช่น 1% (ขนส่ง), 3% (บริการ/จ้างทำของ), 5% (ค่าเช่า) โดยระบบจะบันทึกและคำนวณมูลค่าภาษีสะสมเพื่อออกเอกสารนำส่งให้ทันทีค่ะ'},
+    {q:'การส่งออกรายงานบัญชีและรายงานภาษี', a:'สำหรับผู้ใช้งานแพลนระดับ Ultra ขึ้นไป สามารถคลิกปุ่ม <strong>Export</strong> ที่หัวมุมบนขวาในหน้าแดชบอร์ดรายจ่าย เพื่อรวบรวมข้อมูลค่าใช้จ่าย ภาษีซื้อ (VAT) และรายการหัก ณ ที่จ่ายดาวน์โหลดเป็นไฟล์ Excel หรือ PDF เพื่อส่งต่อให้สำนักงานบัญชีได้ในคลิกเดียวค่ะ'},
   ]},
   {id:'line',lbl:'LINE Bot',         ico:IC.msg,  items:[
-    {q:'วิธีเชื่อมต่อ LINE Bot',     a:'ไปที่ Settings > LINE Bot กด เชื่อมต่อ ระบบจะแสดง QR Code ให้สแกนผ่าน LINE แอป'},
-    {q:'LINE Bot ทำอะไรได้บ้าง',     a:'ถาม AI, บันทึกค่าใช้จ่าย, ขอลา, ดูยอดสรุปรายจ่าย ทำได้โดยพิมพ์คำสั่งหรือส่งรูปภาพผ่าน LINE'},
-    {q:'LINE Bot ไม่ตอบทำยังไง',     a:'ตรวจสอบว่า LINE_CHANNEL_SECRET และ LINE_CHANNEL_ACCESS_TOKEN ตั้งค่าถูกต้องใน Settings และ Bot ถูก Add เข้ากลุ่มหรือเป็นเพื่อนแล้ว'},
+    {q:'ขั้นตอนการเชื่อมโยงระบบเข้ากับ LINE Bot', a:'1. ไปที่เมนู <strong>การตั้งค่า</strong> เลื่อนลงมาที่หมวดหมู่ <strong>LINE Bot Settings</strong><br>2. สแกน QR Code หรือแอดไลน์ไอดีบอทประจำองค์กร<br>3. หากต้องการใช้ในกลุ่มไลน์ของบริษัท ให้ทำการดึงบอทเข้ากลุ่มแล้วพิมพ์สั่งงานได้ทันทีค่ะ<br><button onclick="closeHelp();showView(\'settings\')" class="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-900 text-white text-[11px] font-bold rounded-lg hover:bg-slate-800 transition mt-2 cursor-pointer">👉 ไปที่หน้าตั้งค่าเชื่อมต่อ</button>'},
+    {q:'LINE Bot รองรับคำสั่งอะไรบ้าง', a:'• <strong>ถามข้อมูลคลังความรู้:</strong> พิมพ์สอบถามระเบียบหรือข้อมูลบริษัท บอทจะใช้ AI ค้นหาเอกสารมาตอบทันทีค่ะ<br>• <strong>สแกนบันทึกรายจ่าย:</strong> เพียงถ่ายรูปสลิปโอนเงินหรือใบเสร็จส่งเข้าแชท บอทจะถอดข้อมูลบันทึกเข้าฐานข้อมูลอัตโนมัติ<br>• <strong>แจ้งเตือนองค์กร:</strong> แจ้งเตือนการขอลาหยุด วันหยุด หรือนัดหมายสำคัญของบริษัทเข้าแชทโดยตรง'},
+    {q:'กรณี LINE Bot ไม่ตอบกลับหรือใช้งานไม่ได้', a:'กรุณาเข้าไปตรวจสอบความถูกต้องของค่า <code>LINE_CHANNEL_SECRET</code> และ <code>LINE_CHANNEL_ACCESS_TOKEN</code> ที่ป้อนไว้ในหน้าตั้งค่า และตรวจสอบสถานะบอทว่าเปิดใช้งานอยู่ (Active) หรือไม่ค่ะ'},
   ]},
   {id:'acc', lbl:'บัญชีและแพลน',    ico:IC.cog,  items:[
-    {q:'วิธีเปลี่ยนรหัสผ่าน',       a:'ไปที่เมนู การตั้งค่า > ความปลอดภัย กด เปลี่ยนรหัสผ่าน กรอกรหัสเดิมและรหัสใหม่'},
-    {q:'แพลนต่างกันอย่างไร',         a:'Free: ฟีเจอร์พื้นฐาน — Pro ฿299/เดือน: Google Sheets, LINE Bot, Dashboard — Ultra ฿599/เดือน: Export, Priority Support, KB ไม่จำกัด'},
-    {q:'ดู Limit การใช้งานที่ไหน',   a:'กดเมนู จัดการแพลน ในแถบซ้าย จะเห็นจำนวนไฟล์ KB, ค่าใช้จ่าย, AI Query และสมาชิกที่ใช้ไปเทียบกับ Limit'},
-    {q:'วิธียกเลิกแพลน',             a:'ไปที่ จัดการแพลน กดปุ่ม ยกเลิกแผน ยืนยัน แพลนจะ Downgrade เป็น Free ทันที หากชำระผ่าน Stripe ให้ยกเลิก Subscription ใน Stripe Portal ด้วย'},
-    {q:'ลืมรหัสผ่านทำยังไง',         a:'กดปุ่ม ลืมรหัสผ่าน ในหน้า Login กรอกอีเมล ระบบจะส่งลิงก์รีเซตรหัสผ่านให้'},
+    {q:'การเชิญพนักงานและกำหนดสิทธิ์ผู้ใช้', a:'แอดมินองค์กรสามารถเชิญพนักงานเข้ามามีส่วนร่วมในระบบได้โดยไปที่เมนู <strong>จัดการองค์กร</strong> กรอกอีเมลหรือสร้างลิงก์เชิญส่งต่อให้พนักงาน และสามารถเลือกกำหนดบทบาทเป็น แอดมิน (Admin) หรือ สมาชิก (Member) ได้ค่ะ<br><button onclick="closeHelp();showView(\'org\')" class="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-900 text-white text-[11px] font-bold rounded-lg hover:bg-slate-800 transition mt-2 cursor-pointer">👉 จัดการพนักงานในองค์กร</button>'},
+    {q:'การอัปเกรด จัดการ หรือยกเลิกแผนใช้งาน', a:'คุณสามารถเปรียบเทียบสิทธิ์แต่ละแพลนและตรวจสอบสถิติการใช้งานจริง (จำนวนไฟล์ KB, สมาชิก, AI Query) ได้ที่เมนู <strong>จัดการแพลน</strong> หากต้องการอัปเกรดหรือยกเลิก สามารถทำธุรกรรมและจัดการรายละเอียดผ่าน Stripe Secure Portal ได้ทันทีค่ะ<br><button onclick="closeHelp();showView(\'plan\')" class="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-900 text-white text-[11px] font-bold rounded-lg hover:bg-slate-800 transition mt-2 cursor-pointer">👉 ไปที่หน้าจัดการแพลน</button>'},
+    {q:'วิธีกู้คืนหรือเปลี่ยนรหัสผ่าน', a:'• <strong>เปลี่ยนรหัสผ่าน:</strong> ทำได้ที่เมนู <strong>การตั้งค่า > ความปลอดภัย</strong><br>• <strong>กรณีลืมรหัสผ่าน:</strong> กดปุ่ม "ลืมรหัสผ่าน" ที่หน้าเข้าสู่ระบบ กรอกอีเมลของบัญชีเพื่อรับลิงก์รีเซตรหัสผ่านผ่านอีเมลค่ะ'},
   ]},
 ];
 let _hc='ai';
@@ -11293,6 +12190,32 @@ async function deleteMeeting(mid) {
     <div class="bg-white dark:bg-surface-900 p-6 rounded-2xl shadow-2xl flex flex-col items-center gap-4 animate-in zoom-in-95 duration-300">
       <i data-lucide="loader-2" class="w-10 h-10 text-brand-600 animate-spin"></i>
       <p id="globalLoadingText" class="text-sm font-bold text-surface-800 dark:text-surface-100">กำลังประมวลผล กรุณารอสักครู่...</p>
+    </div>
+  </div>
+
+  <!-- Premium Custom Alert/Confirm Modal -->
+  <div id="customModalContainer" class="hidden fixed inset-0 z-[999999] flex items-center justify-center p-4">
+    <!-- Backdrop -->
+    <div id="customModalBackdrop" class="absolute inset-0 bg-slate-900/60 custom-modal-backdrop opacity-0"></div>
+    
+    <!-- Modal Box -->
+    <div id="customModalBox" class="bg-white dark:bg-surface-900 w-full max-w-md rounded-2xl shadow-2xl relative z-10 p-6 custom-modal-box border border-slate-100 dark:border-surface-800">
+      <div class="flex items-start gap-4">
+        <!-- Icon Container -->
+        <div id="customModalIconBg" class="w-10 h-10 rounded-full flex items-center justify-center shrink-0">
+          <div id="customModalIcon" class="w-5 h-5 text-white"></div>
+        </div>
+        <!-- Content -->
+        <div class="flex-1">
+          <h3 id="customModalTitle" class="text-base font-bold text-surface-900 dark:text-white"></h3>
+          <p id="customModalMessage" class="text-sm text-surface-600 dark:text-surface-300 mt-2 whitespace-pre-wrap leading-relaxed"></p>
+        </div>
+      </div>
+      <!-- Actions -->
+      <div class="mt-6 flex justify-end gap-3">
+        <button id="customModalCancelBtn" class="px-4 py-2 text-sm font-semibold text-surface-700 dark:text-surface-300 bg-surface-100 dark:bg-surface-800 rounded-xl hover:opacity-90 transition-opacity">ยกเลิก</button>
+        <button id="customModalConfirmBtn" class="px-4 py-2 text-sm font-semibold text-white rounded-xl hover:opacity-90 transition-opacity"></button>
+      </div>
     </div>
   </div>
 </body>

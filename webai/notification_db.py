@@ -57,11 +57,11 @@ def get_notifications(username, unread_only=False, limit=50):
         })
     return notifs
 
-def mark_notification_read(notif_id):
+def mark_notification_read(notif_id, username):
     conn = _get_conn()
     try:
         cursor = conn.cursor()
-        cursor.execute('UPDATE notifications SET is_read = 1 WHERE id = ?', (notif_id,))
+        cursor.execute('UPDATE notifications SET is_read = 1 WHERE id = ? AND username = ?', (notif_id, username))
         conn.commit()
     finally:
         conn.close()
@@ -133,4 +133,14 @@ def notify_all_except(sender_username, n_type, title, message, link=None):
     import database
     all_users = database.get_all_usernames()
     target_users = [u for u in all_users if u.lower() != sender_username.lower()]
+    return notify_users(target_users, n_type, title, message, link)
+
+def notify_org_members_except(org_id, sender_username, n_type, title, message, link=None):
+    """Broadcast a notification to all members of an organization except the sender."""
+    if not org_id:
+        return notify_all_except(sender_username, n_type, title, message, link)
+    import database
+    members = database.get_org_members(org_id)
+    org_users = [m["username"] for m in members]
+    target_users = [u for u in org_users if u.lower() != sender_username.lower()]
     return notify_users(target_users, n_type, title, message, link)

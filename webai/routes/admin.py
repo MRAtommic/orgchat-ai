@@ -1396,11 +1396,12 @@ def process_reconciliation():
         
         # Cache data in memory for on-demand download (capped at 20 to prevent unbounded growth)
         report_id = uuid.uuid4().hex[:8]
+        org_id = get_current_org_id()
         with _recon_lock:
             if len(_recon_cache) >= 20:
                 oldest_key = next(iter(_recon_cache))
                 del _recon_cache[oldest_key]
-            _recon_cache[report_id] = df_result
+            _recon_cache[report_id] = {"df": df_result, "org_id": org_id}
         
         summary["report_url"] = f"/api/reconciliation/download/{report_id}"
         
@@ -1414,10 +1415,16 @@ def process_reconciliation():
 @admin_bp.route("/api/reconciliation/download/<report_id>")
 @login_required
 def download_recon_report(report_id):
+    org_id = get_current_org_id()
     with _recon_lock:
-        df = _recon_cache.get(report_id)
-    if df is None:
+        cached_data = _recon_cache.get(report_id)
+    if cached_data is None:
         return jsonify({"ok": False, "error": "รายงานหมดอายุ กรุณาประมวลผลใหม่"}), 404
+        
+    if cached_data.get("org_id") != org_id:
+        return jsonify({"ok": False, "error": "คุณไม่มีสิทธิ์เข้าถึงรายงานชิ้นนี้"}), 403
+        
+    df = cached_data.get("df")
     output = io.BytesIO()
     df.to_excel(output, index=False, engine='openpyxl')
     output.seek(0)
@@ -1530,7 +1537,8 @@ def manage_schedules():
         profile = database.get_user_profile(user)
         display_name = profile.get("display_name", user)
         if is_public:
-            notification_db.notify_all_except(
+            notification_db.notify_org_members_except(
+                org_id,
                 user, 
                 'calendar', 
                 'กิจกรรมใหม่: ' + title, 
@@ -2001,6 +2009,10 @@ def admin_create_user_route():
 @admin_bp.route("/api/admin/users/<username>", methods=["PUT"])
 @admin_required
 def admin_update_user_route(username):
+    org_id = get_current_org_id()
+    if not database.is_org_member(org_id, username):
+        return jsonify({"ok": False, "error": "ผู้ใช้รายนี้ไม่ได้อยู่ในองค์กรของคุณหรือคุณไม่มีสิทธิ์"}), 403
+
     data = request.json
     display_name = data.get("display_name")
     role = data.get("role")
@@ -2009,34 +2021,48 @@ def admin_update_user_route(username):
     can_edit_kb = data.get("can_edit_kb")
     can_delete_kb = data.get("can_delete_kb")
     can_view_financial = data.get("can_view_financial")
+    line_permissions = data.get("line_permissions")
     department = data.get("department")
     notes = data.get("notes")
     password = data.get("password")
 
-    database.admin_update_user(username, display_name, role, is_active, notes, can_view_kb, can_edit_kb, can_delete_kb, department=department, can_view_financial=can_view_financial)
+    database.admin_update_user(
+        username, display_name, role, is_active, notes, 
+        can_view_kb, can_edit_kb, can_delete_kb, 
+        department=department, can_view_financial=can_view_financial,
+        line_permissions=line_permissions
+    )
     if password:
         database.admin_reset_user_password(username, password)
         
-    database.log_event(f"Updated user details for: {username}", user=session.get("user"), org_id=get_current_org_id())
+    database.log_event(f"Updated user details for: {username}", user=session.get("user"), org_id=org_id)
     return jsonify({"ok": True})
 
 
 @admin_bp.route("/api/admin/users/<username>/reset-password", methods=["POST"])
 @admin_required
 def admin_reset_password_route(username):
+    org_id = get_current_org_id()
+    if not database.is_org_member(org_id, username):
+        return jsonify({"ok": False, "error": "ผู้ใช้รายนี้ไม่ได้อยู่ในองค์กรของคุณหรือคุณไม่มีสิทธิ์"}), 403
+
     data = request.get_json() or {}
     password = data.get("password")
     if not password:
         return jsonify({"ok": False, "error": "กรุณากรอกรหัสผ่านใหม่"}), 400
     
     database.admin_reset_user_password(username, password)
-    database.log_event(f"Reset password for: {username}", user=session.get("user"), org_id=get_current_org_id())
+    database.log_event(f"Reset password for: {username}", user=session.get("user"), org_id=org_id)
     return jsonify({"ok": True})
 
 
 @admin_bp.route("/api/admin/users/<username>", methods=["DELETE"])
 @admin_required
 def admin_delete_user_route(username):
+    org_id = get_current_org_id()
+    if not database.is_org_member(org_id, username):
+        return jsonify({"ok": False, "error": "ผู้ใช้รายนี้ไม่ได้อยู่ในองค์กรของคุณหรือคุณไม่มีสิทธิ์"}), 403
+
     if username == session.get("user"):
         return jsonify({"ok": False, "error": "ไม่สามารถลบตัวเองได้"}), 400
 
@@ -2051,7 +2077,7 @@ def admin_delete_user_route(username):
             }), 400
 
     if database.admin_delete_user_complete(username):
-        database.log_event(f"Deleted user: {username}", user=session.get("user"), org_id=get_current_org_id())
+        database.log_event(f"Deleted user: {username}", user=session.get("user"), org_id=org_id)
         return jsonify({"ok": True})
     return jsonify({"ok": False, "error": "ไม่สามารถลบผู้ใช้นี้ได้"}), 400
 
@@ -2060,8 +2086,12 @@ def admin_delete_user_route(username):
 @admin_required
 def admin_unbind_user_line_route(username):
     """Unbind (disconnect) LINE account for a user profile by system administrator."""
+    org_id = get_current_org_id()
+    if not database.is_org_member(org_id, username):
+        return jsonify({"ok": False, "error": "ผู้ใช้รายนี้ไม่ได้อยู่ในองค์กรของคุณหรือคุณไม่มีสิทธิ์"}), 403
+
     if database.unlink_line_user(username):
-        database.log_event(f"Unbound LINE account for user: {username}", user=session.get("user"), org_id=get_current_org_id())
+        database.log_event(f"Unbound LINE account for user: {username}", user=session.get("user"), org_id=org_id)
         return jsonify({"ok": True})
     return jsonify({"ok": False, "error": "ไม่สามารถยกเลิกการผูกบัญชี LINE ได้ หรือผู้ใช้นี้ยังไม่ได้ผูกบัญชี LINE"}), 400
 
@@ -3815,7 +3845,16 @@ def api_dashboard_update_expense():
             "address": ["ที่อยู่คู่ค้า", "ที่อยู่", "ที่อยู่ผู้ขาย", "address"],
             "branch": ["รหัสสาขา", "สาขา", "branch", "เลขสาขา 5 หลัก"],
             "line_sender_name": ["ผู้ส่ง (LINE User)", "line_sender_name"],
-            "status": ["สถานะการจ่าย", "สถานะการจ่ายเงิน", "สถานะ", "status"]
+            "status": ["สถานะการจ่าย", "สถานะการจ่ายเงิน", "สถานะ", "status"],
+            "receiver": ["ผู้รับ", "ผู้รับเงิน", "ผู้ถูกหักภาษี (ผู้รับเงิน)"],
+            "payer_name": ["ผู้มีหน้าที่หักภาษี (ผู้จ่ายเงิน)", "ผู้จ่ายเงิน", "ผู้มีหน้าที่หักภาษี"],
+            "payee_name": ["ผู้ถูกหักภาษี (ผู้รับเงิน)", "ผู้รับเงิน", "ผู้ถูกหักภาษี"],
+            "time": ["เวลาในเอกสาร", "เวลา/วันที่มีผล", "เวลาที่บันทึก"],
+            "bank_from": ["ธนาคารต้นทาง", "ช่องทาง"],
+            "bank_to": ["ธนาคารปลายทาง"],
+            "memo": ["บันทึกช่วยจำ", "บันทึกช่วยจำบนสลิป", "รายละเอียด/บันทึกช่วยจำ"],
+            "wht_rate": ["อัตราภาษี", "อัตราภาษีที่หัก"],
+            "expense_type": ["ประเภทค่าใช้จ่าย", "ประเภทเงินได้", "บัญชี"]
         }
 
         # Build cells to update
@@ -4045,4 +4084,76 @@ def fetch_peak_for_reconciliation():
     except Exception as e:
         logger.error(f"[PEAK fetch] {e}")
         return jsonify({"ok": False, "error": "ดึงข้อมูลจาก PEAK ไม่สำเร็จ กรุณาตรวจสอบ credentials"}), 500
+
+
+# ─── Audit Trail & Compliance APIs ──────────────────────
+@admin_bp.route("/api/admin/audit-logs", methods=["GET"])
+@login_required
+def get_audit_logs_endpoint():
+    if not is_admin():
+        return jsonify({"ok": False, "error": "เฉพาะ Admin เท่านั้น"}), 403
+    org_id = get_current_org_id()
+    limit = int(request.args.get("limit", 100))
+    offset = int(request.args.get("offset", 0))
+    username_filter = request.args.get("username", None)
+    action_filter = request.args.get("action", None)
+    
+    logs, total = database.get_audit_logs(org_id, limit, offset, username_filter, action_filter)
+    return jsonify({"ok": True, "logs": logs, "total": total})
+
+
+@admin_bp.route("/api/admin/audit-logs/export", methods=["GET"])
+@login_required
+def export_audit_logs_csv():
+    if not is_admin():
+        return jsonify({"ok": False, "error": "เฉพาะ Admin เท่านั้น"}), 403
+    import io, csv
+    org_id = get_current_org_id()
+    logs, _ = database.get_audit_logs(org_id, limit=5000, offset=0)
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["ID", "Timestamp", "Username", "Action", "IP Address", "Details"])
+    for l in logs:
+        writer.writerow([l["id"], l["timestamp"], l["username"], l["action"], l["ip_address"], l["details"]])
+    
+    response = make_response(output.getvalue().encode('utf-8-sig'))
+    response.headers["Content-Disposition"] = "attachment; filename=audit_logs_report.csv"
+    response.headers["Content-type"] = "text/csv; charset=utf-8"
+    return response
+
+
+# ─── Granular Document Permissions / Clearance APIs ──────────
+@admin_bp.route("/api/admin/user-clearance", methods=["POST"])
+@login_required
+def set_user_clearance():
+    if not is_admin():
+        return jsonify({"ok": False, "error": "เฉพาะ Admin เท่านั้น"}), 403
+    data = request.get_json() or {}
+    username = data.get("username")
+    clearance = data.get("clearance_level", "employee") # employee, manager, executive, admin
+    if not username:
+        return jsonify({"ok": False, "error": "ระบุผู้ใช้งาน"}), 400
+    
+    ok = database.update_user_clearance_level(username, clearance)
+    if ok:
+        database.log_audit_event(session.get("user"), get_current_org_id(), "UPDATE_CLEARANCE", f"Set {username} clearance to {clearance}", request.remote_addr)
+    return jsonify({"ok": ok})
+
+
+@admin_bp.route("/api/kb/category/access-level", methods=["POST"])
+@login_required
+def set_category_access_level():
+    if not is_admin():
+        return jsonify({"ok": False, "error": "เฉพาะ Admin เท่านั้น"}), 403
+    data = request.get_json() or {}
+    cat_id = data.get("category_id")
+    access_level = data.get("access_level", "public") # public, internal, confidential, executives
+    if not cat_id:
+        return jsonify({"ok": False, "error": "ระบุ category_id"}), 400
+    
+    ok = database.update_kb_category_access_level(cat_id, access_level)
+    if ok:
+        database.log_audit_event(session.get("user"), get_current_org_id(), "UPDATE_CATEGORY_ACCESS", f"Set category #{cat_id} access to {access_level}", request.remote_addr)
+    return jsonify({"ok": ok})
 

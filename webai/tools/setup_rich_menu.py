@@ -26,38 +26,47 @@ HEADERS = {
 }
 
 def create_rich_menu_image():
-    """Generate a premium rich menu image (2500x843) using Pillow."""
+    """Generate a premium rich menu image (2500x1686) using Pillow."""
     print("🎨 Generating Rich Menu Image...")
-    width, height = 2500, 843
+    width, height = 2500, 1686
     # Create base image with gradient-like dark background
     img = Image.new("RGB", (width, height), color="#0f172a")
     draw = ImageDraw.Draw(img)
     
     # Draw button dividers
+    # Vertical dividers
     draw.line([(833, 0), (833, height)], fill="#1e293b", width=5)
     draw.line([(1666, 0), (1666, height)], fill="#1e293b", width=5)
+    # Horizontal divider
+    draw.line([(0, 843), (width, 843)], fill="#1e293b", width=5)
     
     # Try to load a font, fallback to default if not available
     try:
         # For Windows, Tahoma or Segoe UI usually support Thai
         font_path = "C:\\Windows\\Fonts\\tahoma.ttf"
-        font_large = ImageFont.truetype(font_path, 80)
-        font_emoji = ImageFont.truetype("C:\\Windows\\Fonts\\seguiemj.ttf", 100) # Emoji font
+        font_large = ImageFont.truetype(font_path, 70)
+        font_emoji = ImageFont.truetype("C:\\Windows\\Fonts\\seguiemj.ttf", 90) # Emoji font
     except Exception:
         font_large = ImageFont.load_default()
         font_emoji = font_large
 
     # Helper to draw centered text
-    def draw_button(x_center, text, icon, color):
+    def draw_button(x_center, y_center, text, icon, color):
         try:
-            draw.text((x_center - 100, 300), icon, font=font_emoji, fill=color, anchor="mm")
-            draw.text((x_center, 500), text, font=font_large, fill="#f8fafc", anchor="mm")
-        except:
-            draw.text((x_center, 421), f"{icon} {text}", fill="#ffffff", anchor="mm")
+            draw.text((x_center, y_center - 100), icon, font=font_emoji, fill=color, anchor="mm")
+            draw.text((x_center, y_center + 100), text, font=font_large, fill="#f8fafc", anchor="mm")
+        except Exception:
+            draw.text((x_center, y_center), f"{icon} {text}", fill="#ffffff", anchor="mm")
 
-    draw_button(416, "ดูแดชบอร์ดยอดวิว", "📊", "#6366f1")
-    draw_button(1250, "สถานะโฟลเดอร์", "📁", "#10b981")
-    draw_button(2083, "วิธีใช้งานระบบ", "❓", "#ec4899")
+    # Row 1 (y_center = 421)
+    draw_button(416, 421, "แดชบอร์ดระบบ", "📊", "#6366f1")
+    draw_button(1250, 421, "สรุปรายจ่ายวันนี้", "📈", "#10b981")
+    draw_button(2083, 421, "ขอลิงก์ชีต/ไดรฟ์", "🔗", "#f59e0b")
+    
+    # Row 2 (y_center = 1264)
+    draw_button(416, 1264, "ขอลางาน", "📝", "#ec4899")
+    draw_button(1250, 1264, "ค้นหาเอกสาร", "🔍", "#06b6d4")
+    draw_button(2083, 1264, "ผูกบัญชีระบบ", "👤", "#8b5cf6")
     
     # Add a premium top border
     draw.rectangle([(0, 0), (width, 15)], fill="#6366f1")
@@ -70,13 +79,14 @@ def create_rich_menu_image():
 def setup_rich_menu():
     print("🚀 Starting Rich Menu Setup...")
     base_url = os.environ.get("BASE_URL", "https://openchat.sbs").rstrip("/")
-    # 1. Define Rich Menu Object
+    # 1. Define Rich Menu Object (2500x1686, 6 items)
     rich_menu_obj = {
-        "size": {"width": 2500, "height": 843},
+        "size": {"width": 2500, "height": 1686},
         "selected": True,
-        "name": "WebAI Premium Menu",
+        "name": "WebAI Premium Menu v2",
         "chatBarText": "เมนูคำสั่ง",
         "areas": [
+            # Row 1
             {
                 "bounds": {"x": 0, "y": 0, "width": 833, "height": 843},
                 "action": {
@@ -85,17 +95,39 @@ def setup_rich_menu():
                 }
             },
             {
-                "bounds": {"x": 834, "y": 0, "width": 833, "height": 843},
+                "bounds": {"x": 833, "y": 0, "width": 833, "height": 843},
                 "action": {
                     "type": "message",
-                    "text": "สถานะโฟลเดอร์"
+                    "text": "สรุปรายจ่ายวันนี้"
                 }
             },
             {
-                "bounds": {"x": 1667, "y": 0, "width": 833, "height": 843},
+                "bounds": {"x": 1666, "y": 0, "width": 834, "height": 843},
                 "action": {
                     "type": "message",
-                    "text": "วิธีใช้งาน"
+                    "text": "ขอลิงก์"
+                }
+            },
+            # Row 2
+            {
+                "bounds": {"x": 0, "y": 843, "width": 833, "height": 843},
+                "action": {
+                    "type": "message",
+                    "text": "ลางาน"
+                }
+            },
+            {
+                "bounds": {"x": 833, "y": 843, "width": 833, "height": 843},
+                "action": {
+                    "type": "message",
+                    "text": "ค้นหา "
+                }
+            },
+            {
+                "bounds": {"x": 1666, "y": 843, "width": 834, "height": 843},
+                "action": {
+                    "type": "message",
+                    "text": "ผูกบัญชี"
                 }
             }
         ]

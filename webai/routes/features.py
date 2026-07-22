@@ -665,3 +665,247 @@ def meeting_save_wiki(mid):
     except Exception as e:
         logger.error(f"[Meeting→Wiki] {e}", exc_info=True)
         return jsonify({"ok": False, "error": "บันทึกลง Wiki ไม่สำเร็จ"}), 500
+
+
+# ══════════════════════════════════════════════════════════════
+# GOOGLE SHEETS INTERACTIVE VIEW & EDITOR
+# ══════════════════════════════════════════════════════════════
+
+@features_bp.route("/api/sheets/tabs", methods=["GET"])
+@login_required
+def get_sheets_tabs():
+    org_id = _org()
+    user = _user()
+    if not org_id:
+        return jsonify({"ok": False, "error": "ไม่พบองค์กร"}), 403
+        
+    from google_drive_service import google_manager
+    with google_manager.secure_context(username=user, org_id=org_id):
+        if not google_manager.sheets_service or not google_manager.spreadsheet_id:
+            return jsonify({"ok": False, "error": "ไม่ได้ตั้งค่า Google Sheets หรือไม่มีสิทธิ์เข้าถึงค่ะ"}), 404
+        try:
+            spreadsheet = google_manager.sheets_service.spreadsheets().get(
+                spreadsheetId=google_manager.spreadsheet_id
+            ).execute()
+            tabs = [s['properties']['title'] for s in spreadsheet.get('sheets', [])]
+            return jsonify({"ok": True, "tabs": tabs, "spreadsheet_url": f"https://docs.google.com/spreadsheets/d/{google_manager.spreadsheet_id}/edit"})
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"เกิดข้อผิดพลาดในการโหลดข้อมูลแท็บ: {str(e)}"}), 500
+
+
+@features_bp.route("/api/sheets/data", methods=["GET"])
+@login_required
+def get_sheets_data():
+    org_id = _org()
+    user = _user()
+    if not org_id:
+        return jsonify({"ok": False, "error": "ไม่พบองค์กร"}), 403
+    tab_name = request.args.get("tab_name", "").strip()
+    if not tab_name:
+        return jsonify({"ok": False, "error": "กรุณาระบุชื่อแท็บ"}), 400
+        
+    from google_drive_service import google_manager
+    with google_manager.secure_context(username=user, org_id=org_id):
+        if not google_manager.sheets_service or not google_manager.spreadsheet_id:
+            return jsonify({"ok": False, "error": "ไม่ได้ตั้งค่า Google Sheets หรือไม่มีสิทธิ์เข้าถึงค่ะ"}), 404
+        try:
+            res = google_manager.sheets_service.spreadsheets().values().get(
+                spreadsheetId=google_manager.spreadsheet_id,
+                range=f"'{tab_name}'!A1:Z1000"
+            ).execute()
+            values = res.get("values", [])
+            return jsonify({"ok": True, "values": values})
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"เกิดข้อผิดพลาดในการอ่านข้อมูลสเปรดชีต: {str(e)}"}), 500
+
+
+@features_bp.route("/api/sheets/update-cell", methods=["POST"])
+@login_required
+def update_sheets_cell():
+    org_id = _org()
+    user = _user()
+    if not org_id:
+        return jsonify({"ok": False, "error": "ไม่พบองค์กร"}), 403
+    data = request.get_json(force=True) or {}
+    tab_name = data.get("tab_name", "").strip()
+    cell_range = data.get("cell_range", "").strip()
+    value = data.get("value")
+    
+    if not tab_name or not cell_range:
+        return jsonify({"ok": False, "error": "พารามิเตอร์ไม่ครบถ้วน"}), 400
+        
+    from google_drive_service import google_manager
+    with google_manager.secure_context(username=user, org_id=org_id):
+        if not google_manager.sheets_service or not google_manager.spreadsheet_id:
+            return jsonify({"ok": False, "error": "ไม่ได้ตั้งค่า Google Sheets หรือไม่มีสิทธิ์เข้าถึงค่ะ"}), 404
+        try:
+            google_manager.sheets_service.spreadsheets().values().update(
+                spreadsheetId=google_manager.spreadsheet_id,
+                range=f"'{tab_name}'!{cell_range}",
+                valueInputOption="USER_ENTERED",
+                body={"values": [[value]]}
+            ).execute()
+            database.log_event(f"Updated Google Sheet cell '{tab_name}'!{cell_range} to '{value}'", user=user, org_id=org_id)
+            return jsonify({"ok": True})
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"เกิดข้อผิดพลาดในการบันทึกข้อมูล: {str(e)}"}), 500
+
+
+@features_bp.route("/api/sheets/add-row", methods=["POST"])
+@login_required
+def add_sheets_row():
+    org_id = _org()
+    user = _user()
+    if not org_id:
+        return jsonify({"ok": False, "error": "ไม่พบองค์กร"}), 403
+    data = request.get_json(force=True) or {}
+    tab_name = data.get("tab_name", "").strip()
+    
+    if not tab_name:
+        return jsonify({"ok": False, "error": "กรุณาระบุชื่อแท็บ"}), 400
+        
+    from google_drive_service import google_manager
+    with google_manager.secure_context(username=user, org_id=org_id):
+        if not google_manager.sheets_service or not google_manager.spreadsheet_id:
+            return jsonify({"ok": False, "error": "ไม่ได้ตั้งค่า Google Sheets หรือไม่มีสิทธิ์เข้าถึงค่ะ"}), 404
+        try:
+            res = google_manager.sheets_service.spreadsheets().values().get(
+                spreadsheetId=google_manager.spreadsheet_id,
+                range=f"'{tab_name}'!A1:Z1"
+            ).execute()
+            headers = res.get("values", [[]])[0]
+            col_count = max(len(headers), 1)
+            empty_row = [""] * col_count
+            
+            google_manager.sheets_service.spreadsheets().values().append(
+                spreadsheetId=google_manager.spreadsheet_id,
+                range=f"'{tab_name}'!A1",
+                valueInputOption="USER_ENTERED",
+                insertDataOption="INSERT_ROWS",
+                body={"values": [empty_row]}
+            ).execute()
+            database.log_event(f"Added empty row to Google Sheet '{tab_name}'", user=user, org_id=org_id)
+            return jsonify({"ok": True})
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"เกิดข้อผิดพลาดในการเพิ่มแถว: {str(e)}"}), 500
+
+
+@features_bp.route("/api/receipt-replacement/scan", methods=["POST"])
+@login_required
+def receipt_replacement_scan():
+    if "file" not in request.files:
+        return jsonify({"ok": False, "error": "กรุณาอัปโหลดไฟล์รูปภาพหรือ PDF"}), 400
+    file = request.files["file"]
+    if not file or file.filename == "":
+        return jsonify({"ok": False, "error": "ชื่อไฟล์ไม่ถูกต้อง"}), 400
+    
+    mime_type = file.mimetype or "image/jpeg"
+    content = file.read()
+    
+    try:
+        import ai_providers
+        result = ai_providers.analyze_media_contents(content, mime_type=mime_type)
+        if isinstance(result, dict) and "extracted_data" in result:
+            data = result["extracted_data"]
+            return jsonify({
+                "ok": True,
+                "category": result.get("category", "Other"),
+                "sender": data.get("sender", "-"),
+                "sender_address": data.get("sender_address", "-"),
+                "vendor_tax_id": data.get("vendor_tax_id", "-") or data.get("tax_id", "-"),
+                "phone": data.get("phone", "-"),
+                "date": data.get("date", "-"),
+                "ref_number": data.get("ref_number", "-"),
+                "gross_amount": data.get("gross_amount", 0) or data.get("net_amount", 0),
+                "vat_amount": data.get("vat_amount", 0),
+                "wht_amount": data.get("wht_amount", 0),
+                "wht_rate": data.get("wht_rate", 0),
+                "memo": data.get("memo", "-") or result.get("summary", "-")
+            })
+        else:
+            return jsonify({"ok": False, "error": "ไม่สามารถสกัดข้อมูลจากภาพนี้ได้"}), 422
+    except Exception as e:
+        logger.error(f"[Receipt Replacement Scan] {e}", exc_info=True)
+        return jsonify({"ok": False, "error": f"เกิดข้อผิดพลาดในการประมวลผล AI: {str(e)}"}), 500
+
+
+@features_bp.route("/api/reply-assistant/generate", methods=["POST"])
+@login_required
+def reply_assistant_generate():
+    org_id = _org()
+    if not org_id:
+        return jsonify({"ok": False, "error": "ไม่พบองค์กร"}), 403
+    
+    data = request.get_json() or {}
+    query = data.get("query", "").strip()
+    tone = data.get("tone", "formal").strip()
+    file_id = data.get("file_id", "").strip()
+    
+    if not query:
+        return jsonify({"ok": False, "error": "กรุณาระบุคำถามหรือข้อความของลูกค้า"}), 400
+        
+    where_filter = {"organization_id": org_id}
+    if file_id:
+        where_filter["file_id"] = file_id
+        
+    import rag_engine
+    context, sources = rag_engine.retrieve_context(query, where=where_filter)
+    
+    tone_prompts = {
+        "friendly": "ใช้ภาษาที่เป็นกันเอง น่ารัก สุภาพ มีความกระตือรือร้น ใส่ใจ อ่อนน้อมถ่อมตน อาจใช้คำหางเสียงปนความน่ารักบ้าง เช่น ค่ะ/นะคะ/ได้เลยค่ะพี่",
+        "formal": "ใช้ภาษาทางการ สุภาพ สุขุม มีระดับ มีความน่าเชื่อถือแบบมืออาชีพ เขียนสะกดถูกต้องชัดเจน ใช้สรรพนามเรียกผู้ติดต่อว่าคุณลูกค้า/คุณ และลงท้ายสุภาพเสมอ",
+        "sales": "เน้นภาษาที่โน้มน้าวใจ (Persuasive) ดึงดูดความสนใจ นำเสนอจุดเด่นของบริการ/สินค้า กระตุ้นการตัดสินใจซื้ออย่างเร่งด่วน (Urgency) เช่น เสนอสิทธิพิเศษจำนวนจำกัดหรือคูปอง และลงท้ายด้วยคำถามปลายเปิดเพื่อปิดการขาย",
+        "concise": "ใช้ภาษาที่สั้น กระชับ ตรงประเด็น ตอบตรงคำถามทันทีโดยไม่มีคำฟุ่มเฟือย เหมาะสำหรับการบริการลูกค้าที่ต้องการความรวดเร็วสูงสุด"
+    }
+    selected_tone_prompt = tone_prompts.get(tone, tone_prompts["formal"])
+    
+    prompt = f"""คุณคือผู้ช่วยร่างข้อความตอบกลับลูกค้าอัจฉริยะ (AI Customer Support Draft Generator)
+หน้าที่ของคุณคือร่างข้อความตอบกลับข้อความสอบถามของลูกค้า โดยอ้างอิงข้อมูลจาก 'คลังความรู้ที่กำหนดให้' ด้านล่างนี้เท่านั้น
+
+[ข้อมูลอ้างอิงจากคลังความรู้]:
+{context if context else 'ไม่มีข้อมูลเฉพาะเจาะจงในคลังความรู้ กรุณาตอบโดยใช้ความรู้ทั่วไปของธุรกิจ'}
+
+[โทนและสไตล์การเขียน]:
+{selected_tone_prompt}
+
+[ข้อความสอบถามของลูกค้า]:
+"{query}"
+
+---
+ให้ตอบกลับในรูปแบบ JSON วัตถุเดียวเท่านั้น ห้ามมีคำอธิบายเพิ่มเติมภายนอก JSON:
+{{
+  "draft": "ข้อความร่างตอบกลับภาษาไทยที่เขียนเสร็จสมบูรณ์พร้อมคัดลอกไปส่งให้ลูกค้า",
+  "tips": "💡 คำแนะนำ/ข้อคิดเห็นเพิ่มเติมสำหรับพนักงานในการคุยกับเคสนี้เพื่อช่วยปิดการขายหรือดูแลความรู้สึกของลูกค้า (ความยาวประมาณ 1-2 บรรทัด)"
+}}"""
+
+    try:
+        import ai_providers
+        response_text = ai_providers.generate_response(prompt)
+        
+        clean_json = response_text.strip()
+        if clean_json.startswith("```json"):
+            clean_json = clean_json[7:]
+        if clean_json.endswith("```"):
+            clean_json = clean_json[:-3]
+        clean_json = clean_json.strip()
+        
+        parsed = json.loads(clean_json)
+        return jsonify({
+            "ok": True,
+            "draft": parsed.get("draft", ""),
+            "tips": parsed.get("tips", "")
+        })
+    except Exception as e:
+        logger.error(f"[Reply Assistant Generate] {e}", exc_info=True)
+        try:
+            fallback_prompt = f"""ร่างข้อความตอบกลับลูกค้าจากคำถาม: "{query}" 
+อ้างอิงข้อมูล: {context} 
+สไตล์: {selected_tone_prompt}"""
+            fallback_resp = ai_providers.generate_response(fallback_prompt)
+            return jsonify({
+                "ok": True,
+                "draft": fallback_resp,
+                "tips": "💡 แนะนำให้พนักงานตรวจสอบความถูกต้องและเสนอบริการที่ตรงความต้องการของลูกค้าเพิ่มเติมค่ะ"
+            })
+        except Exception as fallback_e:
+            return jsonify({"ok": False, "error": f"เกิดข้อผิดพลาดในการประมวลผลของ AI: {str(fallback_e)}"}), 500

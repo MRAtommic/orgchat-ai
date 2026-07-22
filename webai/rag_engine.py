@@ -648,6 +648,24 @@ class KnowledgeBase:
             else:
                 raise e
 
+    def update_metadata_by_file_id(self, file_id: str, new_meta: dict) -> bool:
+        """Update metadata fields for all chunks belonging to a file_id."""
+        try:
+            results = self.collection.get(where={"file_id": file_id}, include=["metadatas"])
+            ids = results.get("ids", [])
+            metas = results.get("metadatas", [])
+            if ids and metas:
+                updated_metas = []
+                for m in metas:
+                    updated_m = dict(m or {})
+                    updated_m.update(new_meta)
+                    updated_metas.append(updated_m)
+                self.collection.update(ids=ids, metadatas=updated_metas)
+                return True
+        except Exception as e:
+            print(f"⚠️ Error updating metadata for file_id {file_id}: {e}")
+        return False
+
     def query(self, question: str, n_results: int = 4, where: dict = None) -> list[dict]:
         if not self.is_key_valid():
             print("⚠️ API Key not valid. Skipping query.")

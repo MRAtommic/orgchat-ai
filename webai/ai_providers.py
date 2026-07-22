@@ -28,7 +28,14 @@ class GeminiProvider(AIProvider):
 
     def __init__(self, api_key: str):
         self.api_key = api_key
-        self.backup_key = os.environ.get("GEMINI_API_KEY_BACKUP")
+        # Collect ALL available API keys for rotation chain
+        self._all_keys = [api_key]
+        for env_name in ["GEMINI_API_KEY_BACKUP", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3", "GEMINI_API_KEY_4"]:
+            k = (os.environ.get(env_name) or "").strip()
+            if k and k not in self._all_keys:
+                self._all_keys.append(k)
+        self.backup_key = self._all_keys[1] if len(self._all_keys) > 1 else None
+        print(f"🔑 Gemini API Key Pool: {len(self._all_keys)} key(s) available for rotation")
         if HAS_NEW_SDK:
             self.client = genai.Client(api_key=api_key)
         else:
@@ -131,18 +138,33 @@ class GeminiProvider(AIProvider):
                     ]
                 # Limit the models we try to avoid infinite 429 rate limit retries
                 models = models[:3]
-                for model in models:
-                    try:
-                        for chunk in self.client.models.generate_content_stream(model=model, contents=contents, config=config):
-                            if chunk.text: yield chunk.text
-                        return
-                    except Exception as e:
-                        print(f"⚠️ Gemini New SDK ({model}) Error: {e}")
-                        e_str = str(e).lower()
-                        if "429" in e_str or "resource_exhausted" in e_str or "quota" in e_str:
-                            print(f"🛑 Quota/Rate Limit exceeded for Gemini API Key. Failing fast to avoid delays.")
-                            raise e
-                        continue
+                
+                # Build rotation chain from all available API keys
+                clients_to_try = []
+                for idx, key in enumerate(self._all_keys):
+                    label = "Primary" if idx == 0 else f"Key-{idx+1}"
+                    clients_to_try.append((label, genai.Client(api_key=key)))
+
+                for client_name, client_obj in clients_to_try:
+                    hit_rate_limit = False
+                    for model in models:
+                        try:
+                            for chunk in client_obj.models.generate_content_stream(model=model, contents=contents, config=config):
+                                if chunk.text: yield chunk.text
+                            return  # Success — exit immediately
+                        except Exception as e:
+                            print(f"⚠️ Gemini ({client_name}) ({model}) Error: {e}")
+                            e_str = str(e).lower()
+                            if "429" in e_str or "resource_exhausted" in e_str or "quota" in e_str:
+                                print(f"🔄 {client_name} rate limited. Trying next key...")
+                                hit_rate_limit = True
+                                break  # Break model loop, try next key
+                            continue
+                    if not hit_rate_limit:
+                        break  # Non-rate-limit error, stop trying
+                # If we exhausted all keys without success, raise
+                if hit_rate_limit:
+                    raise Exception("🛑 All Gemini API keys exhausted (rate limited). Please wait or add more keys.")
             except Exception as e:
                 print(f"⚠️ New SDK Setup Error: {e}")
 

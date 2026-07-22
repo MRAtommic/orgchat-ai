@@ -238,22 +238,19 @@ def async_startup_tasks():
         except Exception as e:
             print(f">>> Auto-cleanup failed: {e}", flush=True)
 
-        # Seed essential rows — use _get_conn() for WAL + busy_timeout
-        conn = database._get_conn()
-        try:
-            cursor = conn.cursor()
+            # Seed essential rows — use _get_conn() for WAL + busy_timeout
             cursor.execute("SELECT id FROM chat_rooms WHERE id = 1")
             if not cursor.fetchone():
-                cursor.execute("INSERT INTO chat_rooms (id, name, owner) VALUES (1, 'กลุ่มทั่วไป (General)', 'System')")
+                cursor.execute("INSERT INTO chat_rooms (id, name, owner, organization_id) VALUES (1, 'กลุ่มทั่วไป (General)', 'System', 1)")
 
             cursor.execute("INSERT OR IGNORE INTO user_profiles (username, display_name, avatar_url) VALUES ('AI-Assistant', 'น้องพั้น (Nong Punch)', 'https://cdn-icons-png.flaticon.com/512/4712/4712035.png')")
             cursor.execute("UPDATE user_profiles SET display_name = 'น้องพั้น (Nong Punch)' WHERE username = 'AI-Assistant'")
             cursor.execute("INSERT OR IGNORE INTO user_settings (username, role) VALUES ('Admin', 'admin')")
             cursor.execute("UPDATE user_settings SET role = 'admin' WHERE username = 'Admin'")
 
-            temp_users = ["admin", "few", "do", "AI-Assistant"]
-            for u in temp_users:
-                cursor.execute("INSERT OR IGNORE INTO room_members (room_id, username) VALUES (1, ?)", (u.capitalize(),))
+            # Add default users that belong to Org 1 into Room 1 (strict capitalization)
+            cursor.execute("INSERT OR IGNORE INTO room_members (room_id, username) VALUES (1, 'admin')")
+            cursor.execute("INSERT OR IGNORE INTO room_members (room_id, username) VALUES (1, 'AI-Assistant')")
 
             conn.commit()
         finally:
@@ -305,6 +302,7 @@ def create_app():
         _secret = _sec.token_hex(32)
         logger.warning(">>> FLASK_SECRET_KEY not set - using random key (sessions reset on restart). Set it in .env!")
     app.secret_key = _secret
+    app.config['TEMPLATES_AUTO_RELOAD'] = True
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
     app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB max upload
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
@@ -337,6 +335,13 @@ def create_app():
             google_manager.clear_context()
         except Exception as e:
             logger.error(f"Error tearing down Google Workspace context: {e}")
+
+    @app.after_request
+    def add_header(r):
+        r.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        r.headers["Pragma"] = "no-cache"
+        r.headers["Expires"] = "0"
+        return r
 
     # ─── Register Blueprints ─────────────────────────────────
     from routes import ALL_BLUEPRINTS
@@ -410,6 +415,15 @@ def create_app():
                     session.pop('org_id', None)
                     session.pop('org_role', None)
                     session.pop('_org_check_at', None)
+
+        # Enforce thread-local Google context for the active user request
+        active_user = session.get('user')
+        active_org = session.get('org_id')
+        if active_user and active_org:
+            try:
+                google_manager.set_context(username=active_user, org_id=active_org)
+            except Exception as context_err:
+                logger.error(f"Failed to auto-set Google context in request hook: {context_err}")
 
     # ─── Global Error Handlers ───────────────────────────────
     ERROR_TEMPLATE = """<!DOCTYPE html>
@@ -729,7 +743,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 5005))
 
     # Optional sync on startup
     if os.environ.get("SKIP_SYNC") != "1":

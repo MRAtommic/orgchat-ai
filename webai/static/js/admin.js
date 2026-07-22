@@ -133,3 +133,52 @@ function parseAIActions(text) {
 
   return { displayHtml, calendarData, reconcileData };
 }
+
+// ─── Audit Trail & Security Compliance UI ──────────
+async function loadAuditLogsUI() {
+  const tbody = $('auditLogTableBody');
+  if (!tbody) return;
+
+  const username = ($('auditSearchInput') ? $('auditSearchInput').value.trim() : '');
+  const action = ($('auditActionFilter') ? $('auditActionFilter').value : '');
+
+  try {
+    let url = `/api/admin/audit-logs?limit=50`;
+    if (username) url += `&username=${encodeURIComponent(username)}`;
+    if (action) url += `&action=${encodeURIComponent(action)}`;
+
+    const res = await apiFetch(url);
+    if (res && res.ok) {
+      if (!res.logs || res.logs.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-4 text-center text-surface-400">ยังไม่มีประวัติการใช้งานในระบบ</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = res.logs.map(log => {
+        let actionBadgeClass = 'bg-surface-100 text-surface-700 dark:bg-surface-800 dark:text-surface-300';
+        if (log.action === 'CHAT_QUERY') actionBadgeClass = 'bg-brand-500/10 text-brand-600 border border-brand-500/20';
+        else if (log.action === 'USER_LOGIN') actionBadgeClass = 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20';
+        else if (log.action.includes('CLEARANCE') || log.action.includes('ACCESS')) actionBadgeClass = 'bg-purple-500/10 text-purple-600 border border-purple-500/20';
+        else if (log.action.includes('DELETE')) actionBadgeClass = 'bg-rose-500/10 text-rose-600 border border-rose-500/20';
+
+        return `
+          <tr class="hover:bg-surface-50 dark:hover:bg-surface-800/40 transition-colors">
+            <td class="px-3 py-2 text-[11px] text-surface-500 whitespace-nowrap">${log.timestamp ? new Date(log.timestamp).toLocaleString('th-TH') : '-'}</td>
+            <td class="px-3 py-2 font-bold text-surface-900 dark:text-white">${log.username}</td>
+            <td class="px-3 py-2"><span class="px-2 py-0.5 rounded text-[10px] font-black uppercase ${actionBadgeClass}">${log.action}</span></td>
+            <td class="px-3 py-2 max-w-xs truncate" title="${log.details || ''}">${log.details || '-'}</td>
+            <td class="px-3 py-2 text-[11px] text-surface-400 font-mono">${log.ip_address || '-'}</td>
+          </tr>
+        `;
+      }).join('');
+    } else {
+      tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-4 text-center text-red-500">เกิดข้อผิดพลาดในการโหลดข้อมูล</td></tr>`;
+    }
+  } catch (e) {
+    console.error('Failed to load audit logs:', e);
+    tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-4 text-center text-red-500">ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้</td></tr>`;
+  }
+}
+
+function exportAuditLogsCSV() {
+  window.open('/api/admin/audit-logs/export', '_blank');
+}

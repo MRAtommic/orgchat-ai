@@ -596,6 +596,23 @@ function renderSearchList(results) {
 const viewKB = $('view-kb');
 
 if (viewKB) {
+  // Ensure overlay exists
+  let kbDragOverlay = document.getElementById('kbDragOverlay');
+  if (!kbDragOverlay) {
+    kbDragOverlay = document.createElement('div');
+    kbDragOverlay.id = 'kbDragOverlay';
+    kbDragOverlay.className = 'hidden fixed inset-4 z-[9999] border-2 border-dashed border-brand-500/60 rounded-3xl flex items-start justify-center pt-8 pointer-events-none transition-all duration-300';
+    kbDragOverlay.innerHTML = `
+      <div class="bg-white/95 dark:bg-surface-900/95 backdrop-blur-md px-6 py-3.5 rounded-full shadow-2xl flex items-center gap-3 border border-brand-500/30 text-brand-600 animate-in slide-in-from-top-4 duration-200">
+        <div class="w-8 h-8 rounded-full bg-brand-50 dark:bg-brand-950/50 flex items-center justify-center text-brand-600 shrink-0">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" /></svg>
+        </div>
+        <p class="text-xs font-bold text-surface-800 dark:text-surface-100 whitespace-nowrap">วางไฟล์เพื่อเริ่มอัปโหลดเข้าคลังความรู้</p>
+      </div>
+    `;
+    viewKB.appendChild(kbDragOverlay);
+  }
+
   ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
     viewKB.addEventListener(eventName, e => {
       e.preventDefault();
@@ -603,21 +620,30 @@ if (viewKB) {
     }, false);
   });
 
-  ['dragenter', 'dragover'].forEach(eventName => {
-    viewKB.addEventListener(eventName, () => {
-      const uploadZone = $('uploadZone');
-      if (uploadZone) uploadZone.classList.add('border-brand-600', 'bg-brand-50/50', 'scale-[1.01]');
-    }, false);
-  });
+  let dragCounter = 0;
 
-  ['dragleave', 'drop'].forEach(eventName => {
-    viewKB.addEventListener(eventName, () => {
+  viewKB.addEventListener('dragenter', () => {
+    dragCounter++;
+    kbDragOverlay.classList.remove('hidden');
+    const uploadZone = $('uploadZone');
+    if (uploadZone) uploadZone.classList.add('border-brand-600', 'bg-brand-50/50', 'scale-[1.01]');
+  }, false);
+
+  viewKB.addEventListener('dragleave', () => {
+    dragCounter--;
+    if (dragCounter <= 0) {
+      dragCounter = 0;
+      kbDragOverlay.classList.add('hidden');
       const uploadZone = $('uploadZone');
       if (uploadZone) uploadZone.classList.remove('border-brand-600', 'bg-brand-50/50', 'scale-[1.01]');
-    }, false);
-  });
+    }
+  }, false);
 
   viewKB.addEventListener('drop', e => {
+    dragCounter = 0;
+    kbDragOverlay.classList.add('hidden');
+    const uploadZone = $('uploadZone');
+    if (uploadZone) uploadZone.classList.remove('border-brand-600', 'bg-brand-50/50', 'scale-[1.01]');
     const dt = e.dataTransfer;
     const files = dt.files;
     if (files.length > 0) handleFiles(files);
@@ -1177,29 +1203,29 @@ function renderFileList(files) {
           </div>
         </div>
 
-        <div class="flex items-center justify-between pt-2 border-t border-surface-100/50 dark:border-surface-800/50 mt-auto">
+        <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-surface-100/50 dark:border-surface-800/50 mt-auto">
           <div class="flex items-center gap-1 min-w-0 flex-1 pr-2">
              ${canEditKB() ? `<input type="checkbox" class="file-checkbox w-4 h-4 rounded-md border-surface-300 text-brand-600 focus:ring-brand-600 cursor-pointer flex-shrink-0" data-id="${f.file_id}">` : ''}
              <span class="text-[9px] font-black text-surface-400 ml-1 truncate opacity-60" title="ID: ${f.file_id}">ID: ${f.file_id.substring(0, 8)}...</span>
           </div>
-          <div class="flex items-center gap-0.5 flex-shrink-0">
-            <button class="file-view-btn p-2 text-surface-400 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-all rounded-xl" data-id="${f.file_id}" data-name="${f.name}" title="เปิดอ่าน">
+          <div class="flex items-center gap-1 flex-shrink-0">
+            <button class="file-view-btn p-1.5 text-surface-400 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-all rounded-xl" data-id="${f.file_id}" data-name="${f.name}" title="เปิดอ่าน">
               <i data-lucide="eye" class="w-4 h-4"></i>
             </button>
             ${!isProcessing ? `
-              <button class="file-scan-btn p-2 text-surface-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-all rounded-xl" data-id="${f.file_id}" title="สแกนด้วย AI">
+              <button class="file-scan-btn p-1.5 text-surface-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-all rounded-xl" data-id="${f.file_id}" title="สแกนด้วย AI">
                 <i data-lucide="scan-search" class="w-4 h-4"></i>
               </button>
               ${canEditKB() ? `
                 ${['csv', 'txt', 'md'].includes((f.type || '').toLowerCase()) ? `
-                <button class="file-edit-btn p-2 text-surface-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all rounded-xl" data-id="${f.file_id}" data-type="${(f.type || '').toLowerCase()}" title="แก้ไขไฟล์">
+                <button class="file-edit-btn p-1.5 text-surface-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all rounded-xl" data-id="${f.file_id}" data-type="${(f.type || '').toLowerCase()}" title="แก้ไขไฟล์">
                   <i data-lucide="edit" class="w-4 h-4"></i>
                 </button>
                 ` : ''}
-                <button class="file-move-btn p-2 text-surface-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all rounded-xl" data-id="${f.file_id}" title="เปลี่ยนหมวดหมู่">
+                <button class="file-move-btn p-1.5 text-surface-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all rounded-xl" data-id="${f.file_id}" title="เปลี่ยนหมวดหมู่">
                   <i data-lucide="folder-input" class="w-4 h-4"></i>
                 </button>
-                <button class="file-del-btn p-2 text-surface-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all rounded-xl" data-id="${f.file_id}" title="ลบไฟล์">
+                <button class="file-del-btn p-1.5 text-surface-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all rounded-xl" data-id="${f.file_id}" title="ลบไฟล์">
                   <i data-lucide="trash-2" class="w-4 h-4"></i>
                 </button>
               ` : ''}

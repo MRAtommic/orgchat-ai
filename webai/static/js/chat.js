@@ -418,7 +418,6 @@ function toggleAdminFeatures(isAdmin, isSuperAdmin) {
     wipeDataBtn,
     changeKeyBtn,
     $('nav-reconciliation'),
-    $('nav-line-manager'),
     $('auditLogSection'),
     $('nav-super-admin'),
     $('nav-superadmin-mobile')
@@ -457,6 +456,7 @@ function renderPersonas() {
 }
 
 function initAdminPanel() {
+  if (!state.isAdmin) return;
   loadAdminUsers();
   loadAdminDashboardStats();
   refreshAdminLeaves();
@@ -1018,6 +1018,36 @@ async function loadDashboard() {
         });
       }
 
+      // Fetch latest announcement for dashboard widget
+      apiFetch('/api/org/announcements').then(annData => {
+         const banner = $('dashLatestAnnouncement');
+         if (annData.ok && annData.announcements && annData.announcements.length > 0) {
+            const latest = annData.announcements[0];
+            if (banner) {
+               banner.classList.remove('hidden');
+               banner.classList.add('flex');
+               
+               const priorityEl = $('dashAnnPriority');
+               const metaEl = $('dashAnnMeta');
+               const titleEl = $('dashAnnTitle');
+               const contentEl = $('dashAnnContent');
+               
+               if (priorityEl) {
+                  priorityEl.textContent = latest.priority === 'important' ? '📌 สำคัญมาก' : (latest.priority === 'update' ? '🚀 อัปเดตงาน' : '📢 ทั่วไป');
+                  priorityEl.className = `px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${latest.priority === 'important' ? 'bg-red-500 text-white' : (latest.priority === 'update' ? 'bg-purple-500 text-white' : 'bg-blue-500 text-white')}`;
+               }
+               if (metaEl) metaEl.textContent = `โพสต์โดย @${latest.created_by} • ${latest.created_at}`;
+               if (titleEl) titleEl.textContent = latest.title;
+               if (contentEl) contentEl.textContent = latest.content;
+            }
+         } else {
+            if (banner) {
+               banner.classList.add('hidden');
+               banner.classList.remove('flex');
+            }
+         }
+      }).catch(err => console.error('Failed to load dashboard announcement:', err));
+
       
       // Stats
       if (statUsers) statUsers.textContent = data.stats.total_users;
@@ -1219,6 +1249,7 @@ function switchView(viewId) {
     home: 'หน้าหลัก', chat: 'AI แชท', kb: 'คลังความรู้', calendar: 'ปฏิทิน',
     feed: 'ฟีดทีม', dashboard: 'รายจ่ายองค์กร', quotation: 'ใบเสนอราคา',
     wht: 'ภงด. WHT', 'receipt-replacement': 'ใบแทนใบเสร็จ', crm: 'CRM ลูกค้า',
+    'reply-assistant': 'ช่วยตอบแชทลูกค้า',
     kanban: 'Kanban Board', meetings: 'บันทึกประชุม', viz: 'วิเคราะห์ข้อมูล',
     wiki: 'Internal Wiki', drive: 'Google Drive', search: 'ค้นหา AI',
     summary: 'สรุป AI', leave: 'ลางาน', settings: 'การตั้งค่า',
@@ -1260,7 +1291,7 @@ function switchView(viewId) {
   if (viewId === 'dashboard') { if (typeof loadDashboardData === 'function') loadDashboardData(); }
   if (viewId === 'settings') loadMySettings();
   if (viewId === 'plan') { if (typeof initPlanView === 'function') initPlanView(); }
-  if (viewId === 'admin') { initAdminPanel(); loadGoogleDriveStatus(); }
+  if (viewId === 'admin') { initAdminPanel(); loadGoogleDriveStatus(); if (typeof loadAuditLogsUI === 'function') loadAuditLogsUI(); }
   if (viewId === 'super-admin') {
     const iframe = document.getElementById('super-admin-iframe');
     if (iframe && (iframe.src === 'about:blank' || iframe.src === '' || !iframe.getAttribute('src') || iframe.getAttribute('src') === 'about:blank')) {
@@ -1274,6 +1305,7 @@ function switchView(viewId) {
   if (viewId === 'leave') loadLeaveData();
   if (viewId === 'quotation') initDocumentGenerator();
   if (viewId === 'receipt-replacement') initReplacementReceiptView();
+  if (viewId === 'reply-assistant') initReplyAssistantView();
 
   // ─── Feed Auto-Refresh ───────────────────────
   // Clear any existing feed poll interval when changing views
@@ -1549,14 +1581,16 @@ function appendMessage(role, html, sources = [], scroll = true, msgId = null) {
 
   let feedbackPanel = !isUser ? `
     <div class="absolute -right-2 top-0 translate-x-full opacity-0 group-hover/msg:opacity-100 transition-opacity flex flex-col gap-1">
+      <button class="copy-msg-btn p-1.5 glass rounded-lg hover:text-brand-600 transition-colors" title="คัดลอก"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
       <button class="speak-btn p-1.5 glass rounded-lg hover:text-brand-600 transition-colors" title="ฟังเสียง"><i data-lucide="volume-2" class="w-3.5 h-3.5"></i></button>
       <button class="fb-btn p-1.5 glass rounded-lg hover:text-emerald-500 transition-colors" data-val="1"><i data-lucide="thumbs-up" class="w-3.5 h-3.5"></i></button>
       <button class="fb-btn p-1.5 glass rounded-lg hover:text-red-500 transition-colors" data-val="-1"><i data-lucide="thumbs-down" class="w-3.5 h-3.5"></i></button>
       ${msgId ? `<button class="del-msg-btn p-1.5 glass rounded-lg hover:text-red-500 transition-colors" title="ลบข้อความ"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>` : ''}
-    </div>` : (msgId ? `
+    </div>` : `
     <div class="absolute -left-2 top-0 -translate-x-full opacity-0 group-hover/msg:opacity-100 transition-opacity flex flex-col gap-1">
-      <button class="del-msg-btn p-1.5 glass rounded-lg hover:text-red-200 transition-colors" title="ลบข้อความ"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
-    </div>` : '');
+      <button class="copy-msg-btn p-1.5 glass rounded-lg hover:text-brand-600 transition-colors" title="คัดลอก"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
+      ${msgId ? `<button class="del-msg-btn p-1.5 glass rounded-lg hover:text-red-200 transition-colors" title="ลบข้อความ"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>` : ''}
+    </div>`;
 
   row.innerHTML = `
     <div class="w-8 h-8 flex-shrink-0 rounded-lg ${avatarClass} flex items-center justify-center text-white">
@@ -1609,6 +1643,30 @@ function appendMessage(role, html, sources = [], scroll = true, msgId = null) {
     speak(tempDiv.textContent || tempDiv.innerText || "");
   }
 
+  // Attach copy listener
+  const copyBtn = row.querySelector('.copy-msg-btn');
+  if (copyBtn) {
+    copyBtn.onclick = async () => {
+      const prose = row.querySelector('.prose');
+      if (!prose) return;
+      try {
+        await navigator.clipboard.writeText(prose.innerText);
+        toast('คัดลอกข้อความเรียบร้อยแล้วค่ะพี่', 'success');
+        const icon = copyBtn.querySelector('i');
+        if (icon) {
+          icon.setAttribute('data-lucide', 'check');
+          initIcons();
+          setTimeout(() => {
+            icon.setAttribute('data-lucide', 'copy');
+            initIcons();
+          }, 2000);
+        }
+      } catch (err) {
+        toast('คัดลอกล้มเหลว: ' + err.message, 'error');
+      }
+    };
+  }
+
   // Attach speak listener
   const speakBtn = row.querySelector('.speak-btn');
   if (speakBtn) {
@@ -1646,7 +1704,7 @@ function appendMessage(role, html, sources = [], scroll = true, msgId = null) {
 }
 
 async function deleteChatMessage(ctype, mid, el) {
-  if (!confirm('ต้องการลบข้อความนี้ใช่หรือไม่?')) return;
+  if (!await showConfirm('ลบข้อความ', 'ต้องการลบข้อความนี้ใช่หรือไม่?', { type: 'danger', confirmText: 'ลบข้อความ' })) return;
   try {
     const res = await fetch(`/api/chat/delete/${ctype}/${mid}`, { method: 'DELETE' });
     const data = await res.json();
@@ -2994,8 +3052,8 @@ async function togglePin(pid) {
 }
 
 async function deletePost(pid) {
+  if (!await showConfirm('ลบโพสต์ถาวร', 'ยืนยัน: คุณต้องการลบโพสต์นี้ถาวรใช่หรือไม่?', { type: 'danger', confirmText: 'ลบโพสต์' })) return;
   toast('กำลังลบโพสต์...', 'info');
-  if (!confirm('ยืนยัน: คุณต้องการลบโพสต์นี้ถาวรใช่หรือไม่?')) return;
 
   try {
     const res = await fetch(`/api/posts/${pid}`, { method: 'DELETE' });
@@ -5949,8 +6007,13 @@ async function switchChat(type, id, name, avatarUrl) {
     $('viewMembersBtn')?.classList.add('hidden');
 
     // Show call buttons for DM
-    if (voiceCallBtn) voiceCallBtn.classList.remove('hidden');
-    if (videoCallBtn) videoCallBtn.classList.remove('hidden');
+    if (id === 'ai-assistant') {
+      if (voiceCallBtn) voiceCallBtn.classList.add('hidden');
+      if (videoCallBtn) videoCallBtn.classList.add('hidden');
+    } else {
+      if (voiceCallBtn) voiceCallBtn.classList.remove('hidden');
+      if (videoCallBtn) videoCallBtn.classList.remove('hidden');
+    }
   }
 
   // Ensure they are hidden for non-DM
@@ -6103,8 +6166,8 @@ function renderChatMessages(shouldScroll = false) {
     const imagesHtml = imageAttachments.length > 0 ? `
       <div class="chat-attachment-container ${isMe ? 'justify-end' : ''} mt-2 flex flex-wrap gap-2">
         ${imageAttachments.map(img => `
-          <div onclick="openLightbox('${img.url}')" class="chat-img-attachment cursor-pointer hover:scale-[1.02] transition-transform w-24 h-24 rounded-lg overflow-hidden border border-surface-100 dark:border-surface-800">
-            <img src="${img.url}" class="w-full h-full object-cover">
+          <div onclick="openLightbox('${img.url}')" class="chat-img-attachment cursor-pointer hover:scale-[1.02] transition-transform w-[280px] h-[200px] max-w-full rounded-2xl overflow-hidden border border-surface-100 dark:border-surface-800 shadow-md">
+            <img src="${img.url}?t=${Date.now()}" class="w-full h-full object-cover" onerror="this.onerror=null;this.src='${img.url}'">
           </div>
         `).join('')}
       </div>
@@ -6603,7 +6666,7 @@ async function handleCreateGroup() {
     toast('เกิดข้อผิดพลาดในการสร้างกลุ่ม', 'error');
   } finally {
     confirmCreateGroup.disabled = false;
-    btn.textContent = 'สร้างกลุ่ม';
+    confirmCreateGroup.textContent = 'สร้างกลุ่ม';
     initIcons();
   }
 }
@@ -6972,8 +7035,7 @@ async function deleteGroup() {
   const { type, id, name } = state.currentChat || {};
   if (type !== 'room' || !id) return;
 
-  // Custom styled confirm
-  const confirmed = confirm(`⚠️ คุณต้องการลบกลุ่ม "${name}" ใช่หรือไม่?\n\nข้อความทั้งหมดในกลุ่มจะถูกลบอย่างถาวร ไม่สามารถกู้คืนได้!`);
+  const confirmed = await showConfirm(`ลบกลุ่มแชท`, `คุณต้องการลบกลุ่ม "${name}" ใช่หรือไม่?\n\nข้อความทั้งหมดในกลุ่มจะถูกลบอย่างถาวร ไม่สามารถกู้คืนได้!`, { type: 'danger', confirmText: 'ลบกลุ่ม' });
   if (!confirmed) return;
 
   const btn = $('deleteGroupBtn');
@@ -7494,8 +7556,15 @@ async function handleNotifClick(id, link) {
   await markNotifRead(id);
   if (link) {
     if (link.startsWith("#")) {
-      const view = link.replace("#", "").split("-")[0];
+      const parts = link.replace("#", "").split("-");
+      const view = parts[0];
+      const tab = parts[1];
       showView(view);
+      if (view === 'org' && tab) {
+        if (typeof switchOrgTab === 'function') {
+          switchOrgTab(tab);
+        }
+      }
     } else {
       window.open(link, "_blank");
     }
@@ -7929,9 +7998,12 @@ if (typeof checkAuth === 'function') {
    Org Member Management
    ══════════════════════════════════════════ */
 let _orgMembersCache = [];
+let _orgMembersLoaded = false;
+
+let _orgLogsCache = [];
 
 function switchOrgTab(tab) {
-  ['members', 'tree', 'google', 'business'].forEach(t => {
+  ['members', 'tree', 'google', 'business', 'peak', 'announcements', 'logs'].forEach(t => {
     const btn = $(`orgTab-${t}`);
     const content = $(`orgTabContent-${t}`);
     const active = t === tab;
@@ -7943,7 +8015,145 @@ function switchOrgTab(tab) {
   if (scrollEl) scrollEl.scrollTop = 0;
   if (tab === 'google') loadOrgGoogleStatus();
   if (tab === 'business') loadOrgBusinessProfile();
+  if (tab === 'peak') loadPeakSettingsStatus();
   if (tab === 'tree') renderOrgTree();
+  if (tab === 'announcements') loadOrgAnnouncements();
+  if (tab === 'logs') loadOrgLogs();
+}
+
+async function loadOrgAnnouncements() {
+  const container = $('orgAnnouncementList');
+  if (!container) return;
+  container.innerHTML = '<div class="text-center py-8 opacity-50 text-xs">กำลังโหลดประกาศองค์กร...</div>';
+  try {
+    const res = await apiFetch('/api/org/announcements');
+    if (res.ok && res.announcements) {
+      if (res.announcements.length === 0) {
+        container.innerHTML = '<div class="text-center py-10 text-surface-400 text-xs font-bold bg-surface-50 dark:bg-surface-800/30 rounded-2xl">ยังไม่มีประกาศข่าวสารภายในองค์กร</div>';
+        return;
+      }
+      container.innerHTML = res.announcements.map(a => {
+        let badgeClass = 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400';
+        let badgeText = '📢 ข่าวสารทั่วไป';
+        if (a.priority === 'important') {
+          badgeClass = 'bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400 font-black';
+          badgeText = '📌 สำคัญมาก';
+        } else if (a.priority === 'update') {
+          badgeClass = 'bg-purple-50 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400';
+          badgeText = '🚀 อัปเดตงาน';
+        }
+        return `
+          <div class="p-4 bg-surface-50 dark:bg-surface-800/40 border border-surface-200 dark:border-surface-700/60 rounded-2xl space-y-2 relative group">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="px-2.5 py-1 rounded-lg text-[10px] font-bold ${badgeClass}">${badgeText}</span>
+                <span class="text-[11px] font-bold text-surface-400">โพสต์โดย @${a.created_by} • ${a.created_at}</span>
+              </div>
+              <button onclick="deleteOrgAnnouncement(${a.id})" class="text-surface-400 hover:text-red-500 text-xs p-1 opacity-0 group-hover:opacity-100 transition-all">
+                <i data-lucide="trash-2" class="w-4 h-4"></i>
+              </button>
+            </div>
+            <h4 class="text-sm font-black text-surface-900 dark:text-white">${escapeHtml(a.title)}</h4>
+            <p class="text-xs text-surface-600 dark:text-surface-300 leading-relaxed whitespace-pre-line">${escapeHtml(a.content)}</p>
+          </div>
+        `;
+      }).join('');
+      initIcons();
+    }
+  } catch (e) {
+    container.innerHTML = '<div class="text-center py-6 text-red-500 text-xs">โหลดประกาศล้มเหลว</div>';
+  }
+}
+
+async function submitOrgAnnouncement() {
+  const title = $('ann_title').value.trim();
+  const content = $('ann_content').value.trim();
+  const priority = $('ann_priority').value;
+  if (!title || !content) return toast('กรุณาระบุหัวข้อและเนื้อหาประกาศ', 'error');
+  try {
+    const res = await apiFetch('/api/org/announcements', {
+      method: 'POST',
+      body: JSON.stringify({ title, content, priority })
+    });
+    if (res.ok) {
+      toast('โพสต์ประกาศเรียบร้อยแล้วค่ะ', 'success');
+      $('ann_title').value = '';
+      $('ann_content').value = '';
+      $('createAnnounceForm').classList.add('hidden');
+      loadOrgAnnouncements();
+    } else {
+      toast(res.error || 'ไม่สามารถโพสต์ประกาศได้', 'error');
+    }
+  } catch (e) {
+    toast('เกิดข้อผิดพลาดในการโพสต์ประกาศ', 'error');
+  }
+}
+
+async function deleteOrgAnnouncement(id) {
+  if (!confirm('คุณต้องการลบประกาศนี้ใช่หรือไม่?')) return;
+  try {
+    const res = await apiFetch(`/api/org/announcements/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      toast('ลบประกาศเรียบร้อยแล้ว', 'success');
+      loadOrgAnnouncements();
+    } else {
+      toast(res.error || 'ลบไม่สำเร็จ', 'error');
+    }
+  } catch (e) {
+    toast('เกิดข้อผิดพลาดในการลบประกาศ', 'error');
+  }
+}
+
+async function loadOrgLogs() {
+  const container = $('orgLogList');
+  if (!container) return;
+  container.innerHTML = '<div class="text-center py-8 opacity-50 text-xs">กำลังโหลดบันทึกกิจกรรม...</div>';
+  try {
+    const res = await apiFetch('/api/org/logs');
+    if (res.ok && res.logs) {
+      _orgLogsCache = res.logs;
+      renderOrgLogs(_orgLogsCache);
+    }
+  } catch (e) {
+    container.innerHTML = '<div class="text-center py-6 text-red-500 text-xs">โหลดบันทึกประวัติล้มเหลว</div>';
+  }
+}
+
+function renderOrgLogs(logs) {
+  const container = $('orgLogList');
+  if (!container) return;
+  if (!logs || logs.length === 0) {
+    container.innerHTML = '<div class="text-center py-10 text-surface-400 text-xs font-bold bg-surface-50 dark:bg-surface-800/30 rounded-2xl">ยังไม่มีบันทึกกิจกรรมในองค์กร</div>';
+    return;
+  }
+  container.innerHTML = logs.map(l => `
+    <div class="flex items-center justify-between p-3 bg-surface-50 dark:bg-surface-800/30 border border-surface-150 dark:border-surface-700/50 rounded-xl hover:border-brand-500/30 transition-all">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-full bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 flex items-center justify-center text-xs font-black shrink-0">
+          ${(l.user || 'S')[0].toUpperCase()}
+        </div>
+        <div class="space-y-0.5">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-black text-surface-900 dark:text-white">@${escapeHtml(l.user || 'System')}</span>
+          </div>
+          <p class="text-xs text-surface-600 dark:text-surface-300 font-medium">${escapeHtml(l.event || '')}</p>
+        </div>
+      </div>
+      <div class="text-right shrink-0">
+        <span class="text-[10px] font-bold text-surface-400">${l.time || ''}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+function filterOrgLogs(query) {
+  const q = (query || '').toLowerCase().trim();
+  if (!q) return renderOrgLogs(_orgLogsCache);
+  const filtered = _orgLogsCache.filter(l => 
+    (l.user || '').toLowerCase().includes(q) || 
+    (l.event || '').toLowerCase().includes(q)
+  );
+  renderOrgLogs(filtered);
 }
 
 async function loadOrgBusinessProfile() {
@@ -8077,6 +8287,7 @@ async function loadOrgMembers() {
     const data = await apiFetch('/api/org/me');
     if (data.ok) {
       _orgMembersCache = data.members || [];
+      _orgMembersLoaded = true;
       // Update stats
       const total = _orgMembersCache.length;
       const admins = _orgMembersCache.filter(m => m.role === 'admin').length;
@@ -8084,6 +8295,10 @@ async function loadOrgMembers() {
       if ($('orgStatAdmins')) $('orgStatAdmins').textContent = admins;
       if ($('orgPanelName') && data.org?.name) $('orgPanelName').textContent = data.org.name;
       renderOrgMembers(_orgMembersCache, state.isOrgAdmin || state.isAdmin);
+      const treeContent = $('orgTabContent-tree');
+      if (treeContent && !treeContent.classList.contains('hidden')) {
+        renderOrgTree();
+      }
     } else {
       container.innerHTML = '<div class="text-center py-10 text-surface-400 text-sm">ไม่พบข้อมูลองค์กร</div>';
     }
@@ -8251,6 +8466,8 @@ function openOrgMemberEditModal(username) {
   if ($('orgEditMemberName')) $('orgEditMemberName').textContent = m.display_name || username;
   if ($('orgEditMemberUsername')) $('orgEditMemberUsername').textContent = `@${username}${m.department ? ' · ' + m.department : ''}${m.position ? ' · ' + m.position : ''}`;
   if ($('orgEditDisplayName')) $('orgEditDisplayName').value = m.display_name || '';
+  if ($('orgEditMemberPosition')) $('orgEditMemberPosition').value = m.position || '';
+  if ($('orgEditMemberDepartment')) $('orgEditMemberDepartment').value = m.department || '';
   if ($('orgEditMemberRole')) $('orgEditMemberRole').value = m.role || 'member';
   if ($('orgEditUserActive')) $('orgEditUserActive').checked = m.is_active !== false;
   if ($('orgEditUserCanViewKB')) $('orgEditUserCanViewKB').checked = !!m.can_view_kb;
@@ -8258,7 +8475,35 @@ function openOrgMemberEditModal(username) {
   if ($('orgEditUserCanDeleteKB')) $('orgEditUserCanDeleteKB').checked = !!m.can_delete_kb;
   if ($('orgEditMemberFinancial')) $('orgEditMemberFinancial').checked = !!m.can_view_financial;
   if ($('orgEditUserNotes')) $('orgEditUserNotes').value = m.notes || '';
-  if ($('orgEditUserNewPassword')) $('orgEditUserNewPassword').value = '';
+  const managerSelect = $('orgEditMemberManager');
+  if (managerSelect) {
+    managerSelect.innerHTML = '<option value="">ไม่มีหัวหน้างาน (ผู้บริหารสูงสุด)</option>';
+    const reportsToMap = {};
+    _orgMembersCache.forEach(x => {
+      reportsToMap[x.username.toLowerCase()] = (x.manager_username || "").trim().toLowerCase();
+    });
+    _orgMembersCache.forEach(x => {
+      const candidateUsername = x.username.toLowerCase();
+      if (candidateUsername === username.toLowerCase()) return;
+      let curr = candidateUsername;
+      let isCyclic = false;
+      while (curr) {
+        if (curr === username.toLowerCase()) {
+          isCyclic = true;
+          break;
+        }
+        curr = reportsToMap[curr] || "";
+      }
+      if (isCyclic) return;
+      const opt = document.createElement("option");
+      opt.value = x.username;
+      opt.textContent = `${x.display_name || x.username} (${x.position || 'พนักงาน'})`;
+      if ((m.manager_username || "").toLowerCase() === x.username.toLowerCase()) {
+        opt.selected = true;
+      }
+      managerSelect.appendChild(opt);
+    });
+  }
 
   const modal = $('orgMemberEditModal');
   if (modal) modal.classList.remove('hidden');
@@ -8274,6 +8519,8 @@ async function submitOrgMemberEdit() {
   if (!_orgEditingUsername) return;
   const newRole = $('orgEditMemberRole')?.value;
   const displayName = $('orgEditDisplayName')?.value;
+  const position = $('orgEditMemberPosition')?.value;
+  const department = $('orgEditMemberDepartment')?.value;
   const isActive = $('orgEditUserActive')?.checked ?? true;
   const canViewKB = $('orgEditUserCanViewKB')?.checked ?? false;
   const canEditKB = $('orgEditUserCanEditKB')?.checked ?? false;
@@ -8295,6 +8542,8 @@ async function submitOrgMemberEdit() {
       method: 'PUT',
       body: JSON.stringify({
         display_name: displayName,
+        position: position,
+        department: department,
         is_active: isActive,
         can_view_kb: canViewKB,
         can_edit_kb: canEditKB,
@@ -8304,6 +8553,15 @@ async function submitOrgMemberEdit() {
       })
     });
     if (!r2.ok) { toast(r2.error || 'บันทึกข้อมูลไม่สำเร็จ', 'error'); return; }
+
+    const managerUsername = $('orgEditMemberManager')?.value;
+    if (m && managerUsername !== (m.manager_username || '')) {
+      const r3 = await apiFetch(`/api/org/members/${_orgEditingUsername}/manager`, {
+        method: 'POST', body: JSON.stringify({ manager_username: managerUsername })
+      });
+      if (!r3.ok) { toast(r3.error || 'บันทึกหัวหน้างานไม่สำเร็จ', 'error'); return; }
+    }
+
     toast('บันทึกข้อมูลเรียบร้อยแล้ว', 'success');
     closeOrgMemberEditModal();
     loadOrgMembers();
@@ -8443,7 +8701,56 @@ function _renderMySettings(d) {
       </div>`;
     }).join('');
   }
+  // LINE Connection Status
+  const myLineStatusText = $('myLineStatusText');
+  const btnMyBindLine = $('btnMyBindLine');
+  const btnMyUnbindLine = $('btnMyUnbindLine');
+  const myLineInstruction = $('myLineInstruction');
+  const myLineBannerAlert = $('myLineBannerAlert');
+
+  if (myLineStatusText) {
+    if (d.line_user_id) {
+      myLineStatusText.textContent = `🟢 เชื่อมต่อแล้ว (LINE ID: ${d.line_user_id.substring(0, 10)}...)`;
+      myLineStatusText.className = "text-xs font-bold text-purple-600 dark:text-purple-400 font-extrabold";
+      if (btnMyBindLine) btnMyBindLine.classList.add('hidden');
+      if (btnMyUnbindLine) btnMyUnbindLine.classList.remove('hidden');
+      if (myLineInstruction) myLineInstruction.classList.add('hidden');
+      if (myLineBannerAlert) myLineBannerAlert.classList.add('hidden');
+    } else {
+      myLineStatusText.textContent = '🔴 ยังไม่ได้เชื่อมต่อบัญชี LINE';
+      myLineStatusText.className = "text-xs font-bold text-surface-600 dark:text-surface-300";
+      if (btnMyBindLine) btnMyBindLine.classList.remove('hidden');
+      if (btnMyUnbindLine) btnMyUnbindLine.classList.add('hidden');
+      if (myLineInstruction) myLineInstruction.classList.remove('hidden');
+      if (myLineBannerAlert) myLineBannerAlert.classList.remove('hidden');
+    }
+  }
+
   if (window.lucide) window.lucide.createIcons();
+}
+
+async function unbindMyLine() {
+  if (!await showConfirm('ยกเลิกการผูกบัญชี LINE', 'คุณแน่ใจหรือไม่ที่จะยกเลิกการผูกบัญชี LINE ส่วนตัวของคุณ?', { type: 'danger', confirmText: 'ยกเลิกการผูกบัญชี' })) {
+    return;
+  }
+  try {
+    const res = await fetch('/api/user/unbind-line', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await res.json();
+    if (data.ok) {
+      await showAlert('สำเร็จ', 'ยกเลิกการผูกบัญชี LINE เรียบร้อยแล้วค่ะ!', { type: 'success' });
+      if (_mySettingsCache) {
+        _mySettingsCache.line_user_id = null;
+        _renderMySettings(_mySettingsCache);
+      }
+    } else {
+      await showAlert('เกิดข้อผิดพลาด', `ไม่สามารถยกเลิกได้: ${data.error || 'เกิดข้อผิดพลาดค่ะ'}`, { type: 'danger' });
+    }
+  } catch (e) {
+    await showAlert('เกิดข้อผิดพลาด', `เกิดข้อผิดพลาดในการเชื่อมต่อ: ${e.message}`, { type: 'danger' });
+  }
 }
 
 async function saveMyDisplayName() {
@@ -8788,6 +9095,15 @@ function openEditUserModal(username) {
   $('editUserCanEditKB').checked = !!user.can_edit_kb;
   $('editUserCanDeleteKB').checked = !!user.can_delete_kb;
   if ($('editUserCanViewFinancial')) $('editUserCanViewFinancial').checked = !!user.can_view_financial;
+  
+  const linePerms = (user.line_permissions || "report,links,reconcile,search,folder,leave").split(",");
+  if ($('linePermReport')) $('linePermReport').checked = linePerms.includes('report');
+  if ($('linePermLinks')) $('linePermLinks').checked = linePerms.includes('links');
+  if ($('linePermReconcile')) $('linePermReconcile').checked = linePerms.includes('reconcile');
+  if ($('linePermSearch')) $('linePermSearch').checked = linePerms.includes('search');
+  if ($('linePermFolder')) $('linePermFolder').checked = linePerms.includes('folder');
+  if ($('linePermLeave')) $('linePermLeave').checked = linePerms.includes('leave');
+
   if ($('editUserDept')) $('editUserDept').value = user.department || '';
   $('editUserNotes').value = user.notes || '';
   $('editUserNewPassword').value = '';
@@ -8830,7 +9146,7 @@ function closeEditUserModal() {
 
 async function unbindUserLine() {
   if (!currentEditingUsername) return;
-  if (!confirm(`คุณแน่ใจหรือไม่ที่จะยกเลิกการผูกบัญชี LINE สำหรับผู้ใช้ @${currentEditingUsername}?`)) {
+  if (!await showConfirm('ยกเลิกการผูกบัญชี LINE สมาชิก', `คุณแน่ใจหรือไม่ที่จะยกเลิกการผูกบัญชี LINE สำหรับผู้ใช้ @${currentEditingUsername}?`, { type: 'danger', confirmText: 'ยกเลิกการผูกบัญชี' })) {
     return;
   }
   
@@ -8841,7 +9157,7 @@ async function unbindUserLine() {
     });
     const data = await res.json();
     if (data.ok) {
-      alert('ยกเลิกการผูกบัญชี LINE เรียบร้อยแล้วค่ะพี่!');
+      await showAlert('สำเร็จ', 'ยกเลิกการผูกบัญชี LINE เรียบร้อยแล้วค่ะพี่!', { type: 'success' });
       
       // Update UI in modal
       const lineStatusEl = $('editUserLineStatus');
@@ -8864,15 +9180,23 @@ async function unbindUserLine() {
       // Refresh list
       renderAdminUserList(adminUsersListCache);
     } else {
-      alert(`ไม่สามารถยกเลิกได้: ${data.error || 'เกิดข้อผิดพลาดค่ะ'}`);
+      await showAlert('เกิดข้อผิดพลาด', `ไม่สามารถยกเลิกได้: ${data.error || 'เกิดข้อผิดพลาดค่ะ'}`, { type: 'danger' });
     }
   } catch (e) {
-    alert(`เกิดข้อผิดพลาดในการเชื่อมต่อ: ${e.message}`);
+    await showAlert('เกิดข้อผิดพลาด', `เกิดข้อผิดพลาดในการเชื่อมต่อ: ${e.message}`, { type: 'danger' });
   }
 }
 
 async function submitEditUser() {
   if (!currentEditingUsername) return;
+
+  const linePerms = [];
+  if ($('linePermReport') && $('linePermReport').checked) linePerms.push('report');
+  if ($('linePermLinks') && $('linePermLinks').checked) linePerms.push('links');
+  if ($('linePermReconcile') && $('linePermReconcile').checked) linePerms.push('reconcile');
+  if ($('linePermSearch') && $('linePermSearch').checked) linePerms.push('search');
+  if ($('linePermFolder') && $('linePermFolder').checked) linePerms.push('folder');
+  if ($('linePermLeave') && $('linePermLeave').checked) linePerms.push('leave');
 
   const payload = {
     display_name: $('editDisplayName').value.trim(),
@@ -8882,6 +9206,7 @@ async function submitEditUser() {
     can_edit_kb: $('editUserCanEditKB').checked,
     can_delete_kb: $('editUserCanDeleteKB').checked,
     can_view_financial: $('editUserCanViewFinancial') ? $('editUserCanViewFinancial').checked : false,
+    line_permissions: linePerms.join(','),
     department: $('editUserDept') ? $('editUserDept').value.trim() : '',
     notes: $('editUserNotes').value.trim()
   };
@@ -10133,7 +10458,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // Show call buttons only in DM mode
 function checkCallButtonsVisibility() {
   if (!voiceCallBtn || !videoCallBtn) return;
-  if (state.currentChat.type === 'dm') {
+  if (state.currentChat.type === 'dm' && state.currentChat.id !== 'ai-assistant') {
     voiceCallBtn.classList.remove('hidden');
     videoCallBtn.classList.remove('hidden');
   } else {
@@ -10209,9 +10534,9 @@ function renderKanbanBoard() {
 
   // Add new column button at end
   const addColBtn = document.createElement('div');
-  addColBtn.className = 'kanban-add-col flex-shrink-0 w-72';
+  addColBtn.className = 'kanban-add-col flex-shrink-0 w-72 select-none';
   addColBtn.innerHTML = `
-    <button onclick="openAddColumnModal()" class="w-full h-14 border-2 border-dashed border-surface-200 dark:border-surface-700 hover:border-brand-500 hover:bg-brand-50/40 dark:hover:bg-brand-900/20 text-surface-400 hover:text-brand-600 rounded-2xl flex items-center justify-center gap-2 font-bold text-sm transition-all">
+    <button onclick="openAddColumnModal()" class="w-full h-14 border-2 border-dashed border-surface-200 dark:border-surface-700 hover:border-brand-500 hover:bg-brand-50/40 dark:hover:bg-brand-900/20 text-surface-400 hover:text-brand-600 rounded-2xl flex items-center justify-center gap-2 font-bold text-sm transition-all select-none">
       <i data-lucide="plus" class="w-4 h-4"></i> เพิ่มคอลัมน์ใหม่
     </button>
   `;
@@ -10223,14 +10548,14 @@ function renderKanbanBoard() {
 
 function buildKanbanColumn(col) {
   const div = document.createElement('div');
-  div.className = 'kanban-col flex-shrink-0 w-72 flex flex-col bg-surface-50 dark:bg-surface-900 rounded-2xl border border-surface-200 dark:border-surface-800 shadow-sm overflow-hidden';
+  div.className = 'kanban-col flex-shrink-0 w-72 flex flex-col bg-surface-50 dark:bg-surface-900 rounded-2xl border border-surface-200 dark:border-surface-800 shadow-sm overflow-hidden select-none';
   div.dataset.colId = col.id;
 
   const cardCount = col.cards ? col.cards.length : 0;
   div.innerHTML = `
-    <div class="kanban-col-header flex items-center justify-between px-4 py-3 border-b border-surface-200 dark:border-surface-800" style="border-top: 3px solid ${col.color || '#6366f1'}">
+    <div class="kanban-col-header flex items-center justify-between px-4 py-3 border-b border-surface-200 dark:border-surface-800 select-none" style="border-top: 3px solid ${col.color || '#6366f1'}">
       <div class="flex items-center gap-2 min-w-0">
-        <span class="font-black text-sm truncate">${escHtml(col.title)}</span>
+        <span class="font-black text-sm truncate">${escHtml(col.title || 'ไม่มีชื่อ')}</span>
         <span class="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full text-white" style="background:${col.color || '#6366f1'}">${cardCount}</span>
       </div>
       <div class="flex items-center gap-1 flex-shrink-0">
@@ -10245,7 +10570,7 @@ function buildKanbanColumn(col) {
         </button>
       </div>
     </div>
-    <div class="kanban-cards-list flex-1 overflow-y-auto p-3 space-y-2.5 min-h-[100px] custom-scrollbar" 
+    <div class="kanban-cards-list flex-1 overflow-y-auto p-3 space-y-2.5 min-h-[100px] custom-scrollbar select-none" 
          data-col-id="${col.id}"
          ondragover="handleCardDragOver(event)"
          ondragleave="event.currentTarget.classList.remove('drag-over')"
@@ -10253,7 +10578,7 @@ function buildKanbanColumn(col) {
       ${(col.cards || []).map(card => buildKanbanCardHTML(card)).join('')}
     </div>
     <div class="p-3 border-t border-surface-100 dark:border-surface-800">
-      <button onclick="openAddCardModal(${col.id})" class="w-full py-2.5 border-2 border-dashed border-surface-200 dark:border-surface-700 hover:border-brand-500 hover:bg-brand-50/40 dark:hover:bg-brand-900/20 text-surface-400 hover:text-brand-600 rounded-xl flex items-center justify-center gap-1.5 font-bold text-xs transition-all">
+      <button onclick="openAddCardModal(${col.id})" class="w-full py-2.5 border-2 border-dashed border-surface-200 dark:border-surface-700 hover:border-brand-500 hover:bg-brand-50/40 dark:hover:bg-brand-900/20 text-surface-400 hover:text-brand-600 rounded-xl flex items-center justify-center gap-1.5 font-bold text-xs transition-all select-none">
         <i data-lucide="plus" class="w-3.5 h-3.5"></i> เพิ่มการ์ด
       </button>
     </div>
@@ -11913,6 +12238,11 @@ async function initiateCall(withVideo = false) {
   const myUsername = typeof state.user === 'object' ? state.user?.username : state.user;
   console.log('🎯 Target user identified:', targetUser, '| me:', myUsername);
 
+  if (targetUser === 'ai-assistant') {
+    toast('❌ ไม่สามารถโทรหา AI Assistant ได้ค่ะ', 'error');
+    return;
+  }
+
   if (!targetUser || targetUser === myUsername) {
     toast('❌ ไม่พบผู้รับสาย หรือไม่สามารถโทรหาตัวเองได้', 'error');
     return;
@@ -12841,6 +13171,7 @@ function renderLeaveHistory(leaves) {
 async function refreshAdminLeaves() {
     const tableBody = $('adminLeaveTableBody');
     if (!tableBody) return;
+    if (!state.isAdmin) return;
 
     try {
         const res = await fetch('/api/admin/leave/all');
@@ -14803,12 +15134,105 @@ function generateRRPdf() {
   });
 }
 
+async function scanReceiptWithAI(input) {
+  const file = input.files[0];
+  if (!file) return;
+  
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  const btn = document.querySelector('button[onclick*="rrOcrInput"]');
+  const originalHtml = btn ? btn.innerHTML : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block mr-1"></span> กำลังวิเคราะห์...';
+  }
+  
+  try {
+    const res = await fetch('/api/receipt-replacement/scan', {
+      method: 'POST',
+      body: formData
+    });
+    const data = await res.json();
+    if (data.ok) {
+      toast('สแกนบิลสำเร็จ ดึงข้อมูลลงฟอร์มเรียบร้อยค่ะ', 'success');
+      
+      if (data.sender && data.sender !== '-') {
+        const nameEl = $('rrSellerName');
+        if (nameEl) nameEl.value = data.sender;
+      }
+      if (data.sender_address && data.sender_address !== '-') {
+        const addrEl = $('rrSellerAddr');
+        if (addrEl) addrEl.value = data.sender_address;
+      }
+      if (data.vendor_tax_id && data.vendor_tax_id !== '-') {
+        const taxEl = $('rrSellerTax');
+        if (taxEl) taxEl.value = data.vendor_tax_id;
+      }
+      if (data.phone && data.phone !== '-') {
+        const phoneEl = $('rrSellerPhone');
+        if (phoneEl) phoneEl.value = data.phone;
+      }
+      if (data.ref_number && data.ref_number !== '-') {
+        const origNoEl = $('rrOrigNo');
+        if (origNoEl) origNoEl.value = data.ref_number;
+      }
+      
+      if (data.date && data.date !== '-') {
+        try {
+          const parts = data.date.split('/');
+          const origDateEl = $('rrOrigDate');
+          if (origDateEl) {
+            if (parts.length === 3) {
+              origDateEl.value = `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+            } else {
+              origDateEl.value = data.date;
+            }
+          }
+        } catch (_) {}
+      }
+      
+      if (data.memo && data.memo !== '-') {
+        const descEl = $('rrDescription');
+        if (descEl) descEl.value = data.memo;
+      }
+      if (data.gross_amount) {
+        const amtEl = $('rrAmountBeforeVat');
+        if (amtEl) amtEl.value = parseFloat(data.gross_amount).toFixed(2);
+      }
+      if (data.vat_amount) {
+        const vatEl = $('rrVatAmt');
+        if (vatEl) vatEl.value = parseFloat(data.vat_amount).toFixed(2);
+      }
+      if (data.wht_amount) {
+        const whtEl = $('rrWhtAmt');
+        if (whtEl) whtEl.value = parseFloat(data.wht_amount).toFixed(2);
+      }
+      
+      calcRRTotal();
+      updateRRPreview();
+    } else {
+      toast(data.error || 'สแกนไม่สำเร็จ กรุณาลองใหม่อีกครั้งค่ะ', 'error');
+    }
+  } catch (e) {
+    console.error(e);
+    toast('เกิดข้อผิดพลาดในการวิเคราะห์เอกสาร', 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
+    }
+    input.value = '';
+  }
+}
+
 window.initReplacementReceiptView = initReplacementReceiptView;
 window.openReplacementFromExpense = openReplacementFromExpense;
 window.calcRRTotal = calcRRTotal;
 window.updateRRPreview = updateRRPreview;
 window.clearRRForm = clearRRForm;
 window.generateRRPdf = generateRRPdf;
+window.scanReceiptWithAI = scanReceiptWithAI;
 
 // ─── PEAK API Integration ──────────────────────────────────────────────────────
 
@@ -14958,8 +15382,9 @@ async function renderOrgTree() {
     wrapper.dataset.eventsInitialized = "true";
   }
 
-  if (!_orgMembersCache || _orgMembersCache.length === 0) {
+  if (!_orgMembersLoaded) {
     await loadOrgMembers();
+    return;
   }
 
   const htmlNodesContainer = document.getElementById("orgTreeHtmlNodes");
@@ -15047,7 +15472,9 @@ async function renderOrgTree() {
       ? `<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/50">Admin</span>`
       : `<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-surface-50 dark:bg-surface-800 text-surface-500 dark:text-surface-400 border border-surface-100 dark:border-surface-700">Member</span>`;
 
-    const avatarUrl = node.avatar_url || '/static/images/default-avatar.png';
+    const avatarHtml = node.avatar_url 
+      ? `<img src="${node.avatar_url}" class="w-10 h-10 rounded-full object-cover border border-surface-200 dark:border-surface-700 flex-shrink-0" onerror="this.outerHTML='<div class=&quot;w-10 h-10 rounded-full flex items-center justify-center text-xs font-black uppercase text-brand-600 bg-brand-50 border border-surface-200 dark:border-surface-700 flex-shrink-0&quot;>${(node.display_name || node.username)[0].toUpperCase()}</div>'">`
+      : `<div class="w-10 h-10 rounded-full flex items-center justify-center text-xs font-black uppercase text-brand-600 bg-brand-50 border border-surface-200 dark:border-surface-700 flex-shrink-0">${(node.display_name || node.username)[0].toUpperCase()}</div>`;
     const deptText = node.department || 'General';
     const posText = node.position || 'พนักงาน';
 
@@ -15059,7 +15486,7 @@ async function renderOrgTree() {
       : "";
 
     card.innerHTML = `
-      <img src="${avatarUrl}" class="w-10 h-10 rounded-full object-cover border border-surface-200 dark:border-surface-700 flex-shrink-0" onerror="this.src='/static/images/default-avatar.png'">
+      ${avatarHtml}
       <div class="flex-1 min-w-0 pr-1 flex flex-col justify-center">
         <div class="flex items-center gap-1.5 mb-0.5">
           <div class="font-extrabold text-xs text-surface-900 dark:text-white truncate" title="${node.display_name}">${node.display_name}</div>
@@ -15115,7 +15542,7 @@ function openEditManagerModal(username) {
   if (!member) return;
   editingTreeMember = username;
 
-  document.getElementById("editManagerUserAvatar").src = member.avatar_url || '/static/images/default-avatar.png';
+  document.getElementById("editManagerUserAvatar").src = member.avatar_url || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%2394a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/><path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662"/></svg>';
   document.getElementById("editManagerUserDisplayName").textContent = member.display_name || member.username;
   document.getElementById("editManagerUserPosition").textContent = `${member.position || 'พนักงาน'} · ${member.department || 'General'}`;
 
@@ -15199,3 +15626,255 @@ window.renderOrgTree = renderOrgTree;
 window.openEditManagerModal = openEditManagerModal;
 window.closeEditManagerModal = closeEditManagerModal;
 window.saveManagerChange = saveManagerChange;
+
+// Draggable & Resizeable Private/Group Chat Card
+function initChatDragAndResize() {
+  const card = document.getElementById("groupChatInnerCard");
+  if (!card) return;
+
+  function centerCard() {
+    if (window.innerWidth < 768) {
+      card.style.position = "";
+      card.style.left = "";
+      card.style.top = "";
+      card.style.width = "";
+      card.style.height = "";
+      card.style.transform = "";
+      return;
+    }
+    card.style.position = "absolute";
+    card.style.maxWidth = "none";
+    
+    const cardWidth = Math.min(window.innerWidth - 40, 1100);
+    const cardHeight = Math.min(window.innerHeight - 40, 700);
+    const left = Math.max(20, (window.innerWidth - cardWidth) / 2);
+    const top = Math.max(20, (window.innerHeight - cardHeight) / 2);
+    
+    card.style.left = `${left}px`;
+    card.style.top = `${top}px`;
+    card.style.width = `${cardWidth}px`;
+    card.style.height = `${cardHeight}px`;
+    card.style.transform = "none";
+  }
+
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      if (mutation.attributeName === 'class') {
+        const modal = document.getElementById("groupChatModal");
+        if (modal && !modal.classList.contains("hidden")) {
+          centerCard();
+        }
+      }
+    });
+  });
+  const modal = document.getElementById("groupChatModal");
+  if (modal) {
+    observer.observe(modal, { attributes: true });
+  }
+
+  window.addEventListener('resize', () => {
+    if (window.innerWidth < 768) {
+      card.style.position = "";
+      card.style.left = "";
+      card.style.top = "";
+      card.style.width = "";
+      card.style.height = "";
+    }
+  });
+
+  const sidebarHeader = document.querySelector("#chatSidebarPanel header");
+  const mainChatHeader = document.querySelector("#chatMainArea header");
+  
+  [sidebarHeader, mainChatHeader].forEach(header => {
+    if (!header) return;
+    header.style.cursor = "move";
+    header.addEventListener("mousedown", dragStart);
+  });
+
+  let active = false;
+  let currentX;
+  let currentY;
+  let initialX;
+  let initialY;
+
+  function dragStart(e) {
+    if (window.innerWidth < 768) return;
+    if (e.button !== 0) return;
+    if (e.target.closest("button") || e.target.closest("input") || e.target.closest("select") || e.target.closest("textarea") || e.target.closest("i")) return;
+
+    initialX = e.clientX - (parseInt(card.style.left) || 0);
+    initialY = e.clientY - (parseInt(card.style.top) || 0);
+
+    active = true;
+    document.addEventListener("mousemove", drag);
+    document.addEventListener("mouseup", dragEnd);
+  }
+
+  function drag(e) {
+    if (!active) return;
+    e.preventDefault();
+    currentX = e.clientX - initialX;
+    currentY = e.clientY - initialY;
+
+    const minLeft = 10;
+    const minTop = 10;
+    const maxLeft = window.innerWidth - 150;
+    const maxTop = window.innerHeight - 150;
+
+    currentX = Math.max(minLeft, Math.min(currentX, maxLeft));
+    currentY = Math.max(minTop, Math.min(currentY, maxTop));
+
+    card.style.left = `${currentX}px`;
+    card.style.top = `${currentY}px`;
+  }
+
+  function dragEnd() {
+    active = false;
+    document.removeEventListener("mousemove", drag);
+    document.removeEventListener("mouseup", dragEnd);
+  }
+
+  const resizer = document.createElement("div");
+  resizer.className = "absolute right-0 bottom-0 w-8 h-8 cursor-se-resize z-[99] flex items-end justify-end p-1 select-none pointer-events-auto";
+  resizer.innerHTML = `<svg class="w-4 h-4 text-surface-400 opacity-60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 19l4-4M10 19l9-9"/></svg>`;
+  card.appendChild(resizer);
+
+  resizer.addEventListener("mousedown", initResize);
+
+  let initialWidth, initialHeight, startX, startY;
+
+  function initResize(e) {
+    if (window.innerWidth < 768) return;
+    e.preventDefault();
+    initialWidth = parseInt(card.style.width) || card.offsetWidth;
+    initialHeight = parseInt(card.style.height) || card.offsetHeight;
+    startX = e.clientX;
+    startY = e.clientY;
+
+    document.addEventListener("mousemove", resize);
+    document.addEventListener("mouseup", stopResize);
+  }
+
+  function resize(e) {
+    e.preventDefault();
+    const newWidth = Math.max(500, initialWidth + (e.clientX - startX));
+    const newHeight = Math.max(400, initialHeight + (e.clientY - startY));
+
+    card.style.width = `${newWidth}px`;
+    card.style.height = `${newHeight}px`;
+  }
+
+  function stopResize() {
+    document.removeEventListener("mousemove", resize);
+    document.removeEventListener("mouseup", stopResize);
+  }
+}
+
+// ─── AI Customer Support Draft Generator ───
+async function initReplyAssistantView() {
+  const selectEl = $('raSourceFile');
+  if (!selectEl) return;
+  
+  const qEl = $('raQueryText');
+  const dEl = $('raDraftResult');
+  const tEl = $('raTipsResult');
+  if (qEl) qEl.value = '';
+  if (dEl) dEl.value = '';
+  if (tEl) tEl.textContent = 'เลือกอ้างอิงเอกสาร โทนที่ต้องการ และใส่คำถามลูกค้าเพื่อสแกนและแนะนำแนวทางการปิดการขายค่ะ';
+  
+  try {
+    const data = await apiFetch('/api/files');
+    selectEl.innerHTML = '<option value="">📚 ค้นหาอัตโนมัติจากทุกไฟล์ในคลังความรู้ (Recommended)</option>';
+    if (data && data.files) {
+      data.files.forEach(f => {
+        const opt = document.createElement('option');
+        opt.value = f.id;
+        opt.textContent = `📄 ${f.name || 'ไม่มีชื่อไฟล์'}`;
+        selectEl.appendChild(opt);
+      });
+    }
+  } catch (e) {
+    console.error('Failed to load KB files for Reply Assistant:', e);
+  }
+}
+
+async function generateAIDraft() {
+  const queryEl = $('raQueryText');
+  const fileEl = $('raSourceFile');
+  const draftEl = $('raDraftResult');
+  const tipsEl = $('raTipsResult');
+  const submitBtn = $('raSubmitBtn');
+  
+  if (!queryEl || !queryEl.value.trim()) {
+    toast('กรุณาระบุข้อความสอบถามของลูกค้าก่อนนะคะ', 'error');
+    return;
+  }
+  
+  const query = queryEl.value.trim();
+  const fileId = fileEl ? fileEl.value : '';
+  const toneRadio = document.querySelector('input[name="raTone"]:checked');
+  const tone = toneRadio ? toneRadio.value : 'formal';
+  
+  const originalHtml = submitBtn ? submitBtn.innerHTML : '';
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block mr-1"></span> กำลังประมวลผล...';
+  }
+  
+  try {
+    const res = await apiFetch('/api/reply-assistant/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, tone, file_id: fileId })
+    });
+    
+    if (res && res.ok) {
+      toast('ร่างข้อความสแกนจากคลังความรู้เรียบร้อยค่ะ', 'success');
+      if (draftEl) draftEl.value = res.draft || '';
+      if (tipsEl) tipsEl.textContent = res.tips || '💡 พร้อมคัดลอกข้อความไปใช้งานได้ทันทีค่ะ';
+    } else {
+      toast(res.error || 'เกิดข้อผิดพลาดในการร่างคำตอบ', 'error');
+    }
+  } catch (e) {
+    console.error(e);
+    toast('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ AI ได้ในขณะนี้', 'error');
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalHtml;
+    }
+  }
+}
+
+async function copyReplyAssistantDraft() {
+  const draftEl = $('raDraftResult');
+  const copyBtn = $('raCopyBtn');
+  if (!draftEl || !draftEl.value.trim()) {
+    toast('ไม่มีข้อความให้คัดลอกค่ะ', 'error');
+    return;
+  }
+  
+  try {
+    await navigator.clipboard.writeText(draftEl.value.trim());
+    toast('คัดลอกข้อความลงคลิปบอร์ดแล้วค่ะ', 'success');
+    
+    const originalText = copyBtn ? copyBtn.innerHTML : '';
+    if (copyBtn) {
+      copyBtn.innerHTML = '<i data-lucide="check" class="w-3 h-3 text-emerald-500"></i> คัดลอกแล้ว!';
+      if (typeof initIcons === 'function') initIcons();
+      setTimeout(() => {
+        copyBtn.innerHTML = originalText;
+        if (typeof initIcons === 'function') initIcons();
+      }, 2000);
+    }
+  } catch (err) {
+    console.error('Failed to copy text:', err);
+    toast('ไม่สามารถคัดลอกข้อความได้โดยอัตโนมัติ', 'error');
+  }
+}
+
+window.initReplyAssistantView = initReplyAssistantView;
+window.generateAIDraft = generateAIDraft;
+window.copyReplyAssistantDraft = copyReplyAssistantDraft;
+
+document.addEventListener('DOMContentLoaded', initChatDragAndResize);

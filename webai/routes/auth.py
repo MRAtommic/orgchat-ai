@@ -1172,6 +1172,7 @@ def api_login():
 
         _set_session_org(session["user"])
         database.record_login_attempt(client_ip, username_raw, success=True)
+        database.log_audit_event(session["user"], session.get("org_id", 1), "USER_LOGIN", "Login successful", client_ip)
         return jsonify({"ok": True, "user": session["user"], "role": session["role"], "org_role": session.get("org_role"), "has_org": session.get("org_id") is not None})
 
     # 2. Fallback to Hardcoded (plain text)
@@ -1185,6 +1186,7 @@ def api_login():
         session["role"] = settings.get("role", "user")
         _set_session_org(user_to_session)
         database.record_login_attempt(client_ip, username_raw, success=True)
+        database.log_audit_event(user_to_session, session.get("org_id", 1), "USER_LOGIN", "Login successful", client_ip)
         return jsonify({"ok": True, "user": user_to_session, "role": session["role"], "org_role": session.get("org_role"), "has_org": session.get("org_id") is not None})
 
     database.record_login_attempt(client_ip, username_raw, success=False)
@@ -1878,6 +1880,14 @@ def update_org_member_manager_route(username):
     data = request.get_json(force=True)
     manager_username = data.get("manager_username", "").strip()
     
+    # Verify that the target member belongs to the admin's organization
+    if not database.is_org_member(org_id, username):
+        return jsonify({"ok": False, "error": "ไม่พบสมาชิกคนนี้ในองค์กรของคุณ"}), 404
+        
+    # Verify that the manager belongs to the admin's organization
+    if manager_username and not database.is_org_member(org_id, manager_username):
+        return jsonify({"ok": False, "error": "ไม่พบหัวหน้างานคนนี้ในองค์กรของคุณ"}), 404
+
     # Validation: prevent self-management
     if username.lower() == manager_username.lower():
         return jsonify({"ok": False, "error": "ไม่สามารถเลือกตัวเองเป็นหัวหน้าได้"}), 400
@@ -1931,6 +1941,14 @@ def invite_org_member():
     target_settings = database.get_user_setting(invite_username)
     if not target_settings:
         return jsonify({"ok": False, "error": f"ไม่พบผู้ใช้ '{invite_username}' ในระบบ"}), 404
+        
+    # Verify target user is not already in another organization
+    user_orgs = database.get_user_orgs(invite_username)
+    if user_orgs:
+        if any(o["id"] == org_id for o in user_orgs):
+            return jsonify({"ok": False, "error": f"ผู้ใช้ '{invite_username}' เป็นสมาชิกขององค์กรนี้อยู่แล้ว"}), 400
+        return jsonify({"ok": False, "error": f"ไม่สามารถเชิญได้ เนื่องจากผู้ใช้ '{invite_username}' สังกัดองค์กรอื่นอยู่แล้วในระบบ"}), 400
+        
     database.add_org_member(org_id, invite_username, role=role, invited_by=me)
     return jsonify({"ok": True, "username": invite_username, "role": role})
 
@@ -2241,6 +2259,10 @@ def update_org_member_permissions(username):
     update_kwargs = {}
     if "display_name" in data:
         update_kwargs["display_name"] = data["display_name"]
+    if "department" in data:
+        update_kwargs["department"] = data["department"]
+    if "position" in data:
+        update_kwargs["position"] = data["position"]
     # is_active is system-admin-only — org admin cannot globally disable accounts
     if "is_active" in data:
         if session.get("role") == "admin":
@@ -2353,6 +2375,59 @@ def update_org_profile_api():
     return jsonify({"ok": False, "error": "ไม่สามารถบันทึกข้อมูลธุรกิจได้ กรุณาลองใหม่"}), 500
 
 
+@auth_bp.route("/api/org/logs", methods=["GET"])
+@login_required
+def get_org_logs_api():
+    org_id = get_current_org_id()
+    if not org_id:
+        return jsonify({"ok": False, "error": "คุณยังไม่ได้อยู่ในองค์กร"}), 403
+    logs = database.get_events(limit=100, org_id=org_id)
+    return jsonify({"ok": True, "logs": logs})
+
+
+@auth_bp.route("/api/org/announcements", methods=["GET", "POST"])
+@login_required
+def org_announcements_api():
+    org_id = get_current_org_id()
+    if not org_id:
+        return jsonify({"ok": False, "error": "คุณยังไม่ได้อยู่ในองค์กร"}), 403
+    
+    if request.method == "POST":
+        me = session.get("user")
+        if not database.is_org_admin(org_id, me) and session.get("role") != "admin":
+            return jsonify({"ok": False, "error": "เฉพาะ Admin เท่านั้นที่สามารถสร้างประกาศได้"}), 403
+        data = request.get_json() or {}
+        title = data.get("title", "").strip()
+        content = data.get("content", "").strip()
+        priority = data.get("priority", "normal")
+        if not title or not content:
+            return jsonify({"ok": False, "error": "กรุณาระบุหัวข้อและเนื้อหาประกาศ"}), 400
+        ann_id = database.create_org_announcement(org_id, title, content, priority, me)
+        database.log_event(f"Created org announcement: {title}", user=me, org_id=org_id)
+        try:
+            import notification_db
+            notification_db.notify_org_members_except(org_id, me, 'system', f"📢 ประกาศองค์กร: {title}", content, '#org-announcements')
+        except Exception as e:
+            print(f"⚠️ Failed to send in-app announcement notification: {e}")
+        return jsonify({"ok": True, "id": ann_id})
+    else:
+        announcements = database.get_org_announcements(org_id)
+        return jsonify({"ok": True, "announcements": announcements})
+
+
+@auth_bp.route("/api/org/announcements/<int:aid>", methods=["DELETE"])
+@login_required
+def delete_org_announcement_api(aid):
+    org_id = get_current_org_id()
+    me = session.get("user")
+    if not database.is_org_admin(org_id, me) and session.get("role") != "admin":
+        return jsonify({"ok": False, "error": "เฉพาะ Admin เท่านั้นที่สามารถลบประกาศได้"}), 403
+    database.delete_org_announcement(aid, org_id)
+    database.log_event(f"Deleted org announcement ID: {aid}", user=me, org_id=org_id)
+    return jsonify({"ok": True})
+
+
+
 @auth_bp.route("/api/profile", methods=["GET"])
 @login_required
 def get_my_profile():
@@ -2414,7 +2489,7 @@ def update_my_profile():
         # Handle avatar file upload
         avatar_file = request.files.get("avatar")
         if avatar_file and avatar_file.filename:
-            ext = Path(secure_filename(avatar_file.filename)).suffix.lower()
+            ext = Path(avatar_file.filename).suffix.lower()
             if ext not in {".jpg", ".jpeg", ".png", ".webp", ".gif"}:
                 return jsonify({"ok": False, "error": "รองรับเฉพาะไฟล์รูป (.jpg, .png, .webp, .gif)"}), 400
             avatar_filename = f"avatar_{username}_{int(time.time())}{ext}"
@@ -2456,7 +2531,19 @@ def get_my_settings():
         "can_edit_kb": bool(settings.get("can_edit_kb")),
         "can_delete_kb": bool(settings.get("can_delete_kb")),
         "can_view_financial": bool(settings.get("can_view_financial")),
+        "line_user_id": profile.get("line_user_id") or "",
     })
+
+
+@auth_bp.route("/api/user/unbind-line", methods=["POST"])
+@login_required
+def user_unbind_line_route():
+    """Unbind (disconnect) LINE account for the logged in user."""
+    username = session.get("user")
+    if database.unlink_line_user(username):
+        database.log_event("Unbound LINE account for self", user=username, org_id=get_current_org_id())
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "error": "ไม่สามารถยกเลิกการผูกบัญชี LINE ได้ หรือคุณยังไม่ได้ผูกบัญชี LINE"}), 400
 
 
 @auth_bp.route("/api/user/update-notes", methods=["POST"])
@@ -2497,4 +2584,172 @@ def change_my_password():
     database.admin_reset_user_password(username, new_pw)
     database.log_event(f"Password changed by user {username}", user=username, org_id=get_current_org_id())
     return jsonify({"ok": True})
+
+
+def _get_line_login_config():
+    """Helper to resolve LINE Login configurations from multiple sources."""
+    login_id = database.get_app_setting("LINE_LOGIN_CHANNEL_ID")
+    login_secret = database.get_app_setting("LINE_LOGIN_CHANNEL_SECRET")
+    
+    if not login_id:
+        login_id = os.environ.get("LINE_LOGIN_CHANNEL_ID")
+    if not login_secret:
+        login_secret = os.environ.get("LINE_LOGIN_CHANNEL_SECRET")
+        
+    if not login_secret:
+        try:
+            from routes.chat import get_line_config
+            cfg = get_line_config()
+            login_secret = cfg.get("channel_secret")
+        except Exception:
+            pass
+            
+    if not login_secret:
+        login_secret = os.environ.get("LINE_CHANNEL_SECRET")
+        
+    if not login_id:
+        login_id = database.get_app_setting("LINE_CHANNEL_ID")
+    if not login_id:
+        login_id = os.environ.get("LINE_CHANNEL_ID")
+        
+    return {
+        "channel_id": (login_id or "").strip(),
+        "channel_secret": (login_secret or "").strip()
+    }
+
+
+@auth_bp.route("/api/line/login-init", methods=["GET"])
+@login_required
+def line_login_init():
+    """Initiates LINE Login OAuth flow to link LINE user ID."""
+    username = session.get("user")
+    cfg = _get_line_login_config()
+    channel_id = cfg["channel_id"]
+    
+    if not channel_id:
+        return jsonify({"ok": False, "error": "ไม่ได้ตั้งค่า LINE Login Channel ID ในระบบค่ะ"}), 400
+        
+    import secrets
+    state = secrets.token_hex(16)
+    session["line_login_state"] = state
+    session["line_login_username"] = username
+    
+    webhook_url = os.environ.get("ACTIVE_PUBLIC_URL")
+    base_url = ""
+    if webhook_url:
+        if "/api/line/webhook" in webhook_url:
+            base_url = webhook_url.split("/api/line/webhook")[0]
+        else:
+            base_url = webhook_url.rstrip('/')
+    else:
+        env_url = os.environ.get("BASE_URL") or os.environ.get("PUBLIC_URL")
+        if env_url:
+            base_url = env_url.rstrip('/')
+            
+    if not base_url:
+        base_url = request.host_url.rstrip('/')
+        
+    redirect_uri = f"{base_url}/api/line/login-callback"
+    
+    import urllib.parse
+    params = {
+        "response_type": "code",
+        "client_id": channel_id,
+        "redirect_uri": redirect_uri,
+        "state": state,
+        "scope": "profile openid"
+    }
+    auth_url = f"https://access.line.me/oauth2/v2.1/authorize?{urllib.parse.urlencode(params)}"
+    return redirect(auth_url)
+
+
+@auth_bp.route("/api/line/login-callback", methods=["GET"])
+def line_login_callback():
+    """Callback for LINE Login OAuth flow to finalize profile link."""
+    code = request.args.get("code")
+    state = request.args.get("state")
+    error = request.args.get("error")
+    error_description = request.args.get("error_description")
+    
+    if error:
+        return render_link_error(f"LINE Login Error: {error_description or error}"), 400
+        
+    stored_state = session.get("line_login_state")
+    username = session.get("line_login_username")
+    
+    session.pop("line_login_state", None)
+    session.pop("line_login_username", None)
+    
+    if not stored_state or state != stored_state or not username:
+        return render_link_error("สถานะความปลอดภัยไม่ถูกต้องหรือหมดอายุแล้วค่ะ กรุณาลองใหม่อีกครั้งนะคะ"), 400
+        
+    cfg = _get_line_login_config()
+    channel_id = cfg["channel_id"]
+    channel_secret = cfg["channel_secret"]
+    
+    if not channel_id or not channel_secret:
+        return render_link_error("ไม่ได้ตั้งค่าข้อมูลเชื่อมต่อ LINE Login ในระบบค่ะ"), 400
+        
+    webhook_url = os.environ.get("ACTIVE_PUBLIC_URL")
+    base_url = ""
+    if webhook_url:
+        if "/api/line/webhook" in webhook_url:
+            base_url = webhook_url.split("/api/line/webhook")[0]
+        else:
+            base_url = webhook_url.rstrip('/')
+    else:
+        env_url = os.environ.get("BASE_URL") or os.environ.get("PUBLIC_URL")
+        if env_url:
+            base_url = env_url.rstrip('/')
+            
+    if not base_url:
+        base_url = request.host_url.rstrip('/')
+        
+    redirect_uri = f"{base_url}/api/line/login-callback"
+    
+    import requests
+    token_url = "https://api.line.me/oauth2/v2.1/token"
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    data = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": redirect_uri,
+        "client_id": channel_id,
+        "client_secret": channel_secret
+    }
+    
+    try:
+        res = requests.post(token_url, headers=headers, data=data, timeout=10)
+        res_data = res.json()
+    except Exception as e:
+        return render_link_error(f"ไม่สามารถเชื่อมต่อไปยัง LINE API ได้: {e}"), 500
+        
+    if res.status_code != 200:
+        return render_link_error(f"การแลกเปลี่ยนสิทธิ์กับ LINE ล้มเหลว: {res_data.get('error_description', 'Unknown Error')}"), 400
+        
+    access_token = res_data.get("access_token")
+    if not access_token:
+        return render_link_error("ไม่ได้รับ Access Token จาก LINE API ค่ะ"), 400
+        
+    profile_url = "https://api.line.me/v2/profile"
+    profile_headers = {"Authorization": f"Bearer {access_token}"}
+    try:
+        prof_res = requests.get(profile_url, headers=profile_headers, timeout=10)
+        prof_data = prof_res.json()
+    except Exception as e:
+        return render_link_error(f"ไม่สามารถขอข้อมูลผู้ใช้จาก LINE ได้: {e}"), 500
+        
+    if prof_res.status_code != 200:
+        return render_link_error(f"การดึงข้อมูลโปรไฟล์ LINE ล้มเหลว: {prof_data.get('message', 'Unknown Error')}"), 400
+        
+    line_user_id = prof_data.get("userId")
+    if not line_user_id:
+        return render_link_error("ไม่พบ LINE User ID ในโปรไฟล์ที่ส่งมาค่ะ"), 400
+        
+    if database.link_line_user(username, line_user_id):
+        database.log_event("Linked LINE account via LINE Login web flow", user=username, org_id=get_current_org_id())
+        return render_success_page(username)
+    else:
+        return render_link_error("เกิดข้อผิดพลาดในการบันทึกข้อมูลการเชื่อมต่อลงฐานข้อมูลค่ะ"), 500
+
 

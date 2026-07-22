@@ -44,11 +44,27 @@ from routes.shared import (
     VAPID_PUBLIC_KEY,
     get_current_org_id, is_admin,
     _is_safe_url, _get_gemini_api_key,
+    validate_uploaded_file,
 )
 
 logger = logging.getLogger("OrgChatAI.Social")
 
 social_bp = Blueprint('social', __name__)
+def check_post_access(pid, org_id):
+    """Verify if a post belongs to the current user's organization."""
+    posts = database.get_posts(org_id=org_id)
+    return any(p["id"] == pid for p in posts)
+
+def check_card_access(card_id, org_id):
+    """Verify if a Kanban card belongs to the current organization."""
+    card = database.kanban_get_card(card_id)
+    if not card:
+        return False
+    column_id = card.get("column_id")
+    if not column_id:
+        return False
+    col = database.kanban_get_column(column_id, org_id=org_id)
+    return col is not None
 
 @social_bp.route("/api/link-preview")
 @login_required
@@ -60,6 +76,23 @@ def get_link_preview():
         url = "http://" + url
     if not _is_safe_url(url):
         return jsonify({"ok": False, "error": "URL ไม่อนุญาต"}), 400
+
+    # YouTube oEmbed fallback
+    if "youtube.com" in url or "youtu.be" in url:
+        try:
+            oembed_url = f"https://www.youtube.com/oembed?url={url}&format=json"
+            response = http_requests.get(oembed_url, timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                return jsonify({
+                    "ok": True,
+                    "title": data.get("title", "")[:100],
+                    "description": f"วิดีโอ YouTube โดย {data.get('author_name', '')}"[:200],
+                    "image": data.get("thumbnail_url", ""),
+                    "url": url
+                })
+        except Exception as yt_err:
+            logger.error(f"[youtube-oembed] {yt_err}")
 
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
@@ -159,8 +192,14 @@ def manage_posts():
         category = request.form.get("category", "General")
         link = request.form.get("link")
         
+        has_attachments = 'files' in request.files and any(f.filename for f in request.files.getlist('files'))
+        poll_question = request.form.get("poll_question")
+
+        if not content and not link and not has_attachments and not poll_question:
+            return jsonify({"ok": False, "error": "กรุณาใส่ข้อความ ลิงก์ โพลล์ หรือแนบไฟล์อย่างใดอย่างหนึ่งค่ะ"}), 400
+
         if not content:
-            return jsonify({"ok": False, "error": "Content required"}), 400
+            content = ""
             
         attachments = []
         if 'files' in request.files:
@@ -170,7 +209,13 @@ def manage_posts():
                     is_valid, err_msg = validate_uploaded_file(file, file.filename)
                     if not is_valid:
                         return jsonify({"ok": False, "error": f"ไฟล์ {file.filename} ไม่ปลอดภัย: {err_msg}"}), 400
-                    filename = secure_filename(file.filename)
+                    from pathlib import Path
+                    orig_suffix = Path(file.filename).suffix.lower()
+                    orig_stem = Path(file.filename).stem
+                    safe_stem = secure_filename(orig_stem)
+                    if not safe_stem:
+                        safe_stem = "file"
+                    filename = f"{safe_stem}{orig_suffix}"
 
                     # Add timestamp to avoid collisions
                     ts = int(time.time())
@@ -204,16 +249,17 @@ def manage_posts():
         # --- New Post Broadcast ---
         profile = database.get_user_profile(author)
         display_name = profile.get("display_name", author)
+        _oid = get_current_org_id()
         
-        notification_db.notify_all_except(
+        notification_db.notify_org_members_except(
+            _oid,
             author, 
             'post', 
             'โพสต์ใหม่จาก ' + display_name, 
             f'หัวข้อ: {category} - "{content[:30]}..."',
             link='#feed'
         )
-        # --- LINE Push for Announcements & Feed Updates to Mapped Groups ---
-        _oid = get_current_org_id()
+        # --- LINE Push for Announcements & Feed Updates to Mapped Groups + Personal LINE ---
         if _oid:
             def run_social_line_push():
                 try:
@@ -223,10 +269,257 @@ def manage_posts():
                         import requests as _req
                         _groups = database.get_line_groups_for_org(_oid) or []
                         if category and category.lower() in ["announcement", "ประกาศ", "news", "ทั่วไป", "general", "it help"]:
-                            msg = f"📢 มีประกาศใหม่ล่าสุดในองค์กรค่ะ!\nหัวข้อ: {category}\nเนื้อหา: {content[:100]}...\nโดย: {display_name}"
+                            # Premium Flex Message for Announcements
+                            flex_msg = {
+                                "type": "flex",
+                                "altText": f"📢 ประกาศใหม่: {category} — โดย {display_name}",
+                                "contents": {
+                                    "type": "bubble",
+                                    "size": "mega",
+                                    "header": {
+                                        "type": "box",
+                                        "layout": "vertical",
+                                        "contents": [
+                                            {
+                                                "type": "box",
+                                                "layout": "horizontal",
+                                                "contents": [
+                                                    {
+                                                        "type": "box",
+                                                        "layout": "vertical",
+                                                        "contents": [
+                                                            {"type": "text", "text": "📢", "size": "xl", "align": "center"}
+                                                        ],
+                                                        "width": "40px",
+                                                        "height": "40px",
+                                                        "backgroundColor": "#ffffff20",
+                                                        "cornerRadius": "12px",
+                                                        "justifyContent": "center",
+                                                        "alignItems": "center"
+                                                    },
+                                                    {
+                                                        "type": "box",
+                                                        "layout": "vertical",
+                                                        "contents": [
+                                                            {"type": "text", "text": "ประกาศใหม่", "color": "#ffffff", "size": "lg", "weight": "bold"},
+                                                            {"type": "text", "text": "NEW ANNOUNCEMENT", "color": "#ffffff90", "size": "xxs"}
+                                                        ],
+                                                        "paddingStart": "12px"
+                                                    }
+                                                ],
+                                                "alignItems": "center"
+                                            }
+                                        ],
+                                        "backgroundColor": "#1B2838",
+                                        "paddingAll": "16px"
+                                    },
+                                    "body": {
+                                        "type": "box",
+                                        "layout": "vertical",
+                                        "contents": [
+                                            {
+                                                "type": "box",
+                                                "layout": "horizontal",
+                                                "contents": [
+                                                    {
+                                                        "type": "text",
+                                                        "text": category.upper(),
+                                                        "size": "xxs",
+                                                        "color": "#2563EB",
+                                                        "weight": "bold"
+                                                    }
+                                                ],
+                                                "backgroundColor": "#EFF6FF",
+                                                "cornerRadius": "20px",
+                                                "paddingAll": "6px",
+                                                "paddingStart": "12px",
+                                                "paddingEnd": "12px",
+                                                "width": "120px",
+                                                "justifyContent": "center"
+                                            },
+                                            {"type": "text", "text": (content or "ไม่มีเนื้อหา")[:120], "wrap": True, "size": "sm", "color": "#374151", "margin": "lg"},
+                                            {"type": "separator", "margin": "lg", "color": "#F3F4F6"},
+                                            {
+                                                "type": "box",
+                                                "layout": "horizontal",
+                                                "contents": [
+                                                    {
+                                                        "type": "box",
+                                                        "layout": "vertical",
+                                                        "contents": [
+                                                            {"type": "text", "text": display_name[:1].upper(), "color": "#ffffff", "size": "xs", "align": "center"}
+                                                        ],
+                                                        "width": "28px",
+                                                        "height": "28px",
+                                                        "backgroundColor": "#6366F1",
+                                                        "cornerRadius": "14px",
+                                                        "justifyContent": "center",
+                                                        "alignItems": "center"
+                                                    },
+                                                    {
+                                                        "type": "box",
+                                                        "layout": "vertical",
+                                                        "contents": [
+                                                            {"type": "text", "text": display_name, "size": "xs", "color": "#111827", "weight": "bold"},
+                                                            {"type": "text", "text": "เมื่อสักครู่", "size": "xxs", "color": "#9CA3AF"}
+                                                        ],
+                                                        "paddingStart": "10px"
+                                                    }
+                                                ],
+                                                "alignItems": "center",
+                                                "margin": "lg"
+                                            }
+                                        ],
+                                        "paddingAll": "20px",
+                                        "backgroundColor": "#ffffff"
+                                    },
+                                    "footer": {
+                                        "type": "box",
+                                        "layout": "vertical",
+                                        "contents": [
+                                            {
+                                                "type": "button",
+                                                "action": {"type": "uri", "label": "อ่านเพิ่มเติม", "uri": "https://openchat.sbs"},
+                                                "style": "primary",
+                                                "color": "#2563EB",
+                                                "height": "sm"
+                                            }
+                                        ],
+                                        "paddingAll": "12px",
+                                        "backgroundColor": "#F9FAFB"
+                                    },
+                                    "styles": {
+                                        "footer": {"separator": False}
+                                    }
+                                }
+                            }
                         else:
-                            msg = f"✨ มีโพสต์ใหม่ใน Feed ขององค์กรค่ะ!\nหมวดหมู่: {category}\nผู้โพสต์: {display_name}\nลองเข้าไปอ่านและแสดงความคิดเห็นได้ที่แอปนะครับ"
+                            # Premium Flex Message for Feed Posts
+                            flex_msg = {
+                                "type": "flex",
+                                "altText": f"✨ โพสต์ใหม่จาก {display_name} — {category}",
+                                "contents": {
+                                    "type": "bubble",
+                                    "size": "mega",
+                                    "header": {
+                                        "type": "box",
+                                        "layout": "vertical",
+                                        "contents": [
+                                            {
+                                                "type": "box",
+                                                "layout": "horizontal",
+                                                "contents": [
+                                                    {
+                                                        "type": "box",
+                                                        "layout": "vertical",
+                                                        "contents": [
+                                                            {"type": "text", "text": "✨", "size": "xl", "align": "center"}
+                                                        ],
+                                                        "width": "40px",
+                                                        "height": "40px",
+                                                        "backgroundColor": "#ffffff20",
+                                                        "cornerRadius": "12px",
+                                                        "justifyContent": "center",
+                                                        "alignItems": "center"
+                                                    },
+                                                    {
+                                                        "type": "box",
+                                                        "layout": "vertical",
+                                                        "contents": [
+                                                            {"type": "text", "text": "โพสต์ใหม่ใน Feed", "color": "#ffffff", "size": "lg", "weight": "bold"},
+                                                            {"type": "text", "text": "NEW FEED POST", "color": "#ffffff90", "size": "xxs"}
+                                                        ],
+                                                        "paddingStart": "12px"
+                                                    }
+                                                ],
+                                                "alignItems": "center"
+                                            }
+                                        ],
+                                        "backgroundColor": "#7C3AED",
+                                        "paddingAll": "16px"
+                                    },
+                                    "body": {
+                                        "type": "box",
+                                        "layout": "vertical",
+                                        "contents": [
+                                            {
+                                                "type": "box",
+                                                "layout": "horizontal",
+                                                "contents": [
+                                                    {
+                                                        "type": "text",
+                                                        "text": category.upper() if category else "FEED",
+                                                        "size": "xxs",
+                                                        "color": "#7C3AED",
+                                                        "weight": "bold"
+                                                    }
+                                                ],
+                                                "backgroundColor": "#F5F3FF",
+                                                "cornerRadius": "20px",
+                                                "paddingAll": "6px",
+                                                "paddingStart": "12px",
+                                                "paddingEnd": "12px",
+                                                "width": "120px",
+                                                "justifyContent": "center"
+                                            },
+                                            {"type": "text", "text": (content or "ไม่มีเนื้อหา")[:120], "wrap": True, "size": "sm", "color": "#374151", "margin": "lg"},
+                                            {"type": "separator", "margin": "lg", "color": "#F3F4F6"},
+                                            {
+                                                "type": "box",
+                                                "layout": "horizontal",
+                                                "contents": [
+                                                    {
+                                                        "type": "box",
+                                                        "layout": "vertical",
+                                                        "contents": [
+                                                            {"type": "text", "text": display_name[:1].upper(), "color": "#ffffff", "size": "xs", "align": "center"}
+                                                        ],
+                                                        "width": "28px",
+                                                        "height": "28px",
+                                                        "backgroundColor": "#7C3AED",
+                                                        "cornerRadius": "14px",
+                                                        "justifyContent": "center",
+                                                        "alignItems": "center"
+                                                    },
+                                                    {
+                                                        "type": "box",
+                                                        "layout": "vertical",
+                                                        "contents": [
+                                                            {"type": "text", "text": display_name, "size": "xs", "color": "#111827", "weight": "bold"},
+                                                            {"type": "text", "text": "เมื่อสักครู่", "size": "xxs", "color": "#9CA3AF"}
+                                                        ],
+                                                        "paddingStart": "10px"
+                                                    }
+                                                ],
+                                                "alignItems": "center",
+                                                "margin": "lg"
+                                            }
+                                        ],
+                                        "paddingAll": "20px",
+                                        "backgroundColor": "#ffffff"
+                                    },
+                                    "footer": {
+                                        "type": "box",
+                                        "layout": "vertical",
+                                        "contents": [
+                                            {
+                                                "type": "button",
+                                                "action": {"type": "uri", "label": "💬 เข้าดูโพสต์", "uri": "https://openchat.sbs"},
+                                                "style": "primary",
+                                                "color": "#7C3AED",
+                                                "height": "sm"
+                                            }
+                                        ],
+                                        "paddingAll": "12px",
+                                        "backgroundColor": "#F9FAFB"
+                                    },
+                                    "styles": {
+                                        "footer": {"separator": False}
+                                    }
+                                }
+                            }
                         
+                        # 1) Push to LINE Groups (as before)
                         for _g in _groups:
                             _gid = _g.get("group_id")
                             if _gid:
@@ -234,11 +527,39 @@ def manage_posts():
                                     _req.post(
                                         "https://api.line.me/v2/bot/message/push",
                                         headers={"Content-Type": "application/json", "Authorization": f"Bearer {_tok}"},
-                                        json={"to": _gid, "messages": [{"type": "text", "text": msg}]},
+                                        json={"to": _gid, "messages": [flex_msg]},
                                         timeout=5
                                     )
                                 except Exception:
                                     pass
+                        
+                        # 2) Push to individual LINE users in this org (personal DM)
+                        try:
+                            org_members = database.get_org_members(_oid) or []
+                            _sent_ids = set()
+                            for member in org_members:
+                                _uname = member.get("username", "")
+                                # Skip the author — don't notify yourself
+                                if _uname.lower() == author.lower():
+                                    continue
+                                # Skip inactive members
+                                if not member.get("is_active", True):
+                                    continue
+                                _lid = database.get_line_id_by_username(_uname)
+                                if _lid and _lid not in _sent_ids:
+                                    _sent_ids.add(_lid)
+                                    try:
+                                        _req.post(
+                                            "https://api.line.me/v2/bot/message/push",
+                                            headers={"Content-Type": "application/json", "Authorization": f"Bearer {_tok}"},
+                                            json={"to": _lid, "messages": [flex_msg]},
+                                            timeout=5
+                                        )
+                                    except Exception:
+                                        pass
+                        except Exception as _member_err:
+                            logger.warning(f"Failed to push announcement to individual LINE users: {_member_err}")
+
                 except Exception as _e:
                     logger.error(f"Failed to send social post LINE push: {_e}")
             threading.Thread(target=run_social_line_push, daemon=True).start()
@@ -271,10 +592,14 @@ def manage_posts():
 @login_required
 def update_delete_post(pid):
     user = session.get("user")
+    org_id = get_current_org_id()
+    if not check_post_access(pid, org_id):
+        return jsonify({"ok": False, "error": "ไม่พบโพสต์นี้ในองค์กรของคุณ"}), 404
+
     if request.method == "DELETE":
         ok = database.delete_post(pid, username=user, is_admin=is_admin())
         if ok:
-            database.log_event(f"Post deleted: ID {pid}", user=user, org_id=get_current_org_id())
+            database.log_event(f"Post deleted: ID {pid}", user=user, org_id=org_id)
             return jsonify({"ok": True})
         return jsonify({"ok": False, "error": "คุณไม่มีสิทธิ์ลบโพสต์นี้"}), 403
     
@@ -291,19 +616,26 @@ def update_delete_post(pid):
         return jsonify({"ok": False, "error": "ไม่มีสิทธิ์แก้ไขโพสต์นี้"}), 403
 
     database.update_post(pid, content, category, link)
-    database.log_event(f"Post updated: ID {pid}", user=user, org_id=get_current_org_id())
+    database.log_event(f"Post updated: ID {pid}", user=user, org_id=org_id)
     return jsonify({"ok": True})
 
 
 @social_bp.route("/api/posts/<int:pid>/pin", methods=["POST"])
 @admin_required
 def pin_post_route(pid):
+    org_id = get_current_org_id()
+    if not check_post_access(pid, org_id):
+        return jsonify({"ok": False, "error": "ไม่พบโพสต์นี้ในองค์กรของคุณ"}), 404
     database.toggle_pin(pid)
     return jsonify({"ok": True})
 
 
 @social_bp.route("/api/posts/<int:pid>/comments", methods=["GET", "POST"])
 def manage_comments(pid):
+    org_id = get_current_org_id()
+    if not check_post_access(pid, org_id):
+        return jsonify({"ok": False, "error": "ไม่พบโพสต์นี้ในองค์กรของคุณ"}), 404
+
     if request.method == "POST":
         if "user" not in session:
             return jsonify({"ok": False, "error": "กรุณาเข้าสู่ระบบก่อนแสดงความคิดเห็น"}), 401
@@ -319,7 +651,7 @@ def manage_comments(pid):
         # --- Comment Notification ---
         profile = database.get_user_profile(author)
         display_name = profile.get("display_name", author)
-        posts = database.get_posts(org_id=get_current_org_id())
+        posts = database.get_posts(org_id=org_id)
         post = next((p for p in posts if p["id"] == pid), None)
         if post and post["author"] != author:
             notification_db.add_notification(
@@ -359,6 +691,9 @@ def manage_comments(pid):
 @social_bp.route("/api/posts/<int:pid>/view", methods=["POST"])
 @login_required
 def record_post_view_route(pid):
+    org_id = get_current_org_id()
+    if not check_post_access(pid, org_id):
+        return jsonify({"ok": False, "error": "ไม่พบโพสต์นี้ในองค์กรของคุณ"}), 404
     user = session.get("user")
     database.record_post_view(pid, user)
     return jsonify({"ok": True})
@@ -367,6 +702,9 @@ def record_post_view_route(pid):
 @social_bp.route("/api/posts/<int:pid>/views", methods=["GET"])
 @login_required
 def get_post_views_route(pid):
+    org_id = get_current_org_id()
+    if not check_post_access(pid, org_id):
+        return jsonify({"ok": False, "error": "ไม่พบโพสต์นี้ในองค์กรของคุณ"}), 404
     views = database.get_post_views(pid)
     return jsonify({"ok": True, "views": views})
 
@@ -374,10 +712,13 @@ def get_post_views_route(pid):
 @social_bp.route("/api/posts/<int:pid>/comments/<int:cid>", methods=["DELETE"])
 @login_required
 def delete_comment_route(pid, cid):
+    org_id = get_current_org_id()
+    if not check_post_access(pid, org_id):
+        return jsonify({"ok": False, "error": "ไม่พบโพสต์นี้ในองค์กรของคุณ"}), 404
     user = session.get("user")
     ok = database.delete_comment(cid, username=user, is_admin=is_admin())
     if ok:
-        database.log_event(f"Comment deleted: ID {cid} from post {pid}", user=user, org_id=get_current_org_id())
+        database.log_event(f"Comment deleted: ID {cid} from post {pid}", user=user, org_id=org_id)
         return jsonify({"ok": True})
     return jsonify({"ok": False, "error": "คุณไม่มีสิทธิ์ลบคอมเม้นนี้"}), 403
 
@@ -385,12 +726,15 @@ def delete_comment_route(pid, cid):
 @social_bp.route("/api/posts/<int:pid>/like", methods=["POST"])
 @login_required
 def post_like(pid):
+    org_id = get_current_org_id()
+    if not check_post_access(pid, org_id):
+        return jsonify({"ok": False, "error": "ไม่พบโพสต์นี้ในองค์กรของคุณ"}), 404
     user = session.get("user", "Current User")
     liked = database.toggle_like(pid, user)
     
     # --- Reaction Notification ---
     if liked:
-        posts = database.get_posts(org_id=get_current_org_id())
+        posts = database.get_posts(org_id=org_id)
         post = next((p for p in posts if p["id"] == pid), None)
         if post and post["author"] != user:
             notification_db.add_notification(
@@ -409,6 +753,9 @@ def post_like(pid):
 @login_required
 def post_react(pid):
     """Set/toggle an emoji reaction on a post."""
+    org_id = get_current_org_id()
+    if not check_post_access(pid, org_id):
+        return jsonify({"ok": False, "error": "ไม่พบโพสต์นี้ในองค์กรของคุณ"}), 404
     user = session.get("user", "Anonymous")
     data = request.get_json(force=True)
     reaction = data.get("reaction", "like")
@@ -421,7 +768,7 @@ def post_react(pid):
             'haha': '😆 ฮาเลย', 'wow': '😲 ทึ่งเลย',
             'sad': '😢 เศร้า', 'angry': '😡 โกรธ'
         }
-        posts = database.get_posts(org_id=get_current_org_id())
+        posts = database.get_posts(org_id=org_id)
         post = next((p for p in posts if p["id"] == pid), None)
         if post and post["author"] != user:
             notification_db.add_notification(
@@ -450,6 +797,9 @@ def post_react(pid):
 @login_required
 def get_reactions(pid):
     """Get all reactions for a post with user info."""
+    org_id = get_current_org_id()
+    if not check_post_access(pid, org_id):
+        return jsonify({"ok": False, "error": "ไม่พบโพสต์นี้ในองค์กรของคุณ"}), 404
     user = session.get("user")
     reactions = database.get_post_reactions(pid)
     
@@ -768,8 +1118,11 @@ def kanban_add_card():
 @social_bp.route("/api/kanban/cards/<int:card_id>", methods=["PUT"])
 @login_required
 def kanban_update_card(card_id):
+    org_id = get_current_org_id()
+    if not check_card_access(card_id, org_id):
+        return jsonify({"ok": False, "error": "ไม่พบการ์ดนี้ในองค์กรของคุณ"}), 404
+        
     data = request.json or {}
-    
     old_card = database.kanban_get_card(card_id)
     if not old_card:
         return jsonify({"ok": False, "error": "ไม่พบบทความ"}), 404
@@ -820,6 +1173,10 @@ def kanban_update_card(card_id):
 @social_bp.route("/api/kanban/cards/<int:card_id>", methods=["DELETE"])
 @login_required
 def kanban_delete_card(card_id):
+    org_id = get_current_org_id()
+    if not check_card_access(card_id, org_id):
+        return jsonify({"ok": False, "error": "ไม่พบการ์ดนี้ในองค์กรของคุณ"}), 404
+
     user = session.get("user")
     card = database.kanban_get_card(card_id)
     if not card:
@@ -833,6 +1190,10 @@ def kanban_delete_card(card_id):
 @social_bp.route("/api/kanban/cards/<int:card_id>/move", methods=["POST"])
 @login_required
 def kanban_move_card(card_id):
+    org_id = get_current_org_id()
+    if not check_card_access(card_id, org_id):
+        return jsonify({"ok": False, "error": "ไม่พบการ์ดนี้ในองค์กรของคุณ"}), 404
+
     data = request.json or {}
     new_column_id = data.get("column_id")
     new_position = data.get("position", 0)

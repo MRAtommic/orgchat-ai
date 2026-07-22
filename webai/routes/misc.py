@@ -57,13 +57,11 @@ def get_version():
 
 
 @misc_bp.route('/uploads/social_feed/<path:filename>')
-@login_required
 def serve_social_uploads(filename):
     return send_from_directory('uploads/social_feed', filename)
 
 
 @misc_bp.route('/uploads/profiles/<path:filename>')
-@login_required
 def serve_profile_uploads(filename):
     return send_from_directory('uploads/profiles', filename)
 
@@ -81,7 +79,6 @@ def serve_dm_chat_uploads(filename):
 
 
 @misc_bp.route('/uploads/group_profiles/<path:filename>')
-@login_required
 def serve_group_profile_uploads(filename):
     return send_from_directory('uploads/group_profiles', filename)
 
@@ -239,7 +236,8 @@ def get_notifications_route():
 @misc_bp.route("/api/notifications/<int:notif_id>/read", methods=["POST"])
 @login_required
 def mark_notif_read_route(notif_id):
-    notification_db.mark_notification_read(notif_id)
+    user = session.get("user")
+    notification_db.mark_notification_read(notif_id, user)
     return jsonify({"ok": True})
 
 

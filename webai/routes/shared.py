@@ -32,7 +32,16 @@ VERSION = "1.10.0-STABLE"
 _APP_START_TIME = time.time()
 
 # ─── Allowed File Extensions ─────────────────────────────────
-ALLOWED_EXTENSIONS = {".pdf", ".csv", ".txt", ".md", ".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".webp", ".docx", ".xlsx"}
+ALLOWED_EXTENSIONS = {
+    # Documents
+    ".pdf", ".csv", ".txt", ".md", ".docx", ".xlsx",
+    # Images
+    ".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".webp", ".gif",
+    # Audio (Voice Messages)
+    ".webm", ".mp3", ".ogg", ".wav", ".m4a", ".aac",
+    # Video
+    ".mp4", ".mov",
+}
 
 # ─── Thread Pools for Push Notifications ─────────────────────
 _executor = ThreadPoolExecutor(max_workers=10)
@@ -351,7 +360,7 @@ def get_rag_filter(username, org_id=None):
     user_settings = database.get_user_setting(username)
     if user_settings.get("role") == "admin":
         if org_id is not None:
-            return {"$or": [{"organization_id": org_id}, {"organization_id": {"$eq": None}}]}
+            return {"organization_id": org_id}
         return None  # System admin with no org context: no filter (sees all)
 
     cats = database.get_categories(username, org_id=org_id)
@@ -361,7 +370,7 @@ def get_rag_filter(username, org_id=None):
             allowed_ids.append(c['id'])
             allowed_ids.append(str(c['id']))
 
-    org_clause = {"$or": [{"organization_id": org_id}, {"organization_id": {"$eq": None}}]} if org_id is not None else None
+    org_clause = {"organization_id": org_id} if org_id is not None else None
     unassigned_filters = [{"category_id": ""}]
 
     if not org_clause:
@@ -539,7 +548,7 @@ THAI_HOLIDAYS_2026 = {
 def get_current_time():
     """Returns current time in Thailand (UTC+7)."""
     tz_thai = timezone(timedelta(hours=7))
-    return datetime.now(tz_thai).strftime("%Y-%m-%d %H:%M:%S")
+    return datetime.now(tz_thai).strftime("%Y-%m-%d %H:%M:%S+07:00")
 
 
 # ═══════════════════════════════════════════════════════════════

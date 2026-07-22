@@ -36,3 +36,7 @@ token.json
 client_secret*.json
 sa_for_railway.txt
 *sa_for_railway*
+*.db.backup*
+webai/scratch/
+webai/scratch_*.py
+

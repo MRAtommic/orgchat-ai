@@ -339,6 +339,12 @@
                     <button onclick="switchTab('pnd')" id="tabBtn-pnd" class="tab-btn text-sm font-semibold text-surface-400">
                         <span class="flex items-center gap-1.5"><i data-lucide="file-text" class="w-3.5 h-3.5"></i> ภ.ง.ด. รายเดือน</span>
                     </button>
+                    <button onclick="switchTab('ai-insights')" id="tabBtn-ai-insights" class="tab-btn text-sm font-semibold text-surface-400">
+                        <span class="flex items-center gap-1.5"><i data-lucide="sparkles" class="w-3.5 h-3.5 text-indigo-500"></i> วิเคราะห์ & พยากรณ์ AI</span>
+                    </button>
+                    <button onclick="switchTab('live-sheets')" id="tabBtn-live-sheets" class="tab-btn text-sm font-semibold text-surface-400">
+                        <span class="flex items-center gap-1.5"><i data-lucide="file-spreadsheet" class="w-3.5 h-3.5 text-emerald-500"></i> Google Sheets จริง</span>
+                    </button>
                 </div>
                 <div class="flex items-center gap-3">
                     <span class="text-xs text-surface-400 font-medium">วันที่ในใบเสร็จ</span>
@@ -351,7 +357,7 @@
             </div>
 
             <!-- Interactive Filters Section -->
-            <div class="px-6 py-4 bg-surface-50/60 border-b border-surface-200/50 grid grid-cols-2 md:grid-cols-6 gap-3">
+            <div id="dashboardFiltersSection" class="px-6 py-4 bg-surface-50/60 border-b border-surface-200/50 grid grid-cols-2 md:grid-cols-6 gap-3">
                 <!-- Date Select -->
                 <div>
                     <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">เลือกวัน</label>
@@ -488,6 +494,153 @@
                     <div id="pndMonthlyTable" class="space-y-5"></div>
                 </div>
             </div>
+
+            <!-- Tab 5: AI Financial Insights & Forecasts -->
+            <div id="tabContent-ai-insights" class="tab-pane hidden p-6 space-y-6">
+                <!-- Row 1: Line Chart for Expense Outflow & Forecast -->
+                <div class="bg-white dark:bg-surface-900 rounded-[2rem] border border-surface-200/60 dark:border-surface-800 p-6 shadow-sm">
+                    <div class="flex items-center justify-between mb-5">
+                        <div>
+                            <h3 class="text-sm font-extrabold text-surface-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                                <i data-lucide="trending-up" class="w-4 h-4 text-brand-600"></i> แนวโน้มกระแสรายจ่ายและการคาดการณ์ 3 เดือนล่วงหน้า
+                            </h3>
+                            <p class="text-[10px] text-surface-400 font-semibold mt-0.5 uppercase tracking-wider">Expense Outflow History & Forecast Projection</p>
+                        </div>
+                        <i data-lucide="sparkles" class="w-5 h-5 text-indigo-500 animate-pulse"></i>
+                    </div>
+                    <div class="relative w-full h-[300px]">
+                        <canvas id="outflowForecastChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Row 2: Runway Estimator (Left) & AI Strategic recommendations (Right) -->
+                <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                    <!-- Left: Cash Runway Estimator (2 cols) -->
+                    <div class="lg:col-span-2 bg-gradient-to-br from-slate-900 to-slate-950 text-white rounded-[2rem] p-6 shadow-xl flex flex-col justify-between relative overflow-hidden border border-slate-800">
+                        <div class="absolute -right-10 -bottom-10 w-40 h-40 bg-brand-500/10 rounded-full blur-3xl pointer-events-none"></div>
+                        
+                        <div class="space-y-4 z-10">
+                            <div>
+                                <h4 class="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                                    <i data-lucide="shield-alert" class="w-3.5 h-3.5 text-amber-500"></i> เครื่องมือประเมิน Cash Runway
+                                </h4>
+                                <p class="text-[9px] text-slate-500 font-semibold mt-0.5">ระบุเงินสดปัจจุบันเพื่อดูระยะเวลาความปลอดภัยขององค์กร</p>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">เงินสดคงเหลือในมือ (บาท)</label>
+                                <div class="relative">
+                                    <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-500">฿</span>
+                                    <input type="number" id="runwayCashInput" oninput="calculateRunway()" placeholder="ระบุยอดเงินสดคงเหลือ..." value="50000" class="w-full bg-slate-900/80 border border-slate-800 rounded-xl pl-8 pr-4 py-2.5 text-xs font-bold focus:ring-2 focus:ring-brand-500 outline-none text-white transition-all">
+                                </div>
+                            </div>
+
+                            <div class="pt-2">
+                                <p class="text-[10px] text-slate-400 font-semibold uppercase tracking-widest">ค่าเฉลี่ยรายจ่ายรายเดือน</p>
+                                <p id="runwayAverageExpense" class="text-lg font-extrabold text-white mt-1">0.00 บาท</p>
+                            </div>
+                        </div>
+
+                        <div class="border-t border-slate-800 pt-5 mt-6 space-y-4 z-10">
+                            <div>
+                                <p class="text-[10px] text-slate-400 font-semibold uppercase tracking-widest">คาดการณ์ Cash Runway</p>
+                                <div class="flex items-baseline gap-1 mt-1.5">
+                                    <span id="runwayMonthsVal" class="text-4xl font-black text-amber-400 leading-none">0.0</span>
+                                    <span class="text-xs text-slate-400 font-bold">เดือน</span>
+                                </div>
+                            </div>
+
+                            <!-- Runway Safety Gauge/Alert -->
+                            <div id="runwayGaugeCard" class="p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-start gap-2.5">
+                                <i data-lucide="alert-circle" id="runwayGaugeIcon" class="w-4 h-4 text-amber-400 shrink-0 mt-0.5"></i>
+                                <div>
+                                    <p id="runwayGaugeTitle" class="text-[11px] font-black text-amber-300">ความปลอดภัยระดับปานกลาง</p>
+                                    <p id="runwayGaugeDesc" class="text-[9px] text-slate-400 mt-0.5">ควรวางแผนสำรองเงินสดเพิ่มเพื่อให้ประคองบริษัทได้มากกว่า 3 เดือน</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: AI recommendations (3 cols) -->
+                    <div class="lg:col-span-3 bg-white dark:bg-surface-900 rounded-[2rem] border border-surface-200/60 dark:border-surface-800 p-6 shadow-sm flex flex-col min-h-[300px]">
+                        <div class="flex items-center justify-between mb-4 border-b border-surface-100 dark:border-surface-800 pb-3 flex-shrink-0">
+                            <div>
+                                <h3 class="text-sm font-extrabold text-surface-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                                    <i data-lucide="brain" class="text-indigo-500 w-4 h-4"></i> คำแนะนำและแผนบริหารการเงินโดย AI
+                                </h3>
+                                <p class="text-[10px] text-surface-400 font-semibold uppercase tracking-wider">AI Generated Strategic Recommendations</p>
+                            </div>
+                            <span class="text-[9px] font-black tracking-widest text-brand-600 bg-brand-50 dark:bg-brand-950/40 px-2.5 py-1 rounded-full uppercase">Gemini-Powered</span>
+                        </div>
+
+                        <!-- Loading State -->
+                        <div id="aiInsightsLoading" class="flex-1 flex flex-col items-center justify-center gap-3 py-12">
+                            <div class="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full spinning"></div>
+                            <p class="text-xs text-surface-400 font-bold animate-pulse">น้องพั้นซ์กำลังวิเคราะห์กระแสรายจ่ายบริษัท...</p>
+                        </div>
+
+                        <!-- Actual Content -->
+                        <div id="aiInsightsContent" class="flex-1 hidden overflow-y-auto max-h-[350px] no-scrollbar">
+                            <div id="aiInsightsText" class="prose prose-sm dark:prose-invert text-xs text-surface-600 dark:text-surface-300 leading-relaxed font-medium space-y-4">
+                                <!-- Markdown content injected here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab 6: Live Google Sheets View -->
+            <div id="tabContent-live-sheets" class="tab-pane hidden p-6">
+                <div class="bg-white dark:bg-surface-900 rounded-[2rem] border border-surface-200/60 dark:border-surface-800 p-6 shadow-sm overflow-hidden flex flex-col h-[700px]">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 border-b border-surface-100 dark:border-surface-800 pb-3 flex-shrink-0">
+                        <div>
+                            <h3 class="text-sm font-extrabold text-surface-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                                <i data-lucide="file-spreadsheet" class="text-emerald-500 w-4 h-4"></i> จัดการ Google Sheets เรียลไทม์
+                            </h3>
+                            <p class="text-[10px] text-surface-400 font-semibold uppercase tracking-wider">แสดงผลตารางข้อมูลและสามารถดับเบิ้ลคลิกแก้ไขช่องข้อมูลได้โดยตรงค่ะ</p>
+                        </div>
+                        <div class="flex items-center gap-3 flex-wrap">
+                            <!-- Tab Selector -->
+                            <div class="flex items-center gap-2 bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl px-3 py-1.5 shadow-sm">
+                                <span class="text-xs font-semibold text-surface-500 dark:text-surface-400 flex items-center gap-1">
+                                    <i data-lucide="layers" class="w-3.5 h-3.5 text-emerald-500"></i> แท็บ:
+                                </span>
+                                <select id="liveSheetsTabSelect" onchange="loadLiveSheetData(this.value)" class="bg-transparent border-none text-xs font-bold text-surface-800 dark:text-surface-100 focus:outline-none cursor-pointer">
+                                    <option value="">กำลังโหลดรายชื่อแท็บ...</option>
+                                </select>
+                            </div>
+                            
+                            <!-- Add Row Button -->
+                            <button onclick="addLiveSheetRow()" class="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 rounded-xl transition shadow-sm hover:shadow-emerald-500/20">
+                                <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i> เพิ่มแถวใหม่
+                            </button>
+                            
+                            <!-- External Link -->
+                            <a id="embedOpenSheetsLink" href="https://docs.google.com/spreadsheets" target="_blank" class="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-surface-600 bg-white hover:bg-surface-50 rounded-xl border border-surface-200 transition hover:border-brand-300 hover:text-brand-600 dark:bg-surface-800 dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-700">
+                                <i data-lucide="external-link" class="w-3.5 h-3.5 text-emerald-500"></i> เปิด Google Sheets
+                            </a>
+                        </div>
+                    </div>
+                    
+                    <!-- Table Grid container -->
+                    <div class="flex-1 w-full overflow-hidden border border-surface-200 dark:border-surface-800 rounded-2xl relative bg-surface-50 dark:bg-surface-950 flex flex-col">
+                        <!-- Loading spinner placeholder -->
+                        <div id="sheetsIframeLoading" class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white/95 dark:bg-surface-900/95 z-10 hidden">
+                            <div class="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full spinning"></div>
+                            <p class="text-xs text-surface-500 font-bold dark:text-surface-400">กำลังเชื่อมต่อและโหลดข้อมูลสเปรดชีตสด...</p>
+                        </div>
+                        
+                        <!-- Table Render Area -->
+                        <div id="liveSheetsTableContainer" class="flex-1 overflow-auto p-4 no-scrollbar">
+                            <div class="flex flex-col items-center justify-center h-full py-12 text-surface-400">
+                                <i data-lucide="sheet" class="w-12 h-12 text-surface-300 mb-3"></i>
+                                <p class="text-xs font-semibold">กรุณาเลือกแท็บที่ต้องการแสดงผลข้อมูลด้านบนค่ะ</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
         </div>
     </main>
 
@@ -607,8 +760,12 @@
 
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
-                                    <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">วันที่ออกใบเสร็จ *</label>
+                                    <label id="labelField-date" class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">วันที่ออกเอกสาร *</label>
                                     <input type="date" id="modalField-date" required class="w-full px-4 py-2.5 text-xs bg-white border border-surface-200 rounded-xl text-surface-700">
+                                </div>
+                                <div id="group-field-time">
+                                    <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">เวลาในเอกสาร</label>
+                                    <input type="text" id="modalField-time" placeholder="เช่น 09:50" class="w-full px-4 py-2.5 text-xs bg-white border border-surface-200 rounded-xl text-surface-700">
                                 </div>
                                 <div>
                                     <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">ผู้ขออนุญาตเบิกจ่าย *</label>
@@ -616,44 +773,52 @@
                                 </div>
                             </div>
 
-                            <div class="flex items-center gap-3">
-                                <input type="checkbox" id="modalField-hasTaxInvoice" onchange="toggleTaxInvoiceInput()" class="w-4.5 h-4.5 rounded accent-brand-600">
+                            <div id="group-field-taxInvoiceCheck" class="flex items-center gap-3">
+                                <input type="checkbox" id="modalField-hasTaxInvoice" class="w-4.5 h-4.5 rounded accent-brand-600">
                                 <label for="modalField-hasTaxInvoice" class="text-xs font-semibold text-surface-700">มีใบกำกับภาษีเต็มรูปแบบ</label>
                             </div>
 
-                            <div id="taxInvoiceSection" class="hidden bg-surface-50 p-4 rounded-xl border border-surface-200 space-y-4">
-                                <div>
-                                    <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">เลขที่ใบกำกับภาษี</label>
-                                    <input type="text" id="modalField-refNumber" placeholder="เช่น IV2026/001" class="w-full px-4 py-2.5 text-xs bg-white border border-surface-200 rounded-xl text-surface-700">
-                                </div>
+                            <div>
+                                <label id="labelField-refNumber" class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">เลขที่อ้างอิง</label>
+                                <input type="text" id="modalField-refNumber" placeholder="ระบุเลขที่อ้างอิง..." class="w-full px-4 py-2.5 text-xs bg-white border border-surface-200 rounded-xl text-surface-700">
                             </div>
 
                             <div>
                                 <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">รายละเอียด *</label>
-                                <textarea id="modalField-details" required rows="2" placeholder="ระบุวัตถุประสงค์ในการจ่าย..." class="w-full px-4 py-2.5 text-xs bg-white border border-surface-200 rounded-xl text-surface-700"></textarea>
+                                <textarea id="modalField-details" required rows="2" placeholder="ระบุรายละเอียด..." class="w-full px-4 py-2.5 text-xs bg-white border border-surface-200 rounded-xl text-surface-700"></textarea>
                             </div>
 
-                            <!-- Supplier Info -->
+                            <!-- dynamic info groups -->
                             <div class="border-t border-surface-100 pt-6 space-y-4">
                                 <div class="flex items-center justify-between">
-                                    <h4 class="text-xs font-bold text-surface-900 uppercase tracking-wider">ข้อมูลผู้ขาย</h4>
-                                    <button class="text-[11px] font-semibold text-blue-600 hover:text-blue-800">ค้นหาด้วยชื่อหรือเลขผู้เสียภาษี</button>
+                                    <h4 id="labelField-partnerSection" class="text-xs font-bold text-surface-900 uppercase tracking-wider">ข้อมูลคู่ค้า</h4>
+                                    <button class="text-[11px] font-semibold text-blue-600 hover:text-blue-800">ค้นหาข้อมูลผู้เสียภาษี</button>
                                 </div>
                                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div>
-                                        <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">ผู้ขาย/ผู้ให้บริการ *</label>
-                                        <input type="text" id="modalField-merchant" required placeholder="ชื่อนิติบุคคลหรือชื่อร้านค้า..." class="w-full px-4 py-2.5 text-xs bg-white border border-surface-200 rounded-xl text-surface-700">
+                                        <label id="labelField-merchant" class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">ผู้ขาย/ผู้ให้บริการ *</label>
+                                        <input type="text" id="modalField-merchant" required placeholder="ชื่อคู่ค้า/ร้านค้า..." class="w-full px-4 py-2.5 text-xs bg-white border border-surface-200 rounded-xl text-surface-700">
                                     </div>
-                                    <div>
-                                        <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">เลขประจำตัวผู้เสียภาษีของผู้ขาย</label>
+                                    <div id="group-field-receiver">
+                                        <label id="labelField-receiver" class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">ผู้รับเงิน *</label>
+                                        <input type="text" id="modalField-receiver" placeholder="ชื่อผู้รับเงิน..." class="w-full px-4 py-2.5 text-xs bg-white border border-surface-200 rounded-xl text-surface-700">
+                                    </div>
+                                    <div id="group-field-taxId">
+                                        <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">เลขผู้เสียภาษีคู่ค้า</label>
                                         <input type="text" id="modalField-taxId" placeholder="เลข 13 หลัก..." class="w-full px-4 py-2.5 text-xs bg-white border border-surface-200 rounded-xl text-surface-700">
                                     </div>
+                                    <div id="group-field-expenseType">
+                                        <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">ประเภทค่าใช้จ่าย</label>
+                                        <input type="text" id="modalField-expenseType" placeholder="เช่น ค่าครองชีพ..." class="w-full px-4 py-2.5 text-xs bg-white border border-surface-200 rounded-xl text-surface-700">
+                                    </div>
                                 </div>
-                                <div>
+                                
+                                <div id="group-field-address">
                                     <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">ที่อยู่ผู้ขาย</label>
                                     <textarea id="modalField-address" rows="2" placeholder="ระบุที่อยู่ของคู่ค้า/ร้านค้า..." class="w-full px-4 py-2.5 text-xs bg-white border border-surface-200 rounded-xl text-surface-700"></textarea>
                                 </div>
-                                <div>
+                                
+                                <div id="group-field-branchType">
                                     <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-2">ประเภทสาขา *</label>
                                     <div class="flex flex-wrap gap-4">
                                         <label class="flex items-center gap-2 text-xs font-medium text-surface-600">
@@ -665,6 +830,33 @@
                                         <label class="flex items-center gap-2 text-xs font-medium text-surface-600">
                                             <input type="radio" name="branch_type" value="ไม่มีสาขา" class="accent-brand-600"> ไม่มีสาขา
                                         </label>
+                                    </div>
+                                </div>
+
+                                <div id="group-field-slipDetails" class="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-surface-100 pt-4">
+                                    <div id="group-field-bankFrom">
+                                        <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">ธนาคารต้นทาง</label>
+                                        <input type="text" id="modalField-bankFrom" placeholder="เช่น กสิกรไทย..." class="w-full px-4 py-2.5 text-xs bg-white border border-surface-200 rounded-xl text-surface-700">
+                                    </div>
+                                    <div id="group-field-bankTo">
+                                        <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">ธนาคารปลายทาง</label>
+                                        <input type="text" id="modalField-bankTo" placeholder="เช่น ไทยพาณิชย์..." class="w-full px-4 py-2.5 text-xs bg-white border border-surface-200 rounded-xl text-surface-700">
+                                    </div>
+                                </div>
+
+                                <div id="group-field-memo">
+                                    <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">บันทึกช่วยจำบนสลิป</label>
+                                    <input type="text" id="modalField-memo" placeholder="บันทึกย่อบนสลิป..." class="w-full px-4 py-2.5 text-xs bg-white border border-surface-200 rounded-xl text-surface-700">
+                                </div>
+
+                                <div id="group-field-whtDetails" class="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-surface-100 pt-4">
+                                    <div id="group-field-whtRate">
+                                        <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">อัตราภาษี (WHT %)</label>
+                                        <input type="text" id="modalField-whtRate" placeholder="เช่น 3% หรือ 1%..." class="w-full px-4 py-2.5 text-xs bg-white border border-surface-200 rounded-xl text-surface-700">
+                                    </div>
+                                    <div id="group-field-whtType">
+                                        <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">ประเภทเงินได้</label>
+                                        <input type="text" id="modalField-whtType" placeholder="เช่น ค่าบริการ หรือ ค่าเช่า..." class="w-full px-4 py-2.5 text-xs bg-white border border-surface-200 rounded-xl text-surface-700">
                                     </div>
                                 </div>
                             </div>
@@ -875,10 +1067,10 @@
         }
 
         // ─── Init ────────────────────────────────────────────
-        window.onload = function () {
+        window.addEventListener('load', function () {
             lucide.createIcons();
             loadDashboardData();
-        };
+        });
 
         // ─── DATA LOADING ────────────────────────────────────
         function loadDashboardData() {
@@ -934,6 +1126,19 @@
                     if (data.spreadsheet_url) {
                         const sheetsLink = document.getElementById('dashboardSheetsLink');
                         if (sheetsLink) sheetsLink.href = data.spreadsheet_url;
+
+                        const embedOpenLink = document.getElementById('embedOpenSheetsLink');
+                        if (embedOpenLink) embedOpenLink.href = data.spreadsheet_url;
+
+                        const match = data.spreadsheet_url.match(/\/d\/([a-zA-Z0-9-_]+)/);
+                        if (match && match[1]) {
+                            const spreadsheetId = match[1];
+                            const embedUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/htmlembed?widget=true&headers=false&chrome=false`;
+                            const iframe = document.getElementById('googleSheetsIframe');
+                            if (iframe && iframe.src !== embedUrl) {
+                                iframe.src = embedUrl;
+                            }
+                        }
                     }
                     if (data.drive_folder_url) {
                         const driveLink = document.getElementById('dashboardDriveLink');
@@ -1032,8 +1237,20 @@
                 pane.classList.toggle('hidden', pane.id !== `tabContent-${tab}`);
             });
 
+            // Toggle filters visibility
+            const filterSec = document.getElementById('dashboardFiltersSection');
+            if (filterSec) {
+                filterSec.classList.toggle('hidden', tab === 'live-sheets' || tab === 'ai-insights' || tab === 'pnd');
+            }
+
             if (tab === 'pnd') {
                 loadPndReport();
+            } else if (tab === 'ai-insights') {
+                loadAiInsights();
+            } else if (tab === 'live-sheets') {
+                if (typeof initLiveSheetsView === 'function') {
+                    initLiveSheetsView();
+                }
             } else {
                 applyAllFilters();
             }
@@ -1583,7 +1800,95 @@
             const hasTax = item.vat_amount > 0 || (item.ref_number && item.ref_number !== '-');
             document.getElementById('modalField-hasTaxInvoice').checked = hasTax;
             document.getElementById('modalField-refNumber').value = item.ref_number !== '-' ? item.ref_number : '';
-            toggleTaxInvoiceInput();
+
+            // ─── DYNAMIC DOCUMENT LAYOUT ADJUSTMENT ───────────────────
+            const sheet = item.sheet_name;
+
+            // Reset labels and fields to defaults
+            document.getElementById('labelField-date').textContent = 'วันที่ออกเอกสาร *';
+            document.getElementById('labelField-refNumber').textContent = 'เลขที่อ้างอิง';
+            document.getElementById('labelField-merchant').textContent = 'ผู้ขาย/ผู้ให้บริการ *';
+            document.getElementById('labelField-receiver').textContent = 'ผู้รับเงิน *';
+            document.getElementById('labelField-partnerSection').textContent = 'ข้อมูลคู่ค้า';
+
+            // Hide all conditional wrappers
+            const fieldsToToggle = [
+                'group-field-time', 'group-field-taxInvoiceCheck', 'group-field-receiver',
+                'group-field-taxId', 'group-field-expenseType', 'group-field-address',
+                'group-field-branchType', 'group-field-slipDetails', 'group-field-bankFrom',
+                'group-field-bankTo', 'group-field-memo', 'group-field-whtDetails',
+                'group-field-whtRate', 'group-field-whtType'
+            ];
+            fieldsToToggle.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.add('hidden');
+            });
+
+            // Populate base conditional values
+            document.getElementById('modalField-time').value = item.time && item.time !== '-' ? item.time : '';
+            document.getElementById('modalField-receiver').value = item.receiver && item.receiver !== '-' ? item.receiver : '';
+            document.getElementById('modalField-expenseType').value = item.expense_type && item.expense_type !== '-' ? item.expense_type : '';
+            document.getElementById('modalField-bankFrom').value = item.bank_from && item.bank_from !== '-' ? item.bank_from : '';
+            document.getElementById('modalField-bankTo').value = item.bank_to && item.bank_to !== '-' ? item.bank_to : '';
+            document.getElementById('modalField-memo').value = item.memo && item.memo !== '-' ? item.memo : '';
+            document.getElementById('modalField-whtRate').value = item.wht_rate && item.wht_rate !== '-' ? item.wht_rate : '';
+            document.getElementById('modalField-whtType').value = item.wht_type && item.wht_type !== '-' ? item.wht_type : '';
+
+            // Conditional view adjustments
+            if (sheet === 'สลิปโอนเงิน') {
+                document.getElementById('labelField-date').textContent = 'วันที่ทำรายการในสลิป *';
+                document.getElementById('labelField-refNumber').textContent = 'เลขที่อ้างอิงการโอน (Ref No.) *';
+                document.getElementById('labelField-merchant').textContent = 'บัญชีผู้โอน (ต้นทาง) *';
+                document.getElementById('labelField-receiver').textContent = 'บัญชีผู้รับโอน (ปลายทาง) *';
+                document.getElementById('labelField-partnerSection').textContent = 'รายละเอียดการโอนเงิน';
+
+                // Show Slip fields
+                document.getElementById('group-field-time').classList.remove('hidden');
+                document.getElementById('group-field-receiver').classList.remove('hidden');
+                document.getElementById('group-field-slipDetails').classList.remove('hidden');
+                document.getElementById('group-field-bankFrom').classList.remove('hidden');
+                document.getElementById('group-field-bankTo').classList.remove('hidden');
+                document.getElementById('group-field-memo').classList.remove('hidden');
+
+            } else if (sheet === 'ใบเสร็จ/ใบกำกับภาษี') {
+                document.getElementById('labelField-date').textContent = 'วันที่ในใบเสร็จ/ใบกำกับ *';
+                document.getElementById('labelField-refNumber').textContent = 'เลขที่ใบกำกับภาษี *';
+                document.getElementById('labelField-merchant').textContent = 'ผู้ขาย/ผู้ให้บริการ *';
+                document.getElementById('labelField-receiver').textContent = 'ผู้รับเงิน (ถ้ามี)';
+                document.getElementById('labelField-partnerSection').textContent = 'ข้อมูลร้านค้า/คู่ค้าภาษี';
+
+                // Show Invoice fields
+                document.getElementById('group-field-receiver').classList.remove('hidden');
+                document.getElementById('group-field-taxId').classList.remove('hidden');
+                document.getElementById('group-field-address').classList.remove('hidden');
+                document.getElementById('group-field-branchType').classList.remove('hidden');
+
+            } else if (sheet === 'ใบหัก ณ ที่จ่าย') {
+                document.getElementById('labelField-date').textContent = 'วันที่ในใบหักภาษี *';
+                document.getElementById('labelField-refNumber').textContent = 'เลขที่ใบเสร็จ/ใบสำคัญ';
+                document.getElementById('labelField-merchant').textContent = 'ผู้มีหน้าที่หักภาษี (ผู้จ่ายเงิน) *';
+                document.getElementById('labelField-receiver').textContent = 'ผู้ถูกหักภาษี (ผู้รับเงิน) *';
+                document.getElementById('labelField-partnerSection').textContent = 'รายละเอียดผู้รับเงินและหักภาษี';
+
+                // Show WHT fields
+                document.getElementById('group-field-receiver').classList.remove('hidden');
+                document.getElementById('group-field-taxId').classList.remove('hidden');
+                document.getElementById('group-field-whtDetails').classList.remove('hidden');
+                document.getElementById('group-field-whtRate').classList.remove('hidden');
+                document.getElementById('group-field-whtType').classList.remove('hidden');
+
+            } else {
+                // บันทึกค่าใช้จ่าย / ทั่วไป
+                document.getElementById('labelField-date').textContent = 'วันที่ทำรายการ *';
+                document.getElementById('labelField-refNumber').textContent = 'เลขที่ใบสำคัญ/เลขอ้างอิง';
+                document.getElementById('labelField-merchant').textContent = 'จ่ายให้แก่ร้านค้า/คู่ค้า *';
+                document.getElementById('labelField-receiver').textContent = 'ผู้รับเงิน';
+                document.getElementById('labelField-partnerSection').textContent = 'ข้อมูลคู่ค้าและหมวดหมู่';
+
+                document.getElementById('group-field-receiver').classList.remove('hidden');
+                document.getElementById('group-field-expenseType').classList.remove('hidden');
+                document.getElementById('group-field-taxInvoiceCheck').classList.remove('hidden');
+            }
 
             // Itemize Summaries fields
             document.getElementById('modalItemTitle').textContent = item.details !== '-' ? item.details : 'ค่าใช้จ่าย';
@@ -1615,8 +1920,7 @@
         }
 
         function toggleTaxInvoiceInput() {
-            const hasTax = document.getElementById('modalField-hasTaxInvoice').checked;
-            document.getElementById('taxInvoiceSection').classList.toggle('hidden', !hasTax);
+            // Deprecated - dynamic view checks are processed in openEditModalFromRow directly.
         }
 
         function toggleManualTotals() {
@@ -1678,7 +1982,14 @@
             btn.innerHTML = '<div class="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full spinning"></div> กำลังบันทึก...';
 
             const status = document.querySelector('input[name="payment_status"]:checked').value;
-            const branch = document.querySelector('input[name="branch_type"]:checked').value;
+            
+            let branch = '-';
+            const branchChecked = document.querySelector('input[name="branch_type"]:checked');
+            if (branchChecked) {
+                const bVal = branchChecked.value;
+                branch = bVal === 'สำนักงานใหญ่' ? "'00000" : (bVal === 'สาขา' ? "'00001" : '-');
+            }
+
             const dateInput = document.getElementById('modalField-date').value;
 
             const fields = {
@@ -1688,13 +1999,21 @@
                 "merchant": document.getElementById('modalField-merchant').value,
                 "tax_id": document.getElementById('modalField-taxId').value,
                 "address": document.getElementById('modalField-address').value,
-                "branch": branch === 'สำนักงานใหญ่' ? "'00000" : (branch === 'สาขา' ? "'00001" : '-'),
+                "branch": branch,
                 "status": status,
                 "net_amount": document.getElementById('modalField-netAmount').value,
                 "gross_amount": document.getElementById('modalField-grossAmount').value,
                 "vat_amount": document.getElementById('modalField-vatAmount').value,
                 "wht_amount": document.getElementById('modalField-whtAmount').value,
-                "ref_number": document.getElementById('modalField-hasTaxInvoice').checked ? document.getElementById('modalField-refNumber').value : '-'
+                "ref_number": document.getElementById('modalField-refNumber').value,
+                "receiver": document.getElementById('modalField-receiver').value,
+                "time": document.getElementById('modalField-time').value,
+                "bank_from": document.getElementById('modalField-bankFrom').value,
+                "bank_to": document.getElementById('modalField-bankTo').value,
+                "memo": document.getElementById('modalField-memo').value,
+                "wht_rate": document.getElementById('modalField-whtRate').value,
+                "wht_type": document.getElementById('modalField-whtType').value,
+                "expense_type": document.getElementById('modalField-expenseType').value
             };
 
             fetch('/api/dashboard/update-expense', {
@@ -1916,6 +2235,700 @@
             document.getElementById('catList').innerHTML =
                 `<div class="text-center py-8 text-rose-400 text-sm">เกิดข้อผิดพลาด: ${escHtml(msg)}</div>`;
         }
+
+        // ─── AI FINANCIAL INSIGHTS & FORECASTS ───────────────────
+        let forecastChart = null;
+        let averageMonthlyExpense = 0.0;
+
+        function loadAiInsights() {
+            const loadingEl = document.getElementById('aiInsightsLoading');
+            const contentEl = document.getElementById('aiInsightsContent');
+            const textEl = document.getElementById('aiInsightsText');
+
+            loadingEl.classList.remove('hidden');
+            contentEl.classList.add('hidden');
+
+            fetch('/api/dashboard/financial-insights')
+                .then(r => r.json())
+                .then(data => {
+                    loadingEl.classList.add('hidden');
+                    if (!data.ok) {
+                        textEl.innerHTML = `<p class="text-rose-500 font-bold text-center py-6">เกิดข้อผิดพลาด: ${escHtml(data.error || 'ไม่ทราบสาเหตุ')}</p>`;
+                        contentEl.classList.remove('hidden');
+                        return;
+                    }
+
+                    // Render AI Insights (simple markdown parsing)
+                    textEl.innerHTML = parseMarkdown(data.insights);
+                    contentEl.classList.remove('hidden');
+
+                    // Compute Average Expense (last 6 months or all if fewer)
+                    const hist = data.historic_months || [];
+                    const fore = data.forecast_months || [];
+                    
+                    if (hist.length > 0) {
+                        const sumHist = hist.reduce((sum, item) => sum + item.total, 0);
+                        averageMonthlyExpense = sumHist / hist.length;
+                    } else {
+                        averageMonthlyExpense = 0.0;
+                    }
+                    document.getElementById('runwayAverageExpense').textContent = formatNum(averageMonthlyExpense) + ' บาท';
+
+                    // Update Cash Input default value to 3x average monthly expense for safety demo
+                    if (averageMonthlyExpense > 0 && document.getElementById('runwayCashInput').value == 50000) {
+                        document.getElementById('runwayCashInput').value = Math.round(averageMonthlyExpense * 3);
+                    }
+
+                    calculateRunway();
+
+                    // Render Chart.js Outflow & Forecast Line Graph
+                    renderOutflowForecastChart(hist, fore);
+                })
+                .catch(err => {
+                    loadingEl.classList.add('hidden');
+                    textEl.innerHTML = `<p class="text-rose-500 font-bold text-center py-6">เกิดข้อผิดพลาดในการโหลดวิเคราะห์ระบบ: ${escHtml(err.message)}</p>`;
+                    contentEl.classList.remove('hidden');
+                });
+        }
+
+        function calculateRunway() {
+            const cashInputVal = parseFloat(document.getElementById('runwayCashInput').value) || 0.0;
+            const runwayMonthsValEl = document.getElementById('runwayMonthsVal');
+            
+            let runwayMonths = 0.0;
+            if (averageMonthlyExpense > 0) {
+                runwayMonths = cashInputVal / averageMonthlyExpense;
+            } else {
+                runwayMonths = 0.0;
+            }
+            
+            runwayMonthsValEl.textContent = runwayMonths.toFixed(1);
+
+            // Update safety gauge card
+            const card = document.getElementById('runwayGaugeCard');
+            const title = document.getElementById('runwayGaugeTitle');
+            const desc = document.getElementById('runwayGaugeDesc');
+            const icon = document.getElementById('runwayGaugeIcon');
+
+            // Reset classes
+            card.className = "p-3 rounded-2xl flex items-start gap-2.5 border ";
+
+            if (runwayMonths < 1.0) {
+                card.classList.add("bg-rose-500/10", "border-rose-500/20");
+                title.textContent = "⚠️ สถานะวิกฤต (ความปลอดภัยต่ำมาก)";
+                title.className = "text-[11px] font-black text-rose-300";
+                desc.textContent = "เงินสดสำรองไม่เพียงพอสำหรับประคองบริษัทใน 1 เดือนถัดไป ควรเร่งระดมทุนหรือจัดเก็บหนี้ค้างชำระด่วนที่สุด";
+                icon.className = "w-4 h-4 text-rose-400 shrink-0 mt-0.5";
+            } else if (runwayMonths >= 1.0 && runwayMonths <= 3.0) {
+                card.classList.add("bg-amber-500/10", "border-amber-500/20");
+                title.textContent = "⚠️ ระมัดระวัง (ความปลอดภัยปานกลาง)";
+                title.className = "text-[11px] font-black text-amber-300";
+                desc.textContent = "มีกระแสเงินสดประคองบริษัทได้เพียงระยะสั้น ควรหาแนวทางลดค่าใช้จ่ายคงที่ (Fixed Costs) หรือเพิ่มเงินหมุนเวียน";
+                icon.className = "w-4 h-4 text-amber-400 shrink-0 mt-0.5";
+            } else {
+                card.classList.add("bg-emerald-500/10", "border-emerald-500/20");
+                title.textContent = "✅ ปลอดภัย (ความปลอดภัยสูง)";
+                title.className = "text-[11px] font-black text-emerald-300";
+                desc.textContent = "องค์กรมีเงินสำรองเพียงพอประคองธุรกิจได้อย่างมั่นคง สามารถเริ่มพิจารณาแผนการลงทุนหรือการขยายกิจการได้";
+                icon.className = "w-4 h-4 text-emerald-400 shrink-0 mt-0.5";
+            }
+            if (window.lucide) window.lucide.createIcons();
+        }
+
+        function renderOutflowForecastChart(historic, forecast) {
+            const ctx = document.getElementById('outflowForecastChart').getContext('2d');
+            if (forecastChart) forecastChart.destroy();
+
+            // Construct shared label list and values
+            const labels = [];
+            const histValues = [];
+            const foreValues = [];
+
+            // Add historic values
+            historic.forEach(item => {
+                labels.push(item.month);
+                histValues.push(item.total);
+                foreValues.push(null);
+            });
+
+            // Connect forecast line to last actual historic value
+            if (historic.length > 0 && forecast.length > 0) {
+                const lastHistIndex = historic.length - 1;
+                foreValues[lastHistIndex] = historic[lastHistIndex].total;
+            }
+
+            // Add forecast values
+            forecast.forEach(item => {
+                labels.push(item.month);
+                histValues.push(null);
+                foreValues.push(item.total);
+            });
+
+            forecastChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'ยอดใช้จ่ายจริง (Actual)',
+                            data: histValues,
+                            borderColor: 'rgba(59, 130, 246, 1)',
+                            backgroundColor: 'rgba(59, 130, 246, 0.05)',
+                            borderWidth: 3,
+                            pointRadius: 4,
+                            pointBackgroundColor: 'rgba(59, 130, 246, 1)',
+                            fill: true,
+                            tension: 0.35,
+                            spanGaps: false
+                        },
+                        {
+                            label: 'คาดการณ์ล่วงหน้า (Forecast)',
+                            data: foreValues,
+                            borderColor: 'rgba(129, 140, 248, 1)',
+                            backgroundColor: 'rgba(129, 140, 248, 0.02)',
+                            borderWidth: 3,
+                            borderDash: [6, 6],
+                            pointRadius: 4,
+                            pointBackgroundColor: 'rgba(129, 140, 248, 1)',
+                            fill: true,
+                            tension: 0.35,
+                            spanGaps: true
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.04)'
+                            },
+                            ticks: {
+                                callback: value => value.toLocaleString('th-TH') + ' ฿',
+                                font: { size: 10, weight: 'bold' }
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            },
+                            ticks: {
+                                font: { size: 10, weight: 'bold' }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                font: { size: 11, weight: 'bold' }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: context => {
+                                    let label = context.dataset.label || '';
+                                    if (label) label += ': ';
+                                    if (context.parsed.y !== null) {
+                                        label += context.parsed.y.toLocaleString('th-TH') + ' ฿';
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function parseMarkdown(md) {
+            if (!md) return "";
+            let html = md;
+            
+            // Unescape linebreaks
+            html = html.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+            // Headers
+            html = html.replace(/^### (.*$)/gim, '<h5 class="text-xs font-black text-slate-900 dark:text-white mt-4 mb-2 flex items-center gap-1.5">$1</h5>');
+            html = html.replace(/^## (.*$)/gim, '<h4 class="text-sm font-extrabold text-slate-950 dark:text-white mt-5 mb-2.5">$1</h4>');
+            html = html.replace(/^# (.*$)/gim, '<h3 class="text-base font-black text-brand-600 mt-6 mb-3">$1</h3>');
+            
+            // Bold
+            html = html.replace(/\*\*(.*?)\*\*/g, '<b class="font-extrabold text-slate-950 dark:text-white">$1</b>');
+            
+            // Bullet points
+            html = html.replace(/^\s*[-*]\s+(.*$)/gim, '<li class="ml-4 list-disc pl-1 mb-1 text-[11px] font-semibold text-slate-700 dark:text-slate-300">$1</li>');
+            
+            // Paragraphs and blocks
+            let lines = html.split('\n');
+            let processed = [];
+            let inList = false;
+
+            lines.forEach(line => {
+                line = line.trim();
+                if (line.startsWith('<li')) {
+                    if (!inList) {
+                        processed.push('<ul class="space-y-1 my-2">');
+                        inList = true;
+                    }
+                    processed.push(line);
+                } else {
+                    if (inList) {
+                        processed.push('</ul>');
+                        inList = false;
+                    }
+                    if (line) {
+                        if (line.startsWith('<h')) {
+                            processed.push(line);
+                        } else {
+                            processed.push(`<p class="mb-3 text-[11px] font-semibold leading-relaxed text-slate-700 dark:text-slate-300">${line}</p>`);
+                        }
+                    }
+                }
+            });
+            if (inList) processed.push('</ul>');
+
+            return processed.join('\n');
+        }
+
+        // ─── FLOATING CHATBOT WIDGET LOGIC ───────────────────
+        let nongPunchChatHistory = [];
+
+        function toggleNongPunchChat() {
+            const panel = document.getElementById('nongPunchChatPanel');
+            panel.classList.toggle('hidden');
+            if (!panel.classList.contains('hidden')) {
+                document.getElementById('nongPunchChatInput').focus();
+            }
+        }
+
+        function appendNongPunchMessage(role, text, customId = '') {
+            const container = document.getElementById('nongPunchChatMessages');
+            const row = document.createElement('div');
+            row.className = 'flex gap-2 ' + (role === 'user' ? 'justify-end' : '');
+            
+            let bubbleHtml = '';
+            if (role === 'user') {
+                bubbleHtml = `
+                    <div class="bg-brand-600 text-white p-2.5 rounded-2xl max-w-[80%] shadow-sm leading-relaxed font-semibold">
+                        ${escHtml(text)}
+                    </div>
+                `;
+            } else {
+                bubbleHtml = `
+                    <div class="w-6 h-6 rounded-full bg-brand-100 flex items-center justify-center flex-shrink-0 text-[10px]">👧</div>
+                    <div id="${customId}" class="bg-white dark:bg-surface-800 border border-surface-200/50 dark:border-surface-700/50 p-2.5 rounded-2xl max-w-[80%] text-surface-700 dark:text-surface-200 shadow-sm leading-relaxed font-semibold">
+                        ${parseMarkdown(text)}
+                    </div>
+                `;
+            }
+            row.innerHTML = bubbleHtml;
+            container.appendChild(row);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function escHtml(str) {
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        async function sendNongPunchMessage() {
+            const input = document.getElementById('nongPunchChatInput');
+            const sendBtn = document.getElementById('nongPunchChatSendBtn');
+            const text = input.value.trim();
+            if (!text) return;
+
+            input.value = '';
+            input.disabled = true;
+            sendBtn.disabled = true;
+
+            // Add user bubble
+            appendNongPunchMessage('user', text);
+
+            // Add bot loading bubble
+            const botMsgId = 'bot-msg-' + Date.now();
+            appendNongPunchMessage('bot', '', botMsgId);
+            const botBubble = document.getElementById(botMsgId);
+            botBubble.innerHTML = `
+                <div class="flex gap-1.5 items-center py-1">
+                    <div class="w-1.5 h-1.5 bg-brand-600 rounded-full animate-bounce"></div>
+                    <div class="w-1.5 h-1.5 bg-brand-600 rounded-full animate-bounce" style="animation-delay: 0.15s"></div>
+                    <div class="w-1.5 h-1.5 bg-brand-600 rounded-full animate-bounce" style="animation-delay: 0.3s"></div>
+                </div>
+            `;
+
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message: text,
+                        history: nongPunchChatHistory
+                    })
+                });
+
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.error || 'Server error');
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let botResponseText = '';
+                botBubble.innerHTML = ''; // clear loader
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunkStr = decoder.decode(value);
+                    const lines = chunkStr.split('\n');
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const json = JSON.parse(line.substring(6));
+                                if (json.content) {
+                                    botResponseText += json.content;
+                                    botBubble.innerHTML = parseMarkdown(botResponseText);
+                                    const container = document.getElementById('nongPunchChatMessages');
+                                    container.scrollTop = container.scrollHeight;
+            } finally {
+                input.disabled = false;
+                sendBtn.disabled = false;
+                input.focus();
+            }
+        }
+
+        // ══════════════════════════════════════════════════════════════
+        // GOOGLE SHEETS INTERACTIVE VIEW & EDITOR JS
+        // ══════════════════════════════════════════════════════════════
+        let liveSheetsTabsLoaded = false;
+        let currentActiveTab = "";
+
+        function getColLetter(colIdx) {
+            let temp = "";
+            let letter = "";
+            while (colIdx > 0) {
+                temp = (colIdx - 1) % 26;
+                letter = String.fromCharCode(temp + 65) + letter;
+                colIdx = (colIdx - temp - 1) / 26;
+            }
+            return letter;
+        }
+
+        async function initLiveSheetsView() {
+            const selectEl = document.getElementById('liveSheetsTabSelect');
+            const loadingSpinner = document.getElementById('sheetsIframeLoading');
+            
+            if (liveSheetsTabsLoaded && selectEl.value) {
+                loadLiveSheetData(selectEl.value);
+                return;
+            }
+
+            loadingSpinner.classList.remove('hidden');
+            try {
+                const response = await fetch('/api/sheets/tabs');
+                const data = await response.json();
+                
+                if (!data.ok) {
+                    showSheetsError(data.error || "ไม่สามารถดึงข้อมูลสเปรดชีตได้ค่ะ");
+                    return;
+                }
+
+                if (data.spreadsheet_url) {
+                    const embedOpenLink = document.getElementById('embedOpenSheetsLink');
+                    if (embedOpenLink) embedOpenLink.href = data.spreadsheet_url;
+                }
+
+                const tabs = data.tabs || [];
+                if (tabs.length === 0) {
+                    showSheetsError("ไม่พบแท็บชีตในสเปรดชีตนี้ค่ะ");
+                    return;
+                }
+
+                selectEl.innerHTML = "";
+                tabs.forEach(tab => {
+                    const opt = document.createElement('option');
+                    opt.value = tab;
+                    opt.textContent = tab;
+                    selectEl.appendChild(opt);
+                });
+
+                liveSheetsTabsLoaded = true;
+                loadLiveSheetData(tabs[0]);
+            } catch (err) {
+                showSheetsError("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์ค่ะ: " + err.message);
+            } finally {
+                loadingSpinner.classList.add('hidden');
+            }
+        }
+
+        async function loadLiveSheetData(tabName) {
+            if (!tabName) return;
+            currentActiveTab = tabName;
+            
+            const container = document.getElementById('liveSheetsTableContainer');
+            const loadingSpinner = document.getElementById('sheetsIframeLoading');
+            
+            loadingSpinner.classList.remove('hidden');
+            try {
+                const response = await fetch(`/api/sheets/data?tab_name=${encodeURIComponent(tabName)}`);
+                const data = await response.json();
+                
+                if (!data.ok) {
+                    showSheetsError(data.error || "โหลดข้อมูลตารางล้มเหลวค่ะ");
+                    return;
+                }
+
+                const values = data.values || [];
+                if (values.length === 0) {
+                    container.innerHTML = `
+                        <div class="flex flex-col items-center justify-center h-full py-12 text-surface-400">
+                            <i data-lucide="info" class="w-8 h-8 text-amber-500 mb-2"></i>
+                            <p class="text-xs font-semibold">ไม่พบข้อมูลในแท็บ "${escHtml(tabName)}" ค่ะ</p>
+                        </div>
+                    `;
+                    lucide.createIcons();
+                    return;
+                }
+
+                renderLiveSheetsTable(values, tabName);
+            } catch (err) {
+                showSheetsError("เกิดข้อผิดพลาดในการโหลดข้อมูลตาราง: " + err.message);
+            } finally {
+                loadingSpinner.classList.add('hidden');
+            }
+        }
+
+        function renderLiveSheetsTable(values, tabName) {
+            const container = document.getElementById('liveSheetsTableContainer');
+            const headers = values[0] || [];
+            
+            let maxCols = headers.length;
+            values.forEach(row => {
+                if (row.length > maxCols) maxCols = row.length;
+            });
+
+            let html = `
+                <div class="overflow-x-auto w-full max-h-[550px] rounded-xl border border-surface-200/60 dark:border-surface-800 bg-white dark:bg-surface-900 shadow-inner">
+                    <table class="min-w-full divide-y divide-surface-200 dark:divide-surface-800 text-left border-collapse table-fixed select-none">
+                        <thead class="bg-surface-50 dark:bg-surface-800 sticky top-0 z-20">
+                            <tr>
+                                <th class="w-12 px-3 py-2 text-[10px] font-extrabold text-surface-400 dark:text-surface-500 uppercase text-center border-r border-surface-200 dark:border-surface-800 select-none">#</th>
+            `;
+
+            for (let c = 0; c < maxCols; c++) {
+                const colLetter = getColLetter(c + 1);
+                const headerText = headers[c] || "";
+                html += `
+                    <th class="px-4 py-2.5 text-xs font-bold text-surface-800 dark:text-surface-100 border-r border-surface-200 dark:border-surface-800 min-w-[150px]">
+                        <div class="flex flex-col">
+                            <span class="text-[9px] text-emerald-500 font-extrabold">${colLetter}</span>
+                            <span class="truncate">${escHtml(headerText)}</span>
+                        </div>
+                    </th>
+                `;
+            }
+            html += `
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-surface-100 dark:divide-surface-800 bg-white dark:bg-surface-900">
+            `;
+
+            for (let r = 0; r < values.length; r++) {
+                const row = values[r] || [];
+                const rowNum = r + 1;
+                const isHeader = (r === 0);
+                const rowClass = isHeader ? "bg-surface-50/50 dark:bg-surface-800/20 font-bold" : "hover:bg-surface-50/80 dark:hover:bg-surface-800/40 transition-colors";
+                
+                html += `
+                    <tr class="${rowClass}">
+                        <td class="px-3 py-2 text-center text-xs font-extrabold text-surface-400 dark:text-surface-500 bg-surface-50/30 dark:bg-surface-800/10 border-r border-surface-200 dark:border-surface-800 select-none">${rowNum}</td>
+                `;
+
+                for (let c = 0; c < maxCols; c++) {
+                    const cellVal = row[c] || "";
+                    const colLetter = getColLetter(c + 1);
+                    const cellRange = colLetter + rowNum;
+                    
+                    html += `
+                        <td class="px-4 py-2 text-xs text-surface-700 dark:text-surface-200 border-r border-surface-200 dark:border-surface-800 cursor-pointer transition relative overflow-hidden truncate hover:bg-emerald-50/30 dark:hover:bg-emerald-950/20" 
+                            ondblclick="editLiveSheetCell(this, '${escAttr(tabName)}', '${cellRange}')"
+                            title="ดับเบิ้ลคลิกเพื่อแก้ไขช่องนี้ค่ะ">
+                            ${escHtml(cellVal)}
+                        </td>
+                    `;
+                }
+                html += `
+                    </tr>
+                `;
+            }
+
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            container.innerHTML = html;
+        }
+
+        function editLiveSheetCell(td, tabName, cellRange) {
+            if (td.querySelector('input')) return;
+
+            const oldValue = td.innerText.trim();
+            td.classList.add('bg-emerald-500/10', 'border-emerald-500');
+            
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = oldValue;
+            input.className = 'absolute inset-0 w-full h-full px-4 py-2 text-xs font-semibold bg-white dark:bg-surface-800 text-surface-900 dark:text-white border-2 border-emerald-500 focus:outline-none rounded z-10';
+            
+            td.innerHTML = "";
+            td.appendChild(input);
+            input.focus();
+            input.select();
+
+            async function saveCellChange() {
+                const newValue = input.value.trim();
+                
+                if (newValue === oldValue) {
+                    td.innerHTML = escHtml(oldValue);
+                    td.classList.remove('bg-emerald-500/10', 'border-emerald-500');
+                    return;
+                }
+
+                td.innerHTML = `<span class="text-surface-400 italic">${escHtml(newValue)} (บันทึก...)</span>`;
+                
+                try {
+                    const response = await fetch('/api/sheets/update-cell', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            tab_name: tabName,
+                            cell_range: cellRange,
+                            value: newValue
+                        })
+                    });
+                    const data = await response.json();
+                    
+                    if (data.ok) {
+                        td.innerHTML = escHtml(newValue);
+                    } else {
+                        throw new Error(data.error || "เกิดข้อผิดพลาด");
+                    }
+                } catch (err) {
+                    alert("บันทึกล้มเหลวค่ะ: " + err.message);
+                    td.innerHTML = escHtml(oldValue);
+                } finally {
+                    td.classList.remove('bg-emerald-500/10', 'border-emerald-500');
+                }
+            } 
+
+            input.onkeydown = function(e) {
+                if (e.key === 'Enter') {
+                    input.blur();
+                } else if (e.key === 'Escape') {
+                    input.value = oldValue;
+                    input.blur();
+                }
+            };
+
+            input.onblur = saveCellChange;
+        }
+
+        async function addLiveSheetRow() {
+            const selectEl = document.getElementById('liveSheetsTabSelect');
+            const tabName = selectEl.value;
+            if (!tabName) {
+                alert("กรุณาเลือกแท็บสเปรดชีตก่อนค่ะ");
+                return;
+            }
+
+            const loadingSpinner = document.getElementById('sheetsIframeLoading');
+            loadingSpinner.classList.remove('hidden');
+            try {
+                const response = await fetch('/api/sheets/add-row', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tab_name: tabName })
+                });
+                const data = await response.json();
+                
+                if (data.ok) {
+                    await loadLiveSheetData(tabName);
+                } else {
+                    alert(data.error || "เพิ่มแถวใหม่ไม่สำเร็จค่ะ");
+                }
+            } catch (err) {
+                alert("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์ค่ะ: " + err.message);
+            } finally {
+                loadingSpinner.classList.add('hidden');
+            }
+        }
+
+        function showSheetsError(msg) {
+            const container = document.getElementById('liveSheetsTableContainer');
+            container.innerHTML = `
+                <div class="flex flex-col items-center justify-center h-full py-12 text-rose-500 dark:text-rose-400 text-center px-4">
+                    <i data-lucide="alert-circle" class="w-12 h-12 mb-3"></i>
+                    <p class="text-sm font-bold">${escHtml(msg)}</p>
+                    <button onclick="initLiveSheetsView()" class="mt-4 px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl text-xs font-bold transition dark:bg-rose-950/20 dark:hover:bg-rose-950/40 dark:text-rose-300">
+                        ลองใหม่อีกครั้ง
+                    </button>
+                </div>
+            `;
+            lucide.createIcons();
+        }
     </script>
+
+    <!-- Floating Chat Widget Button -->
+    <div class="fixed bottom-6 right-6 z-[99999] flex flex-col items-end" style="z-index: 99999 !important;">
+        <!-- Chat Panel -->
+        <div id="nongPunchChatPanel" class="hidden w-80 sm:w-96 h-[500px] bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-3xl shadow-2xl flex flex-col overflow-hidden mb-4 animate-in fade-in slide-in-from-bottom-6 duration-300">
+            <!-- Header -->
+            <div class="px-4 py-3 bg-gradient-to-r from-brand-600 to-indigo-600 flex items-center justify-between text-white flex-shrink-0">
+                <div class="flex items-center gap-2.5">
+                    <div class="relative w-8 h-8 rounded-full bg-white/20 flex items-center justify-center font-bold text-sm">
+                        👧
+                        <span class="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-brand-600 rounded-full"></span>
+                    </div>
+                    <div>
+                        <h4 class="text-xs font-bold leading-none">น้องพั้นซ์ (Nong Punch)</h4>
+                        <span class="text-[9px] text-brand-100 font-medium">ผู้ช่วย AI ประจำแดชบอร์ด</span>
+                    </div>
+                </div>
+                <button onclick="toggleNongPunchChat()" class="p-1 hover:bg-white/10 rounded-lg transition">
+                    <i data-lucide="minus" class="w-4 h-4 text-white"></i>
+                </button>
+            </div>
+
+            <!-- Messages Area -->
+            <div id="nongPunchChatMessages" class="flex-1 overflow-y-auto p-4 space-y-4 bg-surface-50/50 dark:bg-surface-950/20 text-xs custom-scrollbar">
+                <!-- Bot Welcome -->
+                <div class="flex gap-2">
+                    <div class="w-6 h-6 rounded-full bg-brand-100 flex items-center justify-center flex-shrink-0 text-[10px]">👧</div>
+                    <div class="bg-white dark:bg-surface-800 border border-surface-200/50 dark:border-surface-700/50 p-2.5 rounded-2xl max-w-[80%] text-surface-700 dark:text-surface-200 shadow-sm leading-relaxed font-semibold">
+                        สวัสดีค่ะพี่! มีอะไรให้น้องพั้นซ์ช่วยเหลือเกี่ยวกับเอกสาร การเงิน หรือคู่มือบริษัทวันนี้ไหมคะ? ถามน้องพั้นซ์มาได้เลยค่ะ 😊
+                    </div>
+                </div>
+            </div>
+
+            <!-- Input Area -->
+            <div class="p-3 border-t border-surface-200 dark:border-surface-800 flex gap-2 items-center bg-white dark:bg-surface-900 flex-shrink-0">
+                <input type="text" id="nongPunchChatInput" placeholder="พิมพ์คุยกับน้องพั้นซ์..." class="flex-1 px-3 py-2 bg-surface-50 dark:bg-surface-800 border-none rounded-xl text-xs focus:ring-1 focus:ring-brand-500 outline-none text-surface-800 dark:text-white" onkeydown="if(event.key === 'Enter') sendNongPunchMessage()">
+                <button onclick="sendNongPunchMessage()" id="nongPunchChatSendBtn" class="w-8 h-8 rounded-xl bg-brand-600 hover:bg-brand-700 text-white flex items-center justify-center transition flex-shrink-0">
+                    <i data-lucide="send" class="w-3.5 h-3.5"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Toggle Button -->
+        <button onclick="toggleNongPunchChat()" class="w-14 h-14 rounded-full header-gradient shadow-lg shadow-brand-500/25 flex items-center justify-center text-white hover:scale-105 active:scale-95 transition-all relative group">
+            <span class="absolute -top-1 -right-1 w-3.5 h-3.5 bg-emerald-500 border-2 border-white rounded-full animate-ping"></span>
+            <span class="absolute -top-1 -right-1 w-3.5 h-3.5 bg-emerald-500 border-2 border-white rounded-full"></span>
+            <span class="text-xl group-hover:rotate-12 transition-transform">👧</span>
+        </button>
+    </div>
 </body>
 </html>

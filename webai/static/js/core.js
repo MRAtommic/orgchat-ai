@@ -1254,4 +1254,158 @@ function setAccentColor(color, save = true) {
   });
 }
 
-const accentBtns = document.querySelectorAll('.accent-color-btn');
+const accentBtns = document.querySelectorAll('.accent-color-btn');
+
+// ─── Premium Custom Alert/Confirm Modals ───────────────────
+window.showConfirm = function(title, message, options = {}) {
+  return new Promise((resolve) => {
+    const container = document.getElementById('customModalContainer');
+    const backdrop = document.getElementById('customModalBackdrop');
+    const box = document.getElementById('customModalBox');
+    const titleEl = document.getElementById('customModalTitle');
+    const msgEl = document.getElementById('customModalMessage');
+    const cancelBtn = document.getElementById('customModalCancelBtn');
+    const confirmBtn = document.getElementById('customModalConfirmBtn');
+    const iconEl = document.getElementById('customModalIcon');
+    const iconBg = document.getElementById('customModalIconBg');
+
+    if (!container || !box) {
+      // Fallback if elements are missing
+      resolve(window.confirm(message));
+      return;
+    }
+
+    // Configure text
+    titleEl.textContent = title;
+    msgEl.textContent = message;
+    confirmBtn.textContent = options.confirmText || 'ยืนยัน';
+    cancelBtn.textContent = options.cancelText || 'ยกเลิก';
+    cancelBtn.classList.remove('hidden');
+
+    // Configure Icon & Color theme
+    const type = options.type || 'warning'; // success, warning, danger, info
+    let iconSvg = '';
+    let colorClass = '';
+    let bgClass = '';
+
+    if (type === 'danger') {
+      iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>`;
+      colorClass = 'bg-rose-600';
+      bgClass = 'bg-rose-50 dark:bg-rose-950/30';
+      confirmBtn.className = 'px-4 py-2 text-sm font-semibold text-white bg-rose-600 rounded-xl hover:opacity-90 transition-opacity';
+    } else if (type === 'success') {
+      iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`;
+      colorClass = 'bg-emerald-600';
+      bgClass = 'bg-emerald-50 dark:bg-emerald-950/30';
+      confirmBtn.className = 'px-4 py-2 text-sm font-semibold text-white bg-emerald-600 rounded-xl hover:opacity-90 transition-opacity';
+    } else if (type === 'info') {
+      iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 111.085 1.085l-.04.04m-2.137.885l.01-.01m2.122-2.122a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`;
+      colorClass = 'bg-blue-600';
+      bgClass = 'bg-blue-50 dark:bg-blue-950/30';
+      confirmBtn.className = 'px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:opacity-90 transition-opacity';
+    } else {
+      // Default warning
+      iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>`;
+      colorClass = 'bg-amber-500';
+      bgClass = 'bg-amber-50 dark:bg-amber-950/30';
+      confirmBtn.className = 'px-4 py-2 text-sm font-semibold text-white bg-amber-500 rounded-xl hover:opacity-90 transition-opacity';
+    }
+
+    iconEl.innerHTML = iconSvg;
+    iconBg.className = `w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${bgClass} text-${type === 'warning' ? 'amber-500' : type === 'danger' ? 'rose-600' : type === 'success' ? 'emerald-600' : 'blue-600'}`;
+    
+    // Animate Show
+    container.classList.remove('hidden');
+    setTimeout(() => {
+      backdrop.classList.remove('opacity-0');
+      backdrop.classList.add('opacity-100');
+    }, 10);
+
+    // Event listeners
+    const cleanup = () => {
+      confirmBtn.onclick = null;
+      cancelBtn.onclick = null;
+      backdrop.classList.remove('opacity-100');
+      backdrop.classList.add('opacity-0');
+      setTimeout(() => {
+        container.classList.add('hidden');
+      }, 200);
+    };
+
+    confirmBtn.onclick = () => {
+      cleanup();
+      resolve(true);
+    };
+
+    cancelBtn.onclick = () => {
+      cleanup();
+      resolve(false);
+    };
+  });
+};
+
+window.showAlert = function(title, message, options = {}) {
+  return new Promise((resolve) => {
+    const container = document.getElementById('customModalContainer');
+    const backdrop = document.getElementById('customModalBackdrop');
+    const box = document.getElementById('customModalBox');
+    const titleEl = document.getElementById('customModalTitle');
+    const msgEl = document.getElementById('customModalMessage');
+    const cancelBtn = document.getElementById('customModalCancelBtn');
+    const confirmBtn = document.getElementById('customModalConfirmBtn');
+    const iconEl = document.getElementById('customModalIcon');
+    const iconBg = document.getElementById('customModalIconBg');
+
+    if (!container || !box) {
+      window.alert(message);
+      resolve();
+      return;
+    }
+
+    titleEl.textContent = title;
+    msgEl.textContent = message;
+    confirmBtn.textContent = options.confirmText || 'ตกลง';
+    cancelBtn.classList.add('hidden'); // Hide cancel button for Alert
+
+    const type = options.type || 'info'; // success, danger, info
+    let iconSvg = '';
+    let bgClass = '';
+
+    if (type === 'danger') {
+      iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>`;
+      bgClass = 'bg-rose-50 dark:bg-rose-950/30';
+      confirmBtn.className = 'px-4 py-2 text-sm font-semibold text-white bg-rose-600 rounded-xl hover:opacity-90 transition-opacity';
+    } else if (type === 'success') {
+      iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`;
+      bgClass = 'bg-emerald-50 dark:bg-emerald-950/30';
+      confirmBtn.className = 'px-4 py-2 text-sm font-semibold text-white bg-emerald-600 rounded-xl hover:opacity-90 transition-opacity';
+    } else {
+      iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 111.085 1.085l-.04.04m-2.137.885l.01-.01m2.122-2.122a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`;
+      bgClass = 'bg-blue-50 dark:bg-blue-950/30';
+      confirmBtn.className = 'px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:opacity-90 transition-opacity';
+    }
+
+    iconEl.innerHTML = iconSvg;
+    iconBg.className = `w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${bgClass} text-${type === 'danger' ? 'rose-600' : type === 'success' ? 'emerald-600' : 'blue-600'}`;
+
+    container.classList.remove('hidden');
+    setTimeout(() => {
+      backdrop.classList.remove('opacity-0');
+      backdrop.classList.add('opacity-100');
+    }, 10);
+
+    const cleanup = () => {
+      confirmBtn.onclick = null;
+      backdrop.classList.remove('opacity-100');
+      backdrop.classList.add('opacity-0');
+      setTimeout(() => {
+        container.classList.add('hidden');
+      }, 200);
+    };
+
+    confirmBtn.onclick = () => {
+      cleanup();
+      resolve();
+    };
+  });
+};

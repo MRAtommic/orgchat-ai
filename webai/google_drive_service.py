@@ -975,13 +975,19 @@ class GoogleWorkspaceManager:
         """Checks if the current spreadsheet exists, otherwise creates a new one."""
         if not self.sheets_service: return
         
+        if not hasattr(self, "_validated_spreadsheets"):
+            self._validated_spreadsheets = set()
+            
         valid = False
         if self.spreadsheet_id:
+            if self.spreadsheet_id in self._validated_spreadsheets:
+                return
             try:
                 meta = self.drive_service.files().get(fileId=self.spreadsheet_id, fields='trashed', supportsAllDrives=True).execute()
                 if not meta.get('trashed', False):
                     self.sheets_service.spreadsheets().get(spreadsheetId=self.spreadsheet_id).execute()
                     valid = True
+                    self._validated_spreadsheets.add(self.spreadsheet_id)
                 else:
                     logger.warning(f"⚠️ Spreadsheet {self.spreadsheet_id} is in TRASH. Creating new one...")
             except HttpError as he:
@@ -1084,6 +1090,10 @@ class GoogleWorkspaceManager:
             
             os.environ["SPREADSHEET_ID"] = new_id
             self.spreadsheet_id = new_id
+            
+            if not hasattr(self, "_validated_spreadsheets"):
+                self._validated_spreadsheets = set()
+            self._validated_spreadsheets.add(new_id)
 
             # Set thread-local override immediately so spreadsheet_id property returns new_id
             # for all subsequent calls in this request, before any DB write propagates
@@ -1411,6 +1421,18 @@ class GoogleWorkspaceManager:
             file = self.drive_service.files().create(
                 body=file_metadata, media_body=media, fields='id, webViewLink', supportsAllDrives=True
             ).execute()
+            file_id = file.get('id')
+            
+            # Automatically grant public reader permission ('anyone') so preview iframe works seamlessly
+            try:
+                self.drive_service.permissions().create(
+                    fileId=file_id,
+                    body={'role': 'reader', 'type': 'anyone'},
+                    supportsAllDrives=True
+                ).execute()
+            except Exception as perm_err:
+                logger.warning(f"⚠️ Could not set public permission on file {file_id}: {perm_err}")
+
             return file.get('webViewLink'), None
         except Exception as e:
             logger.error(f"Upload error: {e}")
@@ -1430,6 +1452,20 @@ class GoogleWorkspaceManager:
             self.drive_service.files().update(fileId=file_id, body={'trashed': True}, supportsAllDrives=True).execute()
             return True, None
         except Exception as e:
+            return False, str(e)
+
+    def make_file_public(self, file_id):
+        """Grants 'anyone' reader permission to a Google Drive file or folder so it embeds seamlessly in preview iframes."""
+        if not self.drive_service or not file_id: return False, "Service not initialized"
+        try:
+            self.drive_service.permissions().create(
+                fileId=file_id,
+                body={'role': 'reader', 'type': 'anyone'},
+                supportsAllDrives=True
+            ).execute()
+            return True, None
+        except Exception as e:
+            logger.error(f"Error setting public permission for file {file_id}: {e}")
             return False, str(e)
 
     def _safe_folder_id(self, folder_id) -> str:
@@ -1513,7 +1549,16 @@ class GoogleWorkspaceManager:
         
         metadata = {'name': folder_name, 'mimeType': 'application/vnd.google-apps.folder', 'parents': [parent_id]}
         folder = self.drive_service.files().create(body=metadata, fields='id', supportsAllDrives=True).execute()
-        return folder.get('id')
+        folder_id = folder.get('id')
+        try:
+            self.drive_service.permissions().create(
+                fileId=folder_id,
+                body={'role': 'reader', 'type': 'anyone'},
+                supportsAllDrives=True
+            ).execute()
+        except Exception:
+            pass
+        return folder_id
 
     # Short-lived cache: {cache_key: {"folders": [...], "ts": float}}
     # Avoids redundant Drive API calls when multiple uploads arrive close together
@@ -3549,7 +3594,7 @@ class GoogleWorkspaceManager:
             logger.error(f"Error moving row from {from_sheet} to {to_sheet}: {e}")
             return False, str(e)
 
-    def get_monthly_summary(self, return_raw=False):
+    def get_monthly_summary(self, return_raw=False, period="month"):
         """Fetches real spreadsheet data and generates a stunning monthly expense summary Flex Message."""
         if not self.sheets_service or not self.spreadsheet_id:
             return "❌ ระบบ Google Sheets ยังไม่ได้เชื่อมต่อหรือยังไม่ได้ลงทะเบียนค่ะ"
@@ -3563,6 +3608,14 @@ class GoogleWorkspaceManager:
             total_count = 0
             categories_breakdown = {}
             
+            # ดึงวันที่วันนี้สำหรับใช้ฟิลเตอร์ (เวลาไทย UTC+7)
+            import datetime
+            tz_offset = datetime.timezone(datetime.timedelta(hours=7))
+            today_dt = datetime.datetime.now(tz_offset)
+            today_str_1 = today_dt.strftime("%Y-%m-%d")  # "2026-07-16"
+            today_str_2 = today_dt.strftime("%d/%m/%Y")  # "16/07/2026"
+            today_str_3 = today_dt.strftime("%Y/%m/%d")  # "2026/07/16"
+            
             # We will parse สลิปโอนเงิน
             if "สลิปโอนเงิน" in sheet_titles:
                 res_slip = self.sheets_service.spreadsheets().values().get(
@@ -3574,11 +3627,28 @@ class GoogleWorkspaceManager:
                     data_rows = vals[1:]
                     
                     # Dynamic column mapping
-                    idx_amt = next((i for i, h in enumerate(header_row) if "จำนวนเงินสุทธิ" in h or "สุทธิ" in h), 8)
+                    idx_amt = next((i for i, h in enumerate(header_row) if "จำนวนเงินสุทธิ" in h or "สุทธิ" in h or "จำนวนเงิน" in h), 8)
                     idx_cat = next((i for i, h in enumerate(header_row) if "หมวดหมู่" in h), 1)
+                    idx_date = next((i for i, h in enumerate(header_row) if "วันที่" in h), 2)
+                    idx_time = next((i for i, h in enumerate(header_row) if "เวลาที่บันทึก" in h), 0)
                     
                     for row in data_rows:
                         if len(row) <= max(idx_amt, idx_cat): continue
+                        
+                        # กรองวันที่หากต้องการดูเฉพาะวันนี้
+                        if period == "today":
+                            row_date = str(row[idx_date]).strip() if len(row) > idx_date else ""
+                            row_time = str(row[idx_time]).strip() if len(row) > idx_time else ""
+                            
+                            is_today_row = False
+                            for ts in [today_str_1, today_str_2, today_str_3]:
+                                if ts in row_date or ts in row_time:
+                                    is_today_row = True
+                                    break
+                            
+                            if not is_today_row:
+                                continue
+                                
                         try:
                             amt_str = str(row[idx_amt]).replace(',', '').strip()
                             if amt_str and amt_str != '-':
@@ -3601,11 +3671,28 @@ class GoogleWorkspaceManager:
                     header_row = vals[0]
                     data_rows = vals[1:]
                     
-                    idx_amt = next((i for i, h in enumerate(header_row) if "จำนวนเงินสุทธิ" in h or "สุทธิ" in h), 8)
+                    idx_amt = next((i for i, h in enumerate(header_row) if "จำนวนเงินสุทธิ" in h or "สุทธิ" in h or "จำนวนเงิน" in h), 8)
                     idx_cat = next((i for i, h in enumerate(header_row) if "หมวดหมู่" in h), 1)
+                    idx_date = next((i for i, h in enumerate(header_row) if "วันที่" in h), 2)
+                    idx_time = next((i for i, h in enumerate(header_row) if "เวลาที่บันทึก" in h), 0)
                     
                     for row in data_rows:
                         if len(row) <= max(idx_amt, idx_cat): continue
+                        
+                        # กรองวันที่หากต้องการดูเฉพาะวันนี้
+                        if period == "today":
+                            row_date = str(row[idx_date]).strip() if len(row) > idx_date else ""
+                            row_time = str(row[idx_time]).strip() if len(row) > idx_time else ""
+                            
+                            is_today_row = False
+                            for ts in [today_str_1, today_str_2, today_str_3]:
+                                if ts in row_date or ts in row_time:
+                                    is_today_row = True
+                                    break
+                            
+                            if not is_today_row:
+                                continue
+                                
                         try:
                             amt_str = str(row[idx_amt]).replace(',', '').strip()
                             if amt_str and amt_str != '-':
@@ -3623,6 +3710,8 @@ class GoogleWorkspaceManager:
 
             # If no data found at all
             if total_count == 0:
+                if period == "today":
+                    return "📈 วันนี้ยังไม่มีการบันทึกหรืออัปโหลดสลิปโอนเงิน/รายจ่ายเข้ามาเลยค่ะ พี่ลองบันทึกข้อมูลก่อนนะคะ"
                 return "ไม่พบข้อมูลรายการใช้จ่ายที่บันทึกไว้ใน Google Sheets ในขณะนี้ค่ะ พี่ลองบันทึกข้อมูลก่อนนะคะ"
 
             # Format amounts cleanly
@@ -3709,7 +3798,7 @@ class GoogleWorkspaceManager:
                         },
                         {
                             "type": "text",
-                            "text": "รายงานสรุปรายจ่ายสะสม",
+                            "text": "รายงานสรุปรายจ่ายวันนี้" if period == "today" else "รายงานสรุปรายจ่ายสะสม",
                             "size": "xs",
                             "color": "#64748B",
                             "margin": "xs"
@@ -3793,7 +3882,7 @@ class GoogleWorkspaceManager:
             
             return {
                 "type": "flex",
-                "altText": "รายงานสรุปยอดรายจ่ายของพี่ค่ะ",
+                "altText": "รายงานสรุปยอดรายจ่ายวันนี้ของพี่ค่ะ" if period == "today" else "รายงานสรุปยอดรายจ่ายสะสมของพี่ค่ะ",
                 "contents": flex_bubble
             }
             

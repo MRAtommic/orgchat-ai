@@ -372,6 +372,14 @@ def create_expense_flex_bubble(sheet_name, folder_name, net_amount, date_str, me
         "เสนอราคา": ["ใบเสนอราคา"]
     }
 
+    # If the document has a verified QR code for a bank transfer slip, override classification to 'slip'
+    qr_status = ""
+    if raw_result and isinstance(raw_result, dict):
+        qr_status = raw_result.get("verification_status", "")
+    
+    if qr_status and str(qr_status).startswith("ผ่าน"):
+        norm_ai_cat = "slip"
+
     mismatch_detected = False
     ai_suggested_sheet = ""
     if norm_ai_cat and norm_ai_cat in category_map:
@@ -2194,6 +2202,30 @@ def get_folder_flex_message(user_id=None, uploader_id=None, pending_id=None):
         return None
 
 
+def check_line_user_permission(user_id, permission_required, reply_token, group_id=None):
+    """
+    Check if user is linked to an account and has the required permission.
+    Returns: (is_allowed, username)
+    """
+    username = database.get_username_by_line_id(user_id)
+    if not username:
+        if group_id:
+            msg = "⚠️ ขออภัยค่ะพี่ บัญชี LINE ของพี่จำเป็นต้องเชื่อมต่อกับระบบ OrgChat AI ก่อน เพื่อความปลอดภัยในการขอรายงานหรือเข้าถึงข้อมูลนะคะ\n\n👉 กรุณาทักแชทส่วนตัวหาน้องพั้นและพิมพ์คำว่า 'ผูกบัญชี' เพื่อเชื่อมต่อระบบค่ะ"
+        else:
+            msg = "⚠️ ขออภัยค่ะพี่ บัญชี LINE ของพี่จำเป็นต้องเชื่อมต่อกับระบบ OrgChat AI ก่อน เพื่อความปลอดภัยในการขอรายงานหรือเข้าถึงข้อมูลนะคะ\n\n👉 พิมพ์คำว่า 'ผูกบัญชี' ด้านล่างเพื่อเชื่อมต่อระบบได้ทันทีเลยค่ะ"
+        reply_to_line(reply_token, msg)
+        return False, None
+
+    perms_str = database.get_line_permissions(username)
+    perms = [p.strip() for p in perms_str.split(",") if p.strip()]
+    if permission_required not in perms:
+        msg = f"⚠️ ขออภัยค่ะพี่ บัญชีของพี่ไม่มีสิทธิ์ในการใช้งานฟีเจอร์ '{permission_required}' ผ่าน LINE ค่ะ กรุณาติดต่อ Admin เพื่อเปิดสิทธิ์ให้นะคะ"
+        reply_to_line(reply_token, msg)
+        return False, username
+
+    return True, username
+
+
 def process_line_event(event_data):
     """Main event dispatcher for LINE Webhook"""
     try:
@@ -2264,6 +2296,11 @@ def process_line_event(event_data):
         msg_obj = event_data.get('message', {})
         if event_data.get('type') == 'message' and msg_type in ["image", "file", "video", "audio"]:
             if not bot_enabled:
+                return "OK", 200
+                
+            # Check linking and reconcile permission for file upload
+            is_ok, sender_username = check_line_user_permission(user_id, "reconcile", reply_token, group_id)
+            if not is_ok:
                 return "OK", 200
                 
             message_id = msg_obj.get("id")
@@ -2507,6 +2544,19 @@ def process_line_event(event_data):
         if event_data.get('type') == 'postback':
             data = event_data.get('postback', {}).get('data', '')
             parsed = dict(urllib.parse.parse_qsl(data))
+            
+            action = parsed.get('action')
+            perm_needed = None
+            if action == 'set_folder':
+                perm_needed = 'folder'
+            elif action in ['edit_prompt', 'move_row_sheet', 'choose_new_sheet']:
+                perm_needed = 'reconcile'
+                
+            if perm_needed:
+                is_ok, _ = check_line_user_permission(user_id, perm_needed, reply_token, group_id)
+                if not is_ok:
+                    return "OK", 200
+                    
             if parsed.get('action') == 'set_folder':
                 f_id = parsed.get('id')
                 f_name = parsed.get('name')
@@ -2710,6 +2760,59 @@ def _process_pending_uploads_inner(b_key, did, folder_id, folder_name, reply_tok
                 logger.warning(f"⚠️ Empty file content for '{original_name}', skipping.")
                 return {"status": "empty_file", "name": original_name}
 
+            # --- 🔍 Scan QR Code for Bank Slips ---
+            verification_status = "-"
+            if folder_name == "สลิปโอนเงิน":
+                is_valid_slip = False
+                try:
+                    import cv2
+                    import numpy as np
+                    nparr = np.frombuffer(content, np.uint8)
+                    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                    if img is not None:
+                        detector = cv2.QRCodeDetector()
+                        val_qr, pts, qr_code = detector.detectAndDecode(img)
+                        if val_qr:
+                            val_qr = val_qr.strip()
+                            
+                            # Parse with EMVCoParser to handle both PromptPay presented QRs and Thai Mini QRs (slip verification)
+                            from tools.emvco_parser import EMVCoParser
+                            parser = EMVCoParser()
+                            decoded = parser.decode_slip_qr(val_qr)
+                            
+                            if val_qr.startswith("000201") and ("A000000677" in val_qr):
+                                is_valid_slip = True
+                                verification_status = "ผ่าน (คิวอาร์จริง)"
+                            elif decoded.get("is_valid_emvco"):
+                                raw_tags = decoded.get("raw_tags", {})
+                                if "00" in raw_tags:
+                                    inner = parser.parse_sub_tlv(raw_tags["00"])
+                                    # Standard Thai Mini QR contains application ID "000001" under tag 00 sub-tag 00
+                                    if inner.get("00") == "000001":
+                                        is_valid_slip = True
+                                        verification_status = "ผ่าน (คิวอาร์จริง)"
+                            
+                            if not is_valid_slip:
+                                if val_qr.startswith("https://") or "qr" in val_qr.lower():
+                                    is_valid_slip = True
+                                    verification_status = "ผ่าน (ลิงก์คิวอาร์)"
+                                else:
+                                    verification_status = "ไม่ผ่าน (คิวอาร์ไม่ใช่สลิป)"
+                        else:
+                            verification_status = "ไม่ผ่าน (ไม่มี QR Code)"
+                    else:
+                        verification_status = "ไม่ผ่าน (อ่านรูปไม่ได้)"
+                except Exception as qr_err:
+                    logger.error(f"Error scanning QR Code: {qr_err}")
+                    verification_status = "ข้อผิดพลาดระบบสแกน"
+
+                if not is_valid_slip:
+                    return {
+                        "status": "invalid_slip",
+                        "name": original_name,
+                        "verification_status": verification_status
+                    }
+
             # --- 🛑 Check billing BEFORE Drive upload (don't waste Drive/Sheets quota) ---
             _exp_ok, _exp_used, _exp_limit = billing.check_and_increment(_upload_org_id, "expense_count")
             if not _exp_ok:
@@ -2746,50 +2849,6 @@ def _process_pending_uploads_inner(b_key, did, folder_id, folder_name, reply_tok
             sanitized_ext["category"] = folder_name
             for field in ["time", "sender", "receiver", "memo", "ref_number"]:
                 if field not in sanitized_ext: sanitized_ext[field] = "-"
-
-            # --- 🔍 Scan QR Code for Bank Slips ---
-            verification_status = "-"
-            if folder_name == "สลิปโอนเงิน" and content:
-                try:
-                    import cv2
-                    import numpy as np
-                    nparr = np.frombuffer(content, np.uint8)
-                    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-                    if img is not None:
-                        detector = cv2.QRCodeDetector()
-                        val_qr, pts, qr_code = detector.detectAndDecode(img)
-                        if val_qr:
-                            val_qr = val_qr.strip()
-                            
-                            # Parse with EMVCoParser to handle both PromptPay presented QRs and Thai Mini QRs (slip verification)
-                            from tools.emvco_parser import EMVCoParser
-                            parser = EMVCoParser()
-                            decoded = parser.decode_slip_qr(val_qr)
-                            
-                            is_valid_slip = False
-                            if val_qr.startswith("000201") and ("A000000677" in val_qr):
-                                is_valid_slip = True
-                            elif decoded.get("is_valid_emvco"):
-                                raw_tags = decoded.get("raw_tags", {})
-                                if "00" in raw_tags:
-                                    inner = parser.parse_sub_tlv(raw_tags["00"])
-                                    # Standard Thai Mini QR contains application ID "000001" under tag 00 sub-tag 00
-                                    if inner.get("00") == "000001":
-                                        is_valid_slip = True
-                            
-                            if is_valid_slip:
-                                verification_status = "ผ่าน (คิวอาร์จริง)"
-                            elif val_qr.startswith("https://") or "qr" in val_qr.lower():
-                                verification_status = "ผ่าน (ลิงก์คิวอาร์)"
-                            else:
-                                verification_status = "ไม่ผ่าน (คิวอาร์ไม่ใช่สลิป)"
-                        else:
-                            verification_status = "ไม่ผ่าน (ไม่มี QR Code)"
-                    else:
-                        verification_status = "ไม่ผ่าน (อ่านรูปไม่ได้)"
-                except Exception as qr_err:
-                    logger.error(f"Error scanning QR Code: {qr_err}")
-                    verification_status = "ข้อผิดพลาดระบบสแกน"
 
             sender_name = get_line_sender_name(did if (did.startswith("C") or did.startswith("R")) else None, sender_id)
 
@@ -2870,10 +2929,39 @@ def _process_pending_uploads_inner(b_key, did, folder_id, folder_name, reply_tok
     # Run reconciliation once after all files are done (not per-file) to avoid burning Sheets API quota
     _has_success = any(r and r.get("status") in ("success", "duplicate") for r in uploaded_results)
     if _has_success:
+        def run_reconciliation_async(user, oid):
+            try:
+                google_manager.set_context(username=user, org_id=oid)
+                google_manager.auto_reconcile_internal()
+            except Exception as _rec_err:
+                logger.warning(f"⚠️ Reconciliation after batch upload failed: {_rec_err}")
+            finally:
+                google_manager.clear_context()
+        
+        import threading
+        threading.Thread(target=run_reconciliation_async, args=(u_name, _upload_org_id), daemon=True).start()
+
+    _invalid_slips = [r for r in uploaded_results if r and r.get("status") == "invalid_slip"]
+    uploaded_results = [r for r in uploaded_results if r and r.get("status") != "invalid_slip"]
+    if _invalid_slips:
+        _slip_names = ", ".join(r["name"] for r in _invalid_slips)
+        _reasons = ", ".join(r.get("verification_status", "ตรวจสอบไม่ผ่าน") for r in _invalid_slips)
+        _invalid_msg = (
+            f"⚠️ ไม่สามารถบันทึกไฟล์ได้เนื่องจากไม่ใช่สลิปโอนเงินค่ะพี่!\n"
+            f"ไฟล์: {_slip_names}\n"
+            f"สาเหตุ: {_reasons}\n\n"
+            f"👉 รบกวนส่งไฟล์ที่เป็นรูปภาพสลิปโอนเงินธนาคารที่มี QR Code ชัดเจนเข้ามาใหม่อีกครั้งนะคะ"
+        )
         try:
-            google_manager.auto_reconcile_internal()
-        except Exception as _rec_err:
-            logger.warning(f"⚠️ Reconciliation after batch upload failed: {_rec_err}")
+            _tok = get_channel_access_token()
+            requests.post(
+                "https://api.line.me/v2/bot/message/push",
+                headers={"Content-Type": "application/json", "Authorization": f"Bearer {_tok}"},
+                json={"to": did, "messages": [{"type": "text", "text": _invalid_msg}]},
+                timeout=10,
+            )
+        except Exception as push_err:
+            logger.error(f"Failed to push invalid slip alert: {push_err}")
 
     _upload_fails = [r for r in uploaded_results if r and r.get("status") == "upload_failed"]
     uploaded_results = [r for r in uploaded_results if r and r.get("status") != "upload_failed"]
@@ -3040,7 +3128,7 @@ def _process_pending_uploads_inner(b_key, did, folder_id, folder_name, reply_tok
 
             # Full quick reply shortcuts attached to batch summary card
             _sheet_qr = f"https://docs.google.com/spreadsheets/d/{google_manager.spreadsheet_id}/edit" if google_manager.spreadsheet_id else "https://sheets.google.com"
-            _p_id2 = os.getenv("GOOGLE_DRIVE_PARENT_ID") or os.getenv("PARENT_FOLDER_ID")
+            _p_id2 = google_manager.parent_folder_id
             _drive_qr = f"https://drive.google.com/drive/folders/{_p_id2}" if _p_id2 else "https://drive.google.com"
             quick_reply_batch = {
                 "items": [
@@ -3139,7 +3227,7 @@ def _process_pending_uploads_inner(b_key, did, folder_id, folder_name, reply_tok
             if messages:
                 # Full quick reply shortcuts on the last message
                 _sheet_url_qr = f"https://docs.google.com/spreadsheets/d/{google_manager.spreadsheet_id}/edit" if google_manager.spreadsheet_id else "https://sheets.google.com"
-                _p_id = os.getenv("GOOGLE_DRIVE_PARENT_ID") or os.getenv("PARENT_FOLDER_ID")
+                _p_id = google_manager.parent_folder_id
                 _drive_url = f"https://drive.google.com/drive/folders/{_p_id}" if _p_id else "https://drive.google.com"
                 quick_reply = {
                     "items": [
@@ -3241,22 +3329,76 @@ def process_line_command(text, user_id, reply_token, group_id=None):
         reply_to_line(reply_token, "คำสั่งนี้ใช้ได้เฉพาะในกลุ่ม LINE ค่ะ กรุณาเพิ่มน้องพั้นเข้ากลุ่มก่อนนะคะ")
         return
 
+    # ── [FIX] Account Linking (/link or ผูกบัญชี) - ทำงานก่อน Org Check เสมอ ──
+    if not group_id and (_text_pre.startswith("/link") or "ผูกบัญชี" in _text_pre):
+        username = database.get_username_by_line_id(user_id)
+        quick_reply = {"items": [
+            {"type": "action", "action": {"type": "uri", "label": "สมัครบริการ", "uri": f"{_base_url}/pricing"}},
+        ]}
+        
+        if not username:
+            import secrets
+            import time
+            token = secrets.token_urlsafe(32)
+            PENDING_LINE_LINKS[token] = {
+                "line_user_id": user_id,
+                "timestamp": time.time()
+            }
+            
+            base_url = "http://localhost:5005"
+            webhook_url = os.environ.get("ACTIVE_PUBLIC_URL")
+            if webhook_url:
+                if "/api/line/webhook" in webhook_url:
+                    base_url = webhook_url.split("/api/line/webhook")[0]
+                else:
+                    base_url = webhook_url.rstrip('/')
+            else:
+                env_url = os.environ.get("BASE_URL") or os.environ.get("PUBLIC_URL")
+                if env_url:
+                    base_url = env_url.rstrip('/')
+            
+            magic_url = f"{base_url}/line/link_magic?token={token}"
+            magic_bubble = create_magic_link_flex_bubble(magic_url)
+            reply_to_line(reply_token, {
+                "type": "flex",
+                "altText": "🔗 เชื่อมต่อบัญชี OrgChat AI",
+                "contents": magic_bubble
+            }, quick_reply=quick_reply)
+        else:
+            reply_to_line(reply_token, f"✅ พี่ {username} ผูกบัญชีไว้เรียบร้อยแล้วค่ะ!", quick_reply=quick_reply)
+        return
+
     # ── Resolve org (multi-tenant) ────────────────────────────────────────────
     _line_org_id = get_line_org_id(user_id, group_id)
     if _line_org_id is None:
-        _unreg_qr = {"items": [
+        _unreg_qr_items = [
+            {"type": "action", "action": {"type": "message", "label": "👤 ผูกบัญชีระบบ", "text": "ผูกบัญชี"}},
             {"type": "action", "action": {"type": "message", "label": "รหัสกลุ่ม",   "text": "/groupid"}},
             {"type": "action", "action": {"type": "uri",    "label": "สมัครบริการ",  "uri": f"{_base_url}/signup"}},
             {"type": "action", "action": {"type": "uri",    "label": "ลงทะเบียนกลุ่ม", "uri": f"{_base_url}/admin/line-groups"}},
-        ]}
-        reply_to_line(reply_token,
-            f"สวัสดีค่ะ! น้องพั้นยินดีต้อนรับ\n\n"
-            f"กลุ่มนี้ยังไม่ได้เชื่อมกับระบบค่ะ ทำตาม 3 ขั้นนี้ได้เลย:\n\n"
-            f"1. สมัครที่ {_base_url}/signup\n"
-            f"2. พิมพ์ /groupid เพื่อดูรหัสกลุ่มนี้\n"
-            f"3. ลงทะเบียนที่ {_base_url}/admin/line-groups\n\n"
-            f"กดปุ่มด้านล่างเพื่อเริ่มได้เลยค่ะ",
-            quick_reply=_unreg_qr)
+        ]
+        if not group_id:
+            _unreg_qr_items = [
+                {"type": "action", "action": {"type": "message", "label": "👤 ผูกบัญชีระบบ", "text": "ผูกบัญชี"}},
+                {"type": "action", "action": {"type": "uri",    "label": "สมัครบริการ",  "uri": f"{_base_url}/signup"}},
+            ]
+        _unreg_qr = {"items": _unreg_qr_items}
+        
+        welcome_text = "สวัสดีค่ะ! ยินดีต้อนรับสู่อ้อมอกของน้องพั้นนะคะ 😊\n\n"
+        if group_id:
+            welcome_text += (
+                f"กลุ่มนี้ยังไม่ได้เชื่อมกับระบบค่ะ ทำตาม 3 ขั้นนี้ได้เลย:\n\n"
+                f"1. สมัครที่ {_base_url}/signup\n"
+                f"2. พิมพ์ /groupid เพื่อดูรหัสกลุ่มนี้\n"
+                f"3. ลงทะเบียนที่ {_base_url}/admin/line-groups\n\n"
+                f"กดปุ่มด้านล่างเพื่อเริ่มได้เลยค่ะ"
+            )
+        else:
+            welcome_text += (
+                "บัญชี LINE ส่วนตัวของพี่ ยังไม่ได้เชื่อมโยงเข้ากับโปรไฟล์ OrgChat AI เลยค่ะ\n\n"
+                "👉 พี่สามารถกดปุ่ม \"👤 ผูกบัญชีระบบ\" ด้านล่าง หรือพิมพ์คำว่า \"ผูกบัญชี\" เพื่อรับการ์ดเชื่อมต่อบัญชีได้ทันทีเลยนะคะ ✨"
+            )
+        reply_to_line(reply_token, welcome_text, quick_reply=_unreg_qr)
         return
 
     # ── Billing gate: LINE Bot ต้อง Pro ขึ้นไป ──────────────────────────────
@@ -3281,6 +3423,10 @@ def process_line_command(text, user_id, reply_token, group_id=None):
         RedisManager.delete(f"edit_session:{user_id}")
         # Check timeout (5 minutes = 300 seconds)
         if time.time() - session_data["timestamp"] < 300:
+            # Check reconcile permission for edit session
+            is_ok, sender_username = check_line_user_permission(user_id, "reconcile", reply_token, group_id)
+            if not is_ok:
+                return
             sheet = session_data["sheet"]
             row = session_data["row"]
             field = session_data["field"]
@@ -3293,8 +3439,8 @@ def process_line_command(text, user_id, reply_token, group_id=None):
                 msg = f"✅ แก้ไขข้อมูลเรียบร้อยแล้วค่ะพี่!\n\n📊 ชีต: '{sheet}' แถวที่ {row}\n✏️ หัวข้อ: '{display}'\n📝 เปลี่ยนเป็น: '{new_value}'\n\nพั้นดำเนินการอัปเดตและกระทบยอดบัญชีใหม่ให้อัตโนมัติเรียบร้อยค่ะ ✨"
                 
                 # Persistent Quick Reply
-                p_id = os.getenv("GOOGLE_DRIVE_PARENT_ID") or os.getenv("PARENT_FOLDER_ID")
-                drive_url = f"https://drive.google.com/drive/folders/{p_id}"
+                p_id = mgr.parent_folder_id
+                drive_url = f"https://drive.google.com/drive/folders/{p_id}" if p_id else "https://drive.google.com"
                 quick_reply = {
                     "items": [{
                         "type": "action",
@@ -3331,7 +3477,7 @@ def process_line_command(text, user_id, reply_token, group_id=None):
 
     
     # Persistent Quick Reply — shown after every bot text response (max 13 items)
-    p_id = os.getenv("GOOGLE_DRIVE_PARENT_ID") or os.getenv("PARENT_FOLDER_ID")
+    p_id = mgr.parent_folder_id
     drive_url = f"https://drive.google.com/drive/folders/{p_id}" if p_id else "https://drive.google.com"
     sheet_url_qr = f"https://docs.google.com/spreadsheets/d/{mgr.spreadsheet_id}/edit" if mgr.spreadsheet_id else "https://sheets.google.com"
 
@@ -3402,46 +3548,17 @@ def process_line_command(text, user_id, reply_token, group_id=None):
             reply_to_line(reply_token, "ℹ️ คำสั่งนี้สามารถใช้ได้เฉพาะในกลุ่มแชท LINE เท่านั้นนะคะพี่ 😊", quick_reply=quick_reply)
             return
 
-        # 1. Account Linking (/link or ผูกบัญชี)
-        if text_lower.startswith("/link") or "ผูกบัญชี" in text_lower:
-            if not username:
-                import secrets
-                import time
-                token = secrets.token_urlsafe(32)
-                PENDING_LINE_LINKS[token] = {
-                    "line_user_id": user_id,
-                    "timestamp": time.time()
-                }
-                
-                base_url = "http://localhost:5005"
-                webhook_url = os.environ.get("ACTIVE_PUBLIC_URL")
-                if webhook_url:
-                    if "/api/line/webhook" in webhook_url:
-                        base_url = webhook_url.split("/api/line/webhook")[0]
-                    else:
-                        base_url = webhook_url.rstrip('/')
-                else:
-                    env_url = os.environ.get("BASE_URL") or os.environ.get("PUBLIC_URL")
-                    if env_url:
-                        base_url = env_url.rstrip('/')
-                
-                magic_url = f"{base_url}/line/link_magic?token={token}"
-                
-                magic_bubble = create_magic_link_flex_bubble(magic_url)
-                reply_to_line(reply_token, {
-                    "type": "flex",
-                    "altText": "🔗 เชื่อมต่อบัญชี OrgChat AI",
-                    "contents": magic_bubble
-                }, quick_reply=quick_reply)
-            else:
-                reply_to_line(reply_token, f"✅ พี่ {username} ผูกบัญชีไว้เรียบร้อยแล้วค่ะ!", quick_reply=quick_reply)
-            return
+        # 1. Account Linking (/link or ผูกบัญชี) - (ย้ายไปดักรันด้านบนเพื่อความถูกต้องเรียบร้อยแล้วค่ะ)
+        pass
 
         # 🔗 Workspace Links Request
-        if any(k in text_lower for k in ["ขอลิงค์", "ขอลิ้งค์", "ขอลิงก์", "ขอลิ้ง", "ขอลิงค์หน่อย"]):
+        if any(k in text_lower for k in ["ขอลิงก์", "ลิงก์ระบบ", "ลิงก์"]):
+            is_ok, sender_username = check_line_user_permission(user_id, "links", reply_token, group_id)
+            if not is_ok:
+                return
             sheet_id = mgr.spreadsheet_id
             sheet_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit" if sheet_id else "https://sheets.google.com"
-            p_id = os.getenv("GOOGLE_DRIVE_PARENT_ID") or os.getenv("PARENT_FOLDER_ID")
+            p_id = mgr.parent_folder_id
             drive_url = f"https://drive.google.com/drive/folders/{p_id}" if p_id else "https://drive.google.com"
             
             links_bubble = create_links_flex_bubble(sheet_url, drive_url)
@@ -3453,12 +3570,27 @@ def process_line_command(text, user_id, reply_token, group_id=None):
             return
 
         # 2. Expense Reporting
-        if any(k in text_lower for k in ["สรุปรายจ่าย", "ยอดรายจ่าย", "รายจ่าย", "วันนี้"]):
-            summary = mgr.get_monthly_summary()
+        is_expense_req = False
+        expense_keywords = ["สรุปรายจ่าย", "ยอดรายจ่าย", "รายงานรายจ่าย", "สรุปยอด", "รายจ่ายสะสม"]
+        if any(k in text_lower for k in expense_keywords):
+            is_expense_req = True
+        elif "รายจ่าย" in text_lower and any(k in text_lower for k in ["วันนี้", "เดือนนี้", "วันนี"]):
+            is_expense_req = True
+
+        if is_expense_req:
+            is_ok, sender_username = check_line_user_permission(user_id, "report", reply_token, group_id)
+            if not is_ok:
+                return
+            # วิเคราะห์ช่วงเวลา (today หรือ month)
+            period = "month"
+            if any(k in text_lower for k in ["วันนี้", "รายวัน", "ประจำวัน", "วันนี"]):
+                period = "today"
+
+            summary = mgr.get_monthly_summary(period=period)
             
             # --- 📊 Stunning Donut Chart Generation & Integration ---
             try:
-                raw_data = mgr.get_monthly_summary(return_raw=True)
+                raw_data = mgr.get_monthly_summary(return_raw=True, period=period)
                 if isinstance(raw_data, tuple) and len(raw_data) == 3:
                     total_expense, total_count, categories_breakdown = raw_data
                     if total_count > 0 and categories_breakdown:
@@ -3504,6 +3636,9 @@ def process_line_command(text, user_id, reply_token, group_id=None):
 
         # 3. Enhanced File Retrieval (Drive + Database Logs)
         if text_lower.startswith(("หาไฟล์", "ค้นหา", "search")):
+            is_ok, sender_username = check_line_user_permission(user_id, "search", reply_token, group_id)
+            if not is_ok:
+                return
             query = text.replace("หาไฟล์", "").replace("ค้นหา", "").replace("search", "").strip()
             if not query:
                 reply_to_line(reply_token, "พี่ต้องการหาไฟล์อะไรคะ? ระบุชื่อมาได้เลยค่ะ 😊")
@@ -3531,6 +3666,9 @@ def process_line_command(text, user_id, reply_token, group_id=None):
 
         # 4. Background Reconciliation
         if any(k in text_lower for k in ["กระทบยอด", "reconcile"]):
+            is_ok, sender_username = check_line_user_permission(user_id, "reconcile", reply_token, group_id)
+            if not is_ok:
+                return
             reply_to_line(reply_token, "⏳ น้องพั้นกำลังเริ่มจับคู่สลิปกับใบกำกับภาษีให้พี่อยู่นะคะ... เมื่อเสร็จแล้วจะแจ้งเตือนไปค่ะ ✨")
             def run_recon():
                 try:
@@ -3551,6 +3689,9 @@ def process_line_command(text, user_id, reply_token, group_id=None):
 
         # 5. Leave Request
         if any(k in text_lower for k in ["ลางาน", "ลาป่วย", "ลากิจ"]):
+            is_ok, sender_username = check_line_user_permission(user_id, "leave", reply_token, group_id)
+            if not is_ok:
+                return
             leave_type = "ลาป่วย" if "ป่วย" in text_lower else "ลากิจ" if "กิจ" in text_lower else "ลาพักร้อน"
             database.add_leave_request(line_user_id=user_id, username=user_id, leave_type=leave_type, start_date="", end_date="", reason=text)
             reply_to_line(reply_token, f"📝 รับทราบค่ะ! น้องพั้นบันทึกคำ{leave_type}ให้เบื้องต้นแล้วนะคะ พี่อย่าลืมมาแจ้งวันลาที่ชัดเจนด้วยน้า 😊")
@@ -3558,11 +3699,24 @@ def process_line_command(text, user_id, reply_token, group_id=None):
 
         # 6. Folder Selection Manual Command
         if any(k in text_lower for k in ["เลือกโฟลเดอร์", "โฟลเดอร์", "folder"]):
+            is_ok, sender_username = check_line_user_permission(user_id, "folder", reply_token, group_id)
+            if not is_ok:
+                return
             folder_flex = get_folder_flex_message(group_id or user_id)
             if folder_flex:
                 reply_to_line(reply_token, [{"type": "text", "text": "📂 พี่ต้องการให้พั้นเก็บไฟล์ไว้ที่โฟลเดอร์ไหนดีคะ? เลือกได้เลยค่ะ"}, folder_flex])
             else:
                 reply_to_line(reply_token, "❌ น้องพั้นหาโฟลเดอร์ใน Drive ไม่เจอเลยค่ะพี่")
+            return
+
+        # Check that user is linked before using AI RAG chat
+        sender_username = database.get_username_by_line_id(user_id)
+        if not sender_username:
+            if group_id:
+                msg = "⚠️ ขออภัยค่ะพี่ บัญชี LINE ของพี่จำต้องเชื่อมต่อกับระบบ OrgChat AI ก่อน จึงจะสามารถคุยกับน้องพั้นได้นะคะ\n\n👉 กรุณาทักแชทส่วนตัวหาน้องพั้นและพิมพ์คำว่า 'ผูกบัญชี' เพื่อเชื่อมต่อระบบค่ะ"
+            else:
+                msg = "⚠️ ขออภัยค่ะพี่ บัญชี LINE ของพี่จำต้องเชื่อมต่อกับระบบ OrgChat AI ก่อน จึงจะสามารถคุยกับน้องพั้นได้นะคะ\n\n👉 พิมพ์คำว่า 'ผูกบัญชี' ด้านล่างเพื่อเชื่อมต่อได้เลยค่ะ"
+            reply_to_line(reply_token, msg)
             return
 
         # 6. Default AI Processing (Using Prompt Engineering & RAG)
@@ -3588,17 +3742,60 @@ def process_line_command(text, user_id, reply_token, group_id=None):
                     "3. ตอบให้สั้น กระชับ ได้ใจความที่สุด ห้ามพูดเยอะเกินความจำเป็น\n"
                     "4. **จำกัด Emoji: ใส่ได้เพียง 1 ตัวต่อหนึ่งข้อความเท่านั้น (ห้ามเกินเด็ดขาด)**\n"
                     "5. เน้นความเป็นธรรมชาติเหมือนคุยกับรุ่นน้องที่ทำงาน สไตล์การพูด: ได้สิ พี่, ว่าไงคะพี่, เรียบร้อยค่ะพี่\n"
-                    "6. หากไม่พบข้อมูล ให้บอกว่า 'พั้นหาไม่เจอค่ะพี่' อย่างสุภาพ\n"
+                    "6. **Smart & Analytical**: วิเคราะห์ข้อมูลจากบริบทอ้างอิงอย่างฉลาด คำนวณ สรุป หรือประมวลผลตัวเลขจากเอกสารเพื่อตอบคำถามอย่างมั่นใจ ห้ามตอบขึ้นต้นว่า 'ไม่พบข้อมูล' หากในบริบทมีข้อมูลเกี่ยวกับเรื่องนั้นอยู่แล้ว\n"
+                    "7. หากบริบทที่ได้รับไม่มีข้อมูลเกี่ยวกับเรื่องที่ถามเลยจริงๆ ให้บอกว่า 'พั้นหาไม่เจอนะคะพี่' อย่างสุภาพ\n"
                 )
             try:
                 context = ""
                 sources = []
-                line_where = {"$or": [{"organization_id": _line_org_id}, {"organization_id": {"$eq": None}}]}
+                line_where = {"organization_id": _line_org_id}
                 if hasattr(rag_engine, 'retrieve_context'):
                     context, sources = rag_engine.retrieve_context(text, where=line_where)
                 
+                # Fetch calendar schedules context
+                schedules_context = ""
+                try:
+                    schedules_list = database.get_schedules(username=sender_username, org_id=_line_org_id)
+                    if schedules_list:
+                        schedules_context = "=== รายการนัดหมายและตารางงาน (Calendar & Schedules) ===\n"
+                        for s in schedules_list:
+                            status_desc = "เสร็จแล้ว" if s['status'] == 'done' else "กำลังทำ" if s['status'] == 'doing' else "รอดำเนินการ"
+                            schedules_context += (
+                                f"- หัวข้อ: {s['title']}\n"
+                                f"  วันที่: {s['date']} เวลา: {s['time']} น.\n"
+                                f"  รายละเอียด: {s['desc'] or 'ไม่มีรายละเอียด'}\n"
+                                f"  หมวดหมู่: {s['category']}\n"
+                                f"  สถานะ: {status_desc}\n"
+                                f"  ผู้สร้าง: {s['display_name']}\n"
+                                f"  ขอบเขต: {'สาธารณะ (Public)' if s['is_public'] else 'ส่วนตัว (Private)'}\n\n"
+                            )
+                        schedules_context += "=== สิ้นสุดรายการนัดหมาย ===\n"
+                except Exception as se:
+                    logger.error(f"Failed to fetch schedules context for RAG: {se}")
+
+                from datetime import datetime, timedelta
+                now_utc = datetime.utcnow()
+                now_local = now_utc + timedelta(hours=7)
+                now_str = now_local.strftime("%Y-%m-%d %H:%M:%S")
+                days_th = ["วันจันทร์", "วันอังคาร", "วันพุธ", "วันพฤหัสบดี", "วันศุกร์", "วันเสาร์", "วันอาทิตย์"]
+                day_of_week = days_th[now_local.weekday()]
+                time_context = f"วันเวลาปัจจุบันของระบบ: {now_str} ({day_of_week})\n"
+
+                combined_context = ""
                 if context:
-                    system_prompt += f"\n\nContext:\n{context}\n\n(ใช้ข้อมูลนี้ตอบพี่เขาอย่างเป็นธรรมชาติที่สุด)"
+                    combined_context += context + "\n"
+                if schedules_context:
+                    combined_context += schedules_context + "\n"
+
+                if combined_context:
+                    system_prompt += (
+                        f"\n\n=== ข้อมูลวันเวลาปัจจุบัน ===\n"
+                        f"{time_context}"
+                        "\n=== ข้อมูลจากระบบ (ใช้ข้อมูลนี้เท่านั้นในการตอบ ห้ามแต่งเติม) ===\n"
+                        f"{combined_context}\n"
+                        "=== สิ้นสุดข้อมูล ===\n\n"
+                        "(ใช้ข้อมูลนี้ตอบพี่เขาอย่างเป็นธรรมชาติที่สุด ข้อมูลใดไม่มีในนี้ ห้ามแต่งเติม)"
+                    )
                 
                 _ai_ok, _ai_used, _ai_limit = billing.check_and_increment(_line_org_id, "ai_query_count")
                 if not _ai_ok:
@@ -3607,7 +3804,30 @@ def process_line_command(text, user_id, reply_token, group_id=None):
                         "อัปเกรด Plan เพื่อใช้งานต่อได้เลยนะคะ https://openchat.sbs/pricing")
                     return
 
-                ai_response = ai_providers.generate_response(question=text, system_prompt=system_prompt)
+                # Load recent chat history (limit to last 10 messages)
+                chat_history = database.get_history(username=sender_username, limit=10, org_id=_line_org_id)
+
+                # Save user message to database
+                database.save_message(role="user", text=text, username=sender_username, org_id=_line_org_id)
+
+                ai_response = ai_providers.generate_response(question=text, history=chat_history, system_prompt=system_prompt)
+                
+                # Sanitize response
+                ai_response = ai_response.replace("ครับ/ค่ะ", "ค่ะ").replace("ครับ", "ค่ะ")
+                
+                # Limit emojis (Nong Punch rule: max 1 emoji per message)
+                all_emojis = re.findall(r'[\U00010000-\U0010ffff]', ai_response)
+                if len(all_emojis) > 1:
+                    first_emoji = all_emojis[0]
+                    first_idx = ai_response.find(first_emoji)
+                    prefix = ai_response[:first_idx + len(first_emoji)]
+                    rest = ai_response[first_idx + len(first_emoji):]
+                    rest_cleaned = "".join([c for c in rest if c not in re.findall(r'[\U00010000-\U0010ffff]', rest)])
+                    ai_response = prefix + rest_cleaned
+                
+                # Save bot response to database
+                database.save_message(role="bot", text=ai_response, username=sender_username, org_id=_line_org_id)
+
                 reply_to_line(reply_token, ai_response, quick_reply=quick_reply)
             except Exception as e:
                 logger.error(f"AI Generation failed: {e}")
@@ -3621,7 +3841,7 @@ def process_line_command(text, user_id, reply_token, group_id=None):
                 reply_to_line(reply_token, response, quick_reply=quick_reply)
         else:
             if hasattr(rag_engine, 'retrieve_context'):
-                line_where = {"$or": [{"organization_id": _line_org_id}, {"organization_id": {"$eq": None}}]}
+                line_where = {"organization_id": _line_org_id}
                 ctx, _ = rag_engine.retrieve_context(text, where=line_where)
                 response = f"พั้นเจอข้อมูลที่เกี่ยวข้องดังนี้ค่ะ:\n{ctx[:500]}..." if ctx else "ขออภัยนะคะ ไม่พบข้อมูลที่เกี่ยวข้องค่ะ"
             else:
@@ -3645,16 +3865,19 @@ def upload():
     dept = request.form.get("department", "General")
     category_id = request.form.get("category_id")
     
+    org_id = get_current_org_id()
     # Convert category_id to int if present
     if category_id and category_id.isdigit():
         category_id = int(category_id)
+        # Verify category belongs to this organization
+        visible_categories = database.get_categories(user, org_id=org_id)
+        if not any(c["id"] == category_id for c in visible_categories):
+            return jsonify({"ok": False, "error": "ไม่พบคู่มือ/หมวดหมู่นี้ในองค์กรของคุณ"}), 403
     else:
         category_id = None
 
     if not files:
         return jsonify({"ok": False, "error": "ไม่พบไฟล์"}), 400
-
-    org_id = get_current_org_id()
     _kb_plan = billing.get_effective_plan(org_id)
     _kb_limit = billing.get_plan_config(_kb_plan)["limits"]["kb_files"]
     if _kb_limit != -1:
@@ -3676,11 +3899,13 @@ def upload():
         if not is_valid:
             return jsonify({"ok": False, "error": f"ไฟล์ {orig_name} ไม่ปลอดภัย: {err_msg}"}), 400
         uid = str(uuid.uuid4())[:8]
-        safe_name = secure_filename(orig_name)
-
-        if not safe_name or safe_name.startswith('.'):
-            safe_name = f"upload_{uid}"
-            
+        orig_suffix = Path(orig_name).suffix.lower()
+        orig_stem = Path(orig_name).stem
+        safe_stem = secure_filename(orig_stem)
+        if not safe_stem:
+            safe_stem = f"upload_{uid}"
+        safe_name = f"{safe_stem}{orig_suffix}"
+        
         save_path = rag_engine.UPLOAD_DIR / f"{uid}_{safe_name}"
         f.save(str(save_path))
 
@@ -3868,9 +4093,16 @@ def delete_kb_category(cat_id):
     if not can_edit_knowledge_base():
          return jsonify({"ok": False, "error": "คุณไม่มีสิทธิ์ในการจัดการหมวดหมู่"}), 403
     user = session.get("user", "Admin")
+    org_id = get_current_org_id()
+    
+    # Check if category belongs to this organization
+    cat_info = next((c for c in database.get_categories("Admin", org_id=org_id) if c["id"] == cat_id), None)
+    if not cat_info:
+        return jsonify({"ok": False, "error": "ไม่พบหมวดหมู่นี้ในองค์กรของคุณ"}), 404
+        
     try:
         database.delete_category(cat_id)
-        database.log_event(f"Deleted KB category ID: {cat_id}", user=user, org_id=get_current_org_id())
+        database.log_event(f"Deleted KB category ID: {cat_id}", user=user, org_id=org_id)
         return jsonify({"ok": True})
     except Exception as e:
         return _err500(e)
@@ -3914,22 +4146,28 @@ def kb_search():
     visible_categories = database.get_categories(user, org_id=get_current_org_id())
     visible_cat_ids = [str(c["id"]) for c in visible_categories]
     
-    # ChromaDB 'where' filter logic
+    org_id = get_current_org_id()
+    # Construct combined filter: (category filter) AND (organization_id filter)
+    cat_filter = None
     if visible_cat_ids:
-        # User sees: restricted/private they own + public + unassigned
-        where_filter = {
+        cat_filter = {
             "$or": [
                 {"category_id": {"$in": visible_cat_ids}},
-                {"category_id": ""} # Unassigned
+                {"category_id": ""}
             ]
         }
     else:
-        # Fallback: only unassigned or public if user has no visible cats?
-        # Actually database.get_categories(user) always returns public ones.
-        where_filter = {"category_id": ""}
+        cat_filter = {"category_id": ""}
+        
+    where_filter = {
+        "$and": [
+            cat_filter,
+            {"organization_id": org_id}
+        ]
+    }
 
     try:
-        files = rag_engine.list_files()
+        files = rag_engine.list_files(org_id=org_id)
         # Filter by file name (fast, local), respecting visibility
         name_matches = []
         for f in files:
@@ -3985,10 +4223,27 @@ def assign_file_category():
     if not file_id:
         return jsonify({"ok": False, "error": "Missing file_id"}), 400
 
+    org_id = get_current_org_id()
     try:
+        # Convert category_id to int if possible
+        if category_id is not None and str(category_id).isdigit():
+            category_id = int(category_id)
+
+        # Check if file belongs to this organization
+        files = rag_engine.list_files(org_id=org_id)
+        file_info = next((f for f in files if f["file_id"] == file_id), None)
+        if not file_info:
+            return jsonify({"ok": False, "error": "ไม่พบไฟล์นี้ในองค์กรของคุณ"}), 404
+
+        # Check if category belongs to this organization
+        if category_id:
+            visible_categories = database.get_categories(user, org_id=org_id)
+            if not any(str(c["id"]) == str(category_id) for c in visible_categories):
+                return jsonify({"ok": False, "error": "ไม่พบคู่มือ/หมวดหมู่นี้ในองค์กรของคุณ"}), 403
+
         # Update in database if needed, but primarily in rag_engine meta
         rag_engine.update_file_category(file_id, category_id)
-        database.log_event(f"Assigned file {file_id} to category {category_id}", user=user, org_id=get_current_org_id())
+        database.log_event(f"Assigned file {file_id} to category {category_id}", user=user, org_id=org_id)
         return jsonify({"ok": True})
     except Exception as e:
         return _err500(e)
@@ -4011,10 +4266,11 @@ def get_personas():
 def view_kb_file(file_id):
     if not can_view_knowledge_base():
         return jsonify({"ok": False, "error": "คุณไม่มีสิทธิ์ในการดูไฟล์"}), 403
-    files = rag_engine.list_files()
+    org_id = get_current_org_id()
+    files = rag_engine.list_files(org_id=org_id)
     file_info = next((f for f in files if f["file_id"] == file_id), None)
     if not file_info:
-        return "File not found", 404
+        return "File not found or unauthorized", 403
     
     path = Path(file_info["path"])
     if not path.exists():
@@ -4098,7 +4354,14 @@ def compare_knowledge_base_files():
     
     if not f1_id or not f2_id:
         return jsonify({"ok": False, "error": "Missing file IDs"}), 400
-        
+
+    org_id = get_current_org_id()
+    # Verify both files belong to this organization
+    files = rag_engine.list_files(org_id=org_id)
+    file_ids = {f["file_id"] for f in files}
+    if f1_id not in file_ids or f2_id not in file_ids:
+        return jsonify({"ok": False, "error": "คุณไม่มีสิทธิ์เข้าถึงหรือเปรียบเทียบไฟล์นี้"}), 403
+
     try:
         # Retrieve ALL content for both files
         ctx1 = rag_engine.get_file_content(f1_id)
@@ -4271,7 +4534,8 @@ def clear_history():
 @login_required
 def stats_route():
     user = session.get("user")
-    return jsonify(database.get_stats(user))
+    org_id = get_current_org_id()
+    return jsonify(database.get_stats(user, org_id=org_id))
 
 
 @chat_bp.route("/api/dashboard/data")
@@ -4443,12 +4707,19 @@ def generate_global_summary():
             }
             if not search_query: search_query = ""
         else:
-            if str(category_id) not in visible_cat_ids:
-                return jsonify({"ok": False, "error": ""}), 403
+            if str(category_id) not in visible_cat_ids and not (session.get("role") == "admin" or database.is_org_admin(org_id, user)):
+                return jsonify({"ok": False, "error": "คุณไม่มีสิทธิ์เข้าถึงหมวดหมู่นี้"}), 403
+            
+            cat_val = int(category_id) if str(category_id).isdigit() else category_id
             where_filter = {
                 "$and": [
                     org_clause,
-                    {"category_id": str(category_id)}
+                    {
+                        "$or": [
+                            {"category_id": cat_val},
+                            {"category_id": str(category_id)}
+                        ]
+                    }
                 ]
             }
             # Try to get category name for better context if no focus given
@@ -4509,7 +4780,7 @@ def generate_global_summary():
             is_fallback = True
 
         if not results:
-            msg = ""
+            msg = "ยังไม่มีไฟล์เอกสารในหมวดหมู่นี้ หรือไม่พบข้อมูลในคลังความรู้ที่จะสรุปได้ค่ะ"
             return jsonify({"ok": False, "error": msg}), 404
             
         context_text = "\n".join([f"- {r['text']}" for r in results])
@@ -4778,18 +5049,22 @@ def add_members_to_group(room_id):
 @login_required
 def update_group_profile_route(gid):
     user = session.get("user")
-    # Check if owner
     org_id = get_current_org_id()
-    room = next((r for r in database.get_rooms_for_user(user, org_id=org_id)["rooms"] if r["id"] == gid), None)
-    if not room or room["owner"] != user and user != "Admin":
-        return jsonify({"ok": False, "error": "Unauthorized"}), 403
+    rooms_data = database.get_rooms_for_user(user, org_id=org_id)
+    room = next((r for r in rooms_data.get("rooms", []) if r.get("id") == gid), None)
+    
+    is_admin = session.get("role") == "admin" or database.is_org_admin(org_id, user)
+    is_owner = room and room.get("owner") == user
+    
+    if not room or (not is_owner and not is_admin):
+        return jsonify({"ok": False, "error": "เฉพาะหัวหน้ากลุ่มหรือผู้ดูแลระบบเท่านั้นที่มีสิทธิ์แก้ไขกลุ่ม"}), 403
         
     name = request.form.get("name")
     avatar_url = room.get("avatar_url") # Default to current
     if 'avatar' in request.files:
         file = request.files['avatar']
         if file.filename:
-            ext = Path(secure_filename(file.filename)).suffix.lower()
+            ext = Path(file.filename).suffix.lower()
             if ext not in {".jpg", ".jpeg", ".png", ".webp", ".gif"}:
                 return jsonify({"ok": False, "error": "รองรับเฉพาะไฟล์รูป (.jpg, .png, .webp, .gif)"}), 400
             # ตรวจ magic bytes ป้องกันไฟล์ปลอมที่เปลี่ยนแค่นามสกุล
@@ -4812,7 +5087,8 @@ def update_group_profile_route(gid):
                 return jsonify({"ok": False, "error": "โครงสร้างไฟล์รูปไม่ถูกต้อง"}), 400
             group_dir = Path("uploads/group_profiles")
             group_dir.mkdir(parents=True, exist_ok=True)
-            filename = secure_filename(f"group_{gid}_{int(time.time())}_{file.filename}")
+            safe_base = secure_filename(f"group_{gid}_{int(time.time())}")
+            filename = f"{safe_base}{ext}"
             file.save(str(group_dir / filename))
             avatar_url = f"/uploads/group_profiles/{filename}"
             
@@ -4887,7 +5163,20 @@ def get_chat_messages_route(ctype, cid):
         if not peek:
             database.mark_room_read(int(cid), user, messages[-1]["id"] if messages else 0)
     else: # dm
-        messages = database.get_dm_history(user, cid)
+        if cid != 'AI-Assistant':
+            current_org = get_current_org_id()
+            conn = database._get_conn()
+            try:
+                is_same_org = conn.execute(
+                    "SELECT 1 FROM organization_members om1 JOIN organization_members om2 ON om1.organization_id = om2.organization_id WHERE om1.username=? COLLATE NOCASE AND om2.username=? COLLATE NOCASE AND om1.organization_id=?",
+                    (user, cid, current_org)
+                ).fetchone()
+            finally:
+                conn.close()
+            if not is_same_org:
+                return jsonify({"ok": False, "error": "Not in the same organization"}), 403
+
+        messages = database.get_dm_history(user, cid, org_id=get_current_org_id())
         if not peek:
             database.mark_dm_read(user, cid, messages[-1]["id"] if messages else 0)
             
@@ -4901,6 +5190,26 @@ def send_unified_message():
     user = session.get("user")
     ctype = request.form.get("type") # 'room' or 'dm'
     cid = request.form.get("id") # roomId (int) or recipient (str)
+    
+    # Strictly enforce organization boundary for sending message
+    if ctype == "room":
+        rooms = database.get_rooms_for_user(user, org_id=get_current_org_id())["rooms"]
+        if not any(r["id"] == int(cid) for r in rooms):
+            return jsonify({"ok": False, "error": "Not a member of this room"}), 403
+    else: # dm
+        if cid != 'AI-Assistant':
+            current_org = get_current_org_id()
+            conn = database._get_conn()
+            try:
+                is_same_org = conn.execute(
+                    "SELECT 1 FROM organization_members om1 JOIN organization_members om2 ON om1.organization_id = om2.organization_id WHERE om1.username=? COLLATE NOCASE AND om2.username=? COLLATE NOCASE AND om1.organization_id=?",
+                    (user, cid, current_org)
+                ).fetchone()
+            finally:
+                conn.close()
+            if not is_same_org:
+                return jsonify({"ok": False, "error": "Not in the same organization"}), 403
+
     text = request.form.get("message", "").strip()
     reply_to_id = request.form.get("reply_to_id")
     if reply_to_id:
@@ -4917,7 +5226,12 @@ def send_unified_message():
                 is_valid, err_msg = validate_uploaded_file(file, file.filename)
                 if not is_valid:
                     return jsonify({"ok": False, "error": f"ไฟล์ {file.filename} ไม่ปลอดภัย: {err_msg}"}), 400
-                filename = secure_filename(f"{user}_{int(time.time())}_{file.filename}")
+                orig_suffix = Path(file.filename).suffix.lower()
+                orig_stem = Path(file.filename).stem
+                safe_base = secure_filename(f"{user}_{int(time.time())}_{orig_stem}")
+                if not safe_base:
+                    safe_base = f"{user}_{int(time.time())}"
+                filename = f"{safe_base}{orig_suffix}"
                 file.save(os.path.join(upload_subdir, filename))
                 if file.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
                     ftype = "image"
@@ -4996,7 +5310,7 @@ def send_unified_message():
             threading.Thread(target=handle_bot_response, args=(int(cid), text, "room", user, ai_image, ai_mime, get_current_org_id())).start()
             
     else: # dm
-        mid = database.save_dm(user, cid, text, attachments, reply_to_id=reply_to_id)
+        mid = database.save_dm(user, cid, text, attachments, reply_to_id=reply_to_id, org_id=get_current_org_id())
         
         def handle_dm_notifications(u, target_id, t):
             if target_id.lower() == 'ai-assistant': return
@@ -5163,14 +5477,15 @@ def handle_bot_response(cid, user_text, ctype, original_sender=None, image_data=
             system_prompt = (
                 f"คุณคือ 'น้องพั้น' (Nong Punch) ผู้ช่วยประจำองค์กรที่น่ารักและแสนดี เป็นกันเองเหมือนคนจริงๆ\n"
                 f"เวลาปัจจุบันคือ: {now}\n\n"
-                "กฎเหล็กในการสื่อสาร (สำคัญมาก):\n"
+                "กฎเหล็กในการสื่อสาร (สำคัญที่สุด ห้ามฝ่าฝืนเด็ดขาด):\n"
                 "1. ตอบให้กระชับและเข้าประเด็นที่สุด ห้ามเยิ่นเย้อ\n"
                 "2. **จำกัดการใช้ Emoji: ให้มีได้เพียง '1 ตัว' ต่อหนึ่งข้อความเท่านั้น (ห้ามเกินกว่านี้เด็ดขาด)**\n"
                 "3. หากผู้ใช้แค่ 'ทักทาย' ให้ตอบสั้นๆ และห้ามแสดงข้อมูลปฏิทินหากไม่ได้ถาม\n"
                 "4. แทนตัวเองว่า 'น้องพั้น' และแทนผู้ใช้ว่า 'พี่' เสมอ\n"
                 "5. **กฎเรื่องเพศสภาพ: คุณคือผู้หญิง 21 ปี นิสัยน่ารักสดใส ห้ามใช้คำว่า 'ครับ' หรือ 'ครับ/ค่ะ' โดยเด็ดขาด ให้ใช้ 'ค่ะ/นะคะ/ขา' เท่านั้น**\n"
                 "6. ห้ามทักทายซ้ำซ้อน (เช่น สวัสดีค่ะพี่... แล้วต่อด้วย ยินดีที่ได้รู้จักค่ะพี่... ให้เลือกอย่างใดอย่างหนึ่ง)\n"
-                "7. หากไม่พบข้อมูลที่ต้องการ ให้บอกตรงๆ ว่า 'ไม่พบข้อมูลในระบบค่ะพี่' พร้อมอาสาจะช่วยเรื่องอื่นแทน\n\n"
+                "7. **Smart & Analytical (สำคัญมาก)**: วิเคราะห์ข้อมูลจาก Context อย่างฉลาด แม่นยำ และเป็นธรรมชาติ หากมีข้อมูลตัวเลข ตาราง หรือเอกสารอ้างอิง ให้ประมวลผล คำนวณสรุป และตอบผู้ใช้งานด้วยความมั่นใจ **ห้ามพูดขึ้นต้นว่า 'ไม่พบข้อมูล' หากใน Context มีข้อมูลที่เกี่ยวข้องอยู่แล้ว**\n"
+                "8. หากในคลังความรู้ไม่มีข้อมูลเกี่ยวกับเรื่องที่ถามเลยจริงๆ ให้บอกตรงๆ ว่า 'ไม่พบข้อมูลในระบบค่ะพี่' พร้อมอาสาจะช่วยเรื่องอื่นแทน\n\n"
             )
 
         # Inject Schedules into context only if NOT a simple greeting or if specifically asked
@@ -5189,7 +5504,15 @@ def handle_bot_response(cid, user_text, ctype, original_sender=None, image_data=
         
         if not is_greeting:
             system_prompt += calendar_info
-            system_prompt += f"Context:\n{context}"
+            if context:
+                system_prompt += (
+                    "\n=== ข้อมูลจากคลังความรู้องค์กร (ใช้ข้อมูลนี้ในการวิเคราะห์และตอบคำถามอย่างฉลาดและแม่นยำ) ===\n"
+                    f"{context}\n"
+                    "=== สิ้นสุดข้อมูลจากคลังความรู้ ===\n\n"
+                    "หมายเหตุ: วิเคราะห์และตอบคำถามจากข้อมูลด้านบนอย่างมั่นใจ หากมีข้อมูลตัวเลขหรือตาราง ให้สรุปและคำนวณคำตอบให้ผู้ใช้ทันทีค่ะ\n"
+                )
+            else:
+                system_prompt += "\nหมายเหตุ: ขณะนี้ยังไม่มีเอกสารอ้างอิงตรงในคลังความรู้ หากผู้ใช้ถามเรื่องข้อมูลเฉพาะขององค์กร ให้ตอบอย่างสุภาพว่าไม่พบข้อมูลในระบบค่ะ\n"
         else:
             # If greeting, still provide basic context but tell AI to lead the conversation
             system_prompt += "หมายเหตุ: นี่คือการทักทายเบื้องต้น ให้ตอบกลับอย่างละมุนและสุภาพ พร้อมถามว่ามีอะไรให้ช่วยไหม\n"
@@ -5206,7 +5529,7 @@ def handle_bot_response(cid, user_text, ctype, original_sender=None, image_data=
                 role = "model" if m["username"] == "AI-Assistant" else "user"
                 history.append({"role": role, "text": m["text"]})
         else:
-            raw_history = database.get_dm_history(original_sender or "System", cid)[-5:]
+            raw_history = database.get_dm_history(original_sender or "System", cid, org_id=org_id)[-5:]
             for m in raw_history:
                 role = "model" if m["username"] == "AI-Assistant" else "user"
                 history.append({"role": role, "text": m["text"]})
@@ -5286,7 +5609,7 @@ def handle_bot_response(cid, user_text, ctype, original_sender=None, image_data=
         if ctype == "room":
             database.add_room_message(cid, "AI-Assistant", response_text, [])
         else:
-            database.save_dm("AI-Assistant", original_sender, response_text, [])
+            database.save_dm("AI-Assistant", original_sender, response_text, [], org_id=org_id)
             # NEW: Send push notification to the user who mentioned the bot in DM
             if original_sender:
                 send_push_notification(original_sender, "AI-Assistant ตอบกลับคุณ", response_text[:100], url='#chat')
@@ -5299,7 +5622,7 @@ def handle_bot_response(cid, user_text, ctype, original_sender=None, image_data=
         if ctype == "room":
             database.add_room_message(cid, "AI-Assistant", error_msg, [])
         else:
-            database.save_dm("AI-Assistant", original_sender, error_msg, [])
+            database.save_dm("AI-Assistant", original_sender, error_msg, [], org_id=org_id)
 
 
 @chat_bp.route("/api/chat/unread")
@@ -5406,7 +5729,7 @@ def chat():
     import re
     rag_filter = get_rag_filter(current_user, org_id=get_current_org_id())
     
-    file_match = re.search(r"ช่วยสรุปเนื้อหาและศึกษาข้อมูลสำคัญจากไฟล์ ID:\s*([a-f0-9\-]+)", question)
+    file_match = re.search(r"ช่วยสรุปเนื้อหาและ(?:ศึกษา|ดึง)ข้อมูลสำคัญจากไฟล์ ID:\s*([a-f0-9\-]+)", question)
     if file_match:
         file_id = file_match.group(1).strip()
         print(f"Detected File Summary Request for ID: {file_id}")
@@ -5515,7 +5838,8 @@ def chat():
             "3. **Proactive Intelligence**: หากพี่ส่งรูปเอกสารหรือบิลมา น้องพั้นซ์จะสกัดข้อมูลเข้า [RECONCILE_ACTION] ให้พี่ตรวจสอบทันทีค่ะ\n"
             "4. **Context Aware**: หากพี่พูดถึง 'ไฟล์ที่แล้ว' หรือ 'รูปที่แล้ว' น้องพั้นซ์จะดูข้อมูลล่าสุดที่คุยกันมาตอบเสมอ\n"
             "5. **Professional & Charming**: ตอบให้กระชับและมีเสน่ห์ ใส่ Emoji เพียง 1 ตัวต่อข้อความ\n"
-            "6. หากไม่พบข้อมูลในคลังความรู้ ให้บอกว่า 'น้องพั้นซ์หาไม่เจอนะคะพี่ แต่เดี๋ยวน้องพั้นซ์จะพยายามหาทางอื่นช่วยนะคะ'\n"
+            "6. **Smart Analysis**: วิเคราะห์ข้อมูลจากเอกสารอ้างอิงอย่างฉลาดและแม่นยำ คำนวณและสรุปข้อมูลตัวเลข/ตารางจากเอกสารเพื่อตอบคำถามด้วยความมั่นใจ **ห้ามพูดขึ้นต้นว่า 'ไม่พบข้อมูล' หากในเอกสารมีข้อมูลที่ใช้ตอบได้**\n"
+            "7. **กฎความถูกต้อง**: ห้ามเดาหรือสร้างข้อมูลเท็จที่ไม่มีอยู่จริง หากบริบทไม่มีข้อมูลเรื่องนั้นเลยจริงๆ ให้บอกตรงๆ ว่า 'น้องพั้นเพิ่งเช็คในระบบแล้วยังไม่พบข้อมูลเรื่องนี้ค่ะพี่'\n"
         )
 
     if image_bytes:
@@ -5536,12 +5860,13 @@ def chat():
 
     if context:
         system_prompt += (
-            "=== ข้อมูลอ้างอิงจากเอกสารองค์กร ===\n"
+            "=== ข้อมูลอ้างอิงจากเอกสารองค์กร (ใช้ข้อมูลนี้ในการวิเคราะห์และตอบคำถามอย่างแม่นยำ) ===\n"
             + context
             + "\n=== สิ้นสุดข้อมูลอ้างอิง ===\n"
+            + "หมายเหตุ: วิเคราะห์ข้อมูลจากเอกสารอ้างอิงด้านบนเพื่อตอบคำถามอย่างมั่นใจและตรงประเด็นค่ะ\n"
         )
     else:
-        system_prompt += "\n(ขณะนี้ยังไม่มีเอกสารอ้างอิงที่เกี่ยวข้องกับข้อนี้)\n"
+        system_prompt += "\n(ขณะนี้ยังไม่มีเอกสารอ้างอิงที่เกี่ยวข้องกับคำถามนี้)\n"
 
     try:
         provider_obj = ai_providers.get_provider()
@@ -5627,7 +5952,7 @@ def pin_chat_message(ctype, mid):
     if ctype == 'room':
         database.toggle_room_message_pin(mid)
     else: # dm
-        database.toggle_private_message_pin(mid)
+        database.toggle_private_message_pin(mid, org_id=get_current_org_id())
     return jsonify({"ok": True})
 
 
@@ -5640,7 +5965,7 @@ def delete_chat_message(ctype, mid):
     elif ctype == 'room':
         ok = database.delete_room_message(mid, username=user, is_admin=is_admin())
     elif ctype == 'dm':
-        ok = database.delete_private_message(mid, username=user, is_admin=is_admin())
+        ok = database.delete_private_message(mid, username=user, is_admin=is_admin(), org_id=get_current_org_id())
     else:
         ok = database.delete_message(mid, username=user)
         
@@ -5662,7 +5987,7 @@ def edit_chat_message(ctype, mid):
     if ctype == 'room':
         ok = database.edit_room_message(mid, new_text, user, is_admin_user=is_admin())
     elif ctype == 'dm':
-        ok = database.edit_private_message(mid, new_text, user, is_admin_user=is_admin())
+        ok = database.edit_private_message(mid, new_text, user, is_admin_user=is_admin(), org_id=get_current_org_id())
     else:
         return jsonify({"ok": False, "error": "ประเภทแชทไม่ถูกต้องหรือไม่รองรับการแก้ไขค่ะ"}), 400
 
@@ -6352,6 +6677,35 @@ def unbind_line_group(group_id):
     return jsonify({"ok": False, "error": "เกิดข้อผิดพลาดในการยกเลิกเชื่อมต่อค่ะ"}), 500
 
 
+@chat_bp.route('/api/line/groups/<group_id>/settings', methods=['PUT', 'POST'])
+@login_required
+def update_line_group_settings_route(group_id):
+    username = session.get("user")
+    mapping = database.get_group_mapping(group_id)
+    if not mapping:
+        return jsonify({"ok": False, "error": "ไม่พบข้อมูลกลุ่มนี้ค่ะ"}), 404
+    if mapping.get("owner_username") != username and session.get("org_role") != "admin":
+        return jsonify({"ok": False, "error": "ไม่มีสิทธิ์แก้ไขกลุ่มนี้ค่ะ"}), 403
+        
+    data = request.json or {}
+    group_name = data.get("group_name")
+    default_folder_id = data.get("default_folder_id")
+    default_folder_name = data.get("default_folder_name")
+    bot_enabled = data.get("bot_enabled")
+    
+    ok = database.update_group_mapping_settings(
+        group_id=group_id,
+        group_name=group_name,
+        default_folder_id=default_folder_id,
+        default_folder_name=default_folder_name,
+        bot_enabled=bot_enabled
+    )
+    if ok:
+        database.log_event(f"Updated LINE group settings for {group_id}", user=username, org_id=get_current_org_id())
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "error": "เกิดข้อผิดพลาดในการปรับปรุงตั้งค่าค่ะ"}), 500
+
+
 @chat_bp.route('/api/google/folders', methods=['GET'])
 @login_required
 @billing.require_feature("google_sheets")
@@ -6366,4 +6720,358 @@ def get_google_folders():
     # Note: GoogleWorkspaceManager is a Singleton. Individual user manager is not supported in this version.
     folders = mgr.list_subfolders()
     return jsonify({"ok": True, "folders": folders})
+
+
+@chat_bp.route('/api/drive/upload', methods=['POST'])
+@login_required
+def web_drive_upload():
+    """Allows web users to upload billing/expense documents directly to Google Drive.
+    It runs the same AI parsing, EMVCo QR code scanning, and Google Sheets logging as the LINE webhook.
+    """
+    files = request.files.getlist("files")
+    folder_id = request.form.get("folder_id")
+    folder_name = request.form.get("folder_name", "ทั่วไป")
+    
+    if not files or not files[0].filename:
+        return jsonify({"ok": False, "error": "ไม่พบไฟล์ที่ต้องการอัปโหลดค่ะ"}), 400
+        
+    username = session.get("user")
+    org_id = session.get("org_id")
+    try:
+        org_id = int(org_id) if org_id else 1
+    except:
+        org_id = 1
+        
+    google_manager.set_context(username=username, org_id=org_id)
+    
+    results = []
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    
+    # Check billing limits before proceeding
+    _ok, _used, _limit = billing.check_usage_allowed(org_id, "expense_count")
+    if not _ok:
+        return jsonify({"ok": False, "error": "limit_reached", "message": f"ใช้โควต้าบันทึกบิลครบ {_limit} รายการในเดือนนี้แล้วค่ะ"}), 403
+        
+    def process_file_item(f):
+        original_name = f.filename or "web_upload"
+        mimetype = f.mimetype or "application/octet-stream"
+        
+        # Verify file safety before processing
+        is_safe, safety_err = validate_uploaded_file(f, original_name)
+        if not is_safe:
+            return {"status": "unsafe_file", "name": original_name, "error": safety_err}
+            
+        f.seek(0)
+        content = f.read()
+        if not content:
+            return {"status": "empty_file", "name": original_name}
+            
+        # Check and increment billing limit
+        _e_ok, _e_used, _e_limit = billing.check_and_increment(org_id, "expense_count")
+        if not _e_ok:
+            return {"status": "limit_reached", "name": original_name}
+            
+        # Run AI Smart Scan
+        analysis = None
+        f_type = "file"
+        if mimetype.startswith("image/"): f_type = "image"
+        elif mimetype.startswith("audio/"): f_type = "audio"
+        
+        if (f_type in ["image", "file"] and mimetype in ["image/jpeg", "image/png", "application/pdf"]) or f_type == "audio":
+            try:
+                analysis = ai_providers.analyze_media_contents(content, mimetype)
+                if analysis and analysis.get("smart_name"):
+                    ext = os.path.splitext(original_name)[1]
+                    original_name = analysis["smart_name"]
+                    if not original_name.endswith(ext): original_name += ext
+            except Exception as e:
+                logger.error(f"AI analysis failed in web upload: {e}")
+                
+        # Upload file to Drive
+        link, upload_err = google_manager.upload_file(content, original_name, mimetype, folder_id=folder_id, org_id=org_id, username=username)
+        if not link:
+            return {"status": "upload_failed", "name": original_name, "error": str(upload_err)}
+            
+        # Sanitize data for Google Sheets
+        raw_ext = analysis.get("extracted_data", {}) if analysis else {}
+        sanitized_ext = raw_ext.copy()
+        if "date" not in sanitized_ext or not sanitized_ext["date"]:
+            sanitized_ext["date"] = datetime.now().strftime("%d/%m/%Y")
+        sanitized_ext["category"] = folder_name
+        for field in ["time", "sender", "receiver", "memo", "ref_number"]:
+            if field not in sanitized_ext: sanitized_ext[field] = "-"
+            
+        # Scan QR Code
+        verification_status = "-"
+        if folder_name == "สลิปโอนเงิน" and content:
+            try:
+                import cv2
+                import numpy as np
+                nparr = np.frombuffer(content, np.uint8)
+                img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                if img is not None:
+                    detector = cv2.QRCodeDetector()
+                    val_qr, pts, qr_code = detector.detectAndDecode(img)
+                    if val_qr:
+                        val_qr = val_qr.strip()
+                        from tools.emvco_parser import EMVCoParser
+                        parser = EMVCoParser()
+                        decoded = parser.decode_slip_qr(val_qr)
+                        is_valid_slip = False
+                        if val_qr.startswith("000201") and ("A000000677" in val_qr):
+                            is_valid_slip = True
+                        elif decoded.get("is_valid_emvco"):
+                            raw_tags = decoded.get("raw_tags", {})
+                            if "00" in raw_tags:
+                                inner = parser.parse_sub_tlv(raw_tags["00"])
+                                if inner.get("00") == "000001":
+                                    is_valid_slip = True
+                        if is_valid_slip:
+                            verification_status = "ผ่าน (คิวอาร์จริง)"
+                        elif val_qr.startswith("https://") or "qr" in val_qr.lower():
+                            verification_status = "ผ่าน (ลิงก์คิวอาร์)"
+                        else:
+                            verification_status = "ไม่ผ่าน (คิวอาร์ไม่ใช่สลิป)"
+                    else:
+                        verification_status = "ไม่ผ่าน (ไม่มี QR Code)"
+            except Exception as qr_err:
+                logger.error(f"Error scanning QR Code in web upload: {qr_err}")
+                
+        log_data = {
+            "file_link": link,
+            "summary": analysis.get("summary", f"Web upload: {original_name}") if analysis else f"Web upload: {original_name}",
+            "original_filename": f.filename or "web_upload",
+            "extracted_data": sanitized_ext,
+            "line_sender_name": f"Web (พี่ {username})",
+            "verification_status": verification_status
+        }
+        
+        # Log to Sheets
+        log_res = google_manager.log_expense(log_data, org_id=org_id, username=username)
+        
+        # Log to local DB
+        amt = 0.0
+        try:
+            amt_raw = sanitized_ext.get("net_amount", 0)
+            if not amt_raw or amt_raw == "-": amt_raw = 0
+            if isinstance(amt_raw, str):
+                amt = float(amt_raw.replace(',', '').replace('฿', '').strip())
+            else:
+                amt = float(amt_raw)
+        except Exception:
+            amt = 0.0
+            
+        try:
+            database.add_drive_log(
+                filename=f.filename or "web_upload",
+                category=sanitized_ext.get("category", "General"),
+                amount=amt,
+                doc_date=sanitized_ext.get("date"),
+                summary=analysis.get("summary") if analysis else f"Web upload: {f.filename}",
+                file_link=link,
+                user_id=f"web_{username}",
+                org_id=org_id
+            )
+        except Exception as dbe:
+            logger.error(f"Database Log Error in web upload: {dbe}")
+            
+        status = "success"
+        if log_res and log_res.get("error") == "duplicate":
+            status = "duplicate"
+            
+        return {
+            "status": status,
+            "name": original_name,
+            "link": link,
+            "sheet": log_res.get("sheet") if log_res else "ทั่วไป",
+            "row": log_res.get("row") if log_res else 0,
+            "amount": amt,
+            "date": sanitized_ext.get("date"),
+            "category": folder_name
+        }
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = [executor.submit(process_file_item, file_obj) for file_obj in files]
+        for future in as_completed(futures):
+            res = future.result()
+            if res:
+                results.append(res)
+                
+    # Run async reconciliation in background
+    _has_success = any(r and r.get("status") in ("success", "duplicate") for r in results)
+    if _has_success:
+        def run_reconciliation_async(user, oid):
+            try:
+                google_manager.set_context(username=user, org_id=oid)
+                google_manager.auto_reconcile_internal()
+            except Exception as _rec_err:
+                logger.warning(f"⚠️ Web upload reconciliation failed: {_rec_err}")
+            finally:
+                google_manager.clear_context()
+        
+        import threading
+        threading.Thread(target=run_reconciliation_async, args=(username, org_id), daemon=True).start()
+        
+    google_manager.clear_context()
+    return jsonify({"ok": True, "results": results})
+
+
+@chat_bp.route("/api/dashboard/financial-insights")
+@login_required
+@_limiter.limit("10 per minute; 30 per hour")
+def financial_insights():
+    org_id = get_current_org_id()
+    # Fetch all logs for this organization to get enough historical data
+    logs = database.get_drive_logs(limit=2000, org_id=org_id)
+    
+    if not logs:
+        return jsonify({
+            "ok": True,
+            "historic_months": [],
+            "forecast_months": [],
+            "categories": [],
+            "insights": "ยังไม่มีประวัติการอัปโหลดบันทึกค่าใช้จ่ายในฐานข้อมูลสำหรับองค์กรนี้ค่ะ"
+        })
+        
+    # Group by month (using YYYY-MM) and category
+    monthly_data = {} # YYYY-MM -> total_amount
+    category_data = {} # Category -> total_amount
+    
+    import re
+    from datetime import datetime
+    
+    for log in logs:
+        amount = log.get("amount") or 0.0
+        try:
+            amount = float(amount)
+        except:
+            amount = 0.0
+            
+        # Determine the month
+        log_month = None
+        # Try to parse doc_date first
+        doc_date = log.get("doc_date")
+        if doc_date and isinstance(doc_date, str):
+            # Try DD/MM/YYYY
+            m = re.match(r"(\d{1,2})/(\d{1,2})/(\d{4})", doc_date)
+            if m:
+                log_month = f"{m.group(3)}-{int(m.group(2)):02d}"
+            else:
+                # Try YYYY-MM-DD
+                m2 = re.match(r"(\d{4})-(\d{1,2})-(\d{1,2})", doc_date)
+                if m2:
+                    log_month = f"{m2.group(1)}-{int(m2.group(2)):02d}"
+        
+        # Fallback to created_at (format YYYY-MM-DD HH:MM:SS)
+        if not log_month:
+            created_at = log.get("created_at")
+            if created_at and isinstance(created_at, str):
+                m3 = re.match(r"(\d{4})-(\d{2})", created_at)
+                if m3:
+                    log_month = m3.group(0)
+                    
+        if not log_month:
+            # Fallback to current month
+            log_month = datetime.now().strftime("%Y-%m")
+            
+        monthly_data[log_month] = monthly_data.get(log_month, 0.0) + amount
+        
+        cat = log.get("category") or "ทั่วไป"
+        category_data[cat] = category_data.get(cat, 0.0) + amount
+
+    # Sort months chronologically
+    sorted_months = sorted(monthly_data.keys())
+    historic_list = [{"month": m, "total": monthly_data[m]} for m in sorted_months]
+    
+    # Calculate Forecasting: Linear Regression + 3-month Moving Average
+    forecast_list = []
+    if len(historic_list) >= 1:
+        past_totals = [x["total"] for x in historic_list]
+        avg_outflow = sum(past_totals) / len(past_totals)
+        
+        slope = 0.0
+        if len(historic_list) >= 2:
+            x_vals = list(range(len(historic_list)))
+            y_vals = past_totals
+            x_mean = sum(x_vals) / len(x_vals)
+            y_mean = sum(y_vals) / len(y_vals)
+            num = sum((x_vals[i] - x_mean) * (y_vals[i] - y_mean) for i in range(len(historic_list)))
+            den = sum((x_vals[i] - x_mean) ** 2 for i in range(len(historic_list)))
+            if den != 0:
+                slope = num / den
+                
+        # Generate predictions for next 3 months
+        last_m_str = sorted_months[-1]
+        try:
+            last_m_dt = datetime.strptime(last_m_str, "%Y-%m")
+        except:
+            last_m_dt = datetime.now()
+            
+        for i in range(1, 4):
+            new_month = last_m_dt.month + i
+            new_year = last_m_dt.year
+            while new_month > 12:
+                new_month -= 12
+                new_year += 1
+            f_month_str = f"{new_year}-{new_month:02d}"
+            
+            last_actual = past_totals[-1]
+            pred_linear = last_actual + slope * i
+            
+            moving_avg = sum(past_totals[-3:]) / min(len(past_totals), 3)
+            
+            predicted_value = max(0.0, (pred_linear * 0.6) + (moving_avg * 0.4))
+            
+            forecast_list.append({
+                "month": f_month_str,
+                "total": round(predicted_value, 2)
+            })
+            
+    # Prepare text summary for Gemini AI
+    historic_text = "\n".join([f"- เดือน {x['month']}: ยอดรวม {x['total']:,.2f} บาท" for x in historic_list[-6:]])
+    category_text = "\n".join([f"- หมวดหมู่ '{k}': ยอดสะสม {v:,.2f} บาท" for k, v in category_data.items()])
+    forecast_text = "\n".join([f"- คาดการณ์เดือน {x['month']}: {x['total']:,.2f} บาท" for x in forecast_list])
+    
+    prompt = f"""คุณเป็น AI ผู้เชี่ยวชาญด้านการเงิน บัญชีองค์กร และการวางแผนภาษี (Financial Analyst)
+วิเคราะห์ข้อมูลค่าใช้จ่ายและประเมินแนวโน้มทางการเงินขององค์กร เพื่อหาคำแนะนำเชิงลึก (Insights)
+
+ข้อมูลค่าใช้จ่ายย้อนหลัง (สูงสุด 6 เดือน):
+{historic_text}
+
+สรุปยอดสะสมแยกตามหมวดหมู่:
+{category_text}
+
+การคาดการณ์รายจ่ายล่วงหน้า 3 เดือน:
+{forecast_text}
+
+โปรดสร้างสรุปรายงานวิเคราะห์ทางการเงินและข้อเสนอแนะเชิงลึก โดยระบุหัวข้อเหล่านี้เป็นภาษาไทยให้กระชับ ชัดเจน และดูเป็นมืออาชีพสำหรับระดับบริหาร:
+1. 📈 สรุปภาพรวมและแนวโน้มการใช้จ่าย (วิเคราะห์ทิศทางและแนวโน้มหลัก)
+2. 💡 โอกาสในการประหยัดและจุดที่ต้องควบคุม (ชี้เป้ากลุ่มรายจ่ายสูงผิดปกติหรือจุดรั่วไหล)
+3. 🧾 คำแนะนำด้านการวางแผนภาษีองค์กร (การจัดการสิทธิ์ลดหย่อนหรือความถูกต้องของเอกสาร)
+4. 🚀 การวางแผนสำรองเงินสดและ Runway (คำแนะนำในการเตรียมเงินสำรอง)
+
+ใช้การจัดรูปแบบด้วย Markdown ที่สวยงาม (ใช้ตัวหนา, อิโมจิ, รายการสัญลักษณ์) ไม่ต้องมีเกริ่นนำหรือคำลงท้ายยาวๆ เริ่มสรุปได้ทันที:"""
+
+    insights = "ไม่สามารถสร้างการวิเคราะห์ AI ได้ในขณะนี้ค่ะ"
+    try:
+        _allowed, _used, _limit = billing.check_and_increment(org_id, "ai_query_count")
+        if _allowed:
+            provider = ai_providers.get_provider()
+            ai_res = ""
+            for chunk in provider.chat_stream(prompt, [], "คุณคือ AI ผู้เชี่ยวชาญด้านบัญชีและการเงิน"):
+                if chunk: ai_res += chunk
+            insights = ai_res.strip()
+        else:
+            insights = f"⚠️ สิทธิ์ใช้งาน AI ของคุณสำหรับเดือนนี้เต็มแล้ว ({_limit} ครั้ง) กรุณาอัปเกรดสิทธิ์ของคุณเพื่อรับข้อมูลวิเคราะห์เชิงลึกจาก AI"
+    except Exception as e:
+        logger.error(f"AI insights generation error: {e}")
+        insights = f"⚠️ เกิดข้อผิดพลาดในการเชื่อมต่อกับ AI: {e}"
+        
+    return jsonify({
+        "ok": True,
+        "historic_months": historic_list,
+        "forecast_months": forecast_list,
+        "categories": [{"category": k, "total": v} for k, v in category_data.items()],
+        "insights": insights
+    })
 
