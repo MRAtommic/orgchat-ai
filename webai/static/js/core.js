@@ -828,7 +828,20 @@ function showWeatherDetail() {
 }
 
 // Alias for index.html onclick
-function showView(viewId) { switchView(viewId); }
+function showView(viewId) {
+  if (typeof switchView === 'function') {
+    switchView(viewId);
+  } else {
+    console.warn(`[showView] switchView is not defined yet. Retrying in 50ms for view: ${viewId}`);
+    const interval = setInterval(() => {
+      if (typeof switchView === 'function') {
+        clearInterval(interval);
+        switchView(viewId);
+      }
+    }, 50);
+    setTimeout(() => clearInterval(interval), 5000);
+  }
+}
 
 // ─── AI Summary Logic ────────────────────────
 async function renderSummary() {

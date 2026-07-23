@@ -3716,7 +3716,6 @@ def process_line_command(text, user_id, reply_token, group_id=None):
             is_ok, sender_username = check_line_user_permission(user_id, "expense", reply_token, group_id)
             if is_ok:
                 try:
-                    import ai_providers
                     import payment_voucher_service
 
                     sender_name = get_line_sender_name(group_id, user_id) or "ผู้ขอเบิกเงิน"
