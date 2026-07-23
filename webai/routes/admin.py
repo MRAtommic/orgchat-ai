@@ -4149,11 +4149,114 @@ def set_category_access_level():
     data = request.get_json() or {}
     cat_id = data.get("category_id")
     access_level = data.get("access_level", "public") # public, internal, confidential, executives
-    if not cat_id:
-        return jsonify({"ok": False, "error": "ระบุ category_id"}), 400
-    
     ok = database.update_kb_category_access_level(cat_id, access_level)
     if ok:
         database.log_audit_event(session.get("user"), get_current_org_id(), "UPDATE_CATEGORY_ACCESS", f"Set category #{cat_id} access to {access_level}", request.remote_addr)
     return jsonify({"ok": ok})
+
+
+# ══════════════════════════════════════════════════════
+# Payment Voucher & Category Rules Endpoints
+# ══════════════════════════════════════════════════════
+@admin_bp.route("/api/dashboard/create-payment-voucher", methods=["POST"])
+@login_required
+@billing.require_feature("financial_dashboard")
+def api_dashboard_create_payment_voucher():
+    """Generates a Batch Payment Voucher (ใบสำคัญจ่าย) PDF for selected expenses."""
+    try:
+        from google_drive_service import google_manager
+        import payment_voucher_service
+
+        org_id = session.get("org_id") or get_current_org_id()
+        username = session.get("user")
+        google_manager.set_context(username, org_id)
+
+        data = request.get_json() or {}
+        items = data.get("items", [])
+        if not items or not isinstance(items, list):
+            return jsonify({"ok": False, "error": "กรุณาเลือกรายการรายจ่ายอย่างน้อย 1 รายการ"}), 400
+
+        org_info = database.get_org(org_id)
+        org_name = org_info.get("name", "องค์กรของคุณ") if org_info else "องค์กรของคุณ"
+
+        abs_pdf_path, filename = payment_voucher_service.generate_batch_payment_voucher_pdf(items, org_name=org_name)
+
+        # Upload generated PDF to Google Drive folder "ใบสำคัญจ่าย"
+        file_link = f"/static/downloads/{filename}"
+        try:
+            with open(abs_pdf_path, "rb") as f:
+                content = f.read()
+            drive_res = google_manager.upload_file(
+                content=content,
+                filename=filename,
+                mimetype="application/pdf",
+                target_folder_name="ใบสำคัญจ่าย",
+                uploader_id=username
+            )
+            if drive_res and isinstance(drive_res, dict) and drive_res.get("web_view_link"):
+                file_link = drive_res["web_view_link"]
+        except Exception as e_drive:
+            logger.warning(f"Drive upload failed for Payment Voucher, falling back to local link: {e_drive}")
+
+        return jsonify({
+            "ok": True,
+            "pdf_url": f"/static/downloads/{filename}",
+            "file_link": file_link,
+            "filename": filename,
+            "total_items": len(items)
+        })
+    except Exception as e:
+        logger.error(f"Error creating Payment Voucher: {e}", exc_info=True)
+        return jsonify({"ok": False, "error": f"เกิดข้อผิดพลาดในการสร้างใบสำคัญจ่าย: {str(e)}"}), 500
+
+
+@admin_bp.route("/api/categories", methods=["GET", "POST"])
+@login_required
+def api_custom_categories():
+    org_id = session.get("org_id") or get_current_org_id()
+    if request.method == "GET":
+        cats = database.get_custom_categories(org_id)
+        return jsonify({"ok": True, "categories": cats})
+    elif request.method == "POST":
+        data = request.get_json() or {}
+        cat_name = data.get("category_name", "").strip()
+        account_code = data.get("account_code", "").strip()
+        if not cat_name:
+            return jsonify({"ok": False, "error": "กรุณาระบุชื่อหมวดหมู่"}), 400
+        cat_id = database.add_custom_category(org_id, cat_name, account_code=account_code)
+        return jsonify({"ok": True, "category_id": cat_id})
+
+
+@admin_bp.route("/api/categories/<int:cat_id>", methods=["DELETE"])
+@login_required
+def api_delete_custom_category(cat_id):
+    org_id = session.get("org_id") or get_current_org_id()
+    ok = database.delete_custom_category(org_id, cat_id)
+    return jsonify({"ok": ok})
+
+
+@admin_bp.route("/api/category-rules", methods=["GET", "POST"])
+@login_required
+def api_ai_category_rules():
+    org_id = session.get("org_id") or get_current_org_id()
+    if request.method == "GET":
+        rules = database.get_ai_category_rules(org_id)
+        return jsonify({"ok": True, "rules": rules})
+    elif request.method == "POST":
+        data = request.get_json() or {}
+        keyword = data.get("keyword", "").strip()
+        category_name = data.get("category_name", "").strip()
+        if not keyword or not category_name:
+            return jsonify({"ok": False, "error": "กรุณาระบุ Keyword และหมวดหมู่เป้าหมาย"}), 400
+        rule_id = database.add_ai_category_rule(org_id, keyword, category_name)
+        return jsonify({"ok": True, "rule_id": rule_id})
+
+
+@admin_bp.route("/api/category-rules/<int:rule_id>", methods=["DELETE"])
+@login_required
+def api_delete_ai_category_rule(rule_id):
+    org_id = session.get("org_id") or get_current_org_id()
+    ok = database.delete_ai_category_rule(org_id, rule_id)
+    return jsonify({"ok": ok})
+
 

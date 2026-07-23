@@ -345,11 +345,25 @@ class GroqProvider(AIProvider):
 
         yield "⚠️ ระบบ AI สำรอง (Groq) ขัดข้อง (ทุกโมเดลถูกปิดใช้งาน)"
 
+
 def analyze_media_contents(content_data: bytes, mime_type: str = "image/jpeg"):
     """ใช้ AI วิเคราะห์เนื้อหา (OCR สำหรับรูปภาพ หรือ STT สำหรับเสียง)"""
     
     is_audio = mime_type.startswith("audio/")
     
+    # Load organization custom category rules if available
+    custom_rules_str = ""
+    try:
+        import database
+        from routes.shared import get_current_org_id
+        org_id = get_current_org_id() or 1
+        custom_rules = database.get_ai_category_rules(org_id)
+        if custom_rules:
+            rule_texts = "\n".join([f"- If text/merchant contains '{r['keyword']}', categorize as '{r['category_name']}'" for r in custom_rules])
+            custom_rules_str = f"\n\nORGANIZATION CUSTOM CATEGORY RULES:\n{rule_texts}\n"
+    except Exception as e_rule:
+        logger.warning(f"Could not load custom AI rules: {e_rule}")
+
     if is_audio:
         prompt = """คุณคือ 'พั้น' ผู้ช่วยอัจฉริยะ สกัดข้อมูลจากข้อความเสียงบันทึกค่าใช้จ่าย
 ฟังเสียงและ EXTRACT JSON ONLY.
@@ -368,7 +382,7 @@ def analyze_media_contents(content_data: bytes, mime_type: str = "image/jpeg"):
 RULES:
 1. If the user says "บันทึกค่า...", set category to "General_Expense" or the most relevant one.
 2. Extract exact amount mentioned.
-3. Use "-" for missing string, 0 for missing numbers. No conversational text."""
+3. Use "-" for missing string, 0 for missing numbers. No conversational text.""" + custom_rules_str
     else:
         prompt = """คุณคือ 'พั้น' ผู้ช่วยอัจฉริยะ สกัดข้อมูลจากเอกสารด้วยความแม่นยำ
 EXTRACT JSON ONLY.
@@ -399,7 +413,7 @@ EXTRACT JSON ONLY.
   "income_type": "Income Type", "wht_type": "WHT Type", "is_etax": false,
   "transactions": [{"date": "DD/MM/YYYY", "time": "HH:MM", "description": "...", "details": "...", "withdrawal": 0.00, "deposit": 0.00, "balance": 0.00, "channel": "...", "ref_number": "...", "counterparty": "..."}]
   },  "summary": "Thai summary"
-}
+}""" + custom_rules_str
 RULES:
 0. COMPANY NAME RULE (CRITICAL — applies to ALL document types):
    - `sender` and `receiver` MUST be the FULL OFFICIAL registered name exactly as it appears on the document.

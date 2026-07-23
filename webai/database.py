@@ -1231,6 +1231,30 @@ def init_db():
             expires_at  REAL NOT NULL
         )
     """)
+
+    # Custom Categories & AI Auto-Categorization Rules
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS custom_expense_categories (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            org_id        INTEGER NOT NULL,
+            category_name TEXT NOT NULL,
+            account_code  TEXT DEFAULT '',
+            parent_id     INTEGER DEFAULT NULL,
+            created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(org_id) REFERENCES organizations(id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ai_category_rules (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            org_id        INTEGER NOT NULL,
+            keyword       TEXT NOT NULL,
+            category_name TEXT NOT NULL,
+            rule_type     TEXT DEFAULT 'contains',
+            created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(org_id) REFERENCES organizations(id) ON DELETE CASCADE
+        )
+    """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_org_members_username ON organization_members(username)")
     # Migration: plan_expires_at, Stripe fields on organizations
     for col_sql in [
@@ -6710,3 +6734,78 @@ def get_audit_logs(org_id=1, limit=100, offset=0, username_filter=None, action_f
     except Exception as e:
         logger.error(f"[get_audit_logs error] {e}")
         return [], 0
+
+
+# ══════════════════════════════════════════════════════
+# Custom Expense Categories & AI Rules CRUD
+# ══════════════════════════════════════════════════════
+def get_custom_categories(org_id: int) -> list[dict]:
+    with db_readonly() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, category_name, account_code, parent_id, created_at
+            FROM custom_expense_categories
+            WHERE org_id = ?
+            ORDER BY category_name ASC
+        """, (org_id,))
+        return [
+            {
+                "id": r[0],
+                "category_name": r[1],
+                "account_code": r[2] or "",
+                "parent_id": r[3],
+                "created_at": str(r[4])
+            }
+            for r in cursor.fetchall()
+        ]
+
+def add_custom_category(org_id: int, category_name: str, account_code: str = "", parent_id: int = None) -> int:
+    with db_write() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO custom_expense_categories (org_id, category_name, account_code, parent_id)
+            VALUES (?, ?, ?, ?)
+        """, (org_id, category_name.strip(), account_code.strip(), parent_id))
+        return cursor.lastrowid
+
+def delete_custom_category(org_id: int, category_id: int) -> bool:
+    with db_write() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM custom_expense_categories WHERE id = ? AND org_id = ?", (category_id, org_id))
+        return cursor.rowcount > 0
+
+def get_ai_category_rules(org_id: int) -> list[dict]:
+    with db_readonly() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, keyword, category_name, rule_type, created_at
+            FROM ai_category_rules
+            WHERE org_id = ?
+            ORDER BY id DESC
+        """, (org_id,))
+        return [
+            {
+                "id": r[0],
+                "keyword": r[1],
+                "category_name": r[2],
+                "rule_type": r[3] or "contains",
+                "created_at": str(r[4])
+            }
+            for r in cursor.fetchall()
+        ]
+
+def add_ai_category_rule(org_id: int, keyword: str, category_name: str, rule_type: str = "contains") -> int:
+    with db_write() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO ai_category_rules (org_id, keyword, category_name, rule_type)
+            VALUES (?, ?, ?, ?)
+        """, (org_id, keyword.strip().lower(), category_name.strip(), rule_type))
+        return cursor.lastrowid
+
+def delete_ai_category_rule(org_id: int, rule_id: int) -> bool:
+    with db_write() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM ai_category_rules WHERE id = ? AND org_id = ?", (rule_id, org_id))
+        return cursor.rowcount > 0
+

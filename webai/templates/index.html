@@ -3330,6 +3330,10 @@
                   class="org-tab px-4 py-2 rounded-xl text-xs font-black transition-all text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-200">
                   <i data-lucide="megaphone" class="w-3.5 h-3.5 inline-block mr-1.5"></i>ประกาศองค์กร
                 </button>
+                <button id="orgTab-categories" onclick="switchOrgTab('categories'); loadCustomCategoriesAndRules();"
+                  class="org-tab px-4 py-2 rounded-xl text-xs font-black transition-all text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-200">
+                  <i data-lucide="tag" class="w-3.5 h-3.5 inline-block mr-1.5 text-amber-500"></i>หมวดหมู่ & กฎ AI
+                </button>
                 <button id="orgTab-logs" onclick="switchOrgTab('logs')"
                   class="org-tab px-4 py-2 rounded-xl text-xs font-black transition-all text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-200">
                   <i data-lucide="history" class="w-3.5 h-3.5 inline-block mr-1.5"></i>บันทึกกิจกรรม
@@ -3792,6 +3796,53 @@
                   <!-- Announcement List -->
                   <div id="orgAnnouncementList" class="space-y-3">
                     <div class="text-center py-8 text-surface-400 text-xs">กำลังโหลดรายการประกาศ...</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Tab: Categories & AI Rules -->
+              <div id="orgTabContent-categories" class="hidden space-y-6">
+                <!-- Custom Categories Card -->
+                <div class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-3xl p-6 shadow-sm space-y-4">
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <h3 class="font-extrabold text-sm text-surface-900 dark:text-white flex items-center gap-2">
+                        <i data-lucide="folder-tree" class="w-4 h-4 text-brand-600"></i> หมวดหมู่รายจ่ายแบบกำหนดเอง (Custom Categories)
+                      </h3>
+                      <p class="text-xs text-surface-400 mt-0.5">เพิ่มหมวดหมู่รายจ่ายเฉพาะสำหรับองค์กรเพื่อการลงบัญชีที่แม่นยำ</p>
+                    </div>
+                  </div>
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <input id="newCatName" type="text" placeholder="ชื่อหมวดหมู่ (เช่น ค่าเดินทาง)" class="input-field py-2 text-xs">
+                    <input id="newCatCode" type="text" placeholder="รหัสบัญชี (ถ้ามี เช่น 5101)" class="input-field py-2 text-xs">
+                    <button onclick="addCustomCategoryBtn()" class="btn-primary py-2 text-xs font-bold rounded-xl flex items-center justify-center gap-1">
+                      <i data-lucide="plus" class="w-4 h-4"></i> เพิ่มหมวดหมู่
+                    </button>
+                  </div>
+                  <div id="customCatList" class="flex flex-wrap gap-2 pt-2">
+                    <span class="text-xs text-surface-400">กำลังโหลด...</span>
+                  </div>
+                </div>
+
+                <!-- AI Keyword Rules Card -->
+                <div class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-3xl p-6 shadow-sm space-y-4">
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <h3 class="font-extrabold text-sm text-surface-900 dark:text-white flex items-center gap-2">
+                        <i data-lucide="sparkles" class="w-4 h-4 text-amber-500"></i> กฎจัดหมวดหมู่อัตโนมัติด้วย AI (AI Categorization Rules)
+                      </h3>
+                      <p class="text-xs text-surface-400 mt-0.5">กำหนด Keyword ที่พบในสลิป/บิล เพื่อให้ AI สกัดข้อมูลและจัดลงหมวดหมู่อัตโนมัติ</p>
+                    </div>
+                  </div>
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <input id="newRuleKeyword" type="text" placeholder="Keyword (เช่น HomePro, PTT)" class="input-field py-2 text-xs">
+                    <input id="newRuleCategory" type="text" placeholder="หมวดหมู่เป้าหมาย (เช่น อุปกรณ์สำนักงาน)" class="input-field py-2 text-xs">
+                    <button onclick="addAIRuleBtn()" class="btn-primary py-2 text-xs font-bold bg-amber-600 hover:bg-amber-700 rounded-xl flex items-center justify-center gap-1">
+                      <i data-lucide="plus" class="w-4 h-4"></i> เพิ่มกฎ AI
+                    </button>
+                  </div>
+                  <div id="aiRuleList" class="space-y-2 pt-2">
+                    <span class="text-xs text-surface-400">กำลังโหลด...</span>
                   </div>
                 </div>
               </div>
@@ -10664,6 +10715,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     
                     return `
                     <tr class="table-row-hover transition cursor-pointer" onclick="openEditModalFromRow(${JSON.stringify(item).replace(/"/g, '&quot;')})">
+                        <td class="w-10 px-3 py-4 text-center" onclick="event.stopPropagation()">
+                            <input type="checkbox" class="pv-checkbox w-4 h-4 rounded text-brand-600 border-slate-300 focus:ring-brand-500 cursor-pointer" data-item="${escAttr(JSON.stringify(item))}" onchange="updatePVBatchButton()">
+                        </td>
                         <td class="px-6 py-4 text-xs text-slate-500 whitespace-nowrap">${escHtml(item.date)}</td>
                         <td class="px-6 py-4 whitespace-nowrap">
                             <span class="px-2.5 py-0.5 rounded text-[10px] font-bold ${docTypeClass}">${escHtml(item.sheet_name)}</span>
@@ -10701,6 +10755,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="flex items-center gap-2">
                             <h4 class="text-xs font-extrabold text-slate-950 uppercase tracking-wide">${monthNameTH}</h4>
                             <span class="badge-slate px-2 py-0.5 rounded-full text-[9px] font-bold">${items.length} รายการ</span>
+                            <button id="batchPVBtn" onclick="createBatchPaymentVoucher()" class="hidden ml-2 px-3 py-1 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm">
+                                <i data-lucide="file-text" class="w-3.5 h-3.5"></i> ออกใบสำคัญจ่ายกลุ่ม (Payment Voucher)
+                            </button>
                         </div>
                         <span class="text-xs font-bold text-slate-800">ยอดรวม ฿${formatNum(monthTotal)}</span>
                     </div>
@@ -10708,6 +10765,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <table class="w-full text-left">
                             <thead>
                                 <tr class="bg-slate-50 border-b border-slate-100">
+                                    <th class="w-10 px-3 py-3 text-center"><input type="checkbox" class="w-4 h-4 rounded text-brand-600 border-slate-300 focus:ring-brand-500 cursor-pointer" onchange="toggleSelectAllPV(this)"></th>
                                     <th class="px-6 py-3 text-[9px] font-bold text-slate-400 uppercase tracking-wider">วันที่</th>
                                     <th class="px-6 py-3 text-[9px] font-bold text-slate-400 uppercase tracking-wider">ประเภทเอกสาร</th>
                                     <th class="px-6 py-3 text-[9px] font-bold text-slate-400 uppercase tracking-wider">ร้านค้า</th>

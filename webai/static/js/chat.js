@@ -8003,7 +8003,7 @@ let _orgMembersLoaded = false;
 let _orgLogsCache = [];
 
 function switchOrgTab(tab) {
-  ['members', 'tree', 'google', 'business', 'peak', 'announcements', 'logs'].forEach(t => {
+  ['members', 'tree', 'google', 'business', 'peak', 'announcements', 'categories', 'logs'].forEach(t => {
     const btn = $(`orgTab-${t}`);
     const content = $(`orgTabContent-${t}`);
     const active = t === tab;
@@ -8018,8 +8018,183 @@ function switchOrgTab(tab) {
   if (tab === 'peak') loadPeakSettingsStatus();
   if (tab === 'tree') renderOrgTree();
   if (tab === 'announcements') loadOrgAnnouncements();
+  if (tab === 'categories') loadCustomCategoriesAndRules();
   if (tab === 'logs') loadOrgLogs();
 }
+
+// ─── Custom Categories & AI Rules JS ───
+async function loadCustomCategoriesAndRules() {
+  try {
+    const catRes = await fetch('/api/categories');
+    const catData = await catRes.json();
+    if (catData.ok) {
+      const listEl = document.getElementById('customCatList');
+      if (listEl) {
+        if (!catData.categories || catData.categories.length === 0) {
+          listEl.innerHTML = '<span class="text-xs text-surface-400">ยังไม่มีหมวดหมู่คัสตอม</span>';
+        } else {
+          listEl.innerHTML = catData.categories.map(c => `
+            <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-brand-50 text-brand-700 border border-brand-200 dark:bg-brand-950/40 dark:text-brand-300 dark:border-brand-800">
+              ${escHtml(c.category_name)} ${c.account_code ? `<span class="opacity-60 text-[10px]">(${escHtml(c.account_code)})</span>` : ''}
+              <button onclick="deleteCustomCategoryBtn(${c.id})" class="hover:text-red-600 transition-colors ml-1">&times;</button>
+            </span>
+          `).join('');
+        }
+      }
+    }
+
+    const ruleRes = await fetch('/api/category-rules');
+    const ruleData = await ruleRes.json();
+    if (ruleData.ok) {
+      const listEl = document.getElementById('aiRuleList');
+      if (listEl) {
+        if (!ruleData.rules || ruleData.rules.length === 0) {
+          listEl.innerHTML = '<span class="text-xs text-surface-400">ยังไม่ได้ตั้งค่ากฎ AI</span>';
+        } else {
+          listEl.innerHTML = ruleData.rules.map(r => `
+            <div class="flex items-center justify-between p-3 rounded-xl bg-surface-50 dark:bg-surface-800/40 border border-surface-200 dark:border-surface-700 text-xs">
+              <div class="flex items-center gap-2">
+                <span class="font-bold text-amber-600 dark:text-amber-400">พบคำว่า "${escHtml(r.keyword)}"</span>
+                <span class="text-surface-400">➔</span>
+                <span class="font-bold text-emerald-600 dark:text-emerald-400">จัดลงหมวดหมู่ "${escHtml(r.category_name)}"</span>
+              </div>
+              <button onclick="deleteAIRuleBtn(${r.id})" class="p-1 text-surface-400 hover:text-red-600 transition-colors">
+                <i data-lucide="trash-2" class="w-4 h-4"></i>
+              </button>
+            </div>
+          `).join('');
+        }
+      }
+    }
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  } catch(e) {
+    console.error('Failed to load categories/rules', e);
+  }
+}
+
+async function addCustomCategoryBtn() {
+  const nameInput = document.getElementById('newCatName');
+  const codeInput = document.getElementById('newCatCode');
+  const name = nameInput ? nameInput.value.trim() : '';
+  const code = codeInput ? codeInput.value.trim() : '';
+  if (!name) { if (typeof showToast === 'function') showToast('กรุณาระบุชื่อหมวดหมู่', 'error'); else alert('กรุณาระบุชื่อหมวดหมู่'); return; }
+  try {
+    const res = await fetch('/api/categories', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ category_name: name, account_code: code })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      if (typeof showToast === 'function') showToast('เพิ่มหมวดหมู่สำเร็จ', 'success');
+      if (nameInput) nameInput.value = '';
+      if (codeInput) codeInput.value = '';
+      loadCustomCategoriesAndRules();
+    } else {
+      if (typeof showToast === 'function') showToast(data.error || 'เกิดข้อผิดพลาด', 'error');
+    }
+  } catch(e) { console.error(e); }
+}
+
+async function deleteCustomCategoryBtn(id) {
+  if (!confirm('ยืนยันลบหมวดหมู่นี้?')) return;
+  try {
+    const res = await fetch(`/api/categories/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.ok) {
+      if (typeof showToast === 'function') showToast('ลบหมวดหมู่สำเร็จ', 'success');
+      loadCustomCategoriesAndRules();
+    }
+  } catch(e) {}
+}
+
+async function addAIRuleBtn() {
+  const kwInput = document.getElementById('newRuleKeyword');
+  const catInput = document.getElementById('newRuleCategory');
+  const kw = kwInput ? kwInput.value.trim() : '';
+  const cat = catInput ? catInput.value.trim() : '';
+  if (!kw || !cat) { if (typeof showToast === 'function') showToast('กรุณาระบุ Keyword และหมวดหมู่เป้าหมาย', 'error'); return; }
+  try {
+    const res = await fetch('/api/category-rules', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ keyword: kw, category_name: cat })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      if (typeof showToast === 'function') showToast('เพิ่มกฎ AI สำเร็จ', 'success');
+      if (kwInput) kwInput.value = '';
+      if (catInput) catInput.value = '';
+      loadCustomCategoriesAndRules();
+    } else {
+      if (typeof showToast === 'function') showToast(data.error || 'เกิดข้อผิดพลาด', 'error');
+    }
+  } catch(e) { console.error(e); }
+}
+
+async function deleteAIRuleBtn(id) {
+  if (!confirm('ยืนยันลบกฎ AI นี้?')) return;
+  try {
+    const res = await fetch(`/api/category-rules/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.ok) {
+      if (typeof showToast === 'function') showToast('ลบกฎ AI สำเร็จ', 'success');
+      loadCustomCategoriesAndRules();
+    }
+  } catch(e) {}
+}
+
+function updatePVBatchButton() {
+  const checkedBoxes = document.querySelectorAll('.pv-checkbox:checked');
+  const btn = document.getElementById('batchPVBtn');
+  if (btn) {
+    if (checkedBoxes.length > 0) {
+      btn.classList.remove('hidden');
+      btn.innerHTML = `<i data-lucide="file-text" class="w-3.5 h-3.5"></i> ออกใบสำคัญจ่ายกลุ่ม (${checkedBoxes.length} รายการ)`;
+    } else {
+      btn.classList.add('hidden');
+    }
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+}
+
+function toggleSelectAllPV(masterCheckbox) {
+  const checkboxes = document.querySelectorAll('.pv-checkbox');
+  checkboxes.forEach(cb => { cb.checked = masterCheckbox.checked; });
+  updatePVBatchButton();
+}
+
+async function createBatchPaymentVoucher() {
+  const checkedBoxes = document.querySelectorAll('.pv-checkbox:checked');
+  if (checkedBoxes.length === 0) {
+    if (typeof showToast === 'function') showToast('กรุณาเลือกรายการค่าใช้จ่ายอย่างน้อย 1 รายการค่ะ', 'error');
+    return;
+  }
+  const items = [];
+  checkedBoxes.forEach(cb => {
+    try {
+      items.push(JSON.parse(cb.getAttribute('data-item')));
+    } catch(e){}
+  });
+
+  try {
+    const res = await fetch('/api/dashboard/create-payment-voucher', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ items: items })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      if (typeof showToast === 'function') showToast('ออกใบสำคัญจ่ายสำเร็จ!', 'success');
+      window.open(data.file_link || data.pdf_url, '_blank');
+    } else {
+      if (typeof showToast === 'function') showToast(data.error || 'เกิดข้อผิดพลาดในการสร้างใบสำคัญจ่าย', 'error');
+    }
+  } catch(e) {
+    if (typeof showToast === 'function') showToast('เกิดข้อผิดพลาดในการเชื่อมต่อระบบ', 'error');
+  }
+}
+
 
 async function loadOrgAnnouncements() {
   const container = $('orgAnnouncementList');

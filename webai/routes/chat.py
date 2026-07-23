@@ -3709,6 +3709,103 @@ def process_line_command(text, user_id, reply_token, group_id=None):
                 reply_to_line(reply_token, "❌ น้องพั้นหาโฟลเดอร์ใน Drive ไม่เจอเลยค่ะพี่")
             return
 
+        # ── 7. Text-to-Expense Handler (พิมพ์บันทึกค่าใช้จ่ายผ่าน LINE + ใบแทนใบเสร็จ Form 50) ──
+        has_amount = bool(re.search(r'\d+', text))
+        is_expense_trigger = any(text_lower.startswith(k) for k in ["เบิก", "บันทึกค่า", "บันทึกรายจ่าย", "จ่ายค่า", "ค่าใช้จ่าย", "ค่า"]) and has_amount
+        if is_expense_trigger and not text_lower.startswith(("ค่าบริการ", "ค่าน้ำมันเท่าไหร่", "ค่าใช้จ่ายคือ", "ค่าอะไร")):
+            is_ok, sender_username = check_line_user_permission(user_id, "expense", reply_token, group_id)
+            if is_ok:
+                try:
+                    import ai_providers
+                    import payment_voucher_service
+
+                    sender_name = get_line_sender_name(group_id, user_id) or "ผู้ขอเบิกเงิน"
+                    org_info = database.get_org(_line_org_id)
+                    org_name = org_info.get("name", "องค์กรของคุณ") if org_info else "องค์กรของคุณ"
+
+                    # Parse amount from text
+                    extracted_net = 0.0
+                    amt_match = re.search(r'(\d+(?:\.\d+)?)', text)
+                    if amt_match:
+                        extracted_net = float(amt_match.group(1))
+
+                    extracted_details = text
+                    extracted_merchant = "-"
+
+                    # Try AI structured analysis
+                    try:
+                        analysis_prompt = (
+                            f"วิเคราะห์ข้อความเบิกค่าใช้จ่ายนี้: '{text}'\n"
+                            f"สกัดข้อมูลออกมาเป็น JSON เท่านั้น:\n"
+                            f"{{\"details\": \"รายละเอียดค่าใช้จ่าย เช่น ค่าแท็กซี่ไปพบลูกค้า\", \"net_amount\": 250, \"merchant\": \"ชื่อร้านค้า/ผู้รับเงินถ้ามี หรือ -\"}}"
+                        )
+                        ai_res = ai_providers.generate_chat_response(analysis_prompt)
+                        if isinstance(ai_res, str) and "{" in ai_res:
+                            json_str = ai_res[ai_res.find("{"):ai_res.rfind("}")+1]
+                            parsed_json = json.loads(json_str)
+                            extracted_details = parsed_json.get("details") or extracted_details
+                            extracted_net = float(parsed_json.get("net_amount") or extracted_net)
+                            extracted_merchant = parsed_json.get("merchant") or extracted_merchant
+                    except Exception as ai_parse_err:
+                        logger.warning(f"AI parse fallback for Text-to-Expense: {ai_parse_err}")
+
+                    item_data = {
+                        "date": datetime.now().strftime("%d/%m/%Y"),
+                        "line_sender_name": sender_name,
+                        "requester": sender_name,
+                        "merchant": extracted_merchant,
+                        "details": extracted_details,
+                        "net_amount": extracted_net,
+                        "ref_number": f"RS-{int(time.time())}"
+                    }
+
+                    # Generate PDF Form 50
+                    abs_pdf_path, pdf_filename = payment_voucher_service.generate_receipt_substitute_pdf(item_data, org_name=org_name)
+                    pdf_url = f"{_base_url}/static/downloads/{pdf_filename}"
+
+                    # Upload to Google Drive folder "ใบแทนใบเสร็จ"
+                    try:
+                        with open(abs_pdf_path, "rb") as f_pdf:
+                            pdf_bytes = f_pdf.read()
+                        drive_res = mgr.upload_file(
+                            content=pdf_bytes,
+                            filename=pdf_filename,
+                            mimetype="application/pdf",
+                            target_folder_name="ใบแทนใบเสร็จ",
+                            uploader_id=user_id
+                        )
+                        if drive_res and isinstance(drive_res, dict) and drive_res.get("web_view_link"):
+                            pdf_url = drive_res["web_view_link"]
+                    except Exception as drive_err:
+                        logger.warning(f"Drive upload for Form 50 failed: {drive_err}")
+
+                    # Log to Google Sheets
+                    try:
+                        mgr.add_expense_row("บันทึกค่าใช้จ่าย", [
+                            item_data["date"],
+                            sender_name,
+                            extracted_details,
+                            extracted_merchant,
+                            f"{extracted_net:,.2f}",
+                            "ใบแทนใบเสร็จ (รอเซ็นชื่อ)",
+                            pdf_url
+                        ])
+                    except Exception as sheet_err:
+                        logger.warning(f"Sheets log failed for Form 50: {sheet_err}")
+
+                    reply_msg = (
+                        f"📝 **บันทึกรายการรายจ่ายเรียบร้อยค่ะ!**\n\n"
+                        f"📌 **รายการ:** {extracted_details}\n"
+                        f"💰 **ยอดเงิน:** ฿{extracted_net:,.2f}\n"
+                        f"👤 **ผู้เบิก:** {sender_name}\n"
+                        f"📁 **บันทึกลงชีต:** บันทึกค่าใช้จ่าย\n\n"
+                        f"📄 **ดาวน์โหลด PDF ใบแทนใบเสร็จ Form 50:**\n{pdf_url}"
+                    )
+                    reply_to_line(reply_token, reply_msg, quick_reply=quick_reply)
+                    return
+                except Exception as e_exp:
+                    logger.error(f"Error in Text-to-Expense process: {e_exp}", exc_info=True)
+
         # Check that user is linked before using AI RAG chat
         sender_username = database.get_username_by_line_id(user_id)
         if not sender_username:
