@@ -3769,3 +3769,73 @@ tr:hover .delete-row-btn {
   from { opacity: 0; }
   to { opacity: 1; }
 }
+
+/* ─── Premium UX/UI Enhancements ─── */
+
+/* 1. Smooth View Transitions */
+@keyframes viewFadeInUp {
+  0% {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.view:not(.hidden) {
+  animation: viewFadeInUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* 2. Glassmorphism for Sidebar & Header (Dark Mode) */
+.dark #navSidebar {
+  background: rgba(28, 35, 54, 0.75) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.dark header, .dark .mobile-header {
+  background: rgba(28, 35, 54, 0.75) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* 3. Tactile active feedback for click buttons */
+.nav-item:active, 
+.mobile-nav-btn:active, 
+button:active:not(:disabled),
+.plan-btn:active {
+  transform: scale(0.96);
+  transition: transform 0.08s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+/* 4. Sleek custom scrollbars across the app */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 10px;
+  transition: background 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.5);
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.15);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.3);
+}
