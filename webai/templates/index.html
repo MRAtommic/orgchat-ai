@@ -151,104 +151,192 @@
   <!-- Login Overlay -->
   <div id="loginOverlay"
     class="fixed inset-0 z-[200] bg-surface-50 dark:bg-surface-950 overflow-y-auto flex justify-center p-4 py-8{% if session.get('user') %} hidden{% endif %}">
-    <div class="max-w-md w-full my-auto animate-in zoom-in duration-300">
+    <div class="max-w-md md:max-w-5xl w-full my-auto animate-in zoom-in duration-300">
       <div
-        class="bg-white dark:bg-surface-900 rounded-3xl shadow-2xl border border-surface-200 dark:border-surface-800 overflow-hidden">
-        <div class="p-8 pb-0 text-center">
-          <div
-            class="w-16 h-16 bg-brand-600 text-white rounded-2xl shadow-lg flex items-center justify-center mx-auto mb-6 transform -rotate-6">
-            <i data-lucide="building-2" class="w-10 h-10"></i>
+        class="bg-white dark:bg-surface-900 rounded-3xl shadow-2xl border border-surface-200 dark:border-surface-800 overflow-hidden flex flex-col md:flex-row min-h-[650px]">
+        
+        <!-- Left Column: Login Form -->
+        <div class="w-full md:w-1/2 flex flex-col justify-between bg-white dark:bg-surface-900 border-b md:border-b-0 md:border-r border-surface-200 dark:border-surface-800">
+          <div>
+            <div class="p-8 pb-0 text-center">
+              <div
+                class="w-16 h-16 bg-brand-600 text-white rounded-2xl shadow-lg flex items-center justify-center mx-auto mb-6 transform -rotate-6">
+                <i data-lucide="building-2" class="w-10 h-10"></i>
+              </div>
+              <h1 class="text-3xl font-black tracking-tight text-surface-900 dark:text-white mb-2">OrgChat</h1>
+              <p class="text-surface-500 text-sm">เข้าสู่ระบบเพื่อใช้งานสมอง AI ขององค์กร</p>
+            </div>
+            <div class="p-8 space-y-4">
+              <div class="space-y-1.5">
+                <label class="text-[10px] font-black uppercase tracking-widest text-surface-400 px-1">ชื่อผู้ใช้งาน</label>
+                <div class="relative">
+                  <i data-lucide="user" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400"></i>
+                  <input id="loginUsername" type="text" placeholder="Username" class="input-field w-full pl-11 py-3" />
+                </div>
+              </div>
+              <div class="space-y-1.5">
+                <label
+                  class="text-[10px] font-black uppercase tracking-widest text-surface-400 px-1">รหัสผ่านพื้นฐาน</label>
+                <div class="relative">
+                  <i data-lucide="lock" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400"></i>
+                  <input id="loginPassword" type="password" placeholder="••••••••" class="input-field w-full pl-11 py-3" />
+                </div>
+              </div>
+              <div id="loginError"
+                class="hidden animate-in fade-in slide-in-from-top-1 text-xs text-red-500 bg-red-50 dark:bg-red-900/10 p-3 rounded-xl border border-red-100 dark:border-red-800/50 flex items-center gap-2">
+                <i data-lucide="alert-circle" class="w-4 h-4"></i>
+                <span id="loginErrorMsg"></span>
+              </div>
+              <button id="loginBtn"
+                class="btn-primary w-full py-3.5 rounded-2xl font-bold text-base shadow-lg shadow-brand-500/20 group">
+                เข้าสู่ระบบองค์กร
+                <i data-lucide="arrow-right"
+                  class="w-4 h-4 inline-block ml-1 group-hover:translate-x-1 transition-transform"></i>
+              </button>
+
+              <div class="flex items-center justify-between mt-1">
+                <a href="/forgot-password" class="text-sm text-surface-400 hover:text-brand-600 hover:underline transition-colors">ลืมรหัสผ่าน?</a>
+                <a href="/signup" class="text-sm font-bold text-brand-600 hover:text-brand-700 hover:underline transition-colors">
+                  สมัครใช้งานฟรี →
+                </a>
+              </div>
+
+              <div class="relative flex items-center py-2 hidden" id="googleSignInSeparator">
+                <div class="flex-grow border-t border-surface-200 dark:border-surface-700"></div>
+                <span class="flex-shrink-0 mx-4 text-surface-400 text-xs">หรือเข้าระบบด้วย</span>
+                <div class="flex-grow border-t border-surface-200 dark:border-surface-700"></div>
+              </div>
+              <div id="googleSignInBtn" class="w-full flex justify-center mt-2"></div>
+
+              <!-- QR Login -->
+              <div class="relative flex items-center py-2 mt-2">
+                <div class="flex-grow border-t border-surface-200 dark:border-surface-700"></div>
+                <span class="flex-shrink-0 mx-4 text-surface-400 text-xs">หรือ</span>
+                <div class="flex-grow border-t border-surface-200 dark:border-surface-700"></div>
+              </div>
+              <button onclick="showQRLogin()" class="w-full py-3 rounded-2xl border-2 border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-200 font-bold text-sm hover:border-brand-500 hover:text-brand-600 transition-all flex items-center justify-center gap-3 group">
+                <i data-lucide="qr-code" class="w-5 h-5 group-hover:scale-110 transition-transform"></i>
+                แสดง QR Code (ให้มือถือสแกน)
+              </button>
+              <button onclick="openQRScanner()" class="w-full py-3 rounded-2xl border-2 border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-200 font-bold text-sm hover:border-emerald-500 hover:text-emerald-600 transition-all flex items-center justify-center gap-3 group mt-2">
+                <i data-lucide="camera" class="w-5 h-5 group-hover:scale-110 transition-transform"></i>
+                เปิดกล้องสแกน QR Code
+              </button>
+            </div>
+
+            <!-- QR Code Modal (inside login overlay) -->
+            <div id="qrLoginModal" class="hidden">
+              <div class="p-8 text-center">
+                <button onclick="hideQRLogin()" class="absolute top-4 right-4 p-2 text-surface-400 hover:text-surface-600 transition-colors">
+                  <i data-lucide="arrow-left" class="w-5 h-5"></i>
+                </button>
+                <div class="w-16 h-16 bg-brand-50 dark:bg-brand-900/30 text-brand-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <i data-lucide="qr-code" class="w-9 h-9"></i>
+                </div>
+                <h2 class="text-xl font-black text-surface-900 dark:text-white mb-1">QR Code Login</h2>
+                <p class="text-surface-400 text-xs mb-6">เปิดกล้องมือถือสแกน QR นี้เพื่อเข้าสู่ระบบ</p>
+                <div id="qrCodeContainer" class="bg-white p-6 rounded-2xl inline-block shadow-inner border border-surface-100 dark:border-surface-700 mb-4">
+                  <div id="qrCodeCanvas" class="mx-auto" style="width:200px;height:200px;"></div>
+                </div>
+                <div id="qrStatus" class="text-xs font-bold text-surface-400 flex items-center justify-center gap-2 mb-2">
+                  <div class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+                  รอการสแกน...
+                </div>
+                <div id="qrTimer" class="text-[10px] text-surface-300 mb-4">หมดอายุใน <span id="qrCountdown">5:00</span></div>
+                <button onclick="hideQRLogin()" class="text-xs text-brand-600 font-bold hover:underline">← กลับไปใช้ Username/Password</button>
+              </div>
+            </div>
           </div>
-          <h1 class="text-3xl font-black tracking-tight text-surface-900 dark:text-white mb-2">OrgChat</h1>
-          <p class="text-surface-500 text-sm">เข้าสู่ระบบเพื่อใช้งานสมอง AI ขององค์กร</p>
+
+          <div id="loginFooter" class="bg-surface-50 dark:bg-surface-800/50 p-6 text-center border-t border-surface-100 dark:border-surface-800">
+            <p
+              class="text-[10px] font-bold text-surface-400 uppercase tracking-widest flex items-center justify-center gap-2">
+              <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
+              Secure Enterprise Gateway
+            </p>
+          </div>
         </div>
-        <div class="p-8 space-y-4">
-          <div class="space-y-1.5">
-            <label class="text-[10px] font-black uppercase tracking-widest text-surface-400 px-1">ชื่อผู้ใช้งาน</label>
-            <div class="relative">
-              <i data-lucide="user" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400"></i>
-              <input id="loginUsername" type="text" placeholder="Username" class="input-field w-full pl-11 py-3" />
+
+        <!-- Right Column: Trust & Security Panel -->
+        <div class="w-full md:w-1/2 bg-gradient-to-br from-brand-900 via-brand-800 to-indigo-950 text-white p-8 md:p-12 flex flex-col justify-between relative overflow-hidden">
+          <!-- Decorative Background Elements -->
+          <div class="absolute -right-16 -top-16 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
+          <div class="absolute -left-16 -bottom-16 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
+          
+          <div class="relative z-10 space-y-8 my-auto">
+            <div>
+              <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-white/10 text-brand-200 border border-white/10 mb-4">
+                <i data-lucide="shield-check" class="w-3.5 h-3.5"></i> Security Center
+              </span>
+              <h2 class="text-2xl md:text-3xl font-black tracking-tight leading-tight mb-3">
+                ความปลอดภัยระดับองค์กรที่คุณมั่นใจได้ 100%
+              </h2>
+              <p class="text-white/70 text-sm leading-relaxed">
+                OrgChat AI ปกป้องข้อมูลธุรกิจ การเงิน และเอกสารสำคัญขององค์กรคุณด้วยระบบควบคุมการเข้าถึงและการเข้ารหัสข้อมูลระดับสูงสุดตามมาตรฐานสากล
+              </p>
+            </div>
+
+            <!-- Trust Pillars list -->
+            <div class="space-y-5">
+              <!-- Pillar 1: Encryption -->
+              <div class="flex items-start gap-4">
+                <div class="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <i data-lucide="lock" class="w-5 h-5 text-brand-200"></i>
+                </div>
+                <div>
+                  <h4 class="text-sm font-bold text-white mb-1">การเข้ารหัสข้อมูล (Data Encryption)</h4>
+                  <p class="text-xs text-white/60 leading-relaxed">
+                    ข้อมูลสำคัญทั้งหมดจะถูกเข้ารหัสด้วยมาตรฐาน AES-256 (ในระดับฐานข้อมูล) และส่งผ่านโปรโตคอลความปลอดภัย SSL/TLS ในทุกการเชื่อมต่อ ป้องกันการดักจับข้อมูลอย่างสมบูรณ์
+                  </p>
+                </div>
+              </div>
+
+              <!-- Pillar 2: Google Workspace / Google Drive -->
+              <div class="flex items-start gap-4">
+                <div class="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <i data-lucide="hard-drive" class="w-5 h-5 text-brand-200"></i>
+                </div>
+                <div>
+                  <h4 class="text-sm font-bold text-white mb-1">สิทธิ์ความเป็นส่วนตัวใน Google Drive & Sheets</h4>
+                  <p class="text-xs text-white/60 leading-relaxed">
+                    เอกสาร สลิป และ Google Sheets ทั้งหมดรันอยู่บนบัญชี Google Drive ส่วนตัวขององค์กรคุณโดยตรง OrgChat AI เข้าถึงเฉพาะไฟล์ที่ได้รับอนุญาตผ่าน API ที่ปลอดภัย ข้อมูลอยู่กับคุณถาวรแม้เลิกใช้บริการ
+                  </p>
+                </div>
+              </div>
+
+              <!-- Pillar 3: No Training Data Leakage -->
+              <div class="flex items-start gap-4">
+                <div class="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <i data-lucide="shield-alert" class="w-5 h-5 text-brand-200"></i>
+                </div>
+                <div>
+                  <h4 class="text-sm font-bold text-white mb-1">ไม่มีการนำข้อมูลไปเทรนโมเดล AI ภายนอก</h4>
+                  <p class="text-xs text-white/60 leading-relaxed">
+                    เอกสารการค้า ข้อมูลผู้ขาย และบัญชีการเงินของคุณเป็นความลับสูงสุดของธุรกิจ OrgChat จะไม่เปิดเผย ส่งต่อ หรือนำข้อมูลองค์กรไปเทรนโมเดล AI สาธารณะอย่างเด็ดขาด
+                  </p>
+                </div>
+              </div>
+
+              <!-- Pillar 4: PEAK & OAuth integration security -->
+              <div class="flex items-start gap-4">
+                <div class="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <i data-lucide="network" class="w-5 h-5 text-brand-200"></i>
+                </div>
+                <div>
+                  <h4 class="text-sm font-bold text-white mb-1">มาตรฐานความปลอดภัยการเชื่อมต่อ API</h4>
+                  <p class="text-xs text-white/60 leading-relaxed">
+                    การเชื่อมต่อระบบบัญชี PEAK และบัญชี Google ดำเนินการผ่านมาตรฐาน OAuth 2.0 ที่ได้รับการยืนยันโดยตรง โดยจำกัดสิทธิ์การใช้งานของแอปพลิเคชันอย่างเข้มงวดที่สุด
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
-          <div class="space-y-1.5">
-            <label
-              class="text-[10px] font-black uppercase tracking-widest text-surface-400 px-1">รหัสผ่านพื้นฐาน</label>
-            <div class="relative">
-              <i data-lucide="lock" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400"></i>
-              <input id="loginPassword" type="password" placeholder="••••••••" class="input-field w-full pl-11 py-3" />
-            </div>
-          </div>
-          <div id="loginError"
-            class="hidden animate-in fade-in slide-in-from-top-1 text-xs text-red-500 bg-red-50 dark:bg-red-900/10 p-3 rounded-xl border border-red-100 dark:border-red-800/50 flex items-center gap-2">
-            <i data-lucide="alert-circle" class="w-4 h-4"></i>
-            <span id="loginErrorMsg"></span>
-          </div>
-          <button id="loginBtn"
-            class="btn-primary w-full py-3.5 rounded-2xl font-bold text-base shadow-lg shadow-brand-500/20 group">
-            เข้าสู่ระบบองค์กร
-            <i data-lucide="arrow-right"
-              class="w-4 h-4 inline-block ml-1 group-hover:translate-x-1 transition-transform"></i>
-          </button>
 
-          <div class="flex items-center justify-between mt-1">
-            <a href="/forgot-password" class="text-sm text-surface-400 hover:text-brand-600 hover:underline transition-colors">ลืมรหัสผ่าน?</a>
-            <a href="/signup" class="text-sm font-bold text-brand-600 hover:text-brand-700 hover:underline transition-colors">
-              สมัครใช้งานฟรี →
-            </a>
+          <!-- Bottom Branding -->
+          <div class="relative z-10 border-t border-white/10 pt-4 flex items-center justify-between text-[11px] text-white/50">
+            <span>© 2026 OrgChat AI. All rights reserved.</span>
+            <span class="flex items-center gap-1"><i data-lucide="shield-check" class="w-3.5 h-3.5 text-emerald-400"></i> Secure Enterprise Gateway</span>
           </div>
-
-          <div class="relative flex items-center py-2 hidden" id="googleSignInSeparator">
-            <div class="flex-grow border-t border-surface-200 dark:border-surface-700"></div>
-            <span class="flex-shrink-0 mx-4 text-surface-400 text-xs">หรือเข้าระบบด้วย</span>
-            <div class="flex-grow border-t border-surface-200 dark:border-surface-700"></div>
-          </div>
-          <div id="googleSignInBtn" class="w-full flex justify-center mt-2"></div>
-
-          <!-- QR Login -->
-          <div class="relative flex items-center py-2 mt-2">
-            <div class="flex-grow border-t border-surface-200 dark:border-surface-700"></div>
-            <span class="flex-shrink-0 mx-4 text-surface-400 text-xs">หรือ</span>
-            <div class="flex-grow border-t border-surface-200 dark:border-surface-700"></div>
-          </div>
-          <button onclick="showQRLogin()" class="w-full py-3 rounded-2xl border-2 border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-200 font-bold text-sm hover:border-brand-500 hover:text-brand-600 transition-all flex items-center justify-center gap-3 group">
-            <i data-lucide="qr-code" class="w-5 h-5 group-hover:scale-110 transition-transform"></i>
-            แสดง QR Code (ให้มือถือสแกน)
-          </button>
-          <button onclick="openQRScanner()" class="w-full py-3 rounded-2xl border-2 border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-200 font-bold text-sm hover:border-emerald-500 hover:text-emerald-600 transition-all flex items-center justify-center gap-3 group mt-2">
-            <i data-lucide="camera" class="w-5 h-5 group-hover:scale-110 transition-transform"></i>
-            เปิดกล้องสแกน QR Code
-          </button>
-        </div>
-
-        <!-- QR Code Modal (inside login overlay) -->
-        <div id="qrLoginModal" class="hidden">
-          <div class="p-8 text-center">
-            <button onclick="hideQRLogin()" class="absolute top-4 right-4 p-2 text-surface-400 hover:text-surface-600 transition-colors">
-              <i data-lucide="arrow-left" class="w-5 h-5"></i>
-            </button>
-            <div class="w-16 h-16 bg-brand-50 dark:bg-brand-900/30 text-brand-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <i data-lucide="qr-code" class="w-9 h-9"></i>
-            </div>
-            <h2 class="text-xl font-black text-surface-900 dark:text-white mb-1">QR Code Login</h2>
-            <p class="text-surface-400 text-xs mb-6">เปิดกล้องมือถือสแกน QR นี้เพื่อเข้าสู่ระบบ</p>
-            <div id="qrCodeContainer" class="bg-white p-6 rounded-2xl inline-block shadow-inner border border-surface-100 dark:border-surface-700 mb-4">
-              <div id="qrCodeCanvas" class="mx-auto" style="width:200px;height:200px;"></div>
-            </div>
-            <div id="qrStatus" class="text-xs font-bold text-surface-400 flex items-center justify-center gap-2 mb-2">
-              <div class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
-              รอการสแกน...
-            </div>
-            <div id="qrTimer" class="text-[10px] text-surface-300 mb-4">หมดอายุใน <span id="qrCountdown">5:00</span></div>
-            <button onclick="hideQRLogin()" class="text-xs text-brand-600 font-bold hover:underline">← กลับไปใช้ Username/Password</button>
-          </div>
-        </div>
-
-        <div id="loginFooter" class="bg-surface-50 dark:bg-surface-800/50 p-6 text-center border-t border-surface-100 dark:border-surface-800">
-          <p
-            class="text-[10px] font-bold text-surface-400 uppercase tracking-widest flex items-center justify-center gap-2">
-            <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
-            Secure Enterprise Gateway
-          </p>
         </div>
       </div>
     </div>
