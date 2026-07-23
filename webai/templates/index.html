@@ -9977,7 +9977,7 @@ async function loadGoogleFoldersForGroupRegister() {
   const select = document.getElementById('lg-group-folder');
   if (!select) return;
   try {
-    const res = await fetch('/api/org/drive/folders');
+    const res = await fetch('/api/google/folders');
     const data = await res.json();
     if (data.ok && Array.isArray(data.folders)) {
       _orgDriveFoldersCache = data.folders;
