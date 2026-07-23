@@ -413,7 +413,7 @@ EXTRACT JSON ONLY.
   "income_type": "Income Type", "wht_type": "WHT Type", "is_etax": false,
   "transactions": [{"date": "DD/MM/YYYY", "time": "HH:MM", "description": "...", "details": "...", "withdrawal": 0.00, "deposit": 0.00, "balance": 0.00, "channel": "...", "ref_number": "...", "counterparty": "..."}]
   },  "summary": "Thai summary"
-}""" + custom_rules_str
+}
 RULES:
 0. COMPANY NAME RULE (CRITICAL — applies to ALL document types):
    - `sender` and `receiver` MUST be the FULL OFFICIAL registered name exactly as it appears on the document.
@@ -440,7 +440,7 @@ RULES:
 5. ALWAYS extract `appr_code` (Auth Code/Approval Code) to prevent duplicates.
 6. QR Code Slip Verification: Look for the Thai QR Code payload on the transfer slip (usually begins with '000201' and is a long alphanumeric string) and extract the raw EMVCo string payload into 'qr_payload'. If not found or not visible, use "-".
 7. Use "-" for missing string, 0 for missing numbers. No conversational text.
-8. If the document/image is NOT a financial transaction document (e.g. general photo, screenshot of software/web page, profile picture, non-invoice document), set category to "Other"."""
+8. If the document/image is NOT a financial transaction document (e.g. general photo, screenshot of software/web page, profile picture, non-invoice document), set category to "Other".""" + custom_rules_str
     
     # 🚀 Prioritize Gemini for Media Analysis
     full_response = ""
