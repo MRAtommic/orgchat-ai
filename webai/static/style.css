@@ -147,6 +147,9 @@ body {
 }
 
 .view {
+  width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box;
   transition: opacity 0.3s ease;
 }
 
