@@ -16,10 +16,15 @@ logger = logging.getLogger("OrgChatAI.PaymentVoucherService")
 
 try:
     from fpdf import FPDF
+    from fpdf.enums import XPos, YPos
+    HAS_FPDF_ENUMS = True
 except ImportError:
     try:
         from fpdf2 import FPDF
+        from fpdf.enums import XPos, YPos
+        HAS_FPDF_ENUMS = True
     except ImportError:
+        HAS_FPDF_ENUMS = False
         class FPDF:
             def __init__(self, *args, **kwargs): pass
             def add_page(self): pass
@@ -30,6 +35,15 @@ except ImportError:
             def multi_cell(self, *args, **kwargs): pass
             def line(self, *args, **kwargs): pass
             def output(self, *args): pass
+
+def _cell(pdf, w, h, text="", border=0, new_line=False, align="", fill=False):
+    if HAS_FPDF_ENUMS:
+        nx = XPos.LMARGIN if new_line else XPos.RIGHT
+        ny = YPos.NEXT if new_line else YPos.TOP
+        pdf.cell(w, h, text=text, border=border, new_x=nx, new_y=ny, align=align, fill=fill)
+    else:
+        pdf.cell(w, h, text=text, border=border, ln=1 if new_line else 0, align=align, fill=fill)
+
 
 
 def _get_thai_font_path():
@@ -108,30 +122,28 @@ def generate_receipt_substitute_pdf(item_data: dict, org_name: str = "องค�
     net_amount = float(item_data.get("net_amount") or 0.0)
 
     pdf.set_thai_font(size=11)
-    pdf.cell(100, 7, text=f"เลขที่เอกสาร: {ref_id}", ln=0)
-    pdf.cell(90, 7, text=f"วันที่: {date_str}", ln=1)
-    pdf.cell(100, 7, text=f"ผู้ขอเบิกเงิน: {requester}", ln=0)
-    pdf.cell(90, 7, text=f"ผู้จ่ายเงิน / สถานที่: {merchant}", ln=1)
+    _cell(pdf, 100, 7, text=f"เลขที่เอกสาร: {ref_id}", new_line=False)
+    _cell(pdf, 90, 7, text=f"วันที่: {date_str}", new_line=True)
+    _cell(pdf, 100, 7, text=f"ผู้ขอเบิกเงิน: {requester}", new_line=False)
+    _cell(pdf, 90, 7, text=f"ผู้จ่ายเงิน / สถานที่: {merchant}", new_line=True)
     pdf.ln(5)
 
     # Table Header
     pdf.set_fill_color(240, 240, 240)
     pdf.set_thai_font(size=10)
-    pdf.cell(15, 8, text="ลำดับ", border=1, align="C", fill=True)
-    pdf.cell(115, 8, text="รายการ / วัตถุประสงค์ในการจ่าย", border=1, align="C", fill=True)
-    pdf.cell(60, 8, text="จำนวนเงิน (บาท)", border=1, align="C", fill=True)
-    pdf.ln(8)
+    _cell(pdf, 15, 8, text="ลำดับ", border=1, align="C", fill=True)
+    _cell(pdf, 115, 8, text="รายการ / วัตถุประสงค์ในการจ่าย", border=1, align="C", fill=True)
+    _cell(pdf, 60, 8, text="จำนวนเงิน (บาท)", border=1, align="C", fill=True, new_line=True)
 
     # Table Content Row
-    pdf.cell(15, 10, text="1", border=1, align="C")
-    pdf.cell(115, 10, text=details[:60], border=1, align="L")
-    pdf.cell(60, 10, text=f"{net_amount:,.2f}", border=1, align="R")
-    pdf.ln(10)
+    _cell(pdf, 15, 10, text="1", border=1, align="C")
+    _cell(pdf, 115, 10, text=details[:60], border=1, align="L")
+    _cell(pdf, 60, 10, text=f"{net_amount:,.2f}", border=1, align="R", new_line=True)
 
     # Total Row
-    pdf.cell(130, 9, text="รวมเงินทั้งสิ้น (Total Net Amount)", border=1, align="R", fill=True)
-    pdf.cell(60, 9, text=f"฿{net_amount:,.2f}", border=1, align="R", fill=True)
-    pdf.ln(12)
+    _cell(pdf, 130, 9, text="รวมเงินทั้งสิ้น (Total Net Amount)", border=1, align="R", fill=True)
+    _cell(pdf, 60, 9, text=f"฿{net_amount:,.2f}", border=1, align="R", fill=True, new_line=True)
+    pdf.ln(5)
 
     # Declaration & Certification Statement
     pdf.set_thai_font(size=10)
@@ -143,12 +155,12 @@ def generate_receipt_substitute_pdf(item_data: dict, org_name: str = "องค�
     pdf.ln(15)
 
     # Signatures
-    pdf.cell(90, 6, text="ลงชื่อ.......................................................... (ผู้รับเงิน/ผู้เบิก)", ln=0)
-    pdf.cell(100, 6, text="ลงชื่อ.......................................................... (ผู้อนุมัติ)", ln=1)
-    pdf.cell(90, 6, text=f"      ({requester})", ln=0)
-    pdf.cell(100, 6, text="      (..........................................................)", ln=1)
-    pdf.cell(90, 6, text=f"วันที่ {date_str}", ln=0)
-    pdf.cell(100, 6, text=f"วันที่ {date_str}", ln=1)
+    _cell(pdf, 90, 6, text="ลงชื่อ.......................................................... (ผู้รับเงิน/ผู้เบิก)", new_line=False)
+    _cell(pdf, 100, 6, text="ลงชื่อ.......................................................... (ผู้อนุมัติ)", new_line=True)
+    _cell(pdf, 90, 6, text=f"      ({requester})", new_line=False)
+    _cell(pdf, 100, 6, text="      (..........................................................)", new_line=True)
+    _cell(pdf, 90, 6, text=f"วันที่ {date_str}", new_line=False)
+    _cell(pdf, 100, 6, text=f"วันที่ {date_str}", new_line=True)
 
     pdf.output(str(file_path))
     return str(file_path.resolve()), filename
@@ -181,22 +193,21 @@ def generate_batch_payment_voucher_pdf(items: list[dict], org_name: str = "อ�
     # Voucher Info Box
     date_str = datetime.now().strftime("%d/%m/%Y")
     pdf.set_thai_font(size=10)
-    pdf.cell(100, 6, text=f"เลขที่ใบสำคัญจ่าย: {pv_no}", ln=0)
-    pdf.cell(90, 6, text=f"วันที่ออกเอกสาร: {date_str}", ln=1)
-    pdf.cell(100, 6, text=f"จำนวนรายการย่อย: {len(items)} รายการ", ln=0)
-    pdf.cell(90, 6, text="ชำระโดย: โอนเงิน / เงินสด", ln=1)
+    _cell(pdf, 100, 6, text=f"เลขที่ใบสำคัญจ่าย: {pv_no}", new_line=False)
+    _cell(pdf, 90, 6, text=f"วันที่ออกเอกสาร: {date_str}", new_line=True)
+    _cell(pdf, 100, 6, text=f"จำนวนรายการย่อย: {len(items)} รายการ", new_line=False)
+    _cell(pdf, 90, 6, text="ชำระโดย: โอนเงิน / เงินสด", new_line=True)
     pdf.ln(5)
 
     # Table Header
     pdf.set_fill_color(230, 235, 245)
     pdf.set_thai_font(size=9)
-    pdf.cell(12, 8, text="ลำดับ", border=1, align="C", fill=True)
-    pdf.cell(24, 8, text="วันที่", border=1, align="C", fill=True)
-    pdf.cell(50, 8, text="ผู้ส่ง/ร้านค้า", border=1, align="C", fill=True)
-    pdf.cell(54, 8, text="รายละเอียด", border=1, align="C", fill=True)
-    pdf.cell(25, 8, text="เลขที่อ้างอิง", border=1, align="C", fill=True)
-    pdf.cell(25, 8, text="จำนวนเงิน (฿)", border=1, align="C", fill=True)
-    pdf.ln(8)
+    _cell(pdf, 12, 8, text="ลำดับ", border=1, align="C", fill=True)
+    _cell(pdf, 24, 8, text="วันที่", border=1, align="C", fill=True)
+    _cell(pdf, 50, 8, text="ผู้ส่ง/ร้านค้า", border=1, align="C", fill=True)
+    _cell(pdf, 54, 8, text="รายละเอียด", border=1, align="C", fill=True)
+    _cell(pdf, 25, 8, text="เลขที่อ้างอิง", border=1, align="C", fill=True)
+    _cell(pdf, 25, 8, text="จำนวนเงิน (฿)", border=1, align="C", fill=True, new_line=True)
 
     # Totals accumulators
     total_gross = 0.0
@@ -221,49 +232,45 @@ def generate_batch_payment_voucher_pdf(items: list[dict], org_name: str = "อ�
         total_wht += wht_amt
         total_net += net_amt
 
-        pdf.cell(12, 7, text=str(idx), border=1, align="C")
-        pdf.cell(24, 7, text=d_val, border=1, align="C")
-        pdf.cell(50, 7, text=m_val, border=1, align="L")
-        pdf.cell(54, 7, text=det_val, border=1, align="L")
-        pdf.cell(25, 7, text=ref_val, border=1, align="C")
-        pdf.cell(25, 7, text=f"{net_amt:,.2f}", border=1, align="R")
-        pdf.ln(7)
+        _cell(pdf, 12, 7, text=str(idx), border=1, align="C")
+        _cell(pdf, 24, 7, text=d_val, border=1, align="C")
+        _cell(pdf, 50, 7, text=m_val, border=1, align="L")
+        _cell(pdf, 54, 7, text=det_val, border=1, align="L")
+        _cell(pdf, 25, 7, text=ref_val, border=1, align="C")
+        _cell(pdf, 25, 7, text=f"{net_amt:,.2f}", border=1, align="R", new_line=True)
 
     # Summary Section
     pdf.ln(3)
     pdf.set_thai_font(size=9)
-    pdf.cell(140, 6, text="ยอดรวมก่อนภาษี (Gross Amount):", align="R")
-    pdf.cell(50, 6, text=f"฿{total_gross:,.2f}", align="R")
-    pdf.ln(6)
+    _cell(pdf, 140, 6, text="ยอดรวมก่อนภาษี (Gross Amount):", align="R")
+    _cell(pdf, 50, 6, text=f"฿{total_gross:,.2f}", align="R", new_line=True)
 
-    pdf.cell(140, 6, text="ภาษีมูลค่าเพิ่ม (VAT 7%):", align="R")
-    pdf.cell(50, 6, text=f"฿{total_vat:,.2f}", align="R")
-    pdf.ln(6)
+    _cell(pdf, 140, 6, text="ภาษีมูลค่าเพิ่ม (VAT 7%):", align="R")
+    _cell(pdf, 50, 6, text=f"฿{total_vat:,.2f}", align="R", new_line=True)
 
-    pdf.cell(140, 6, text="ภาษีหัก ณ ที่จ่าย (WHT):", align="R")
-    pdf.cell(50, 6, text=f"- ฿{total_wht:,.2f}", align="R")
-    pdf.ln(6)
+    _cell(pdf, 140, 6, text="ภาษีหัก ณ ที่จ่าย (WHT):", align="R")
+    _cell(pdf, 50, 6, text=f"- ฿{total_wht:,.2f}", align="R", new_line=True)
 
     pdf.set_fill_color(240, 240, 240)
     pdf.set_thai_font(size=10)
-    pdf.cell(140, 8, text="ยอดชำระสุทธิทั้งสิ้น (Net Payment Total):", border=1, align="R", fill=True)
-    pdf.cell(50, 8, text=f"฿{total_net:,.2f}", border=1, align="R", fill=True)
-    pdf.ln(12)
+    _cell(pdf, 140, 8, text="ยอดชำระสุทธิทั้งสิ้น (Net Payment Total):", border=1, align="R", fill=True)
+    _cell(pdf, 50, 8, text=f"฿{total_net:,.2f}", border=1, align="R", fill=True, new_line=True)
+    pdf.ln(5)
 
     # Signatures
     pdf.set_thai_font(size=9)
-    pdf.cell(63, 6, text="ผู้จัดทำเอกสาร (Prepared By)", align="C")
-    pdf.cell(64, 6, text="ผู้ตรวจอนุมัติ (Approved By)", align="C")
-    pdf.cell(63, 6, text="ผู้รับเงิน / ผู้เบิก (Paid To)", align="C")
-    pdf.ln(12)
+    _cell(pdf, 63, 6, text="ผู้จัดทำเอกสาร (Prepared By)", align="C")
+    _cell(pdf, 64, 6, text="ผู้ตรวจอนุมัติ (Approved By)", align="C")
+    _cell(pdf, 63, 6, text="ผู้รับเงิน / ผู้เบิก (Paid To)", align="C", new_line=True)
+    pdf.ln(8)
 
-    pdf.cell(63, 6, text="ลงชื่อ.........................................", align="C")
-    pdf.cell(64, 6, text="ลงชื่อ.........................................", align="C")
-    pdf.cell(63, 6, text="ลงชื่อ.........................................", align="C")
-    pdf.ln(5)
-    pdf.cell(63, 6, text=f"วันที่ {date_str}", align="C")
-    pdf.cell(64, 6, text=f"วันที่ {date_str}", align="C")
-    pdf.cell(63, 6, text=f"วันที่ {date_str}", align="C")
+    _cell(pdf, 63, 6, text="ลงชื่อ.........................................", align="C")
+    _cell(pdf, 64, 6, text="ลงชื่อ.........................................", align="C")
+    _cell(pdf, 63, 6, text="ลงชื่อ.........................................", align="C", new_line=True)
+    pdf.ln(3)
+    _cell(pdf, 63, 6, text=f"วันที่ {date_str}", align="C")
+    _cell(pdf, 64, 6, text=f"วันที่ {date_str}", align="C")
+    _cell(pdf, 63, 6, text=f"วันที่ {date_str}", align="C", new_line=True)
 
     pdf.output(str(file_path))
     return str(file_path.resolve()), filename

@@ -6740,14 +6740,15 @@ def get_audit_logs(org_id=1, limit=100, offset=0, username_filter=None, action_f
 # Custom Expense Categories & AI Rules CRUD
 # ══════════════════════════════════════════════════════
 def get_custom_categories(org_id: int) -> list[dict]:
-    with db_readonly() as conn:
+    conn = _get_conn()
+    try:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT id, category_name, account_code, parent_id, created_at
             FROM custom_expense_categories
             WHERE org_id = ?
             ORDER BY category_name ASC
-        """, (org_id,))
+        """, (str(org_id),))
         return [
             {
                 "id": r[0],
@@ -6758,31 +6759,42 @@ def get_custom_categories(org_id: int) -> list[dict]:
             }
             for r in cursor.fetchall()
         ]
+    finally:
+        conn.close()
 
 def add_custom_category(org_id: int, category_name: str, account_code: str = "", parent_id: int = None) -> int:
-    with db_write() as conn:
+    conn = _get_conn()
+    try:
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO custom_expense_categories (org_id, category_name, account_code, parent_id)
             VALUES (?, ?, ?, ?)
-        """, (org_id, category_name.strip(), account_code.strip(), parent_id))
+        """, (str(org_id), category_name.strip(), account_code.strip(), parent_id))
+        conn.commit()
         return cursor.lastrowid
+    finally:
+        conn.close()
 
 def delete_custom_category(org_id: int, category_id: int) -> bool:
-    with db_write() as conn:
+    conn = _get_conn()
+    try:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM custom_expense_categories WHERE id = ? AND org_id = ?", (category_id, org_id))
+        cursor.execute("DELETE FROM custom_expense_categories WHERE id = ? AND org_id = ?", (category_id, str(org_id)))
+        conn.commit()
         return cursor.rowcount > 0
+    finally:
+        conn.close()
 
 def get_ai_category_rules(org_id: int) -> list[dict]:
-    with db_readonly() as conn:
+    conn = _get_conn()
+    try:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT id, keyword, category_name, rule_type, created_at
             FROM ai_category_rules
             WHERE org_id = ?
             ORDER BY id DESC
-        """, (org_id,))
+        """, (str(org_id),))
         return [
             {
                 "id": r[0],
@@ -6793,19 +6805,30 @@ def get_ai_category_rules(org_id: int) -> list[dict]:
             }
             for r in cursor.fetchall()
         ]
+    finally:
+        conn.close()
 
 def add_ai_category_rule(org_id: int, keyword: str, category_name: str, rule_type: str = "contains") -> int:
-    with db_write() as conn:
+    conn = _get_conn()
+    try:
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO ai_category_rules (org_id, keyword, category_name, rule_type)
             VALUES (?, ?, ?, ?)
-        """, (org_id, keyword.strip().lower(), category_name.strip(), rule_type))
+        """, (str(org_id), keyword.strip().lower(), category_name.strip(), rule_type))
+        conn.commit()
         return cursor.lastrowid
+    finally:
+        conn.close()
 
 def delete_ai_category_rule(org_id: int, rule_id: int) -> bool:
-    with db_write() as conn:
+    conn = _get_conn()
+    try:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM ai_category_rules WHERE id = ? AND org_id = ?", (rule_id, org_id))
+        cursor.execute("DELETE FROM ai_category_rules WHERE id = ? AND org_id = ?", (rule_id, str(org_id)))
+        conn.commit()
         return cursor.rowcount > 0
+    finally:
+        conn.close()
+
 
