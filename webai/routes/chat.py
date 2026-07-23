@@ -46,6 +46,7 @@ from redis_manager import RedisManager
 
 _line_batch_timer = {}
 _typing_status = {}
+_limit_warn_cache = {}
 LINE_FOLDER_CACHE = {}
 LINE_CONFIG_FILE = "line_config.json"
 
@@ -2316,10 +2317,8 @@ def process_line_event(event_data):
                 if not _ok:
                     now = time.time()
                     cache_key = f"limit_warn_{_org_id}_{user_id}"
-                    _cache = getattr(current_app, "_limit_warn_cache", {})
-                    if now - _cache.get(cache_key, 0) > 10:
-                        _cache[cache_key] = now
-                        current_app._limit_warn_cache = _cache
+                    if now - _limit_warn_cache.get(cache_key, 0) > 10:
+                        _limit_warn_cache[cache_key] = now
                         msg = f"❌ ใช้โควต้าบันทึกบิลครบ {_limit} รายการในเดือนนี้แล้วค่ะ\nหากต้องการเพิ่มจำนวน กรุณาอัปเกรดแพ็กเกจนะคะ"
                         reply_to_line(reply_token, msg)
                     return "OK", 200
