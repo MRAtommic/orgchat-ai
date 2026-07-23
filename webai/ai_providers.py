@@ -3,10 +3,20 @@
 AI Providers — รองรับ Gemini (google-genai ใหม่), Groq, Ollama
 อัปเดต: เปลี่ยนจาก google-generativeai (deprecated) → google-genai
 """
+import sys
 import os
 import json
 import logging
 import requests
+
+# Force UTF-8 encoding for stdout/stderr to support emojis on Windows terminals
+try:
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
+    if hasattr(sys.stderr, 'reconfigure'):
+        sys.stderr.reconfigure(encoding='utf-8')
+except Exception:
+    pass
 
 logger = logging.getLogger(__name__)
 

@@ -3,6 +3,15 @@ import sys
 import os
 import io
 
+# Force UTF-8 encoding for stdout/stderr to support emojis on Windows terminals
+try:
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
+    if hasattr(sys.stderr, 'reconfigure'):
+        sys.stderr.reconfigure(encoding='utf-8')
+except Exception:
+    pass
+
 # ================= DNS MONKEYPATCH START =================
 import socket
 import struct
