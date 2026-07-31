@@ -1237,7 +1237,13 @@ function switchView(viewId) {
   }
 
   document.querySelectorAll('.view').forEach(sec => {
-    sec.classList.toggle('hidden', sec.id !== `view-${viewId}`);
+    const isTarget = sec.id === `view-${viewId}`;
+    sec.classList.toggle('hidden', !isTarget);
+    if (isTarget) {
+      sec.classList.remove('animate-in', 'fade-in', 'zoom-in-95', 'duration-200');
+      void sec.offsetWidth; // trigger reflow for smooth animation restart
+      sec.classList.add('animate-in', 'fade-in', 'zoom-in-95', 'duration-200');
+    }
   });
 
   // Sync mobile bottom nav active state

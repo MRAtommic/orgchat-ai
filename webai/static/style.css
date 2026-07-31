@@ -4038,3 +4038,41 @@ button:active:not(:disabled),
 #pdfViewerModal {
   z-index: 999999 !important;
 }
+
+/* 🚀 Ultra-Smooth UI GPU Performance & Fluid Motion Systems */
+html, body {
+  scroll-behavior: smooth !important;
+  -webkit-tap-highlight-color: transparent;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Smooth GPU accelerated transitions for views & cards */
+.view, .card, .modal-card, .drawer-panel {
+  will-change: opacity, transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* Hardware accelerated buttons & clickable micro-interactions */
+button, a, input, select, textarea, .nav-item, .btn-action, .chip-item {
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.18s ease, border-color 0.18s ease, opacity 0.18s ease;
+  backface-visibility: hidden;
+}
+
+button:active:not(:disabled), .nav-item:active, .btn-action:active {
+  transform: scale(0.972);
+}
+
+/* GPU Accelerated Smooth Scroll Containers */
+.overflow-y-auto, .overflow-x-auto, .chat-messages-container {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+/* Smooth Glassmorphism & Backdrop Blur acceleration */
+.backdrop-blur-sm, .backdrop-blur-md, .backdrop-blur-lg, .backdrop-blur-xl {
+  transform: translateZ(0);
+  will-change: backdrop-filter;
+}
