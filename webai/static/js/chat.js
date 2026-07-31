@@ -16100,7 +16100,7 @@ window.initReplyAssistantView = initReplyAssistantView;
 window.generateAIDraft = generateAIDraft;
 window.copyReplyAssistantDraft = copyReplyAssistantDraft;
 
-// ─── 3D Futuristic AI Background for Login Overlay ───────
+// ─── 3D Enterprise AI Communication Network for Login Overlay ───────
 let _login3DAnimationId = null;
 
 function initLogin3DBackground() {
@@ -16116,94 +16116,174 @@ function initLogin3DBackground() {
   }
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-  camera.position.z = 380;
+  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1200);
+  camera.position.z = 420;
 
   const renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-  // 1. Interactive 3D Particles Neural Network
-  const particleCount = window.innerWidth < 768 ? 450 : 900;
-  const geometry = new THREE.BufferGeometry();
-  const positions = new Float32Array(particleCount * 3);
-  const colors = new Float32Array(particleCount * 3);
-  const originalY = new Float32Array(particleCount);
+  // 1. Central Corporate AI Globe Core (สมอง AI กลางองค์กร)
+  const coreGroup = new THREE.Group();
 
-  const c1 = new THREE.Color('#059669'); // Emerald Green
-  const c2 = new THREE.Color('#3b82f6'); // Cyber Blue
-  const c3 = new THREE.Color('#10b981'); // Mint Neon
+  // Outer Shield Sphere (Wireframe Icosahedron)
+  const outerGeom = new THREE.IcosahedronGeometry(110, 2);
+  const outerMat = new THREE.MeshBasicMaterial({
+    color: 0x0284c7, // Corporate Sky Blue
+    wireframe: true,
+    transparent: true,
+    opacity: 0.18
+  });
+  const outerSphere = new THREE.Mesh(outerGeom, outerMat);
+  coreGroup.add(outerSphere);
 
-  for (let i = 0; i < particleCount; i++) {
-    const x = (Math.random() - 0.5) * 1000;
-    const y = (Math.random() - 0.5) * 1000;
-    const z = (Math.random() - 0.5) * 600;
+  // Inner Core Sphere (Emerald Trust Core)
+  const innerGeom = new THREE.IcosahedronGeometry(75, 1);
+  const innerMat = new THREE.MeshBasicMaterial({
+    color: 0x059669, // Emerald Green Security
+    wireframe: true,
+    transparent: true,
+    opacity: 0.25
+  });
+  const innerSphere = new THREE.Mesh(innerGeom, innerMat);
+  coreGroup.add(innerSphere);
 
-    positions[i * 3] = x;
-    positions[i * 3 + 1] = y;
-    positions[i * 3 + 2] = z;
-    originalY[i] = y;
+  // Floating Cyber Ring (Orbital Communication Ring)
+  const ringGeom = new THREE.TorusGeometry(140, 1.5, 16, 100);
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: 0x38bdf8,
+    transparent: true,
+    opacity: 0.35
+  });
+  const ring = new THREE.Mesh(ringGeom, ringMat);
+  ring.rotation.x = Math.PI / 3;
+  coreGroup.add(ring);
 
-    const chosenColor = i % 3 === 0 ? c1 : (i % 3 === 1 ? c2 : c3);
-    colors[i * 3] = chosenColor.r;
-    colors[i * 3 + 1] = chosenColor.g;
-    colors[i * 3 + 2] = chosenColor.b;
+  // Position core slightly to the right on desktop, center on mobile
+  if (window.innerWidth >= 768) {
+    coreGroup.position.set(220, 0, -50);
+  } else {
+    coreGroup.position.set(0, 0, -100);
+  }
+  scene.add(coreGroup);
+
+  // 2. Inter-departmental Communication Nodes & Beam Network (เครือข่ายสื่อสารองค์กร)
+  const nodeCount = window.innerWidth < 768 ? 18 : 32;
+  const nodes = [];
+  const nodePositions = new Float32Array(nodeCount * 3);
+  const nodeGroup = new THREE.Group();
+
+  const nodeGeom = new THREE.SphereGeometry(3.5, 16, 16);
+  const nodeMat = new THREE.MeshBasicMaterial({
+    color: 0x38bdf8,
+    transparent: true,
+    opacity: 0.85
+  });
+
+  for (let i = 0; i < nodeCount; i++) {
+    const mesh = new THREE.Mesh(nodeGeom, nodeMat);
+    const x = (Math.random() - 0.5) * 800;
+    const y = (Math.random() - 0.5) * 600;
+    const z = (Math.random() - 0.5) * 400;
+
+    mesh.position.set(x, y, z);
+    mesh.userData = {
+      vx: (Math.random() - 0.5) * 0.4,
+      vy: (Math.random() - 0.5) * 0.4,
+      vz: (Math.random() - 0.5) * 0.4,
+      baseX: x,
+      baseY: y
+    };
+    nodeGroup.add(mesh);
+    nodes.push(mesh);
+
+    nodePositions[i * 3] = x;
+    nodePositions[i * 3 + 1] = y;
+    nodePositions[i * 3 + 2] = z;
+  }
+  scene.add(nodeGroup);
+
+  // Dynamic Connecting Beams Material
+  const lineMaterial = new THREE.LineBasicMaterial({
+    color: 0x0284c7,
+    transparent: true,
+    opacity: 0.16
+  });
+
+  let lineSegmentsMesh = null;
+
+  function updateCommunicationBeams() {
+    const linePos = [];
+    const maxDist = 180;
+
+    for (let i = 0; i < nodeCount; i++) {
+      for (let j = i + 1; j < nodeCount; j++) {
+        const p1 = nodes[i].position;
+        const p2 = nodes[j].position;
+        const dist = p1.distanceTo(p2);
+
+        if (dist < maxDist) {
+          linePos.push(p1.x, p1.y, p1.z);
+          linePos.push(p2.x, p2.y, p2.z);
+        }
+      }
+    }
+
+    if (lineSegmentsMesh) {
+      scene.remove(lineSegmentsMesh);
+      lineSegmentsMesh.geometry.dispose();
+    }
+
+    const lineGeom = new THREE.BufferGeometry();
+    lineGeom.setAttribute('position', new THREE.Float32BufferAttribute(linePos, 3));
+    lineSegmentsMesh = new THREE.LineSegments(lineGeom, lineMaterial);
+    scene.add(lineSegmentsMesh);
   }
 
-  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  // 3. Ambient Neural Data Particles Grid (อนุภาคข้อมูลองค์กร)
+  const particleCount = window.innerWidth < 768 ? 300 : 600;
+  const pGeom = new THREE.BufferGeometry();
+  const pPos = new Float32Array(particleCount * 3);
+  const pColors = new Float32Array(particleCount * 3);
 
-  const particleMaterial = new THREE.PointsMaterial({
-    size: 4.0,
+  const colEmerald = new THREE.Color('#059669');
+  const colCyan = new THREE.Color('#0284c7');
+  const colSky = new THREE.Color('#38bdf8');
+
+  for (let k = 0; k < particleCount; k++) {
+    pPos[k * 3] = (Math.random() - 0.5) * 1100;
+    pPos[k * 3 + 1] = (Math.random() - 0.5) * 800;
+    pPos[k * 3 + 2] = (Math.random() - 0.5) * 500;
+
+    const chosen = k % 3 === 0 ? colEmerald : (k % 3 === 1 ? colCyan : colSky);
+    pColors[k * 3] = chosen.r;
+    pColors[k * 3 + 1] = chosen.g;
+    pColors[k * 3 + 2] = chosen.b;
+  }
+
+  pGeom.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+  pGeom.setAttribute('color', new THREE.BufferAttribute(pColors, 3));
+
+  const pMat = new THREE.PointsMaterial({
+    size: 3.2,
     vertexColors: true,
     transparent: true,
-    opacity: 0.75,
+    opacity: 0.65,
     blending: THREE.AdditiveBlending
   });
 
-  const particleSystem = new THREE.Points(geometry, particleMaterial);
-  scene.add(particleSystem);
+  const ambientParticles = new THREE.Points(pGeom, pMat);
+  scene.add(ambientParticles);
 
-  // 2. Floating 3D Geometric Cyber Wireframes
-  const group3D = new THREE.Group();
-  const wireMat = new THREE.MeshBasicMaterial({
-    color: 0x10b981,
-    wireframe: true,
-    transparent: true,
-    opacity: 0.14
-  });
-
-  for (let k = 0; k < 7; k++) {
-    const radius = Math.random() * 45 + 20;
-    let geom;
-    if (k % 3 === 0) geom = new THREE.IcosahedronGeometry(radius, 1);
-    else if (k % 3 === 1) geom = new THREE.OctahedronGeometry(radius, 0);
-    else geom = new THREE.TorusGeometry(radius, 8, 12, 24);
-
-    const mesh = new THREE.Mesh(geom, wireMat);
-    mesh.position.set(
-      (Math.random() - 0.5) * 650,
-      (Math.random() - 0.5) * 450,
-      (Math.random() - 0.5) * 350
-    );
-    mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
-    mesh.userData = {
-      rotX: (Math.random() - 0.5) * 0.008,
-      rotY: (Math.random() - 0.5) * 0.008
-    };
-    group3D.add(mesh);
-  }
-  scene.add(group3D);
-
-  // Mouse / Touch Interactive Parallax
+  // Parallax Mouse & Touch Interaction
   let mouseX = 0, mouseY = 0;
   let targetX = 0, targetY = 0;
 
   function onPointerMove(e) {
     const px = e.touches ? e.touches[0].clientX : e.clientX;
     const py = e.touches ? e.touches[0].clientY : e.clientY;
-    mouseX = (px - window.innerWidth / 2) * 0.18;
-    mouseY = (py - window.innerHeight / 2) * 0.18;
+    mouseX = (px - window.innerWidth / 2) * 0.12;
+    mouseY = (py - window.innerHeight / 2) * 0.12;
   }
   window.addEventListener('mousemove', onPointerMove, { passive: true });
   window.addEventListener('touchmove', onPointerMove, { passive: true });
@@ -16213,6 +16293,12 @@ function initLogin3DBackground() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+
+    if (window.innerWidth >= 768) {
+      coreGroup.position.set(220, 0, -50);
+    } else {
+      coreGroup.position.set(0, 0, -100);
+    }
   }
   window.addEventListener('resize', onWindowResize);
 
@@ -16229,30 +16315,35 @@ function initLogin3DBackground() {
     _login3DAnimationId = requestAnimationFrame(renderLoop);
     const elapsedTime = clock.getElapsedTime();
 
-    // Smooth Mouse Follow
-    targetX += (mouseX - targetX) * 0.04;
-    targetY += (mouseY - targetY) * 0.04;
+    // Smooth Parallax
+    targetX += (mouseX - targetX) * 0.03;
+    targetY += (mouseY - targetY) * 0.03;
 
     camera.position.x = targetX;
     camera.position.y = -targetY;
-    camera.lookAt(scene.position);
+    camera.lookAt(0, 0, 0);
 
-    // Wave motion for particles
-    const pos = particleSystem.geometry.attributes.position;
-    for (let i = 0; i < particleCount; i++) {
-      const idx = i * 3;
-      const px = pos.array[idx];
-      pos.array[idx + 1] = originalY[i] + Math.sin(elapsedTime * 1.4 + px * 0.01) * 16;
-    }
-    pos.needsUpdate = true;
+    // Rotate Central Enterprise AI Core
+    outerSphere.rotation.y = elapsedTime * 0.12;
+    outerSphere.rotation.x = elapsedTime * 0.06;
+    innerSphere.rotation.y = -elapsedTime * 0.18;
+    ring.rotation.z = elapsedTime * 0.1;
 
-    // Rotate 3D meshes
-    group3D.children.forEach(mesh => {
-      mesh.rotation.x += mesh.userData.rotX;
-      mesh.rotation.y += mesh.userData.rotY;
+    // Pulse Core Scale
+    const pulse = 1 + Math.sin(elapsedTime * 1.5) * 0.04;
+    coreGroup.scale.set(pulse, pulse, pulse);
+
+    // Move Communication Nodes smoothly
+    nodes.forEach(node => {
+      node.position.x += node.userData.vx;
+      node.position.y += node.userData.vy;
+
+      if (Math.abs(node.position.x - node.userData.baseX) > 40) node.userData.vx *= -1;
+      if (Math.abs(node.position.y - node.userData.baseY) > 40) node.userData.vy *= -1;
     });
 
-    particleSystem.rotation.y = elapsedTime * 0.025;
+    updateCommunicationBeams();
+    ambientParticles.rotation.y = elapsedTime * 0.015;
 
     renderer.render(scene, camera);
   }
