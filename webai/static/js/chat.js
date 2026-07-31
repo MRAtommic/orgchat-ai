@@ -13023,21 +13023,42 @@ async function subscribeUserToPush() {
   }
 }
 
-// ─── Collapsible Mobile Security Panel ─────────────────
-function toggleMobileSecurityPanel() {
+// ─── Collapsible Security Panel (Desktop & Mobile) ─────
+function toggleSecurityPanel() {
   const panel = document.getElementById('securityPanel');
   const icon = document.getElementById('securityPanelIcon');
+  const cardContainer = document.getElementById('loginCardContainer');
+  const leftCol = document.getElementById('loginLeftCol');
   if (!panel) return;
   
-  const isMobileHidden = panel.classList.contains('max-md:hidden') || panel.classList.contains('hidden');
-  if (isMobileHidden) {
-    panel.classList.remove('max-md:hidden', 'hidden');
+  const isHidden = panel.classList.contains('hidden') || panel.classList.contains('max-md:hidden');
+  if (isHidden) {
+    panel.classList.remove('hidden', 'max-md:hidden');
+    panel.classList.add('flex');
+    if (cardContainer) {
+      cardContainer.classList.remove('max-w-md');
+      cardContainer.classList.add('max-w-4xl');
+    }
+    if (leftCol) {
+      leftCol.classList.remove('w-full');
+      leftCol.classList.add('md:w-1/2');
+    }
     if (icon) icon.style.transform = 'rotate(180deg)';
   } else {
-    panel.classList.add('max-md:hidden');
+    panel.classList.add('hidden');
+    panel.classList.remove('flex');
+    if (cardContainer) {
+      cardContainer.classList.remove('max-w-4xl');
+      cardContainer.classList.add('max-w-md');
+    }
+    if (leftCol) {
+      leftCol.classList.remove('md:w-1/2');
+      leftCol.classList.add('w-full');
+    }
     if (icon) icon.style.transform = 'rotate(0deg)';
   }
 }
+const toggleMobileSecurityPanel = toggleSecurityPanel;
 
 async function showQRLogin() {
   const loginForm = document.querySelector('#loginOverlay .p-8.space-y-4');
