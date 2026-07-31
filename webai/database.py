@@ -686,6 +686,22 @@ def init_db():
         )
     """)
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            org_id INTEGER DEFAULT 1,
+            username TEXT,
+            event_type TEXT NOT NULL,
+            action_detail TEXT,
+            ip_address TEXT,
+            user_agent TEXT,
+            ai_model TEXT,
+            tokens_used INTEGER DEFAULT 0,
+            department TEXT DEFAULT 'General',
+            status TEXT DEFAULT 'success',
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS expense_claims (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             line_user_id TEXT,
@@ -7174,6 +7190,156 @@ def reset_failed_login(username: str) -> None:
             WHERE username = ? COLLATE NOCASE
         """, (username.strip(),))
         conn.commit()
+    finally:
+        conn.close()
+
+
+def log_audit_event(username: str, event_type: str, action_detail: str = "", ip_address: str = "", user_agent: str = "", ai_model: str = "", tokens_used: int = 0, status: str = "success", org_id: int = 1, department: str = None) -> bool:
+    """Logs security, authentication, AI usage, and admin audit events."""
+    try:
+        conn = _get_conn()
+        cursor = conn.cursor()
+        
+        # If department is not supplied, fetch from user_profiles
+        if not department and username:
+            try:
+                cursor.execute("SELECT department FROM user_profiles WHERE username = ? COLLATE NOCASE", (username.strip(),))
+                row = cursor.fetchone()
+                if row and row[0]:
+                    department = row[0]
+            except Exception: pass
+            
+        if not department:
+            department = "General"
+            
+        cursor.execute("""
+            INSERT INTO audit_logs (org_id, username, event_type, action_detail, ip_address, user_agent, ai_model, tokens_used, department, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (org_id, username or "Anonymous", event_type, action_detail, ip_address, user_agent, ai_model, tokens_used, department, status))
+        
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logging.getLogger("OrgChatAI").error(f"[log_audit_event] Error: {e}")
+        return False
+
+
+def get_audit_logs(org_id: int = 1, limit: int = 100, offset: int = 0, event_type: str = None, username: str = None, search: str = None) -> dict:
+    """Fetches paginated, searchable audit log entries."""
+    conn = _get_conn()
+    conn.row_factory = sqlite3.Row
+    try:
+        cursor = conn.cursor()
+        query = "SELECT * FROM audit_logs WHERE org_id = ?"
+        params = [org_id]
+        
+        if event_type:
+            query += " AND event_type = ?"
+            params.append(event_type)
+        if username:
+            query += " AND username = ? COLLATE NOCASE"
+            params.append(username.strip())
+        if search:
+            query += " AND (username LIKE ? OR action_detail LIKE ? OR ip_address LIKE ? OR ai_model LIKE ? OR department LIKE ?)"
+            s = f"%{search.strip()}%"
+            params.extend([s, s, s, s, s])
+            
+        # Count total matches
+        count_query = f"SELECT COUNT(*) FROM ({query})"
+        cursor.execute(count_query, params)
+        total_row = cursor.fetchone()
+        total = total_row[0] if total_row else 0
+        
+        query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+        
+        cursor.execute(query, params)
+        rows = [dict(r) for r in cursor.fetchall()]
+        
+        return {"total": total, "logs": rows}
+    finally:
+        conn.close()
+
+
+def get_security_audit_metrics(org_id: int = 1, days: int = 30) -> dict:
+    """Calculates security, login, AI usage, and department statistics for IT Security Audit Dashboard."""
+    from datetime import datetime, timedelta
+    since_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d 00:00:00")
+    
+    conn = _get_conn()
+    conn.row_factory = sqlite3.Row
+    try:
+        cursor = conn.cursor()
+        
+        # 1. High-level totals
+        cursor.execute("""
+            SELECT 
+                COUNT(CASE WHEN event_type IN ('login_success', 'login_failed', 'account_lockout') THEN 1 END) as total_logins,
+                COUNT(CASE WHEN event_type = 'login_success' THEN 1 END) as successful_logins,
+                COUNT(CASE WHEN event_type = 'login_failed' THEN 1 END) as failed_logins,
+                COUNT(CASE WHEN event_type = 'account_lockout' THEN 1 END) as lockout_incidents,
+                COUNT(CASE WHEN event_type IN ('ai_chat', 'ai_rag_query') THEN 1 END) as total_ai_requests,
+                COALESCE(SUM(CASE WHEN event_type IN ('ai_chat', 'ai_rag_query') THEN tokens_used ELSE 0 END), 0) as total_tokens
+            FROM audit_logs
+            WHERE org_id = ? AND timestamp >= ?
+        """, (org_id, since_date))
+        totals_row = cursor.fetchone()
+        totals = dict(totals_row) if totals_row else {}
+        
+        # 2. Department AI Usage Breakdown
+        cursor.execute("""
+            SELECT department, COUNT(*) as count, COALESCE(SUM(tokens_used), 0) as tokens
+            FROM audit_logs
+            WHERE org_id = ? AND event_type IN ('ai_chat', 'ai_rag_query') AND timestamp >= ?
+            GROUP BY department
+            ORDER BY count DESC
+        """, (org_id, since_date))
+        dept_usage = [dict(r) for r in cursor.fetchall()]
+        
+        # 3. AI Model Distribution
+        cursor.execute("""
+            SELECT COALESCE(NULLIF(ai_model, ''), 'Gemini-3.6-Flash') as model, COUNT(*) as count
+            FROM audit_logs
+            WHERE org_id = ? AND event_type IN ('ai_chat', 'ai_rag_query') AND timestamp >= ?
+            GROUP BY model
+            ORDER BY count DESC
+        """, (org_id, since_date))
+        model_dist = [dict(r) for r in cursor.fetchall()]
+        
+        # 4. Daily Timeline (past 14 days)
+        timeline_since = (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%d 00:00:00")
+        cursor.execute("""
+            SELECT 
+                DATE(timestamp) as date_str,
+                COUNT(CASE WHEN event_type = 'login_success' THEN 1 END) as logins,
+                COUNT(CASE WHEN event_type = 'login_failed' THEN 1 END) as failed_logins,
+                COUNT(CASE WHEN event_type IN ('ai_chat', 'ai_rag_query') THEN 1 END) as ai_requests
+            FROM audit_logs
+            WHERE org_id = ? AND timestamp >= ?
+            GROUP BY date_str
+            ORDER BY date_str ASC
+        """, (org_id, timeline_since))
+        timeline = [dict(r) for r in cursor.fetchall()]
+        
+        # 5. Top IP Addresses
+        cursor.execute("""
+            SELECT ip_address, COUNT(*) as activity_count, username, MAX(timestamp) as last_seen
+            FROM audit_logs
+            WHERE org_id = ? AND ip_address IS NOT NULL AND ip_address != '' AND timestamp >= ?
+            GROUP BY ip_address
+            ORDER BY activity_count DESC
+            LIMIT 10
+        """, (org_id, since_date))
+        ip_dist = [dict(r) for r in cursor.fetchall()]
+
+        return {
+            "totals": totals,
+            "department_usage": dept_usage,
+            "model_distribution": model_dist,
+            "timeline": timeline,
+            "ip_distribution": ip_dist
+        }
     finally:
         conn.close()
 

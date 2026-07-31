@@ -4337,3 +4337,62 @@ def api_delete_ai_category_rule(rule_id):
     return jsonify({"ok": ok})
 
 
+@admin_bp.route("/api/admin/security/metrics", methods=["GET"])
+@admin_required
+def api_admin_security_metrics():
+    org_id = session.get("org_id") or get_current_org_id()
+    days = request.args.get("days", 30, type=int)
+    metrics = database.get_security_audit_metrics(org_id, days=days)
+    return jsonify({"ok": True, "metrics": metrics})
+
+
+@admin_bp.route("/api/admin/security/audit-logs", methods=["GET"])
+@admin_required
+def api_admin_audit_logs():
+    org_id = session.get("org_id") or get_current_org_id()
+    limit = request.args.get("limit", 100, type=int)
+    offset = request.args.get("offset", 0, type=int)
+    event_type = request.args.get("event_type")
+    username = request.args.get("username")
+    search = request.args.get("search")
+    
+    result = database.get_audit_logs(org_id, limit=limit, offset=offset, event_type=event_type, username=username, search=search)
+    return jsonify({"ok": True, "total": result["total"], "logs": result["logs"]})
+
+
+@admin_bp.route("/api/admin/security/export-csv", methods=["GET"])
+@admin_required
+def api_admin_security_export_csv():
+    import io, csv
+    org_id = session.get("org_id") or get_current_org_id()
+    result = database.get_audit_logs(org_id, limit=2000, offset=0)
+    logs = result.get("logs", [])
+    
+    output = io.StringIO()
+    writer = csv.writer(output, quoting=csv.QUOTE_MINIMAL)
+    writer.writerow(["ID", "Timestamp", "Username", "Department", "Event Type", "Status", "Action Detail", "IP Address", "User Agent", "AI Model", "Tokens Used"])
+    
+    for row in logs:
+        writer.writerow([
+            row.get("id"),
+            row.get("timestamp"),
+            row.get("username"),
+            row.get("department"),
+            row.get("event_type"),
+            row.get("status"),
+            row.get("action_detail"),
+            row.get("ip_address"),
+            row.get("user_agent"),
+            row.get("ai_model"),
+            row.get("tokens_used", 0)
+        ])
+        
+    output.seek(0)
+    from flask import Response
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-disposition": "attachment; filename=orgchat_security_audit_logs.csv"}
+    )
+
+

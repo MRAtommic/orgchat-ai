@@ -16524,6 +16524,223 @@ function initLogin3DBackground() {
 
 window.initLogin3DBackground = initLogin3DBackground;
 
+// 🛡️ IT Security Audit & AI Usage Dashboard Logic
+let deptUsageChartInstance = null;
+let securityTimelineChartInstance = null;
+
+async function loadSecurityAuditDashboard() {
+    try {
+        const res = await fetch('/api/admin/security/metrics?days=30');
+        const data = await res.json();
+        if (!data.ok || !data.metrics) return;
+
+        const m = data.metrics;
+        const t = m.totals || {};
+
+        // Top Cards Update
+        if ($('secTotalLogins')) $('secTotalLogins').textContent = (t.total_logins || 0).toLocaleString();
+        if ($('secFailedLogins')) $('secFailedLogins').textContent = (t.failed_logins || 0).toLocaleString();
+        if ($('secTotalAIQueries')) $('secTotalAIQueries').textContent = (t.total_ai_requests || 0).toLocaleString();
+        if ($('secTokensBadge')) $('secTokensBadge').textContent = `${(t.total_tokens || 0).toLocaleString()} Tokens`;
+        if ($('secTotalLockouts')) $('secTotalLockouts').textContent = (t.lockout_incidents || 0).toLocaleString();
+        if ($('secLockoutsBadge')) $('secLockoutsBadge').textContent = `${t.lockout_incidents || 0} เคส`;
+
+        // Success Login Rate calculation
+        const succ = t.successful_logins || 0;
+        const tot = t.total_logins || 1;
+        const rate = Math.round((succ / (tot || 1)) * 100);
+        if ($('securityLoginsBadge')) $('securityLoginsBadge').textContent = `${rate}% สำเร็จ`;
+
+        // Top Department
+        const depts = m.department_usage || [];
+        if (depts.length > 0) {
+            const topDept = depts[0].department || 'General';
+            if ($('secTopDepartment')) $('secTopDepartment').textContent = topDept;
+            if ($('topDeptBadge')) $('topDeptBadge').textContent = `${topDept} (${depts[0].count} ครั้ง)`;
+        }
+
+        // Render Charts
+        renderDeptUsageChart(depts);
+        renderSecurityTimelineChart(m.timeline || []);
+
+        // Load Table
+        loadAuditLogsTable();
+    } catch (err) {
+        console.error('[Security Audit] Dashboard load error:', err);
+    }
+}
+
+function renderDeptUsageChart(depts) {
+    const ctx = document.getElementById('deptUsageChart');
+    if (!ctx) return;
+
+    if (deptUsageChartInstance) {
+        deptUsageChartInstance.destroy();
+    }
+
+    const labels = depts.map(d => d.department || 'General');
+    const counts = depts.map(d => d.count || 0);
+
+    deptUsageChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels.length ? labels : ['General'],
+            datasets: [{
+                label: 'จำนวนการใช้งาน AI (ครั้ง)',
+                data: counts.length ? counts : [0],
+                backgroundColor: [
+                    'rgba(99, 102, 241, 0.85)',
+                    'rgba(16, 185, 129, 0.85)',
+                    'rgba(245, 158, 11, 0.85)',
+                    'rgba(168, 85, 247, 0.85)',
+                    'rgba(236, 72, 153, 0.85)'
+                ],
+                borderRadius: 12,
+                borderSkipped: false
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                y: { beginAtZero: true, grid: { color: 'rgba(148, 163, 184, 0.1)' } },
+                x: { grid: { display: false } }
+            }
+        }
+    });
+}
+
+function renderSecurityTimelineChart(timeline) {
+    const ctx = document.getElementById('securityTimelineChart');
+    if (!ctx) return;
+
+    if (securityTimelineChartInstance) {
+        securityTimelineChartInstance.destroy();
+    }
+
+    const labels = timeline.map(t => t.date_str);
+    const logins = timeline.map(t => t.logins || 0);
+    const failed = timeline.map(t => t.failed_logins || 0);
+    const aiReqs = timeline.map(t => t.ai_requests || 0);
+
+    securityTimelineChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels.length ? labels : ['วันนี้'],
+            datasets: [
+                {
+                    label: 'การคุยกับ AI',
+                    data: aiReqs.length ? aiReqs : [0],
+                    borderColor: '#6366f1',
+                    backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                    fill: true,
+                    tension: 0.35,
+                    borderWidth: 3
+                },
+                {
+                    label: 'เข้าสู่ระบบสำเร็จ',
+                    data: logins.length ? logins : [0],
+                    borderColor: '#10b981',
+                    borderWidth: 2,
+                    tension: 0.35
+                },
+                {
+                    label: 'ล็อกอินผิดพลาด',
+                    data: failed.length ? failed : [0],
+                    borderColor: '#ef4444',
+                    borderWidth: 2,
+                    tension: 0.35
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } }
+            },
+            scales: {
+                y: { beginAtZero: true, grid: { color: 'rgba(148, 163, 184, 0.1)' } },
+                x: { grid: { display: false } }
+            }
+        }
+    });
+}
+
+async function loadAuditLogsTable(search = '', eventType = '') {
+    const tbody = $('securityAuditLogTableBody');
+    if (!tbody) return;
+
+    try {
+        let url = '/api/admin/security/audit-logs?limit=100';
+        if (search) url += `&search=${encodeURIComponent(search)}`;
+        if (eventType) url += `&event_type=${encodeURIComponent(eventType)}`;
+
+        const res = await fetch(url);
+        const data = await res.json();
+        if (!data.ok) {
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center py-6 text-red-500">ไม่สามารถโหลด Audit Logs ได้</td></tr>';
+            return;
+        }
+
+        const logs = data.logs || [];
+        if (logs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-surface-400">ไม่พบประวัติกิจกรรมในเงื่อนไขนี้</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = logs.map(row => {
+            let statusBadge = '<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50">Success 🟢</span>';
+            if (row.status === 'warning') statusBadge = '<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-600 dark:bg-amber-950/50">Warning 🟡</span>';
+            if (row.status === 'failed') statusBadge = '<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-600 dark:bg-rose-950/50">Failed 🔴</span>';
+
+            let eventName = row.event_type;
+            if (row.event_type === 'login_success') eventName = '🔑 เข้าสู่ระบบสำเร็จ';
+            if (row.event_type === 'login_failed') eventName = '⚠️ ล็อกอินผิดพลาด';
+            if (row.event_type === 'account_lockout') eventName = '🚨 ระงับบัญชีชั่วคราว';
+            if (row.event_type === 'ai_chat') eventName = '🤖 AI Query';
+            if (row.event_type === 'ai_rag_query') eventName = '📚 RAG Knowledge Query';
+
+            const userAgentShort = (row.user_agent || '-').substring(0, 30);
+
+            return `
+                <tr class="hover:bg-surface-50 dark:hover:bg-surface-800/50 transition-colors">
+                    <td class="p-3 text-surface-400 whitespace-nowrap">${row.timestamp || '-'}</td>
+                    <td class="p-3 font-bold text-surface-900 dark:text-white whitespace-nowrap">${escapeHTML(row.username || 'Anonymous')}</td>
+                    <td class="p-3 text-surface-500 whitespace-nowrap">${escapeHTML(row.department || 'General')}</td>
+                    <td class="p-3 font-semibold text-surface-800 dark:text-surface-200 whitespace-nowrap">${eventName}</td>
+                    <td class="p-3 whitespace-nowrap">${statusBadge}</td>
+                    <td class="p-3 text-surface-600 dark:text-surface-300 max-w-xs truncate" title="${escapeHTML(row.action_detail || '')}">${escapeHTML(row.action_detail || '-')}</td>
+                    <td class="p-3 font-mono text-[11px] text-surface-500 whitespace-nowrap">${escapeHTML(row.ip_address || '-')}</td>
+                    <td class="p-3 text-surface-400 text-[11px] whitespace-nowrap">${escapeHTML(row.ai_model || userAgentShort)}</td>
+                </tr>
+            `;
+        }).join('');
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    } catch (err) {
+        console.error('[Audit Logs] Error:', err);
+    }
+}
+
+function filterAuditLogs() {
+    const search = $('auditSearchInput') ? $('auditSearchInput').value : '';
+    const eventType = $('auditEventFilter') ? $('auditEventFilter').value : '';
+    loadAuditLogsTable(search, eventType);
+}
+
+function exportAuditLogsCSV() {
+    window.location.href = '/api/admin/security/export-csv';
+}
+
+window.loadSecurityAuditDashboard = loadSecurityAuditDashboard;
+window.loadAuditLogsTable = loadAuditLogsTable;
+window.filterAuditLogs = filterAuditLogs;
+window.exportAuditLogsCSV = exportAuditLogsCSV;
+
 document.addEventListener('DOMContentLoaded', () => {
   initChatDragAndResize();
   setTimeout(initLogin3DBackground, 200);

@@ -6153,6 +6153,21 @@ def chat():
             
             if bot_full_text:
                 b_sid = database.save_message("bot", bot_full_text, sources=sources, username=current_user, org_id=_chat_org_id)
+                try:
+                    approx_tokens = (len(question) + len(bot_full_text)) // 4
+                    database.log_audit_event(
+                        username=current_user,
+                        event_type="ai_chat" if not sources else "ai_rag_query",
+                        action_detail=f"AI Response ({len(bot_full_text)} chars)",
+                        ip_address=request.remote_addr,
+                        user_agent=request.user_agent.string if request.user_agent else "Web Browser",
+                        ai_model=os.environ.get("GEMINI_MODEL", "Gemini-3.6-Flash"),
+                        tokens_used=max(15, approx_tokens),
+                        status="success",
+                        org_id=_chat_org_id
+                    )
+                except Exception as _ae:
+                    print(f"Audit log AI chat failed: {_ae}")
                 yield f"data: {json.dumps({'done': True, 'bot_id': b_sid})}\n\n"
             
         except Exception as e:
