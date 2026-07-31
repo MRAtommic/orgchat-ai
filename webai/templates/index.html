@@ -151,7 +151,7 @@
 <body class="h-full h-[100dvh] overflow-hidden dark:bg-surface-950 dark:text-surface-100">
   <!-- Login Overlay -->
   <div id="loginOverlay"
-    class="fixed inset-0 z-[200] bg-slate-950 overflow-y-auto flex justify-center p-4 py-8 relative transition-all duration-500{% if session.get('user') %} hidden{% endif %}">
+    class="fixed inset-0 w-full h-full z-[200] bg-slate-950 overflow-y-auto flex justify-center p-4 py-8 transition-all duration-500{% if session.get('user') %} hidden{% endif %}">
     <!-- 3D Futuristic AI Canvas Background -->
     <canvas id="login3DCanvas" class="absolute inset-0 w-full h-full pointer-events-none z-0 opacity-80"></canvas>
 
