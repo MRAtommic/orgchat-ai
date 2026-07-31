@@ -369,11 +369,11 @@ def create_app():
         # 🛡️ Content-Security-Policy — restrict resource origins
         csp_parts = [
             "default-src 'self'",
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com https://accounts.google.com https://apis.google.com https://js.stripe.com",
-            "style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://fonts.googleapis.com https://unpkg.com",
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com https://accounts.google.com https://apis.google.com https://js.stripe.com https://cdn.socket.io https://static.cloudflareinsights.com https://api.qrserver.com",
+            "style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://fonts.googleapis.com https://unpkg.com https://accounts.google.com",
             "img-src 'self' data: blob: https: http:",
-            "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
-            "connect-src 'self' https://api.openweathermap.org https://generativelanguage.googleapis.com https://api.groq.com https://api.openai.com https://accounts.google.com https://js.stripe.com wss: ws:",
+            "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com data:",
+            "connect-src 'self' https://api.openweathermap.org https://generativelanguage.googleapis.com https://api.groq.com https://api.openai.com https://accounts.google.com https://js.stripe.com https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://api.qrserver.com https://static.cloudflareinsights.com https://cdn.socket.io wss: ws:",
             "frame-src 'self' https://accounts.google.com https://js.stripe.com",
             "object-src 'none'",
             "base-uri 'self'",
