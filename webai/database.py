@@ -3852,6 +3852,48 @@ def get_user_setting(username):
         return {"username_original": "Admin", "role": "admin", "is_active": 1, "custom_password": None, "notes": "Default Admin", "can_view_kb": True, "can_edit_kb": True, "can_delete_kb": True, "can_view_financial": True}
     return {"username_original": username, "role": "user", "is_active": 1, "custom_password": None, "notes": "", "can_view_kb": False, "can_edit_kb": False, "can_delete_kb": False, "can_view_financial": False}
 
+
+def get_user_by_email(email: str) -> dict | None:
+    """Find user settings/profile by email address. Case-insensitive."""
+    if not email:
+        return None
+    email_clean = email.strip().lower()
+    conn = _get_conn()
+    cursor = conn.cursor()
+    # 1. Check user_settings table
+    cursor.execute("""
+        SELECT username, role, is_active, email 
+        FROM user_settings 
+        WHERE email = ? COLLATE NOCASE AND is_active = 1
+    """, (email_clean,))
+    row = cursor.fetchone()
+    if row:
+        conn.close()
+        return {"username": row[0], "role": row[1], "is_active": row[2], "email": row[3]}
+
+    # 2. Check user_google_tokens
+    cursor.execute("""
+        SELECT username, google_email 
+        FROM user_google_tokens 
+        WHERE google_email = ? COLLATE NOCASE
+    """, (email_clean,))
+    row_g = cursor.fetchone()
+    if row_g:
+        conn.close()
+        return {"username": row_g[0], "role": "user", "is_active": 1, "email": row_g[1]}
+
+    # 3. Check organization_allowed_emails
+    cursor.execute("""
+        SELECT email FROM organization_allowed_emails 
+        WHERE email = ? COLLATE NOCASE
+    """, (email_clean,))
+    row_wl = cursor.fetchone()
+    conn.close()
+    if row_wl:
+        return {"username": email_clean.split("@")[0], "role": "user", "is_active": 1, "email": row_wl[0]}
+
+    return None
+
 def admin_get_all_users(org_id=1):
     """Get all users with their profiles and settings, filtered by org."""
     conn = _get_conn()

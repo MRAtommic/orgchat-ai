@@ -1473,23 +1473,139 @@ def reset_password_page(token):
     return render_template("reset_password.html", valid=bool(username), username=username or "", token=token)
 
 
+def send_reset_password_email(to_email: str, reset_url: str) -> tuple[bool, str]:
+    """Send password reset email to user."""
+    import smtplib
+    import os
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+
+    smtp_server = os.environ.get("SMTP_SERVER", "").strip()
+    smtp_port = os.environ.get("SMTP_PORT", "").strip()
+    smtp_user = os.environ.get("SMTP_USER", "").strip()
+    smtp_password = os.environ.get("SMTP_PASSWORD", "").strip()
+    smtp_sender = os.environ.get("SMTP_SENDER", smtp_user).strip()
+
+    if not smtp_server or not smtp_user or not smtp_password:
+        logger.warning("[ForgotPassword] SMTP credentials are not configured in environment.")
+        return False, "smtp_not_configured"
+
+    try:
+        port = int(smtp_port) if smtp_port else 587
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = "ตั้งรหัสผ่านใหม่สำหรับบัญชี OrgChat AI ของคุณ"
+        msg["From"] = f"OrgChat AI <{smtp_sender}>"
+        msg["To"] = to_email
+
+        html_content = f"""
+        <html>
+        <body style="font-family: 'Sarabun', Arial, sans-serif; background-color: #f8fafc; padding: 40px 20px; color: #1e293b;">
+            <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); overflow: hidden; border: 1px solid #e2e8f0;">
+                <div style="background-color: #059669; padding: 30px 40px; text-align: center; color: #ffffff;">
+                    <h2 style="margin: 0; font-size: 24px; font-weight: 800;">OrgChat AI</h2>
+                    <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 14px;">ระบบตั้งค่ารหัสผ่านใหม่</p>
+                </div>
+                <div style="padding: 40px; line-height: 1.6;">
+                    <p style="font-size: 16px; margin-top: 0;">สวัสดีครับ,</p>
+                    <p style="font-size: 16px;">เราได้รับคำขอรีเซ็ตรหัสผ่านสำหรับบัญชีที่ผูกกับอีเมล <strong>{to_email}</strong></p>
+                    <p style="font-size: 16px;">คลิกปุ่มด้านล่างเพื่อตั้งรหัสผ่านใหม่ (ลิงก์หมดอายุภายใน 1 ชั่วโมง):</p>
+
+                    <div style="text-align: center; margin: 30px 0;">
+                        <a href="{reset_url}" style="background-color: #059669; color: #ffffff; padding: 14px 30px; border-radius: 10px; text-decoration: none; font-weight: bold; font-size: 16px; display: inline-block; box-shadow: 0 4px 12px rgba(5, 150, 105, 0.25);">
+                            ตั้งรหัสผ่านใหม่ที่นี่ →
+                        </a>
+                    </div>
+
+                    <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px 16px; margin-bottom: 24px;">
+                        <p style="margin: 0; font-size: 13px; color: #166534;">
+                            🔒 หากคุณไม่ได้เป็นผู้ขอตั้งรหัสผ่านใหม่ ท่านสามารถข้ามและลบอีเมลฉบับนี้ทิ้งได้ทันที บัญชีของคุณยังคงปลอดภัยอยู่เสมอ
+                        </p>
+                    </div>
+
+                    <p style="font-size: 13px; color: #64748b; margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 20px;">
+                        หากปุ่มด้านบนใช้งานไม่ได้ สามารถคัดลอกลิงก์นี้ไปวางในเบราว์เซอร์ได้ครับ: <br>
+                        <a href="{reset_url}" style="color: #059669; word-break: break-all;">{reset_url}</a>
+                    </p>
+                </div>
+                <div style="background-color: #f1f5f9; padding: 20px 40px; text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #e2e8f0;">
+                    นี่คืออีเมลอัตโนมัติจากระบบ OrgChat AI กรุณาอย่าตอบกลับอีเมลนี้
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+
+        msg.attach(MIMEText(html_content, "html"))
+
+        server = None
+        if port == 465:
+            server = smtplib.SMTP_SSL(smtp_server, port, timeout=10)
+        else:
+            server = smtplib.SMTP(smtp_server, port, timeout=10)
+            server.starttls()
+        server.login(smtp_user, smtp_password)
+        server.sendmail(smtp_sender, [to_email], msg.as_string())
+        server.quit()
+        return True, "success"
+    except Exception as e:
+        logger.error(f"[ForgotPassword] Failed to send email to {to_email}: {e}")
+        return False, str(e)
+
+
 @auth_bp.route("/api/auth/forgot-password", methods=["POST"])
 @_limiter.limit("3 per minute; 10 per hour")
 def api_forgot_password():
     data = request.get_json(force=True)
-    username = (data.get("username") or "").strip().lower()
+    raw_input = (data.get("username") or data.get("email") or data.get("input") or "").strip()
+    if not raw_input:
+        return jsonify({"ok": False, "error": "กรุณากรอก Username หรือ Email"})
+
+    is_email = "@" in raw_input
+    username = None
+    target_email = None
+
+    if is_email:
+        # Check if email exists in system first!
+        target_email = raw_input.lower()
+        user_info = database.get_user_by_email(target_email)
+        if not user_info:
+            return jsonify({
+                "ok": False,
+                "error": f"ไม่พบอีเมล {target_email} นี้ในระบบองค์กร กรุณาตรวจสอบอีเมลอีกครั้ง"
+            })
+        username = user_info.get("username")
+    else:
+        username = raw_input.lower()
+        user_info = database.get_user_setting(username)
+        if user_info and user_info.get("email"):
+            target_email = user_info.get("email")
+
     if not username:
-        return jsonify({"ok": False, "error": "กรุณากรอก username"})
+        return jsonify({"ok": False, "error": "ไม่พบบัญชีผู้ใช้นี้ในระบบองค์กร"})
 
     token = database.create_reset_token(username)
     if not token:
-        # Don't reveal whether user exists
-        return jsonify({"ok": True, "message": "ถ้า username นี้มีในระบบ เราจะส่งลิ้งค์รีเซ็ตไปทาง LINE ค่ะ"})
+        return jsonify({"ok": False, "error": "ไม่พบบัญชีนี้ในระบบองค์กร"})
 
     base = os.environ.get("BASE_URL", "https://openchat.sbs")
     reset_url = f"{base}/reset-password/{token}"
 
-    # Try to send via LINE DM
+    # Priority 1: Send via Email if target_email is available
+    if target_email:
+        email_sent, email_err = send_reset_password_email(target_email, reset_url)
+        if email_sent:
+            return jsonify({
+                "ok": True,
+                "message": f"ระบบได้ส่งลิงก์รีเซ็ตรหัสผ่านไปยังอีเมล {target_email} เรียบร้อยแล้วค่ะ กรุณาตรวจสอบกล่องจดหมาย"
+            })
+        elif email_err == "smtp_not_configured":
+            return jsonify({
+                "ok": True,
+                "message": f"พบบัญชี {target_email} ในระบบแล้ว! (หมายเหตุ: ระบบยังไม่ได้เปิดใช้งาน SMTP บนเซิร์ฟเวอร์ ลิงก์รีเซ็ตรหัสผ่านของคุณคือด้านล่าง)",
+                "reset_url": reset_url
+            })
+
+    # Priority 2: Try to send via LINE DM
     line_user_id = database.get_line_user_id_for_username(username)
     line_sent = False
     if line_user_id:
@@ -1514,8 +1630,8 @@ def api_forgot_password():
     if line_sent:
         return jsonify({"ok": True, "message": "ส่งลิ้งค์รีเซ็ตไปทาง LINE ของคุณแล้วค่ะ กรุณาตรวจสอบข้อความจาก OrgChat AI"})
 
-    # ไม่มี LINE — แจ้ง org admins ของ user ผ่าน LINE แทน เพื่อให้ช่วย reset
-    logger.warning(f"[ForgotPassword] No LINE for user '{username}' — notifying org admins. reset_url={reset_url}")
+    # Priority 3: Notify org admins via LINE
+    logger.warning(f"[ForgotPassword] No LINE/Email for user '{username}' — notifying org admins. reset_url={reset_url}")
     try:
         _tok = billing._get_line_token()
         user_orgs = database.get_user_orgs(username) or []
@@ -1525,7 +1641,7 @@ def api_forgot_password():
             org_members = database.get_org_members(org_id)
             admin_msg = (
                 f"แจ้งเตือนจาก OrgChat AI\n\n"
-                f"ผู้ใช้ '{username}' ขอรีเซ็ตรหัสผ่าน แต่ยังไม่ได้ผูก LINE\n\n"
+                f"ผู้ใช้ '{username}' ขอรีเซ็ตรหัสผ่าน แต่ยังไม่ได้ผูก LINE/Email\n\n"
                 f"ลิ้งค์รีเซ็ต (ส่งให้ผู้ใช้โดยตรง — หมดอายุ 1 ชม.):\n{reset_url}"
             )
             import requests as _req2
@@ -1548,8 +1664,12 @@ def api_forgot_password():
         logger.error(f"[ForgotPassword] admin notify failed: {_e}")
 
     if admin_notified:
-        return jsonify({"ok": True, "message": "บัญชีนี้ยังไม่ได้เชื่อม LINE ค่ะ ระบบได้แจ้ง Admin องค์กรของคุณให้ส่งลิ้งค์รีเซ็ตให้แล้ว"})
-    return jsonify({"ok": True, "message": "บัญชีนี้ยังไม่ได้เชื่อม LINE ค่ะ กรุณาติดต่อผู้ดูแลระบบเพื่อขอลิ้งค์รีเซ็ตรหัสผ่านค่ะ"})
+        return jsonify({"ok": True, "message": "ระบบได้แจ้ง Admin องค์กรของคุณให้ช่วยส่งลิ้งค์รีเซ็ตให้เรียบร้อยแล้วค่ะ"})
+    return jsonify({
+        "ok": True,
+        "message": "สร้างลิงก์รีเซ็ตรหัสผ่านเรียบร้อยแล้วค่ะ",
+        "reset_url": reset_url
+    })
 
 
 @auth_bp.route("/api/auth/reset-password", methods=["POST"])
