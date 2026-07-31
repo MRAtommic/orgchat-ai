@@ -13073,9 +13073,10 @@ async function showQRLogin() {
   // Generate QR token
   try {
     const res = await fetch('/api/qr/generate', { method: 'POST' });
-    const data = await res.json();
-    if (!data.ok) {
-      toast('ไม่สามารถสร้าง QR Code ได้', 'error');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      const errMsg = data.error || (res.status === 429 ? 'จำกัดจำนวนการสร้าง QR Code กรุณารอสักครู่' : 'ไม่สามารถสร้าง QR Code ได้');
+      toast(errMsg, 'error');
       return;
     }
 
@@ -13084,17 +13085,27 @@ async function showQRLogin() {
     const canvas = $('qrCodeCanvas');
     
     // Clear previous QR
-    canvas.innerHTML = '';
-    if (_qrInstance) _qrInstance = null;
-
-    _qrInstance = new QRCode(canvas, {
-      text: qrUrl,
-      width: 200,
-      height: 200,
-      colorDark: '#1e293b',
-      colorLight: '#ffffff',
-      correctLevel: QRCode.CorrectLevel.M
-    });
+    if (canvas) {
+      canvas.innerHTML = '';
+      if (typeof QRCode !== 'undefined') {
+        try {
+          if (_qrInstance) _qrInstance = null;
+          _qrInstance = new QRCode(canvas, {
+            text: qrUrl,
+            width: 200,
+            height: 200,
+            colorDark: '#1e293b',
+            colorLight: '#ffffff',
+            correctLevel: QRCode.CorrectLevel.M
+          });
+        } catch (qrErr) {
+          console.warn('QRCode JS render failed, using fallback img:', qrErr);
+          canvas.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrUrl)}" alt="QR Code" class="w-full h-full object-contain rounded-lg" />`;
+        }
+      } else {
+        canvas.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrUrl)}" alt="QR Code" class="w-full h-full object-contain rounded-lg" />`;
+      }
+    }
 
     // Start countdown (5 minutes)
     let remaining = 300;

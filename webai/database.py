@@ -6084,6 +6084,15 @@ _QR_TTL = 300  # 5 minutes
 def qr_create_token(token: str) -> None:
     now = _time_mod.time()
     conn = _get_conn()
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS qr_login_tokens (
+            token      TEXT PRIMARY KEY,
+            status     TEXT DEFAULT 'pending',
+            username   TEXT,
+            created_at REAL NOT NULL,
+            expires_at REAL NOT NULL
+        )
+    """)
     conn.execute(
         "INSERT OR REPLACE INTO qr_login_tokens (token, status, username, created_at, expires_at) VALUES (?, 'pending', NULL, ?, ?)",
         (token, now, now + _QR_TTL),

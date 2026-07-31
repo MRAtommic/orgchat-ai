@@ -1194,12 +1194,16 @@ def api_login():
 
 
 @auth_bp.route("/api/qr/generate", methods=["POST"])
-@_limiter.limit("10 per minute; 30 per hour")
+@_limiter.limit("60 per minute; 300 per hour")
 def qr_generate():
     """Generate a unique QR login token stored in DB (safe for multi-worker)."""
-    token = str(uuid.uuid4())
-    database.qr_create_token(token)
-    return jsonify({"ok": True, "token": token})
+    try:
+        token = str(uuid.uuid4())
+        database.qr_create_token(token)
+        return jsonify({"ok": True, "token": token})
+    except Exception as e:
+        logger.error(f"[QR] Generate error: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @auth_bp.route("/api/qr/poll/<token>")
