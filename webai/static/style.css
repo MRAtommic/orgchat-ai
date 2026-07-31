@@ -4076,3 +4076,10 @@ button:active:not(:disabled), .nav-item:active, .btn-action:active {
   transform: translateZ(0);
   will-change: backdrop-filter;
 }
+
+/* 📱 Hide Floating Help Button (#helpFab) on Mobile Screens to avoid blocking UI */
+@media (max-width: 768px) {
+  #helpFab {
+    display: none !important;
+  }
+}
