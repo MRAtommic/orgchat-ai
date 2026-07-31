@@ -13023,10 +13023,22 @@ async function subscribeUserToPush() {
   }
 }
 
-// ─── QR Code Login ─────────────────────────────────────
-let _qrPollInterval = null;
-let _qrCountdownInterval = null;
-let _qrInstance = null;
+// ─── Collapsible Mobile Security Panel ─────────────────
+function toggleMobileSecurityPanel() {
+  const panel = document.getElementById('securityPanel');
+  const icon = document.getElementById('securityPanelIcon');
+  if (!panel) return;
+  const isHidden = panel.classList.contains('hidden');
+  if (isHidden) {
+    panel.classList.remove('hidden');
+    panel.classList.add('flex');
+    if (icon) icon.style.transform = 'rotate(180deg)';
+  } else {
+    panel.classList.add('hidden');
+    panel.classList.remove('flex');
+    if (icon) icon.style.transform = 'rotate(0deg)';
+  }
+}
 
 async function showQRLogin() {
   const loginForm = document.querySelector('#loginOverlay .p-8.space-y-4');
