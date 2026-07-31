@@ -60,7 +60,7 @@ logger = logging.getLogger("OrgChatAI.Admin")
 
 admin_bp = Blueprint('admin', __name__)
 
-from routes.chat import get_line_config, save_line_config, broadcast_line_announcement
+from routes.chat import get_line_config, save_line_config, broadcast_line_announcement, send_line_push_notification
 
 _recon_cache: dict = {}
 _recon_lock = threading.Lock()
@@ -2266,19 +2266,22 @@ def api_leave_request():
                 "/#admin"
             )
             # --- LINE Push Notification to Linked Admin ---
-            threading.Thread(target=send_line_push_notification, args=(
-                admin,
-                "🏖️ มีคำขอลาหยุดใหม่!",
-                f"ผู้ใช้งาน {user_display} ได้ยื่นคำขอลาหยุด {l_type} ตั้งแต่วันที่ {s_date} ถึง {e_date}",
-            ), kwargs={
-                "fields": {
-                    "ผู้ขอลา": user_display,
-                    "ประเภทการลา": l_type,
-                    "ตั้งแต่วันที่": s_date,
-                    "ถึงวันที่": e_date,
-                    "เหตุผล": reason if reason else "-"
-                }
-            }).start()
+            try:
+                threading.Thread(target=send_line_push_notification, args=(
+                    admin,
+                    "🏖️ มีคำขอลาหยุดใหม่!",
+                    f"ผู้ใช้งาน {user_display} ได้ยื่นคำขอลาหยุด {l_type} ตั้งแต่วันที่ {s_date} ถึง {e_date}",
+                ), kwargs={
+                    "fields": {
+                        "ผู้ขอลา": user_display,
+                        "ประเภทการลา": l_type,
+                        "ตั้งแต่วันที่": s_date,
+                        "ถึงวันที่": e_date,
+                        "เหตุผล": reason if reason else "-"
+                    }
+                }).start()
+            except Exception as _lne:
+                logger.warning(f"[LINE Push Error] Leave request notification: {_lne}")
 
         return jsonify({"ok": True, "id": leave_id})
     return jsonify({"ok": False, "error": "เกิดข้อผิดพลาดในการส่งคำขอลาหยุดค่ะ"}), 500
@@ -2326,20 +2329,23 @@ def api_admin_leave_status():
                 "/#leave"
             )
             # --- LINE Push Notification to Employee ---
-            status_badge = "อนุมัติเรียบร้อยแล้ว ✅" if status == "approved" else "ถูกปฏิเสธ ❌"
-            threading.Thread(target=send_line_push_notification, args=(
-                target_user,
-                "🏖️ อัปเดตผลการขออนุมัติการลา",
-                f"คำขอลาของคุณตั้งแต่วันที่ {leave['start_date']} ถึง {leave['end_date']} ได้รับการ{status_text}แล้วค่ะ",
-            ), kwargs={
-                "fields": {
-                    "ผลการอนุมัติ": status_badge,
-                    "ผู้อนุมัติ": admin_user,
-                    "ประเภทการลา": leave.get("type", "ทั่วไป"),
-                    "ช่วงวันลา": f"{leave['start_date']} ถึง {leave['end_date']}",
-                    "หมายเหตุ": note if note else "-"
-                }
-            }).start()
+            try:
+                status_badge = "อนุมัติเรียบร้อยแล้ว ✅" if status == "approved" else "ถูกปฏิเสธ ❌"
+                threading.Thread(target=send_line_push_notification, args=(
+                    target_user,
+                    "🏖️ อัปเดตผลการขออนุมัติการลา",
+                    f"คำขอลาของคุณตั้งแต่วันที่ {leave['start_date']} ถึง {leave['end_date']} ได้รับการ{status_text}แล้วค่ะ",
+                ), kwargs={
+                    "fields": {
+                        "ผลการอนุมัติ": status_badge,
+                        "ผู้อนุมัติ": admin_user,
+                        "ประเภทการลา": leave.get("type", "ทั่วไป"),
+                        "ช่วงวันลา": f"{leave['start_date']} ถึง {leave['end_date']}",
+                        "หมายเหตุ": note if note else "-"
+                    }
+                }).start()
+            except Exception as _lne:
+                logger.warning(f"[LINE Push Error] Leave status notification: {_lne}")
         return jsonify({"ok": True})
     return jsonify({"ok": False, "error": "ไม่พบคำขอลาที่ระบุ"}), 404
 
