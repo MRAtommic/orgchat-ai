@@ -13468,29 +13468,50 @@ async function loadMyLeaves() {
     if (!list) return;
 
     try {
-        const res = await fetch('/api/leave/my');
-        const data = await res.json();
-        if (data.ok) {
-            renderLeaveHistory(data.leaves);
-            updateLeaveSummary(data.leaves);
+        const [leavesRes, balanceRes] = await Promise.all([
+            fetch('/api/leave/my').then(r => r.json()).catch(() => ({ ok: false })),
+            fetch('/api/leave/balance').then(r => r.json()).catch(() => ({ ok: false }))
+        ]);
+
+        if (leavesRes.ok) {
+            renderLeaveHistory(leavesRes.leaves);
+        }
+        if (balanceRes.ok && balanceRes.balance) {
+            updateLeaveQuotaDashboard(balanceRes.balance);
         }
     } catch (err) {
         console.error(err);
     }
 }
 
-function updateLeaveSummary(leaves) {
-    // Calculate used days for approved leaves
-    let used = 0;
-    leaves.filter(l => l.status === 'approved').forEach(l => {
-        const start = new Date(l.start_date);
-        const end = new Date(l.end_date);
-        const diff = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
-        used += diff;
-    });
+function updateLeaveQuotaDashboard(balance) {
+    if (!balance || !balance.quotas) return;
 
-    if ($('leaveUsedDays')) $('leaveUsedDays').textContent = used;
-    if ($('leaveRemainingDays')) $('leaveRemainingDays').textContent = Math.max(0, 30 - used);
+    if ($('leaveQuotaYear')) $('leaveQuotaYear').textContent = balance.year || new Date().getFullYear();
+
+    const q = balance.quotas;
+    const catKeys = ['sick', 'personal', 'vacation', 'other'];
+
+    catKeys.forEach(key => {
+        const item = q[key];
+        if (!item) return;
+
+        const maxEl = $(`${key}Max`);
+        const usedEl = $(`${key}Used`);
+        const remEl = $(`${key}Remaining`);
+        const badgeEl = $(`${key}RemainingBadge`);
+        const barEl = $(`${key}ProgressBar`);
+
+        if (maxEl) maxEl.textContent = item.max;
+        if (usedEl) usedEl.textContent = item.used;
+        if (remEl) remEl.textContent = item.remaining;
+        if (badgeEl) badgeEl.textContent = `${item.remaining} วันคงเหลือ`;
+
+        if (barEl) {
+            const pct = item.max > 0 ? Math.min(100, Math.round((item.used / item.max) * 100)) : 0;
+            barEl.style.width = `${pct}%`;
+        }
+    });
 }
 
 function renderLeaveHistory(leaves) {

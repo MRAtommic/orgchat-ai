@@ -2344,6 +2344,50 @@ def api_admin_leave_status():
     return jsonify({"ok": False, "error": "ไม่พบคำขอลาที่ระบุ"}), 404
 
 
+@admin_bp.route("/api/leave/balance")
+@login_required
+def api_leave_balance():
+    user = session.get("user")
+    org_id = get_current_org_id()
+    year = request.args.get("year", type=int)
+    balance = database.get_user_leave_balance(user, org_id=org_id, year=year)
+    return jsonify({"ok": True, "balance": balance})
+
+
+@admin_bp.route("/api/admin/leave/balances")
+@admin_required
+def api_admin_leave_balances():
+    org_id = get_current_org_id()
+    year = request.args.get("year", type=int)
+    balances = database.get_org_leave_balances(org_id=org_id, year=year)
+    return jsonify({"ok": True, "balances": balances})
+
+
+@admin_bp.route("/api/admin/leave/quota/update", methods=["POST"])
+@admin_required
+def api_admin_leave_quota_update():
+    data = request.get_json(force=True) or {}
+    target_user = data.get("username")
+    sick = data.get("sick", 30)
+    personal = data.get("personal", 6)
+    vacation = data.get("vacation", 6)
+    other = data.get("other", 30)
+    year = data.get("year")
+    
+    if not target_user:
+        return jsonify({"ok": False, "error": "กรุณาระบุชื่อผู้ใช้งานค่ะ"}), 400
+        
+    org_id = get_current_org_id()
+    from datetime import datetime
+    target_year = int(year) if year else datetime.now().year
+    
+    ok = database.update_user_leave_quota(target_user, org_id, target_year, int(sick), int(personal), int(vacation), int(other))
+    if ok:
+        database.log_event(f"Updated leave quota for {target_user} ({target_year}): Sick={sick}, Personal={personal}, Vacation={vacation}, Other={other}", user=session.get("user"), org_id=org_id)
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "error": "ไม่สามารถอัปเดตโควต้าวันลาได้ค่ะ"}), 500
+
+
 @admin_bp.route("/api/leave/comment", methods=["POST"])
 @login_required
 def api_leave_add_comment():

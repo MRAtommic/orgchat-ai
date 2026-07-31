@@ -2681,27 +2681,84 @@
           </header>
           
           <div class="flex-1 min-h-0 overflow-y-auto w-full max-w-4xl p-4 md:p-8 space-y-8 custom-scrollbar">
-            <!-- Summary Cards -->
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
-              <div class="p-6 bg-white dark:bg-surface-900 border border-surface-100 dark:border-surface-800 rounded-3xl shadow-sm text-center">
-                <p class="text-[10px] font-black uppercase tracking-widest text-surface-400 mb-2">สิทธิการลาปีนี้</p>
-                <div class="flex items-baseline justify-center gap-1">
-                  <span class="text-3xl font-black text-brand-600">30</span>
-                  <span class="text-xs font-bold text-surface-400 uppercase tracking-widest">วัน</span>
-                </div>
+            <!-- Employee Leave Quota Balance Dashboard -->
+            <div class="space-y-4">
+              <div class="flex items-center justify-between">
+                <h3 class="text-xs font-black uppercase tracking-widest text-surface-400 flex items-center gap-2">
+                  <i data-lucide="pie-chart" class="w-4 h-4 text-brand-600"></i> สรุปโควต้าวันลาประจำปี (<span id="leaveQuotaYear">2026</span>)
+                </h3>
+                <span class="text-[10px] font-bold text-surface-400 bg-surface-100 dark:bg-surface-800 px-3 py-1 rounded-full">
+                  คำนวณอัตโนมัติเมื่อได้รับการอนุมัติ
+                </span>
               </div>
-              <div class="p-6 bg-white dark:bg-surface-900 border border-surface-100 dark:border-surface-800 rounded-3xl shadow-sm text-center">
-                <p class="text-[10px] font-black uppercase tracking-widest text-surface-400 mb-2">ใช้ไปแล้ว</p>
-                <div class="flex items-baseline justify-center gap-1">
-                  <span class="text-3xl font-black text-rose-500" id="leaveUsedDays">0</span>
-                  <span class="text-xs font-bold text-surface-400 uppercase tracking-widest">วัน</span>
+              
+              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="leaveQuotaCardGrid">
+                <!-- Sick Leave Card -->
+                <div class="p-5 bg-white dark:bg-surface-900 border border-emerald-500/20 rounded-3xl shadow-sm relative overflow-hidden group">
+                  <div class="flex items-center justify-between mb-3">
+                    <span class="text-xs font-black text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                      <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> ลาป่วย (Sick)
+                    </span>
+                    <span class="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-md" id="sickRemainingBadge">30 วันคงเหลือ</span>
+                  </div>
+                  <div class="flex items-baseline justify-between mb-2">
+                    <span class="text-2xl font-black text-surface-900 dark:text-white" id="sickRemaining">30</span>
+                    <span class="text-xs font-medium text-surface-400">ใช้ไป <span id="sickUsed">0</span> / <span id="sickMax">30</span> วัน</span>
+                  </div>
+                  <div class="w-full bg-surface-100 dark:bg-surface-800 h-2 rounded-full overflow-hidden">
+                    <div id="sickProgressBar" class="bg-emerald-500 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                  </div>
                 </div>
-              </div>
-              <div class="p-6 bg-white dark:bg-surface-900 border border-emerald-500/20 dark:border-emerald-500/10 rounded-3xl shadow-sm text-center bg-emerald-50/20 dark:bg-emerald-500/5">
-                <p class="text-[10px] font-black uppercase tracking-widest text-surface-400 mb-2">คงเหลือ</p>
-                <div class="flex items-baseline justify-center gap-1">
-                  <span class="text-3xl font-black text-emerald-500" id="leaveRemainingDays">30</span>
-                  <span class="text-xs font-bold text-surface-400 uppercase tracking-widest">วัน</span>
+
+                <!-- Personal Leave Card -->
+                <div class="p-5 bg-white dark:bg-surface-900 border border-amber-500/20 rounded-3xl shadow-sm relative overflow-hidden group">
+                  <div class="flex items-center justify-between mb-3">
+                    <span class="text-xs font-black text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                      <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> ลากิจ (Personal)
+                    </span>
+                    <span class="text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/50 px-2 py-0.5 rounded-md" id="personalRemainingBadge">6 วันคงเหลือ</span>
+                  </div>
+                  <div class="flex items-baseline justify-between mb-2">
+                    <span class="text-2xl font-black text-surface-900 dark:text-white" id="personalRemaining">6</span>
+                    <span class="text-xs font-medium text-surface-400">ใช้ไป <span id="personalUsed">0</span> / <span id="personalMax">6</span> วัน</span>
+                  </div>
+                  <div class="w-full bg-surface-100 dark:bg-surface-800 h-2 rounded-full overflow-hidden">
+                    <div id="personalProgressBar" class="bg-amber-500 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                  </div>
+                </div>
+
+                <!-- Vacation Leave Card -->
+                <div class="p-5 bg-white dark:bg-surface-900 border border-blue-500/20 rounded-3xl shadow-sm relative overflow-hidden group">
+                  <div class="flex items-center justify-between mb-3">
+                    <span class="text-xs font-black text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+                      <span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span> ลาพักร้อน (Vacation)
+                    </span>
+                    <span class="text-[10px] font-bold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/50 px-2 py-0.5 rounded-md" id="vacationRemainingBadge">6 วันคงเหลือ</span>
+                  </div>
+                  <div class="flex items-baseline justify-between mb-2">
+                    <span class="text-2xl font-black text-surface-900 dark:text-white" id="vacationRemaining">6</span>
+                    <span class="text-xs font-medium text-surface-400">ใช้ไป <span id="vacationUsed">0</span> / <span id="vacationMax">6</span> วัน</span>
+                  </div>
+                  <div class="w-full bg-surface-100 dark:bg-surface-800 h-2 rounded-full overflow-hidden">
+                    <div id="vacationProgressBar" class="bg-blue-500 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                  </div>
+                </div>
+
+                <!-- Other Leave Card -->
+                <div class="p-5 bg-white dark:bg-surface-900 border border-purple-500/20 rounded-3xl shadow-sm relative overflow-hidden group">
+                  <div class="flex items-center justify-between mb-3">
+                    <span class="text-xs font-black text-purple-600 dark:text-purple-400 flex items-center gap-1.5">
+                      <span class="w-2.5 h-2.5 rounded-full bg-purple-500"></span> ลาอื่นๆ (Other)
+                    </span>
+                    <span class="text-[10px] font-bold text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/50 px-2 py-0.5 rounded-md" id="otherRemainingBadge">30 วันคงเหลือ</span>
+                  </div>
+                  <div class="flex items-baseline justify-between mb-2">
+                    <span class="text-2xl font-black text-surface-900 dark:text-white" id="otherRemaining">30</span>
+                    <span class="text-xs font-medium text-surface-400">ใช้ไป <span id="otherUsed">0</span> / <span id="otherMax">30</span> วัน</span>
+                  </div>
+                  <div class="w-full bg-surface-100 dark:bg-surface-800 h-2 rounded-full overflow-hidden">
+                    <div id="otherProgressBar" class="bg-purple-500 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                  </div>
                 </div>
               </div>
             </div>

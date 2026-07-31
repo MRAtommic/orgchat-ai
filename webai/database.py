@@ -672,6 +672,20 @@ def init_db():
         )
     """)
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_leave_quotas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            org_id INTEGER NOT NULL DEFAULT 1,
+            year INTEGER NOT NULL,
+            sick_leave INTEGER NOT NULL DEFAULT 30,
+            personal_leave INTEGER NOT NULL DEFAULT 6,
+            vacation_leave INTEGER NOT NULL DEFAULT 6,
+            other_leave INTEGER NOT NULL DEFAULT 30,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(username, org_id, year)
+        )
+    """)
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS expense_claims (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             line_user_id TEXT,
@@ -4555,10 +4569,126 @@ def update_leave_status(leave_id, status, approver, note=""):
         updated = cursor.rowcount > 0
         conn.commit()
         conn.close()
-        return updated
     except Exception as e:
         logging.getLogger("OrgChatAI").error(f"[update_leave_status] {e}")
         return False
+
+def get_user_leave_balance(username: str, org_id: int = 1, year: int = None) -> dict:
+    """
+    Calculates current year's used leave days from approved requests and returns quota balance.
+    Default yearly quotas: Sick=30, Personal=6, Vacation=6, Other=30.
+    """
+    from datetime import datetime
+    if not year:
+        year = datetime.now().year
+    username_clean = username.strip() if username else ""
+    
+    conn = _get_conn()
+    conn.row_factory = sqlite3.Row
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT sick_leave, personal_leave, vacation_leave, other_leave 
+            FROM user_leave_quotas 
+            WHERE username = ? COLLATE NOCASE AND org_id = ? AND year = ?
+        """, (username_clean, org_id, year))
+        q_row = cursor.fetchone()
+        
+        if q_row:
+            sick_max = q_row["sick_leave"]
+            pers_max = q_row["personal_leave"]
+            vac_max = q_row["vacation_leave"]
+            oth_max = q_row["other_leave"]
+        else:
+            sick_max, pers_max, vac_max, oth_max = 30, 6, 6, 30
+            cursor.execute("""
+                INSERT OR IGNORE INTO user_leave_quotas 
+                (username, org_id, year, sick_leave, personal_leave, vacation_leave, other_leave)
+                VALUES (?, ?, ?, 30, 6, 6, 30)
+            """, (username_clean, org_id, year))
+            conn.commit()
+            
+        cursor.execute("""
+            SELECT type, leave_type, start_date, end_date 
+            FROM leave_requests 
+            WHERE (username = ? COLLATE NOCASE OR line_user_id = ?) 
+              AND status = 'approved'
+              AND (start_date LIKE ? OR end_date LIKE ?)
+        """, (username_clean, username_clean, f"{year}-%", f"{year}-%"))
+        
+        rows = cursor.fetchall()
+        
+        sick_used, pers_used, vac_used, oth_used = 0, 0, 0, 0
+        for r in rows:
+            l_type = (r["type"] or r["leave_type"] or "Other").lower()
+            try:
+                s_dt = datetime.strptime(r["start_date"], "%Y-%m-%d")
+                e_dt = datetime.strptime(r["end_date"], "%Y-%m-%d")
+                days_count = max(1, (e_dt - s_dt).days + 1)
+            except Exception:
+                days_count = 1
+                
+            if any(k in l_type for k in ["sick", "ป่วย"]):
+                sick_used += days_count
+            elif any(k in l_type for k in ["personal", "กิจ"]):
+                pers_used += days_count
+            elif any(k in l_type for k in ["vacation", "พักร้อน"]):
+                vac_used += days_count
+            else:
+                oth_used += days_count
+
+        return {
+            "username": username_clean,
+            "org_id": org_id,
+            "year": year,
+            "quotas": {
+                "sick": {"name": "ลาป่วย", "code": "Sick", "max": sick_max, "used": sick_used, "remaining": max(0, sick_max - sick_used), "color": "emerald"},
+                "personal": {"name": "ลากิจ", "code": "Personal", "max": pers_max, "used": pers_used, "remaining": max(0, pers_max - pers_used), "color": "amber"},
+                "vacation": {"name": "ลาพักร้อน", "code": "Vacation", "max": vac_max, "used": vac_used, "remaining": max(0, vac_max - vac_used), "color": "blue"},
+                "other": {"name": "ลาอื่นๆ", "code": "Other", "max": oth_max, "used": oth_used, "remaining": max(0, oth_max - oth_used), "color": "purple"}
+            },
+            "total_max": sick_max + pers_max + vac_max + oth_max,
+            "total_used": sick_used + pers_used + vac_used + oth_used,
+            "total_remaining": max(0, (sick_max + pers_max + vac_max + oth_max) - (sick_used + pers_used + vac_used + oth_used))
+        }
+    finally:
+        conn.close()
+
+def update_user_leave_quota(username: str, org_id: int, year: int, sick: int, personal: int, vacation: int, other: int) -> bool:
+    """Inserts or updates yearly custom leave quotas for a user."""
+    conn = _get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO user_leave_quotas (username, org_id, year, sick_leave, personal_leave, vacation_leave, other_leave, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(username, org_id, year) DO UPDATE SET
+                sick_leave = excluded.sick_leave,
+                personal_leave = excluded.personal_leave,
+                vacation_leave = excluded.vacation_leave,
+                other_leave = excluded.other_leave,
+                updated_at = CURRENT_TIMESTAMP
+        """, (username.strip(), org_id, year, sick, personal, vacation, other))
+        conn.commit()
+        return True
+    except Exception as e:
+        logging.getLogger("OrgChatAI").error(f"[update_user_leave_quota] {e}")
+        return False
+    finally:
+        conn.close()
+
+def get_org_leave_balances(org_id: int, year: int = None) -> list:
+    """Fetches leave balances for all members of an organization."""
+    members = get_org_members(org_id)
+    results = []
+    for m in members:
+        uname = m.get("username")
+        if uname:
+            balance = get_user_leave_balance(uname, org_id=org_id, year=year)
+            balance["display_name"] = m.get("display_name", uname)
+            balance["role"] = m.get("role", "member")
+            results.append(balance)
+    return results
 
 def get_user_category_access(username):
     """Returns category IDs the user has access to."""
