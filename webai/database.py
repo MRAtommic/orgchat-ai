@@ -6015,6 +6015,79 @@ def consume_reset_token(token: str, new_password: str) -> bool:
         conn.close()
 
 
+def _ensure_otp_table():
+    conn = _get_conn()
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS password_reset_otps (
+            email       TEXT PRIMARY KEY,
+            username    TEXT NOT NULL,
+            otp_code    TEXT NOT NULL,
+            expires_at  REAL NOT NULL,
+            created_at  REAL NOT NULL
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+def create_reset_otp(email: str, username: str) -> str:
+    """Generate a random 6-digit OTP for email/username, expiring in 10 minutes (600s)."""
+    _ensure_otp_table()
+    import random, time
+    otp_code = f"{random.randint(100000, 999999)}"
+    now = time.time()
+    expires_at = now + 600  # 10 mins
+    conn = _get_conn()
+    conn.execute(
+        "INSERT OR REPLACE INTO password_reset_otps (email, username, otp_code, expires_at, created_at) VALUES (?, ?, ?, ?, ?)",
+        (email.lower().strip(), username, otp_code, expires_at, now)
+    )
+    conn.commit()
+    conn.close()
+    return otp_code
+
+
+def verify_and_consume_reset_otp(email_or_username: str, otp_code: str, new_password: str) -> tuple[bool, str]:
+    """Verify 6-digit OTP code and update user's password if valid."""
+    _ensure_otp_table()
+    import time
+    conn = _get_conn()
+    now = time.time()
+    clean_target = (email_or_username or "").strip().lower()
+    clean_otp = (otp_code or "").strip()
+
+    row = conn.execute(
+        "SELECT email, username, otp_code, expires_at FROM password_reset_otps WHERE (email = ? COLLATE NOCASE OR username = ? COLLATE NOCASE)",
+        (clean_target, clean_target)
+    ).fetchone()
+
+    if not row:
+        conn.close()
+        return False, "ไม่พบรหัส OTP สำหรับอีเมลหรือบัญชีนี้ กรุณาขอรหัส OTP ใหม่"
+
+    db_email, db_username, db_otp, expires_at = row[0], row[1], row[2], row[3]
+    if now > expires_at:
+        conn.execute("DELETE FROM password_reset_otps WHERE email = ?", (db_email,))
+        conn.commit()
+        conn.close()
+        return False, "รหัส OTP หมดอายุแล้ว (อายุ 10 นาที) กรุณากดขอรหัส OTP ใหม่"
+
+    if db_otp != clean_otp:
+        conn.close()
+        return False, "รหัส OTP 6 หลักไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง"
+
+    # Valid OTP! Hash password and update database
+    new_hash = hash_password(new_password)
+    conn.execute(
+        "UPDATE user_settings SET custom_password = ? WHERE username = ? COLLATE NOCASE",
+        (new_hash, db_username)
+    )
+    conn.execute("DELETE FROM password_reset_otps WHERE email = ?", (db_email,))
+    conn.commit()
+    conn.close()
+    return True, f"ตั้งรหัสผ่านใหม่สำหรับบัญชี {db_username} เรียบร้อยแล้ว"
+
+
 def get_line_user_id_for_username(username: str) -> str | None:
     """Return LINE user ID linked to this username, or None."""
     conn = _get_conn()

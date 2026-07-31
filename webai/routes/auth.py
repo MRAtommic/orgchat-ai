@@ -1477,8 +1477,8 @@ def reset_password_page(token):
     return render_template("reset_password.html", valid=bool(username), username=username or "", token=token)
 
 
-def send_reset_password_email(to_email: str, reset_url: str) -> tuple[bool, str]:
-    """Send password reset email to user."""
+def send_reset_password_email(to_email: str, otp_code: str, reset_url: str = "") -> tuple[bool, str]:
+    """Send password reset email with 6-digit OTP code to user."""
     import smtplib
     import os
     from email.mime.text import MIMEText
@@ -1497,7 +1497,7 @@ def send_reset_password_email(to_email: str, reset_url: str) -> tuple[bool, str]
     try:
         port = int(smtp_port) if smtp_port else 587
         msg = MIMEMultipart("alternative")
-        msg["Subject"] = "ตั้งรหัสผ่านใหม่สำหรับบัญชี OrgChat AI ของคุณ"
+        msg["Subject"] = f"รหัส OTP สำหรับตั้งรหัสผ่านใหม่ของคุณ: {otp_code}"
         msg["From"] = f"OrgChat AI <{smtp_sender}>"
         msg["To"] = to_email
 
@@ -1507,29 +1507,35 @@ def send_reset_password_email(to_email: str, reset_url: str) -> tuple[bool, str]
             <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); overflow: hidden; border: 1px solid #e2e8f0;">
                 <div style="background-color: #059669; padding: 30px 40px; text-align: center; color: #ffffff;">
                     <h2 style="margin: 0; font-size: 24px; font-weight: 800;">OrgChat AI</h2>
-                    <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 14px;">ระบบตั้งค่ารหัสผ่านใหม่</p>
+                    <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 14px;">รหัส OTP ตั้งรหัสผ่านใหม่</p>
                 </div>
                 <div style="padding: 40px; line-height: 1.6;">
                     <p style="font-size: 16px; margin-top: 0;">สวัสดีครับ,</p>
                     <p style="font-size: 16px;">เราได้รับคำขอรีเซ็ตรหัสผ่านสำหรับบัญชีที่ผูกกับอีเมล <strong>{to_email}</strong></p>
-                    <p style="font-size: 16px;">คลิกปุ่มด้านล่างเพื่อตั้งรหัสผ่านใหม่ (ลิงก์หมดอายุภายใน 1 ชั่วโมง):</p>
-
-                    <div style="text-align: center; margin: 30px 0;">
-                        <a href="{reset_url}" style="background-color: #059669; color: #ffffff; padding: 14px 30px; border-radius: 10px; text-decoration: none; font-weight: bold; font-size: 16px; display: inline-block; box-shadow: 0 4px 12px rgba(5, 150, 105, 0.25);">
-                            ตั้งรหัสผ่านใหม่ที่นี่ →
-                        </a>
+                    
+                    <div style="background-color: #f1f5f9; border-radius: 12px; padding: 24px; text-align: center; margin: 25px 0; border: 1px dashed #cbd5e1;">
+                        <p style="margin: 0 0 10px 0; font-size: 14px; color: #475569; font-weight: bold;">รหัส OTP 6 หลักของคุณคือ:</p>
+                        <div style="font-size: 38px; font-weight: 900; letter-spacing: 10px; color: #059669; font-family: monospace;">
+                            {otp_code}
+                        </div>
+                        <p style="margin: 10px 0 0 0; font-size: 12px; color: #94a3b8;">(รหัส OTP มีอายุใช้งาน 10 นาที)</p>
                     </div>
 
-                    <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px 16px; margin-bottom: 24px;">
+                    <p style="font-size: 14px; color: #475569;">นำรหัส 6 หลักด้านบนไปกรอกในหน้าเว็บเพื่อตั้งรหัสผ่านใหม่ได้ทันทีครับ</p>
+
+                    {f'''
+                    <div style="text-align: center; margin: 25px 0;">
+                        <a href="{reset_url}" style="background-color: #059669; color: #ffffff; padding: 12px 24px; border-radius: 10px; text-decoration: none; font-weight: bold; font-size: 14px; display: inline-block;">
+                            หรือกดที่นี่เพื่อตั้งรหัสผ่านใหม่โดยตรง →
+                        </a>
+                    </div>
+                    ''' if reset_url else ''}
+
+                    <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px 16px; margin-top: 24px;">
                         <p style="margin: 0; font-size: 13px; color: #166534;">
                             🔒 หากคุณไม่ได้เป็นผู้ขอตั้งรหัสผ่านใหม่ ท่านสามารถข้ามและลบอีเมลฉบับนี้ทิ้งได้ทันที บัญชีของคุณยังคงปลอดภัยอยู่เสมอ
                         </p>
                     </div>
-
-                    <p style="font-size: 13px; color: #64748b; margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 20px;">
-                        หากปุ่มด้านบนใช้งานไม่ได้ สามารถคัดลอกลิงก์นี้ไปวางในเบราว์เซอร์ได้ครับ: <br>
-                        <a href="{reset_url}" style="color: #059669; word-break: break-all;">{reset_url}</a>
-                    </p>
                 </div>
                 <div style="background-color: #f1f5f9; padding: 20px 40px; text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #e2e8f0;">
                     นี่คืออีเมลอัตโนมัติจากระบบ OrgChat AI กรุณาอย่าตอบกลับอีเมลนี้
@@ -1557,7 +1563,7 @@ def send_reset_password_email(to_email: str, reset_url: str) -> tuple[bool, str]
 
 
 @auth_bp.route("/api/auth/forgot-password", methods=["POST"])
-@_limiter.limit("3 per minute; 10 per hour")
+@_limiter.limit("5 per minute; 20 per hour")
 def api_forgot_password():
     data = request.get_json(force=True)
     raw_input = (data.get("username") or data.get("email") or data.get("input") or "").strip()
@@ -1569,13 +1575,12 @@ def api_forgot_password():
     target_email = None
 
     if is_email:
-        # Check if email exists in system first!
         target_email = raw_input.lower()
         user_info = database.get_user_by_email(target_email)
         if not user_info:
             return jsonify({
                 "ok": False,
-                "error": f"ไม่พบอีเมล {target_email} นี้ในระบบองค์กร กรุณาตรวจสอบอีเมลอีกครั้ง"
+                "error": f"ไม่พบอีเมล {target_email} นี้ในระบบองค์กร กรุณาตรวจสอบอีกครั้ง"
             })
         username = user_info.get("username")
     else:
@@ -1588,37 +1593,41 @@ def api_forgot_password():
         return jsonify({"ok": False, "error": "ไม่พบบัญชีผู้ใช้นี้ในระบบองค์กร"})
 
     token = database.create_reset_token(username)
-    if not token:
-        return jsonify({"ok": False, "error": "ไม่พบบัญชีนี้ในระบบองค์กร"})
-
     base = os.environ.get("BASE_URL", "https://openchat.sbs")
-    reset_url = f"{base}/reset-password/{token}"
+    reset_url = f"{base}/reset-password/{token}" if token else ""
+
+    # Generate 6-digit OTP
+    otp_code = database.create_reset_otp(target_email or f"{username}@orgchat.ai", username)
 
     # Priority 1: Send via Email if target_email is available
     if target_email:
-        email_sent, email_err = send_reset_password_email(target_email, reset_url)
+        email_sent, email_err = send_reset_password_email(target_email, otp_code, reset_url)
         if email_sent:
             return jsonify({
                 "ok": True,
-                "message": f"ระบบได้ส่งลิงก์รีเซ็ตรหัสผ่านไปยังอีเมล {target_email} เรียบร้อยแล้วค่ะ กรุณาตรวจสอบกล่องจดหมาย"
+                "step": "otp_sent",
+                "email": target_email,
+                "message": f"ระบบได้ส่งรหัส OTP 6 หลักไปยังอีเมล {target_email} เรียบร้อยแล้วค่ะ"
             })
         elif email_err == "smtp_not_configured":
             return jsonify({
                 "ok": True,
-                "message": f"พบบัญชี {target_email} ในระบบแล้ว! (หมายเหตุ: ระบบยังไม่ได้เปิดใช้งาน SMTP บนเซิร์ฟเวอร์ ลิงก์รีเซ็ตรหัสผ่านของคุณคือด้านล่าง)",
+                "step": "otp_sent",
+                "email": target_email,
+                "otp_demo": otp_code,
+                "message": f"พบบัญชี {target_email} ในระบบแล้ว! (หมายเหตุ: ยังไม่ได้ตั้งค่า SMTP บนเซิร์ฟเวอร์ รหัส OTP ของคุณคือ {otp_code})",
                 "reset_url": reset_url
             })
 
     # Priority 2: Try to send via LINE DM
     line_user_id = database.get_line_user_id_for_username(username)
-    line_sent = False
     if line_user_id:
         try:
             _tok = billing._get_line_token()
             msg = (
                 f"สวัสดีค่ะ คุณได้ขอรีเซ็ตรหัสผ่านสำหรับบัญชี OrgChat AI\n\n"
-                f"คลิกลิ้งค์ด้านล่างเพื่อตั้งรหัสผ่านใหม่ (หมดอายุใน 1 ชั่วโมง):\n{reset_url}\n\n"
-                f"ถ้าไม่ได้ขอรีเซ็ต ไม่ต้องทำอะไรค่ะ"
+                f"🔑 รหัส OTP 6 หลักของคุณคือ: {otp_code}\n(หมดอายุใน 10 นาที)\n\n"
+                f"หรือคลิกลิ้งค์นี้เพื่อตั้งรหัสผ่านใหม่:\n{reset_url}"
             )
             import requests as _req
             _req.post(
@@ -1627,53 +1636,45 @@ def api_forgot_password():
                 json={"to": line_user_id, "messages": [{"type": "text", "text": msg}]},
                 timeout=10,
             )
-            line_sent = True
+            return jsonify({
+                "ok": True,
+                "step": "otp_sent",
+                "email": username,
+                "message": "ระบบได้ส่งรหัส OTP 6 หลักไปทาง LINE ของคุณแล้วค่ะ กรุณาตรวจสอบข้อความ"
+            })
         except Exception as _e:
             logger.warning(f"[ForgotPassword] LINE push failed: {_e}")
 
-    if line_sent:
-        return jsonify({"ok": True, "message": "ส่งลิ้งค์รีเซ็ตไปทาง LINE ของคุณแล้วค่ะ กรุณาตรวจสอบข้อความจาก OrgChat AI"})
-
-    # Priority 3: Notify org admins via LINE
-    logger.warning(f"[ForgotPassword] No LINE/Email for user '{username}' — notifying org admins. reset_url={reset_url}")
-    try:
-        _tok = billing._get_line_token()
-        user_orgs = database.get_user_orgs(username) or []
-        admin_notified = False
-        if _tok and user_orgs:
-            org_id = user_orgs[0]["id"]
-            org_members = database.get_org_members(org_id)
-            admin_msg = (
-                f"แจ้งเตือนจาก OrgChat AI\n\n"
-                f"ผู้ใช้ '{username}' ขอรีเซ็ตรหัสผ่าน แต่ยังไม่ได้ผูก LINE/Email\n\n"
-                f"ลิ้งค์รีเซ็ต (ส่งให้ผู้ใช้โดยตรง — หมดอายุ 1 ชม.):\n{reset_url}"
-            )
-            import requests as _req2
-            for m in org_members:
-                if m.get("role") == "admin" and m["username"].lower() != username:
-                    _lid = database.get_line_user_id_for_username(m["username"])
-                    if _lid:
-                        try:
-                            _req2.post(
-                                "https://api.line.me/v2/bot/message/push",
-                                headers={"Content-Type": "application/json",
-                                         "Authorization": f"Bearer {_tok}"},
-                                json={"to": _lid, "messages": [{"type": "text", "text": admin_msg}]},
-                                timeout=10,
-                            )
-                            admin_notified = True
-                        except Exception:
-                            pass
-    except Exception as _e:
-        logger.error(f"[ForgotPassword] admin notify failed: {_e}")
-
-    if admin_notified:
-        return jsonify({"ok": True, "message": "ระบบได้แจ้ง Admin องค์กรของคุณให้ช่วยส่งลิ้งค์รีเซ็ตให้เรียบร้อยแล้วค่ะ"})
+    # Fallback response
     return jsonify({
         "ok": True,
-        "message": "สร้างลิงก์รีเซ็ตรหัสผ่านเรียบร้อยแล้วค่ะ",
+        "step": "otp_sent",
+        "email": target_email or username,
+        "otp_demo": otp_code,
+        "message": f"สร้างรหัส OTP 6 หลักเรียบร้อยแล้ว (รหัสทดสอบ: {otp_code})",
         "reset_url": reset_url
     })
+
+
+@auth_bp.route("/api/auth/verify-reset-otp", methods=["POST"])
+@_limiter.limit("5 per minute; 20 per hour")
+def api_verify_reset_otp():
+    data = request.get_json(force=True)
+    target = (data.get("email") or data.get("username") or data.get("target") or "").strip()
+    otp_code = (data.get("otp") or data.get("otp_code") or "").strip()
+    new_password = data.get("password") or ""
+
+    if not target or not otp_code or not new_password:
+        return jsonify({"ok": False, "error": "กรุณากรอกรหัส OTP และรหัสผ่านใหม่ให้ครบถ้วน"})
+
+    if len(new_password) < 8:
+        return jsonify({"ok": False, "error": "รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร"})
+
+    ok, msg = database.verify_and_consume_reset_otp(target, otp_code, new_password)
+    if not ok:
+        return jsonify({"ok": False, "error": msg})
+
+    return jsonify({"ok": True, "message": msg})
 
 
 @auth_bp.route("/api/auth/reset-password", methods=["POST"])
