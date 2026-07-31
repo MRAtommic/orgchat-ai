@@ -1187,6 +1187,26 @@ def api_login():
         _set_session_org(session["user"])
         database.record_login_attempt(client_ip, username_raw, success=True)
         database.log_audit_event(session["user"], session.get("org_id", 1), "USER_LOGIN", "Login successful", client_ip)
+        
+        # --- 🚨 Security Alert: Send LINE Push Notification on successful login ---
+        try:
+            from routes.chat import send_line_push_notification
+            ua_short = request.user_agent.string[:50] if request.user_agent else "Web Browser"
+            threading.Thread(target=send_line_push_notification, args=(
+                session["user"],
+                "🚨 แจ้งเตือนความปลอดภัย: มีการเข้าสู่ระบบ",
+                f"บัญชี {session['user']} ได้เข้าสู่ระบบสำเร็จจาก IP {client_ip}",
+            ), kwargs={
+                "fields": {
+                    "ผู้ใช้งาน": session["user"],
+                    "IP Address": client_ip,
+                    "อุปกรณ์": ua_short,
+                    "เวลา": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                }
+            }).start()
+        except Exception as _se:
+            logger.warning(f"[Security LINE Alert] Failed: {_se}")
+
         return jsonify({"ok": True, "user": session["user"], "role": session["role"], "org_role": session.get("org_role"), "has_org": session.get("org_id") is not None})
 
     # 2. Fallback to Hardcoded (plain text)
@@ -1207,6 +1227,36 @@ def api_login():
     database.record_login_attempt(client_ip, username_raw, success=False)
     lock_info = database.record_failed_login(username_raw)
     if lock_info.get("locked"):
+        try:
+            from routes.chat import send_line_push_notification
+            sec_fields = {
+                "ผู้ใช้งาน": username_raw,
+                "ระยะเวลาล็อค": f"{lock_info.get('lock_minutes', 15)} นาที",
+                "สาเหตุ": "พยายามใส่รหัสผ่านผิดเกิน 5 ครั้ง",
+                "IP Address": client_ip,
+                "เวลา": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+            # Push to affected user
+            threading.Thread(target=send_line_push_notification, args=(
+                username_raw,
+                "🚨 แจ้งเตือนความปลอดภัย: บัญชีถูกระงับชั่วคราว",
+                f"บัญชีของคุณ {username_raw} ถูกระงับชั่วคราว 15 นาที เนื่องจากพยายามใส่รหัสผ่านผิดเกินกำหนด",
+            ), kwargs={"fields": sec_fields}).start()
+
+            # Push to org admins
+            user_orgs = database.get_user_orgs(username_raw)
+            org_id = user_orgs[0]["id"] if user_orgs else 1
+            org_members = database.get_org_members(org_id)
+            for m in org_members:
+                if m.get("role") == "admin":
+                    threading.Thread(target=send_line_push_notification, args=(
+                        m["username"],
+                        "🚨 แจ้งเตือนแอดมิน: บัญชีผู้ใช้ถูกระงับชั่วคราว",
+                        f"บัญชี {username_raw} ในองค์กรถูกระงับชั่วคราว 15 นาที (พยายามผิดเกิน 5 ครั้ง)",
+                    ), kwargs={"fields": sec_fields}).start()
+        except Exception as _le:
+            logger.warning(f"[Security Lockout LINE Alert] Failed: {_le}")
+
         return jsonify({
             "ok": False,
             "error": f"ใส่รหัสผ่านผิดเกินกำหนด บัญชีถูกล็อคชั่วคราวเป็นเวลา {lock_info.get('lock_minutes', 15)} นาทีเพื่อความปลอดภัย"

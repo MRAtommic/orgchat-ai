@@ -2255,14 +2255,31 @@ def api_leave_request():
             # fallback: system admins ถ้าไม่มี org context
             notify_targets = [a for a in database.get_all_admins() if a.lower() != user.lower()]
 
+        profile = database.get_user_profile(user)
+        user_display = profile.get("display_name", user)
         for admin in notify_targets:
             notification_db.add_notification(
                 admin,
                 "leave_request",
                 "คำขอลาหยุดใหม่",
-                f"คุณพี่ {user} ได้ส่งคำขอลาหยุด {l_type} ตั้งแต่วันที่ {s_date} ถึง {e_date}",
+                f"คุณพี่ {user_display} ได้ส่งคำขอลาหยุด {l_type} ตั้งแต่วันที่ {s_date} ถึง {e_date}",
                 "/#admin"
             )
+            # --- LINE Push Notification to Linked Admin ---
+            threading.Thread(target=send_line_push_notification, args=(
+                admin,
+                "🏖️ มีคำขอลาหยุดใหม่!",
+                f"ผู้ใช้งาน {user_display} ได้ยื่นคำขอลาหยุด {l_type} ตั้งแต่วันที่ {s_date} ถึง {e_date}",
+            ), kwargs={
+                "fields": {
+                    "ผู้ขอลา": user_display,
+                    "ประเภทการลา": l_type,
+                    "ตั้งแต่วันที่": s_date,
+                    "ถึงวันที่": e_date,
+                    "เหตุผล": reason if reason else "-"
+                }
+            }).start()
+
         return jsonify({"ok": True, "id": leave_id})
     return jsonify({"ok": False, "error": "เกิดข้อผิดพลาดในการส่งคำขอลาหยุดค่ะ"}), 500
 
@@ -2300,13 +2317,29 @@ def api_admin_leave_status():
         leave = database.get_leave_request(leave_id)
         if leave:
             status_text = "อนุมัติ" if status == "approved" else "ปฏิเสธ"
+            target_user = leave["username"]
             notification_db.add_notification(
-                leave["username"],
+                target_user,
                 "leave_status",
                 f"คำขอลาของคุณได้รับการ{status_text}แล้วค่ะ",
                 f"คำขอลาตั้งแต่วันที่ {leave['start_date']} ถึง {leave['end_date']} ได้รับการ{status_text} โดย {admin_user}",
                 "/#leave"
             )
+            # --- LINE Push Notification to Employee ---
+            status_badge = "อนุมัติเรียบร้อยแล้ว ✅" if status == "approved" else "ถูกปฏิเสธ ❌"
+            threading.Thread(target=send_line_push_notification, args=(
+                target_user,
+                "🏖️ อัปเดตผลการขออนุมัติการลา",
+                f"คำขอลาของคุณตั้งแต่วันที่ {leave['start_date']} ถึง {leave['end_date']} ได้รับการ{status_text}แล้วค่ะ",
+            ), kwargs={
+                "fields": {
+                    "ผลการอนุมัติ": status_badge,
+                    "ผู้อนุมัติ": admin_user,
+                    "ประเภทการลา": leave.get("type", "ทั่วไป"),
+                    "ช่วงวันลา": f"{leave['start_date']} ถึง {leave['end_date']}",
+                    "หมายเหตุ": note if note else "-"
+                }
+            }).start()
         return jsonify({"ok": True})
     return jsonify({"ok": False, "error": "ไม่พบคำขอลาที่ระบุ"}), 404
 

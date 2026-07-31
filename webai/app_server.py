@@ -293,7 +293,65 @@ if payment.is_configured() and payment.is_test_mode():
     logger.warning("   เปลี่ยน STRIPE_SECRET_KEY เป็น sk_live_... ก่อน go-live")
     logger.warning("=" * 60)
 
+def schedule_reminder_background_worker():
+    """Background worker that checks upcoming calendar schedules every 60 seconds and sends 15-minute LINE reminders."""
+    import time
+    from datetime import datetime
+    reminded_events = set()
+    
+    while True:
+        try:
+            time.sleep(60)
+            now = datetime.now()
+            conn = database._get_conn()
+            try:
+                cursor = conn.cursor()
+                today_str = now.strftime("%Y-%m-%d")
+                cursor.execute("SELECT id, username, title, date, start_time, is_public, description, category, organization_id FROM schedules WHERE date >= ?", (today_str,))
+                rows = cursor.fetchall()
+                for row in rows:
+                    sid, username, title, date_str, time_str, is_pub, desc, cat, org_id = row
+                    if sid in reminded_events:
+                        continue
+                    try:
+                        time_val = time_str if time_str else "09:00"
+                        dt_str = f"{date_str} {time_val}"
+                        event_dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M")
+                        diff_minutes = (event_dt - now).total_seconds() / 60.0
+                        
+                        if 0 <= diff_minutes <= 15:
+                            reminded_events.add(sid)
+                            from routes.chat import broadcast_line_announcement, send_line_push_notification
+                            fields_data = {
+                                "หัวข้อ": title,
+                                "กำหนดเวลา": f"{date_str} @ {time_val} น.",
+                                "เริ่มต้นในอีก": f"ประมาณ {max(1, int(diff_minutes))} นาที",
+                                "หมวดหมู่": cat or "ทั่วไป",
+                                "รายละเอียด": desc if desc else "-"
+                            }
+                            if is_pub:
+                                broadcast_line_announcement(
+                                    "⏰ เตือนความจำ: กำหนดการสาธารณะใกล้ถึงเวลา!",
+                                    f"📌 กำหนดการสาธารณะ '{title}' จะเริ่มต้นในอีกประมาณ {max(1, int(diff_minutes))} นาที",
+                                    fields=fields_data,
+                                    org_id=org_id or 1
+                                )
+                            else:
+                                send_line_push_notification(
+                                    username,
+                                    "⏰ เตือนความจำ: กำหนดการใกล้ถึงเวลา!",
+                                    f"📌 กำหนดการของคุณ '{title}' จะเริ่มต้นในอีกประมาณ {max(1, int(diff_minutes))} นาที",
+                                    fields=fields_data
+                                )
+                    except Exception:
+                        pass
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.error(f"[Reminder Worker Error] {e}")
+
 threading.Thread(target=async_startup_tasks, daemon=True).start()
+threading.Thread(target=schedule_reminder_background_worker, daemon=True).start()
 
 
 # ═══════════════════════════════════════════════════════════════
