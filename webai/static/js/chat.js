@@ -13060,6 +13060,11 @@ function toggleSecurityPanel() {
 }
 const toggleMobileSecurityPanel = toggleSecurityPanel;
 
+// QR Code Login State
+let _qrInstance = null;
+let _qrCountdownInterval = null;
+let _qrPollInterval = null;
+
 async function showQRLogin() {
   const loginForm = document.querySelector('#loginOverlay .p-8.space-y-4');
   const qrModal = $('qrLoginModal');
@@ -13089,7 +13094,7 @@ async function showQRLogin() {
       canvas.innerHTML = '';
       if (typeof QRCode !== 'undefined') {
         try {
-          if (_qrInstance) _qrInstance = null;
+          _qrInstance = null;
           _qrInstance = new QRCode(canvas, {
             text: qrUrl,
             width: 200,
@@ -13119,8 +13124,8 @@ async function showQRLogin() {
       const s = (remaining % 60).toString().padStart(2, '0');
       if (countdownEl) countdownEl.textContent = `${m}:${s}`;
       if (remaining <= 0) {
-        clearInterval(_qrCountdownInterval);
-        clearInterval(_qrPollInterval);
+        if (_qrCountdownInterval) clearInterval(_qrCountdownInterval);
+        if (_qrPollInterval) clearInterval(_qrPollInterval);
         if (statusEl) statusEl.innerHTML = `
           <div class="w-2 h-2 bg-red-400 rounded-full"></div>
           <span class="text-red-500">QR Code หมดอายุ กรุณาสร้างใหม่</span>
@@ -13137,8 +13142,8 @@ async function showQRLogin() {
         
         if (pollData.ok && pollData.status === 'approved') {
           // SUCCESS!
-          clearInterval(_qrPollInterval);
-          clearInterval(_qrCountdownInterval);
+          if (_qrPollInterval) clearInterval(_qrPollInterval);
+          if (_qrCountdownInterval) clearInterval(_qrCountdownInterval);
           
           if (statusEl) statusEl.innerHTML = `
             <div class="w-2 h-2 bg-emerald-400 rounded-full"></div>
@@ -13162,8 +13167,8 @@ async function showQRLogin() {
           }, 1000);
         } else if (!pollData.ok) {
           // Token expired or error
-          clearInterval(_qrPollInterval);
-          clearInterval(_qrCountdownInterval);
+          if (_qrPollInterval) clearInterval(_qrPollInterval);
+          if (_qrCountdownInterval) clearInterval(_qrCountdownInterval);
         }
       } catch (e) {
         console.error('QR Poll error:', e);
