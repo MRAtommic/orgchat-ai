@@ -9753,7 +9753,7 @@
     });
   </script>
   <!-- 📝 Leave Comment Modal -->
-  <div id="leaveCommentModal" class="fixed inset-0 z-[10000] bg-black/60 backdrop-blur-xl hidden animate-in fade-in duration-300 p-4">
+  <div id="leaveCommentModal" class="fixed inset-0 z-[10000] bg-black/60 backdrop-blur-xl hidden flex items-center justify-center animate-in fade-in duration-300 p-4">
     <div class="bg-white dark:bg-surface-900 w-full max-w-lg flex flex-col rounded-[3rem] shadow-2xl overflow-hidden border border-white/20">
       <header class="p-6 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between">
         <div class="flex items-center gap-3">
@@ -9765,7 +9765,7 @@
             <p id="leaveCommentModalTitle" class="text-[10px] text-surface-400 font-bold uppercase tracking-widest">คำขอลา #ID</p>
           </div>
         </div>
-        <button onclick="$('leaveCommentModal').classList.add('hidden'); $('leaveCommentModal').classList.remove('flex', 'items-center', 'justify-center')" class="p-2 hover:bg-surface-100 dark:hover:bg-surface-800 rounded-xl transition-all">
+        <button onclick="$('leaveCommentModal').classList.add('hidden');" class="p-2 hover:bg-surface-100 dark:hover:bg-surface-800 rounded-xl transition-all">
           <i data-lucide="x" class="w-5 h-5"></i>
         </button>
       </header>

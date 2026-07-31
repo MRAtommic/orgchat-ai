@@ -13658,6 +13658,7 @@ async function openLeaveComments(leaveId) {
     title.textContent = `คำขอลา #${leaveId}`;
     list.innerHTML = '<div class="text-center py-4 text-surface-400">กำลังโหลดข้อความ...</div>';
     modal.classList.remove('hidden');
+    modal.classList.add('flex', 'items-center', 'justify-center');
     
     try {
         const res = await fetch(`/api/leave/comments/${leaveId}`);
