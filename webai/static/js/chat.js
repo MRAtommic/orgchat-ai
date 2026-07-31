@@ -8153,7 +8153,7 @@ let _orgMembersLoaded = false;
 let _orgLogsCache = [];
 
 function switchOrgTab(tab) {
-  ['members', 'tree', 'google', 'business', 'peak', 'announcements', 'categories', 'logs'].forEach(t => {
+  ['members', 'tree', 'leave', 'google', 'business', 'peak', 'announcements', 'categories', 'logs'].forEach(t => {
     const btn = $(`orgTab-${t}`);
     const content = $(`orgTabContent-${t}`);
     const active = t === tab;
@@ -8163,6 +8163,7 @@ function switchOrgTab(tab) {
   // Reset scroll so the new tab content is visible from the top
   const scrollEl = document.querySelector('#view-org .overflow-y-auto');
   if (scrollEl) scrollEl.scrollTop = 0;
+  if (tab === 'leave') refreshAdminLeaves();
   if (tab === 'google') loadOrgGoogleStatus();
   if (tab === 'business') loadOrgBusinessProfile();
   if (tab === 'peak') loadPeakSettingsStatus();
@@ -13565,7 +13566,7 @@ function renderLeaveHistory(leaves) {
 async function refreshAdminLeaves() {
     const tableBody = $('adminLeaveTableBody');
     if (!tableBody) return;
-    if (!state.isAdmin) return;
+    if (!state.isAdmin && !state.isOrgAdmin) return;
 
     try {
         const res = await fetch('/api/admin/leave/all');
@@ -13580,27 +13581,36 @@ async function refreshAdminLeaves() {
 
 function renderAdminLeaveTable(leaves) {
     const tableBody = $('adminLeaveTableBody');
-    if (leaves.length === 0) {
+    if (!leaves || leaves.length === 0) {
         tableBody.innerHTML = '<tr><td colspan="6" class="px-6 py-12 text-center text-surface-400">ไม่มีคำขอลาในระบบ</td></tr>';
         return;
     }
 
     tableBody.innerHTML = leaves.map(l => {
-        let statusHtml = `<span class="px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest bg-amber-100 text-amber-700">Pending</span>`;
-        if (l.status === 'approved') statusHtml = `<span class="px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-700">Approved</span>`;
-        if (l.status === 'rejected') statusHtml = `<span class="px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest bg-rose-100 text-rose-700">Rejected</span>`;
+        let statusHtml = `<span class="px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">Pending</span>`;
+        if (l.status === 'approved') {
+            statusHtml = `<div class="space-y-1">
+                <span class="inline-block px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">Approved</span>
+                ${l.approved_by ? `<div class="text-[10px] text-surface-500 dark:text-surface-400">ผู้อนุมัติ: <span class="font-bold text-surface-700 dark:text-surface-200">${escHtml(l.approved_by)}</span></div>` : ''}
+            </div>`;
+        } else if (l.status === 'rejected') {
+            statusHtml = `<div class="space-y-1">
+                <span class="inline-block px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">Rejected</span>
+                ${l.approved_by ? `<div class="text-[10px] text-surface-500 dark:text-surface-400">ผู้ปฏิเสธ: <span class="font-bold text-surface-700 dark:text-surface-200">${escHtml(l.approved_by)}</span></div>` : ''}
+            </div>`;
+        }
 
         const isActionable = l.status === 'pending';
 
         return `
             <tr class="hover:bg-surface-50 dark:hover:bg-surface-800/50 transition-colors">
-                <td class="px-6 py-4 font-bold text-surface-900 dark:text-white capitalize">${l.username}</td>
-                <td class="px-6 py-4 text-surface-500">${l.type}</td>
+                <td class="px-6 py-4 font-bold text-surface-900 dark:text-white capitalize">${escHtml(l.username || '')}</td>
+                <td class="px-6 py-4 text-surface-500">${escHtml(l.type || '')}</td>
                 <td class="px-6 py-4">
-                    <div class="font-bold">${l.start_date}</div>
-                    <div class="text-[10px] text-surface-400">ถึง ${l.end_date}</div>
+                    <div class="font-bold">${escHtml(l.start_date || '')}</div>
+                    <div class="text-[10px] text-surface-400">ถึง ${escHtml(l.end_date || '')}</div>
                 </td>
-                <td class="px-6 py-4 max-w-xs truncate text-surface-500" title="${l.reason}">${l.reason}</td>
+                <td class="px-6 py-4 max-w-xs truncate text-surface-500" title="${escHtml(l.reason || '')}">${escHtml(l.reason || '')}</td>
                 <td class="px-6 py-4">${statusHtml}</td>
                 <td class="px-6 py-4 text-right">
                     <div class="flex justify-end gap-2">
