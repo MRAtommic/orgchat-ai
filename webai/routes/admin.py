@@ -4180,8 +4180,18 @@ def get_audit_logs_endpoint():
     offset = int(request.args.get("offset", 0))
     username_filter = request.args.get("username", None)
     action_filter = request.args.get("action", None)
+    search_filter = request.args.get("search", None) or action_filter
     
-    logs, total = database.get_audit_logs(org_id, limit, offset, username_filter, action_filter)
+    res = database.get_audit_logs(org_id=org_id, limit=limit, offset=offset, username=username_filter, search=search_filter)
+    if isinstance(res, dict):
+        logs = res.get("logs", [])
+        total = res.get("total", 0)
+    elif isinstance(res, (tuple, list)):
+        logs = res[0]
+        total = res[1]
+    else:
+        logs, total = [], 0
+
     return jsonify({"ok": True, "logs": logs, "total": total})
 
 
@@ -4191,19 +4201,38 @@ def export_audit_logs_csv():
     if not is_admin():
         return jsonify({"ok": False, "error": "เฉพาะ Admin เท่านั้น"}), 403
     import io, csv
+    from flask import Response
     org_id = get_current_org_id()
-    logs, _ = database.get_audit_logs(org_id, limit=5000, offset=0)
+    res = database.get_audit_logs(org_id=org_id, limit=5000, offset=0)
+    if isinstance(res, dict):
+        logs = res.get("logs", [])
+    elif isinstance(res, (tuple, list)):
+        logs = res[0]
+    else:
+        logs = []
     
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["ID", "Timestamp", "Username", "Action", "IP Address", "Details"])
+    writer.writerow(["ID", "Timestamp", "Username", "Event Type", "Action Detail", "IP Address", "User Agent", "AI Model", "Department", "Status"])
     for l in logs:
-        writer.writerow([l["id"], l["timestamp"], l["username"], l["action"], l["ip_address"], l["details"]])
+        writer.writerow([
+            l.get("id"),
+            l.get("timestamp"),
+            l.get("username"),
+            l.get("event_type"),
+            l.get("action_detail") or l.get("details"),
+            l.get("ip_address"),
+            l.get("user_agent"),
+            l.get("ai_model"),
+            l.get("department"),
+            l.get("status")
+        ])
     
-    response = make_response(output.getvalue().encode('utf-8-sig'))
-    response.headers["Content-Disposition"] = "attachment; filename=audit_logs_report.csv"
-    response.headers["Content-type"] = "text/csv; charset=utf-8"
-    return response
+    return Response(
+        output.getvalue().encode('utf-8-sig'),
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment; filename=audit_logs_report.csv"}
+    )
 
 
 # ─── Granular Document Permissions / Clearance APIs ──────────

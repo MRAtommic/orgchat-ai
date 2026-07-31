@@ -4585,6 +4585,7 @@ def update_leave_status(leave_id, status, approver, note=""):
         updated = cursor.rowcount > 0
         conn.commit()
         conn.close()
+        return updated
     except Exception as e:
         logging.getLogger("OrgChatAI").error(f"[update_leave_status] {e}")
         return False
