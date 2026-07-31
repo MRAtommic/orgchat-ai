@@ -1205,6 +1205,7 @@ function switchView(viewId) {
   state.currentView = viewId;
   
   // Highlight active menu item
+  const navItems = document.querySelectorAll('.nav-item');
   if (navItems) {
     navItems.forEach(btn => {
       btn.classList.toggle('active', btn.dataset.view === viewId);
