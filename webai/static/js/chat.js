@@ -16100,4 +16100,169 @@ window.initReplyAssistantView = initReplyAssistantView;
 window.generateAIDraft = generateAIDraft;
 window.copyReplyAssistantDraft = copyReplyAssistantDraft;
 
-document.addEventListener('DOMContentLoaded', initChatDragAndResize);
+// ─── 3D Futuristic AI Background for Login Overlay ───────
+let _login3DAnimationId = null;
+
+function initLogin3DBackground() {
+  const canvas = document.getElementById('login3DCanvas');
+  if (!canvas || typeof THREE === 'undefined') return;
+
+  const overlay = document.getElementById('loginOverlay');
+  if (!overlay || overlay.classList.contains('hidden')) return;
+
+  if (_login3DAnimationId) {
+    cancelAnimationFrame(_login3DAnimationId);
+    _login3DAnimationId = null;
+  }
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+  camera.position.z = 380;
+
+  const renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+  // 1. Interactive 3D Particles Neural Network
+  const particleCount = window.innerWidth < 768 ? 450 : 900;
+  const geometry = new THREE.BufferGeometry();
+  const positions = new Float32Array(particleCount * 3);
+  const colors = new Float32Array(particleCount * 3);
+  const originalY = new Float32Array(particleCount);
+
+  const c1 = new THREE.Color('#059669'); // Emerald Green
+  const c2 = new THREE.Color('#3b82f6'); // Cyber Blue
+  const c3 = new THREE.Color('#10b981'); // Mint Neon
+
+  for (let i = 0; i < particleCount; i++) {
+    const x = (Math.random() - 0.5) * 1000;
+    const y = (Math.random() - 0.5) * 1000;
+    const z = (Math.random() - 0.5) * 600;
+
+    positions[i * 3] = x;
+    positions[i * 3 + 1] = y;
+    positions[i * 3 + 2] = z;
+    originalY[i] = y;
+
+    const chosenColor = i % 3 === 0 ? c1 : (i % 3 === 1 ? c2 : c3);
+    colors[i * 3] = chosenColor.r;
+    colors[i * 3 + 1] = chosenColor.g;
+    colors[i * 3 + 2] = chosenColor.b;
+  }
+
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+  const particleMaterial = new THREE.PointsMaterial({
+    size: 4.0,
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.75,
+    blending: THREE.AdditiveBlending
+  });
+
+  const particleSystem = new THREE.Points(geometry, particleMaterial);
+  scene.add(particleSystem);
+
+  // 2. Floating 3D Geometric Cyber Wireframes
+  const group3D = new THREE.Group();
+  const wireMat = new THREE.MeshBasicMaterial({
+    color: 0x10b981,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.14
+  });
+
+  for (let k = 0; k < 7; k++) {
+    const radius = Math.random() * 45 + 20;
+    let geom;
+    if (k % 3 === 0) geom = new THREE.IcosahedronGeometry(radius, 1);
+    else if (k % 3 === 1) geom = new THREE.OctahedronGeometry(radius, 0);
+    else geom = new THREE.TorusGeometry(radius, 8, 12, 24);
+
+    const mesh = new THREE.Mesh(geom, wireMat);
+    mesh.position.set(
+      (Math.random() - 0.5) * 650,
+      (Math.random() - 0.5) * 450,
+      (Math.random() - 0.5) * 350
+    );
+    mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+    mesh.userData = {
+      rotX: (Math.random() - 0.5) * 0.008,
+      rotY: (Math.random() - 0.5) * 0.008
+    };
+    group3D.add(mesh);
+  }
+  scene.add(group3D);
+
+  // Mouse / Touch Interactive Parallax
+  let mouseX = 0, mouseY = 0;
+  let targetX = 0, targetY = 0;
+
+  function onPointerMove(e) {
+    const px = e.touches ? e.touches[0].clientX : e.clientX;
+    const py = e.touches ? e.touches[0].clientY : e.clientY;
+    mouseX = (px - window.innerWidth / 2) * 0.18;
+    mouseY = (py - window.innerHeight / 2) * 0.18;
+  }
+  window.addEventListener('mousemove', onPointerMove, { passive: true });
+  window.addEventListener('touchmove', onPointerMove, { passive: true });
+
+  function onWindowResize() {
+    if (!camera || !renderer) return;
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+  window.addEventListener('resize', onWindowResize);
+
+  // Animation Loop
+  const clock = new THREE.Clock();
+
+  function renderLoop() {
+    if (!overlay || overlay.classList.contains('hidden')) {
+      if (_login3DAnimationId) cancelAnimationFrame(_login3DAnimationId);
+      _login3DAnimationId = null;
+      return;
+    }
+
+    _login3DAnimationId = requestAnimationFrame(renderLoop);
+    const elapsedTime = clock.getElapsedTime();
+
+    // Smooth Mouse Follow
+    targetX += (mouseX - targetX) * 0.04;
+    targetY += (mouseY - targetY) * 0.04;
+
+    camera.position.x = targetX;
+    camera.position.y = -targetY;
+    camera.lookAt(scene.position);
+
+    // Wave motion for particles
+    const pos = particleSystem.geometry.attributes.position;
+    for (let i = 0; i < particleCount; i++) {
+      const idx = i * 3;
+      const px = pos.array[idx];
+      pos.array[idx + 1] = originalY[i] + Math.sin(elapsedTime * 1.4 + px * 0.01) * 16;
+    }
+    pos.needsUpdate = true;
+
+    // Rotate 3D meshes
+    group3D.children.forEach(mesh => {
+      mesh.rotation.x += mesh.userData.rotX;
+      mesh.rotation.y += mesh.userData.rotY;
+    });
+
+    particleSystem.rotation.y = elapsedTime * 0.025;
+
+    renderer.render(scene, camera);
+  }
+
+  renderLoop();
+}
+
+window.initLogin3DBackground = initLogin3DBackground;
+
+document.addEventListener('DOMContentLoaded', () => {
+  initChatDragAndResize();
+  setTimeout(initLogin3DBackground, 200);
+});
