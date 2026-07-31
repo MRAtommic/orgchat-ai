@@ -5774,6 +5774,77 @@ def get_typing():
     return jsonify({"typing": []}) # Polling disabled in favor of sockets
 
 
+@chat_bp.route("/api/chat/translate", methods=["POST"])
+@login_required
+def translate_chat_message():
+    """Real-time Multi-lingual Chat Translator API."""
+    try:
+        data = request.get_json() or {}
+        text = (data.get("text") or "").strip()
+        target_lang = (data.get("target_lang") or "th").strip().lower()
+        
+        if not text:
+            return jsonify({"ok": False, "error": "No text provided"}), 400
+            
+        lang_names = {
+            "th": "Thai (ภาษาไทย)",
+            "en": "English",
+            "zh": "Chinese (中文)",
+            "ja": "Japanese (日本語)",
+            "ko": "Korean (한국어)",
+            "lo": "Lao (ภาษาลาว)"
+        }
+        target_name = lang_names.get(target_lang, "Thai")
+
+        # 1. Ultra-fast Google Translate engine
+        try:
+            import urllib.parse
+            import urllib.request
+            import json
+            encoded_text = urllib.parse.quote(text)
+            url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl={target_lang}&dt=t&q={encoded_text}"
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                result = json.loads(resp.read().decode('utf-8'))
+                if result and isinstance(result, list) and len(result) > 0 and isinstance(result[0], list):
+                    translated_segments = [item[0] for item in result[0] if item and isinstance(item, list) and len(item) > 0 and item[0]]
+                    translated_text = "".join(translated_segments)
+                    detected_lang = result[2] if len(result) > 2 and isinstance(result[2], str) else "auto"
+                    if translated_text:
+                        return jsonify({
+                            "ok": True,
+                            "translated_text": translated_text,
+                            "detected_lang": detected_lang,
+                            "target_lang": target_lang,
+                            "engine": "fast"
+                        })
+        except Exception as ge:
+            print(f"[Translate] Fast engine notice: {ge}")
+
+        # 2. AI Provider Fallback for contextual corporate translation
+        try:
+            prompt = f"Translate the following chat message accurately into {target_name}. Output ONLY the translated text without explanations or quotes:\n\n{text}"
+            provider = ai_providers.get_provider()
+            ai_text = ""
+            for chunk in provider.chat_stream(prompt, [], "You are a professional enterprise multi-lingual translator."):
+                if chunk: ai_text += chunk
+            ai_text = ai_text.strip()
+            if ai_text:
+                return jsonify({
+                    "ok": True,
+                    "translated_text": ai_text,
+                    "detected_lang": "auto",
+                    "target_lang": target_lang,
+                    "engine": "ai"
+                })
+        except Exception as ai_e:
+            print(f"[Translate] AI provider error: {ai_e}")
+
+        return jsonify({"ok": False, "error": "Translation service unavailable"}), 500
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @chat_bp.route("/api/chat", methods=["POST"])
 @login_required
 @_limiter.limit("30 per minute; 200 per hour")

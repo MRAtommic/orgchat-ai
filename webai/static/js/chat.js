@@ -47,6 +47,109 @@ const voiceBtn = $('voiceBtn');
 
 const clearChatBtn = $('clearChatBtn');
 
+// ─── Multi-lingual Chat Translation System ──────────────────────
+let _userTargetLang = localStorage.getItem('orgchat_target_lang') || 'th';
+let _translationCache = {};
+
+function setChatTargetLanguage(lang) {
+  _userTargetLang = lang;
+  localStorage.setItem('orgchat_target_lang', lang);
+  toast(`เปลี่ยนภาษาเป้าหมายเป็น ${lang.toUpperCase()} เรียบร้อยแล้ว`, 'info');
+}
+
+async function translateChatMessage(btnEl) {
+  const rowEl = btnEl.closest('.chat-msg-row') || btnEl.closest('.msg-user') || btnEl.closest('.msg-bot') || btnEl.closest('.group\\/msg');
+  if (!rowEl) return;
+  
+  const proseEl = rowEl.querySelector('.prose') || rowEl.querySelector('.msg-text') || rowEl.querySelector('.chat-bubble') || rowEl;
+  
+  // Clean text from existing translation box or html tags
+  const clone = proseEl.cloneNode(true);
+  const existingBox = clone.querySelector('.translation-box');
+  if (existingBox) existingBox.remove();
+  const text = (clone.innerText || clone.textContent || '').trim();
+  
+  // Toggle existing translation box if present
+  const transBoxInDom = rowEl.querySelector('.translation-box');
+  if (transBoxInDom) {
+    transBoxInDom.classList.toggle('hidden');
+    return;
+  }
+  
+  if (!text) {
+    toast('ไม่มีข้อความสำหรับแปลภาษา', 'warning');
+    return;
+  }
+
+  const origHtml = btnEl.innerHTML;
+  btnEl.disabled = true;
+  btnEl.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin text-brand-500"></i>`;
+  if (window.lucide) lucide.createIcons();
+
+  const cacheKey = `${_userTargetLang}:${text}`;
+  let translatedText = _translationCache[cacheKey];
+
+  if (!translatedText) {
+    try {
+      const res = await fetch('/api/chat/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text, target_lang: _userTargetLang })
+      });
+      const data = await res.json();
+      if (data.ok && data.translated_text) {
+        translatedText = data.translated_text;
+        _translationCache[cacheKey] = translatedText;
+      } else {
+        toast(data.error || 'ไม่สามารถแปลภาษาได้ในขณะนี้', 'error');
+        btnEl.disabled = false;
+        btnEl.innerHTML = origHtml;
+        if (window.lucide) lucide.createIcons();
+        return;
+      }
+    } catch (err) {
+      console.error("Translation fetch error:", err);
+      toast('เกิดข้อผิดพลาดในการเชื่อมต่อบริการแปลภาษา', 'error');
+      btnEl.disabled = false;
+      btnEl.innerHTML = origHtml;
+      if (window.lucide) lucide.createIcons();
+      return;
+    }
+  }
+
+  btnEl.disabled = false;
+  btnEl.innerHTML = origHtml;
+  if (window.lucide) lucide.createIcons();
+
+  const langBadges = { th: '🇹🇭 TH', en: '🇬🇧 EN', zh: '🇨🇳 ZH', ja: '🇯🇵 JA', ko: '🇰🇷 KO', lo: '🇱🇦 LO' };
+  const badgeLabel = langBadges[_userTargetLang] || _userTargetLang.toUpperCase();
+
+  const newTransBox = document.createElement('div');
+  newTransBox.className = 'translation-box mt-2.5 pt-2 border-t border-brand-500/20 text-xs text-surface-700 dark:text-surface-200 animate-in fade-in zoom-in-95 duration-200';
+  newTransBox.innerHTML = `
+    <div class="flex items-center justify-between gap-2 mb-1 opacity-80">
+      <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-brand-500/10 text-brand-600 dark:text-brand-400 font-bold text-[10px]">
+        <i data-lucide="languages" class="w-3 h-3"></i> คำแปล ${badgeLabel}
+      </span>
+      <button onclick="this.closest('.translation-box').remove()" class="text-surface-400 hover:text-red-500 text-[10px] px-1 font-bold">✕ ปิด</button>
+    </div>
+    <div class="italic bg-brand-500/5 p-2 rounded-xl border border-brand-500/10 leading-relaxed">${escapeHtml(translatedText)}</div>
+  `;
+  
+  const targetContainer = rowEl.querySelector('.chat-bubble') || rowEl.querySelector('.msg-content-wrapper') || rowEl;
+  targetContainer.appendChild(newTransBox);
+  if (window.lucide) lucide.createIcons();
+}
+
+// Global click listener delegation for translate-msg-btn
+document.addEventListener('click', (e) => {
+  const transBtn = e.target.closest('.translate-msg-btn');
+  if (transBtn && !transBtn.onclick) {
+    e.preventDefault();
+    translateChatMessage(transBtn);
+  }
+});
+
 // Helper: Get preview text with sender prefix
 function getChatPreview(msg, sender) {
   if (!msg) return 'ยังไม่มีข้อความ';
@@ -1588,6 +1691,7 @@ function appendMessage(role, html, sources = [], scroll = true, msgId = null) {
 
   let feedbackPanel = !isUser ? `
     <div class="absolute -right-2 top-0 translate-x-full opacity-0 group-hover/msg:opacity-100 transition-opacity flex flex-col gap-1">
+      <button class="translate-msg-btn p-1.5 glass rounded-lg hover:text-brand-600 transition-colors" title="แปลภาษา (Translate)"><i data-lucide="languages" class="w-3.5 h-3.5"></i></button>
       <button class="copy-msg-btn p-1.5 glass rounded-lg hover:text-brand-600 transition-colors" title="คัดลอก"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
       <button class="speak-btn p-1.5 glass rounded-lg hover:text-brand-600 transition-colors" title="ฟังเสียง"><i data-lucide="volume-2" class="w-3.5 h-3.5"></i></button>
       <button class="fb-btn p-1.5 glass rounded-lg hover:text-emerald-500 transition-colors" data-val="1"><i data-lucide="thumbs-up" class="w-3.5 h-3.5"></i></button>
@@ -1595,6 +1699,7 @@ function appendMessage(role, html, sources = [], scroll = true, msgId = null) {
       ${msgId ? `<button class="del-msg-btn p-1.5 glass rounded-lg hover:text-red-500 transition-colors" title="ลบข้อความ"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>` : ''}
     </div>` : `
     <div class="absolute -left-2 top-0 -translate-x-full opacity-0 group-hover/msg:opacity-100 transition-opacity flex flex-col gap-1">
+      <button class="translate-msg-btn p-1.5 glass rounded-lg hover:text-brand-600 transition-colors" title="แปลภาษา (Translate)"><i data-lucide="languages" class="w-3.5 h-3.5"></i></button>
       <button class="copy-msg-btn p-1.5 glass rounded-lg hover:text-brand-600 transition-colors" title="คัดลอก"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
       ${msgId ? `<button class="del-msg-btn p-1.5 glass rounded-lg hover:text-red-200 transition-colors" title="ลบข้อความ"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>` : ''}
     </div>`;
@@ -1648,6 +1753,12 @@ function appendMessage(role, html, sources = [], scroll = true, msgId = null) {
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = html;
     speak(tempDiv.textContent || tempDiv.innerText || "");
+  }
+
+  // Attach translate listener
+  const transBtn = row.querySelector('.translate-msg-btn');
+  if (transBtn) {
+    transBtn.onclick = () => translateChatMessage(transBtn);
   }
 
   // Attach copy listener
