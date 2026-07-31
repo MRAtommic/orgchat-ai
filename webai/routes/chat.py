@@ -4419,19 +4419,25 @@ def export_pdf():
 @chat_bp.route("/api/files/download/<filename>")
 @login_required
 def download_file(filename):
-    # ป้องกัน cross-org access — ตรวจว่า file นี้เป็นของ org ผู้ขอหรือไม่
+    # 🛡️ Strict org isolation — only serve files belonging to the user's org
     from pathlib import Path as _Path
-    all_files = rag_engine.list_files()
+    user_org = get_current_org_id()
+    if not user_org:
+        abort(403)  # No org context → deny access entirely
+
+    # Only search within the user's own org files
+    org_files = rag_engine.list_files(org_id=user_org)
     file_entry = next(
-        (f for f in all_files if _Path(f.get("path", "")).name == filename),
+        (f for f in org_files if _Path(f.get("path", "")).name == filename),
         None,
     )
     if file_entry is None:
-        abort(404)
-    file_org = file_entry.get("organization_id")
-    user_org = get_current_org_id()
-    if file_org is not None and user_org is not None and file_org != user_org:
+        abort(404)  # File not found in user's org → 404 (not 403, to avoid info leak)
+
+    # Path traversal guard
+    if '..' in filename or '/' in filename or '\\' in filename:
         abort(403)
+
     return send_from_directory(rag_engine.UPLOAD_DIR, filename, as_attachment=True)
 
 

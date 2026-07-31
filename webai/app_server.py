@@ -365,6 +365,27 @@ def create_app():
         response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
         response.headers.setdefault("X-XSS-Protection", "1; mode=block")
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+
+        # 🛡️ Content-Security-Policy — restrict resource origins
+        csp_parts = [
+            "default-src 'self'",
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com https://accounts.google.com https://apis.google.com https://js.stripe.com",
+            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com https://unpkg.com",
+            "img-src 'self' data: blob: https: http:",
+            "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net",
+            "connect-src 'self' https://api.openweathermap.org https://generativelanguage.googleapis.com https://api.groq.com https://api.openai.com https://accounts.google.com https://js.stripe.com wss: ws:",
+            "frame-src 'self' https://accounts.google.com https://js.stripe.com",
+            "object-src 'none'",
+            "base-uri 'self'",
+        ]
+        response.headers.setdefault("Content-Security-Policy", "; ".join(csp_parts))
+
+        # 🛡️ Permissions-Policy — restrict browser features from third-party contexts
+        response.headers.setdefault(
+            "Permissions-Policy",
+            "camera=(self), microphone=(self), geolocation=(), payment=(self), usb=()"
+        )
+
         # HSTS เปิดเฉพาะเมื่อ BASE_URL เป็น https
         base = os.environ.get("BASE_URL", "")
         if base.startswith("https://"):

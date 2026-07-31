@@ -56,30 +56,54 @@ def get_version():
     return jsonify({"version": VERSION, "status": "online"})
 
 
+def _safe_filename(filename: str) -> bool:
+    """Block path traversal: reject filenames containing '..' or absolute path components."""
+    if not filename:
+        return False
+    # Normalize path separators and check for traversal
+    normalized = filename.replace('\\', '/')
+    if '..' in normalized or normalized.startswith('/') or ':' in normalized:
+        return False
+    return True
+
+
 @misc_bp.route('/uploads/social_feed/<path:filename>')
+@login_required
 def serve_social_uploads(filename):
+    if not _safe_filename(filename):
+        abort(403)
     return send_from_directory('uploads/social_feed', filename)
 
 
 @misc_bp.route('/uploads/profiles/<path:filename>')
+@login_required
 def serve_profile_uploads(filename):
+    if not _safe_filename(filename):
+        abort(403)
     return send_from_directory('uploads/profiles', filename)
 
 
 @misc_bp.route('/uploads/group_chat/<path:filename>')
 @login_required
 def serve_group_chat_uploads(filename):
+    if not _safe_filename(filename):
+        abort(403)
     return send_from_directory('uploads/group_chat', filename)
 
 
 @misc_bp.route('/uploads/dm_chat/<path:filename>')
 @login_required
 def serve_dm_chat_uploads(filename):
+    if not _safe_filename(filename):
+        abort(403)
     return send_from_directory('uploads/dm_chat', filename)
 
 
 @misc_bp.route('/uploads/group_profiles/<path:filename>')
+@login_required
 def serve_group_profile_uploads(filename):
+    if not _safe_filename(filename):
+        abort(403)
     return send_from_directory('uploads/group_profiles', filename)
 
 

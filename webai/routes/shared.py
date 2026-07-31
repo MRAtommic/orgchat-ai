@@ -361,7 +361,9 @@ def get_rag_filter(username, org_id=None):
     if user_settings.get("role") == "admin":
         if org_id is not None:
             return {"organization_id": org_id}
-        return None  # System admin with no org context: no filter (sees all)
+        # 🛡️ Admin with no org context: return restrictive filter (match nothing)
+        # Previously returned None which disabled filtering entirely
+        return {"organization_id": -1}  # Impossible org_id → returns no results
 
     cats = database.get_categories(username, org_id=org_id)
     allowed_ids = []
