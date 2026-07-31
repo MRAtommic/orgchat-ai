@@ -840,6 +840,12 @@ def init_db():
     try:
         cursor.execute("ALTER TABLE user_settings ADD COLUMN line_permissions TEXT DEFAULT 'report,links,reconcile,search,folder,leave'")
     except sqlite3.OperationalError: pass
+    try:
+        cursor.execute("ALTER TABLE user_settings ADD COLUMN failed_login_attempts INTEGER DEFAULT 0")
+    except sqlite3.OperationalError: pass
+    try:
+        cursor.execute("ALTER TABLE user_settings ADD COLUMN locked_until DATETIME")
+    except sqlite3.OperationalError: pass
 
     # Migration: Add category_id to knowledge_base
     try:
@@ -6072,7 +6078,7 @@ def verify_and_consume_reset_otp(email_or_username: str, otp_code: str, new_pass
         conn.close()
         return False, "รหัส OTP หมดอายุแล้ว (อายุ 10 นาที) กรุณากดขอรหัส OTP ใหม่"
 
-    if db_otp != clean_otp:
+    if not hmac.compare_digest(str(db_otp), str(clean_otp)):
         conn.close()
         return False, "รหัส OTP 6 หลักไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง"
 
@@ -6954,5 +6960,92 @@ def delete_ai_category_rule(org_id: int, rule_id: int) -> bool:
         return cursor.rowcount > 0
     finally:
         conn.close()
+
+
+# ═══════════════════════════════════════════════════════════════
+# Account Lockout & Brute-Force Protection Functions
+# ═══════════════════════════════════════════════════════════════
+
+def is_account_locked(username: str) -> tuple[bool, int]:
+    """
+    Checks if account is currently locked out due to excessive failed logins.
+    Returns (is_locked, seconds_remaining).
+    """
+    if not username:
+        return False, 0
+    from datetime import datetime
+    conn = _get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT locked_until FROM user_settings WHERE username = ? COLLATE NOCASE", (username.strip(),))
+        row = cursor.fetchone()
+        if not row or not row[0]:
+            return False, 0
+        locked_until_str = str(row[0])
+        try:
+            locked_dt = datetime.strptime(locked_until_str.split('.')[0], "%Y-%m-%d %H:%M:%S")
+            now_dt = datetime.now()
+            if locked_dt > now_dt:
+                remaining = int((locked_dt - now_dt).total_seconds())
+                return True, max(1, remaining)
+        except Exception:
+            pass
+        return False, 0
+    finally:
+        conn.close()
+
+def record_failed_login(username: str, max_attempts: int = 5, lock_minutes: int = 15) -> dict:
+    """
+    Increments failed login counter and locks account if threshold exceeded.
+    Returns status dict with attempts and whether account became locked.
+    """
+    if not username:
+        return {"locked": False, "attempts": 0}
+    from datetime import datetime, timedelta
+    conn = _get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT failed_login_attempts FROM user_settings WHERE username = ? COLLATE NOCASE", (username.strip(),))
+        row = cursor.fetchone()
+        if not row:
+            current_attempts = 0
+            cursor.execute("INSERT OR IGNORE INTO user_settings (username, failed_login_attempts) VALUES (?, 0)", (username.strip(),))
+        else:
+            current_attempts = (row[0] or 0)
+
+        new_attempts = current_attempts + 1
+        
+        locked = False
+        locked_until = None
+        if new_attempts >= max_attempts:
+            locked = True
+            locked_until = (datetime.now() + timedelta(minutes=lock_minutes)).strftime("%Y-%m-%d %H:%M:%S")
+        
+        cursor.execute("""
+            UPDATE user_settings 
+            SET failed_login_attempts = ?, locked_until = ?
+            WHERE username = ? COLLATE NOCASE
+        """, (new_attempts, locked_until, username.strip()))
+        conn.commit()
+        return {"locked": locked, "attempts": new_attempts, "lock_minutes": lock_minutes}
+    finally:
+        conn.close()
+
+def reset_failed_login(username: str) -> None:
+    """Resets failed login attempt counter and clears lock status on successful auth."""
+    if not username:
+        return
+    conn = _get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE user_settings 
+            SET failed_login_attempts = 0, locked_until = NULL
+            WHERE username = ? COLLATE NOCASE
+        """, (username.strip(),))
+        conn.commit()
+    finally:
+        conn.close()
+
 
 

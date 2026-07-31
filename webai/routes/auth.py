@@ -1103,12 +1103,24 @@ def line_link_magic():
 
 
 @auth_bp.route("/api/login", methods=["POST"])
-@_limiter.limit("10 per minute; 50 per hour")
+@_limiter.limit("5 per minute; 20 per hour")
 def api_login():
-    data = request.json
+    data = request.json or {}
     username_raw = data.get("username", "").strip()
     username_lower = username_raw.lower()
     password = data.get("password", "")
+
+    if not username_raw or not password:
+        return jsonify({"ok": False, "error": "กรุณากรอกชื่อผู้ใช้และรหัสผ่าน"}), 400
+
+    # 🛡️ Account Lockout Check
+    is_locked, rem_seconds = database.is_account_locked(username_raw)
+    if is_locked:
+        rem_min = max(1, (rem_seconds + 59) // 60)
+        return jsonify({
+            "ok": False,
+            "error": f"บัญชีนี้ถูกระงับชั่วคราวเนื่องจากใส่รหัสผ่านผิดหลายครั้ง กรุณาลองใหม่ในอีก {rem_min} นาที"
+        }), 429
 
     # ตรวจสอบ IP จาก SQLite (persist ข้าม restart — ป้องกัน brute-force)
     client_ip = request.remote_addr or "unknown"
@@ -1140,6 +1152,8 @@ def api_login():
         wl_err = _check_whitelist(username_raw)
         if wl_err:
             return jsonify({"ok": False, "error": wl_err}), 403
+            
+        database.reset_failed_login(username_raw)
         session.clear()  # ป้องกัน session fixation
         session.permanent = True
         session["user"] = settings.get("username_original", username_raw)
@@ -1180,6 +1194,7 @@ def api_login():
         user_to_session = username_raw.capitalize()
         if not settings.get("is_active", 1):
              return jsonify({"ok": False, "error": "บัญชีนี้ถูกระงับโดยผู้ดูแลระบบ"}), 403
+        database.reset_failed_login(username_raw)
         session.clear()  # ป้องกัน session fixation
         session.permanent = True
         session["user"] = user_to_session
@@ -1190,7 +1205,15 @@ def api_login():
         return jsonify({"ok": True, "user": user_to_session, "role": session["role"], "org_role": session.get("org_role"), "has_org": session.get("org_id") is not None})
 
     database.record_login_attempt(client_ip, username_raw, success=False)
+    lock_info = database.record_failed_login(username_raw)
+    if lock_info.get("locked"):
+        return jsonify({
+            "ok": False,
+            "error": f"ใส่รหัสผ่านผิดเกินกำหนด บัญชีถูกล็อคชั่วคราวเป็นเวลา {lock_info.get('lock_minutes', 15)} นาทีเพื่อความปลอดภัย"
+        }), 429
+
     return jsonify({"ok": False, "error": "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง"})
+
 
 
 @auth_bp.route("/api/qr/generate", methods=["POST"])
@@ -1667,8 +1690,9 @@ def api_verify_reset_otp():
     if not target or not otp_code or not new_password:
         return jsonify({"ok": False, "error": "กรุณากรอกรหัส OTP และรหัสผ่านใหม่ให้ครบถ้วน"})
 
-    if len(new_password) < 8:
-        return jsonify({"ok": False, "error": "รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร"})
+    val_ok, val_err = validate_password_strength(new_password)
+    if not val_ok:
+        return jsonify({"ok": False, "error": val_err}), 400
 
     ok, msg = database.verify_and_consume_reset_otp(target, otp_code, new_password)
     if not ok:
@@ -1683,8 +1707,12 @@ def api_reset_password():
     data = request.get_json(force=True)
     token    = (data.get("token") or "").strip()
     password = data.get("password") or ""
-    if not token or len(password) < 8:
-        return jsonify({"ok": False, "error": "ข้อมูลไม่ครบหรือรหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร"})
+    if not token or not password:
+        return jsonify({"ok": False, "error": "ข้อมูลไม่ครบถ้วน"})
+    val_ok, val_err = validate_password_strength(password)
+    if not val_ok:
+        return jsonify({"ok": False, "error": val_err}), 400
+
     ok = database.consume_reset_token(token, password)
     if not ok:
         return jsonify({"ok": False, "error": "ลิ้งค์ไม่ถูกต้องหรือหมดอายุแล้วค่ะ"})
@@ -2682,16 +2710,35 @@ def update_my_notes():
     return jsonify({"ok": True})
 
 
+def validate_password_strength(password: str) -> tuple[bool, str]:
+    """Validates strong password policy (min 8 chars, 1 uppercase, 1 lowercase, 1 digit, 1 special char)."""
+    if not password or len(password) < 8:
+        return False, "รหัสผ่านต้องมีความยาวอย่างน้อย 8 ตัวอักษร"
+    if not re.search(r'[A-Z]', password):
+        return False, "รหัสผ่านต้องมีตัวอักษรพิมพ์ใหญ่ (A-Z) อย่างน้อย 1 ตัว"
+    if not re.search(r'[a-z]', password):
+        return False, "รหัสผ่านต้องมีตัวอักษรพิมพ์เล็ก (a-z) อย่างน้อย 1 ตัว"
+    if not re.search(r'[0-9]', password):
+        return False, "รหัสผ่านต้องมีตัวเลข (0-9) อย่างน้อย 1 ตัว"
+    if not re.search(r'[!@#$%^&*()_+\-=\[\]{};:\'",.<>/?\\|]', password):
+        return False, "รหัสผ่านต้องมีสัญลักษณ์พิเศษ (!@#$%^&*) อย่างน้อย 1 ตัว"
+    return True, ""
+
+
 @auth_bp.route("/api/user/change-password", methods=["POST"])
 @login_required
+@_limiter.limit("5 per minute")
 def change_my_password():
     """User changes their own password. Requires current password to verify."""
     username = session.get("user")
     data = request.get_json(force=True)
     current_pw = (data.get("current_password") or "").strip()
     new_pw = (data.get("new_password") or "").strip()
-    if not new_pw or len(new_pw) < 4:
-        return jsonify({"ok": False, "error": "รหัสผ่านใหม่ต้องมีอย่างน้อย 4 ตัวอักษร"}), 400
+    
+    val_ok, val_err = validate_password_strength(new_pw)
+    if not val_ok:
+        return jsonify({"ok": False, "error": val_err}), 400
+
     # Verify current password
     settings = database.get_user_setting(username)
     stored_hash = settings.get("custom_password") or ""

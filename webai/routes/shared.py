@@ -570,3 +570,27 @@ if USERS:
         f"⚠️ LEGACY_USER_* env vars detected ({list(USERS.keys())}) — "
         "these use plain-text password comparison. Migrate users to DB accounts and remove these env vars."
     )
+
+
+# ═══════════════════════════════════════════════════════════════
+# Anti-CSRF Token Helper System
+# ═══════════════════════════════════════════════════════════════
+
+import secrets
+import hmac
+
+def get_or_create_csrf_token() -> str:
+    """Retrieves or generates a secure cryptographically random CSRF token for current session."""
+    token = session.get('_csrf_token')
+    if not token:
+        token = secrets.token_hex(32)
+        session['_csrf_token'] = token
+    return token
+
+def validate_csrf_token(token_to_check: str) -> bool:
+    """Validates CSRF token using constant-time comparison against current session token."""
+    expected_token = session.get('_csrf_token')
+    if not expected_token or not token_to_check:
+        return False
+    return hmac.compare_digest(expected_token, str(token_to_check))
+

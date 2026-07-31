@@ -1,9 +1,41 @@
-// --- OrgChat AI: CHAT Module ---
+// 🛡️ CSRF Token Auto-Injector & Global Fetch Interceptor
+window._csrfToken = null;
 
-/* ══════════════════════════════════════════
-   OrgChat — Corporate Frontend Application Logic
-   ══════════════════════════════════════════ */
+async function fetchCsrfToken() {
+  try {
+    const res = await fetch('/api/csrf-token');
+    const data = await res.json();
+    if (data && data.csrf_token) {
+      window._csrfToken = data.csrf_token;
+      let meta = document.querySelector('meta[name="csrf-token"]');
+      if (meta) meta.setAttribute('content', window._csrfToken);
+    }
+  } catch (e) {
+    console.warn("Failed to fetch CSRF token:", e);
+  }
+}
 
+// Fetch initial CSRF token
+fetchCsrfToken();
+
+const originalFetch = window.fetch;
+window.fetch = async function (resource, options = {}) {
+  const method = (options.method || 'GET').toUpperCase();
+  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+    if (!window._csrfToken && resource !== '/api/csrf-token') {
+      await fetchCsrfToken();
+    }
+    if (window._csrfToken && resource !== '/api/csrf-token') {
+      options.headers = options.headers || {};
+      if (options.headers instanceof Headers) {
+        options.headers.set('X-CSRF-Token', window._csrfToken);
+      } else {
+        options.headers['X-CSRF-Token'] = window._csrfToken;
+      }
+    }
+  }
+  return originalFetch.call(this, resource, options);
+};
 
 // ─── Socket.IO Global ──────────────────────────
 let socket = null;

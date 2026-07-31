@@ -365,6 +365,9 @@ def create_app():
         response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
         response.headers.setdefault("X-XSS-Protection", "1; mode=block")
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers["Server"] = "OrgChat-Shield"
+        response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin-allow-popups")
+        response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
 
         # 🛡️ Content-Security-Policy — restrict resource origins
         csp_parts = [
@@ -392,7 +395,12 @@ def create_app():
             response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
         return response
 
-    # ─── Idle Session Timeout (2 hours) ──────────────────────
+    @app.route("/api/csrf-token", methods=["GET"])
+    def get_csrf_token_endpoint():
+        from routes.shared import get_or_create_csrf_token
+        return jsonify({"ok": True, "csrf_token": get_or_create_csrf_token()})
+
+    # ─── Idle Session Timeout (2 hours) & CSRF Middleware ────
     _IDLE_SECONDS = 2 * 60 * 60  # 2 ชั่วโมง
 
     _ORG_CHECK_INTERVAL = 5 * 60  # re-validate org membership ทุก 5 นาที
@@ -404,6 +412,27 @@ def create_app():
         # ข้ามสำหรับ static files และ uploads
         if _req.path.startswith('/static') or _req.path.startswith('/uploads'):
             return
+
+        # 🛡️ Anti-CSRF Token Enforcement for mutating methods
+        if _req.method in ("POST", "PUT", "DELETE", "PATCH"):
+            csrf_exempt = (
+                _req.path.startswith('/line/webhook') or 
+                _req.path.startswith('/stripe/webhook') or
+                _req.path.startswith('/api/csrf-token') or
+                _req.path.startswith('/api/login') or
+                _req.path.startswith('/api/qr/') or
+                _req.path.startswith('/api/auth/google/') or
+                _req.path.startswith('/api/auth/forgot-password') or
+                _req.path.startswith('/api/auth/verify-reset-otp') or
+                _req.path.startswith('/api/org/signup')
+            )
+            if not csrf_exempt and 'user' in session:
+                from routes.shared import validate_csrf_token
+                csrf_header = _req.headers.get("X-CSRF-Token")
+                if not csrf_header or not validate_csrf_token(csrf_header):
+                    from flask import jsonify as _json_csrf
+                    logger.warning(f"🛡️ CSRF Blocked: Invalid or missing token from IP={_req.remote_addr} path={_req.path}")
+                    return _json_csrf({"ok": False, "error": "csrf_invalid", "message": "คำขอไม่ถูกต้องหรือ CSRF token หมดอายุ กรุณารีเฟรชหน้าเว็บ"}), 403
         if 'user' not in session:
             return
         now = _time.time()
