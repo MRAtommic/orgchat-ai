@@ -13028,14 +13028,13 @@ function toggleMobileSecurityPanel() {
   const panel = document.getElementById('securityPanel');
   const icon = document.getElementById('securityPanelIcon');
   if (!panel) return;
-  const isHidden = panel.classList.contains('hidden');
-  if (isHidden) {
-    panel.classList.remove('hidden');
-    panel.classList.add('flex');
+  
+  const isMobileHidden = panel.classList.contains('max-md:hidden') || panel.classList.contains('hidden');
+  if (isMobileHidden) {
+    panel.classList.remove('max-md:hidden', 'hidden');
     if (icon) icon.style.transform = 'rotate(180deg)';
   } else {
-    panel.classList.add('hidden');
-    panel.classList.remove('flex');
+    panel.classList.add('max-md:hidden');
     if (icon) icon.style.transform = 'rotate(0deg)';
   }
 }
