@@ -3599,23 +3599,31 @@ tr:hover .delete-row-btn {
   #loginOverlay {
     padding: 12px !important;
     padding-top: 20px !important;
-    align-items: flex-start !important;
+    align-items: center !important;
   }
   #loginOverlay > div {
     width: 100% !important;
     max-width: 100% !important;
   }
   #loginOverlay .p-8 {
-    padding: 20px 20px 12px !important;
+    padding: 20px 16px 16px !important;
   }
   #loginOverlay .p-8.pb-0 {
-    padding: 20px 20px 0 !important;
+    padding: 24px 16px 0 !important;
   }
   #loginOverlay h1.text-3xl {
     font-size: 1.75rem !important;
   }
   #loginOverlay .rounded-3xl {
     border-radius: 24px !important;
+  }
+  #loginOverlay input {
+    font-size: 16px !important; /* Prevents iOS auto-zoom */
+    min-height: 48px !important;
+  }
+  #loginOverlay button {
+    min-height: 48px !important;
+    font-size: 15px !important;
   }
 }
 

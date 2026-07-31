@@ -153,7 +153,7 @@
     class="fixed inset-0 z-[200] bg-surface-50 dark:bg-surface-950 overflow-y-auto flex justify-center p-4 py-8{% if session.get('user') %} hidden{% endif %}">
     <div class="max-w-md md:max-w-5xl w-full my-auto animate-in zoom-in duration-300">
       <div
-        class="bg-white dark:bg-surface-900 rounded-3xl shadow-2xl border border-surface-200 dark:border-surface-800 overflow-hidden flex flex-col md:flex-row min-h-[650px]">
+        class="bg-white dark:bg-surface-900 rounded-3xl shadow-2xl border border-surface-200 dark:border-surface-800 overflow-hidden flex flex-col md:flex-row min-h-0 md:min-h-[650px]">
         
         <!-- Left Column: Login Form -->
         <div class="w-full md:w-1/2 flex flex-col justify-between bg-white dark:bg-surface-900 border-b md:border-b-0 md:border-r border-surface-200 dark:border-surface-800">
@@ -257,8 +257,8 @@
           </div>
         </div>
 
-        <!-- Right Column: Trust & Security Panel -->
-        <div class="w-full md:w-1/2 bg-gradient-to-br from-brand-900 via-brand-800 to-indigo-950 text-white p-8 md:p-12 flex flex-col justify-between relative overflow-hidden">
+        <!-- Right Column: Trust & Security Panel (Desktop Only) -->
+        <div class="hidden md:flex md:w-1/2 bg-gradient-to-br from-brand-900 via-brand-800 to-indigo-950 text-white p-8 md:p-12 flex-col justify-between relative overflow-hidden">
           <!-- Decorative Background Elements -->
           <div class="absolute -right-16 -top-16 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
           <div class="absolute -left-16 -bottom-16 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
