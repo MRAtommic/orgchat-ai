@@ -1889,6 +1889,45 @@ def create_batch_summary_flex_bubble(uploaded_results, folder_name):
     return clean_flex_payload(bubble)
 
 
+def create_line_flex_bubble(title, subtitle, fields=None, color="#2563eb"):
+    """Creates a structured LINE Flex Message bubble for notifications and calendar events."""
+    body_contents = [
+        { "type": "text", "text": str(title), "weight": "bold", "size": "md", "color": color },
+        { "type": "text", "text": str(subtitle), "size": "xs", "color": "#64748b", "margin": "xs" },
+        { "type": "separator", "margin": "md" }
+    ]
+    
+    if fields and isinstance(fields, dict):
+        for k, v in fields.items():
+            if not v: continue
+            body_contents.append({
+                "type": "box",
+                "layout": "baseline",
+                "margin": "sm",
+                "contents": [
+                    { "type": "text", "text": str(k), "color": "#64748b", "size": "xs", "flex": 2 },
+                    { "type": "text", "text": str(v), "color": "#1e293b", "size": "xs", "weight": "bold", "flex": 5, "wrap": True }
+                ]
+            })
+            
+    bubble = {
+        "type": "bubble",
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": body_contents
+        },
+        "footer": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                { "type": "text", "text": "📌 OrgChat — ระบบปฏิทินและแจ้งเตือนองค์กร", "size": "xxs", "color": "#94a3b8", "align": "center" }
+            ]
+        }
+    }
+    return clean_flex_payload(bubble)
+
+
 def send_line_push_notification(target_username, title, text, fields=None):
     """Sends a one-to-one message to a specific user via LINE."""
     line_id = database.get_line_id_by_username(target_username)
@@ -2020,38 +2059,61 @@ def reply_to_line(reply_token, message, quick_reply=None, sticker_data=None):
         logger.error(f"❌ reply_to_line exception: {e}")
 
 
-def broadcast_line_announcement(title, text, fields=None):
-    """Sends a push notification to all linked users via Flex Message."""
+def broadcast_line_announcement(title, text, fields=None, org_id=None):
+    """Sends a push notification to all linked users and linked LINE groups via Flex Message."""
     token = get_channel_access_token()
     if not token: return False
-    url = "https://api.line.me/v2/bot/message/broadcast"
+    
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
     
-    flex_contents = {
-        "type": "bubble",
-        "body": {
-            "type": "box", "layout": "vertical", "contents": [
-                { "type": "text", "text": "ประกาศจากน้องพั้นค่ะ", "size": "xs", "color": "#059669", "weight": "bold", "margin": "none" },
-                { "type": "text", "text": text, "wrap": True, "margin": "md", "size": "sm", "lineSpacing": "6px", "color": "#334155" }
-            ]
-        },
-        "footer": {
-            "type": "box", "layout": "vertical", "contents": [
-                { "type": "text", "text": "เปิดแอปเพื่อดูรายละเอียดเพิ่มเติม", "size": "xxs", "color": "#94a3b8", "align": "center" }
-            ]
+    if fields:
+        flex_contents = create_line_flex_bubble(title, "📢 กำหนดการสาธารณะใหม่", fields, color="#2563eb")
+        msg_payload = {"type": "flex", "altText": f"📅 {title}", "contents": flex_contents}
+    else:
+        msg_payload = {
+            "type": "flex",
+            "altText": title,
+            "contents": {
+                "type": "bubble",
+                "body": {
+                    "type": "box", "layout": "vertical", "contents": [
+                        { "type": "text", "text": f"📢 {title}", "size": "sm", "color": "#2563eb", "weight": "bold" },
+                        { "type": "text", "text": text, "wrap": True, "margin": "md", "size": "sm", "lineSpacing": "6px", "color": "#334155" }
+                    ]
+                },
+                "footer": {
+                    "type": "box", "layout": "vertical", "contents": [
+                        { "type": "text", "text": "เปิดแอปเพื่อดูรายละเอียดเพิ่มเติม", "size": "xxs", "color": "#94a3b8", "align": "center" }
+                    ]
+                }
+            }
         }
-    }
+        
+    # 1. Send via LINE Broadcast endpoint (all OA subscribers)
     try:
-        res = requests.post(url, headers=headers, json={"messages": [{"type": "flex", "altText": title, "contents": flex_contents}]}, timeout=20)
+        res = requests.post("https://api.line.me/v2/bot/message/broadcast", headers=headers, json={"messages": [msg_payload]}, timeout=20)
         if res.status_code == 200:
             logger.info("✅ [LINE Broadcast] Sent successfully!")
-            return True
         else:
             logger.error(f"❌ [LINE Broadcast] Failed: {res.text}")
-            return False
     except Exception as e:
         logger.error(f"❌ [LINE Broadcast] Exception: {e}")
-        return False
+
+    # 2. Push to linked LINE Groups for the organization
+    try:
+        target_org = org_id or 1
+        groups = database.get_line_groups_for_org(target_org) or []
+        for g in groups:
+            gid = g.get("group_id") if isinstance(g, dict) else g
+            if gid:
+                try:
+                    requests.post("https://api.line.me/v2/bot/message/push", headers=headers, json={"to": gid, "messages": [msg_payload]}, timeout=10)
+                except Exception as ge:
+                    logger.error(f"❌ [LINE Group Push] Exception for {gid}: {ge}")
+    except Exception as e:
+        logger.error(f"❌ [LINE Group Push] Error fetching groups: {e}")
+
+    return True
 
 
 def get_folder_flex_message(user_id=None, uploader_id=None, pending_id=None):
