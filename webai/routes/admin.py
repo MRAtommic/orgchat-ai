@@ -2296,7 +2296,7 @@ def api_leave_my():
 
 
 @admin_bp.route("/api/admin/leave/all")
-@admin_required
+@org_admin_required
 def api_admin_leave_all():
     org_id = get_current_org_id()
     leaves = database.get_all_leaves(org_id=org_id)
@@ -2304,7 +2304,7 @@ def api_admin_leave_all():
 
 
 @admin_bp.route("/api/admin/leave/status", methods=["POST"])
-@admin_required
+@org_admin_required
 def api_admin_leave_status():
     admin_user = session.get("user")
     data = request.get_json()
