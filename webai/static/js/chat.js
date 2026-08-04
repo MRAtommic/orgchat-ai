@@ -30,7 +30,7 @@ const FONT_SIZE_MAP = {
 };
 
 function initCustomUISettings() {
-  const savedFont = localStorage.getItem('custom_font_family') || 'Inter';
+  const savedFont = localStorage.getItem('custom_font_family') || 'Sarabun';
   const savedSize = localStorage.getItem('custom_font_size') || 'normal';
   const savedAccent = localStorage.getItem('custom_accent_color') || 'indigo';
 
@@ -95,7 +95,7 @@ function setCustomAccent(colorName, save = true) {
 }
 
 function resetCustomUISettings() {
-  setCustomFont('Inter');
+  setCustomFont('Sarabun');
   setCustomFontSize('normal');
   setCustomAccent('indigo');
   if (typeof toast === 'function') toast('คืนค่าการแสดงผลเริ่มต้นเรียบร้อย', 'info');

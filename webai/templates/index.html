@@ -36,7 +36,7 @@
               }
             },
             fontFamily: {
-              sans: ['Inter', 'Sarabun', 'sans-serif'],
+              sans: ['Sarabun', 'Inter', 'sans-serif'],
             },
           }
         }
@@ -6637,7 +6637,7 @@
         <section id="view-dashboard" class="view hidden flex-1 flex flex-col items-center overflow-y-auto custom-scrollbar animate-in fade-in duration-500 bg-surface-50/50 dark:bg-surface-950/50 w-full text-slate-800">
           <style>
             /* Isolated Dashboard Styles */
-            body { font-family: 'Outfit', 'Sarabun', sans-serif; }
+            body { font-family: 'Sarabun', 'Outfit', sans-serif; }
 
         ::-webkit-scrollbar { width: 5px; height: 5px; }
         ::-webkit-scrollbar-track { background: #f1f5f9; }
@@ -11867,7 +11867,7 @@ document.addEventListener('DOMContentLoaded', () => {
 <!-- Tour Overlay -->
 <div id="tourOverlay" style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.7);pointer-events:none;"></div>
 <div id="tourSpot" style="display:none;position:fixed;z-index:9001;pointer-events:none;border-radius:10px;transition:top .25s,left .25s,width .25s,height .25s;box-shadow:0 0 0 9999px rgba(0,0,0,.7),0 0 0 3px #34d399,0 0 0 6px rgba(52,211,153,.25);"></div>
-<div id="tourCard" style="display:none;position:fixed;z-index:9002;width:300px;background:#fff;border-radius:16px;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.28);font-family:'Outfit','Sarabun',sans-serif;">
+<div id="tourCard" style="display:none;position:fixed;z-index:9002;width:300px;background:#fff;border-radius:16px;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.28);font-family:'Sarabun','Outfit',sans-serif;">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
     <span id="tStep" style="font-size:11px;font-weight:700;color:#94a3b8;letter-spacing:.06em;text-transform:uppercase"></span>
     <button onclick="endTour()" style="background:none;border:none;cursor:pointer;color:#cbd5e1;font-size:18px;line-height:1;padding:0">&times;</button>
@@ -11884,7 +11884,7 @@ document.addEventListener('DOMContentLoaded', () => {
 </div>
 
 <!-- Help Center Modal -->
-<div id="helpModal" style="display:none;position:fixed;inset:0;z-index:8000;background:rgba(15,23,42,.6);backdrop-filter:blur(6px);align-items:center;justify-content:center;font-family:'Outfit','Sarabun',sans-serif;">
+<div id="helpModal" style="display:none;position:fixed;inset:0;z-index:8000;background:rgba(15,23,42,.6);backdrop-filter:blur(6px);align-items:center;justify-content:center;font-family:'Sarabun','Outfit',sans-serif;">
   <div style="background:#fff;border-radius:20px;max-width:720px;width:95%;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 40px 100px rgba(0,0,0,.25);">
     <div style="padding:18px 22px 14px;border-bottom:1px solid #f1f5f9;flex-shrink:0">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
@@ -11922,7 +11922,7 @@ document.addEventListener('DOMContentLoaded', () => {
 </div>
 
 <style>
-.hnav-item{display:flex;align-items:center;gap:8px;width:100%;padding:7px 9px;border-radius:8px;font-size:12.5px;font-weight:600;color:#475569;border:none;background:none;cursor:pointer;text-align:left;transition:all .12s;font-family:'Outfit','Sarabun',sans-serif;}
+.hnav-item{display:flex;align-items:center;gap:8px;width:100%;padding:7px 9px;border-radius:8px;font-size:12.5px;font-weight:600;color:#475569;border:none;background:none;cursor:pointer;text-align:left;transition:all .12s;font-family:'Sarabun','Outfit',sans-serif;}
 .hnav-item:hover{background:#f8fafc;color:#0f172a;}
 .hnav-item.active{background:#0f172a;color:#fff;}
 .hnav-item.active .hni{background:rgba(255,255,255,.15);}
@@ -11977,11 +11977,11 @@ function _ts(){
 
   if(!s.el){
     spot.style.display='none';
-    card.style.cssText='display:block;position:fixed;z-index:9002;width:320px;background:#fff;border-radius:16px;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.28);font-family:Outfit,Sarabun,sans-serif;top:50%;left:50%;transform:translate(-50%,-50%);visibility:visible;';
+    card.style.cssText='display:block;position:fixed;z-index:9002;width:320px;background:#fff;border-radius:16px;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.28);font-family:Sarabun,Outfit,sans-serif;top:50%;left:50%;transform:translate(-50%,-50%);visibility:visible;';
     return;
   }
   const el=document.querySelector(s.el);
-  if(!el){spot.style.display='none';card.style.cssText='display:block;position:fixed;z-index:9002;width:320px;background:#fff;border-radius:16px;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.28);font-family:Outfit,Sarabun,sans-serif;top:50%;left:50%;transform:translate(-50%,-50%);visibility:visible;';return;}
+  if(!el){spot.style.display='none';card.style.cssText='display:block;position:fixed;z-index:9002;width:320px;background:#fff;border-radius:16px;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.28);font-family:Sarabun,Outfit,sans-serif;top:50%;left:50%;transform:translate(-50%,-50%);visibility:visible;';return;}
 
   // Instant scroll then position
   el.scrollIntoView({block:'nearest',inline:'nearest',behavior:'instant'});
