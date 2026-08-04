@@ -742,6 +742,9 @@ function _xhrUpload(form, onProgress) {
     xhr.onerror = () => reject(new Error('Network error'));
     // ส่ง CSRF/session cookie อัตโนมัติ (same-origin XHR)
     xhr.withCredentials = true;
+    if (window._csrfToken) {
+      xhr.setRequestHeader('X-CSRF-Token', window._csrfToken);
+    }
     xhr.send(form);
   });
 }
