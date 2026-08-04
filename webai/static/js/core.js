@@ -846,6 +846,23 @@ function showView(viewId) {
   }
 }
 
+// Placeholder/Safe wrapper for openMobileChat (defined in chat.js)
+window.openMobileChat = function() {
+  if (window.openMobileChat && !window.openMobileChat.isPlaceholder) {
+    window.openMobileChat();
+  } else {
+    console.warn('openMobileChat called before initialization. Retrying in 50ms...');
+    const interval = setInterval(() => {
+      if (window.openMobileChat && !window.openMobileChat.isPlaceholder) {
+        clearInterval(interval);
+        window.openMobileChat();
+      }
+    }, 50);
+    setTimeout(() => clearInterval(interval), 5000);
+  }
+};
+window.openMobileChat.isPlaceholder = true;
+
 // ─── AI Summary Logic ────────────────────────
 async function renderSummary() {
   const contentArea = $('summaryContentArea');
@@ -931,7 +948,7 @@ async function loadStats() {
 document.querySelectorAll('.nav-item').forEach(btn => {
   btn.addEventListener('click', () => {
     const view = btn.dataset.view;
-    if (view) switchView(view);
+    if (view) showView(view);
   });
 });
 
