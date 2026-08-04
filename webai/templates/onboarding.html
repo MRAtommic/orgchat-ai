@@ -386,8 +386,8 @@
             });
             const data = await res.json();
             if (data.ok) {
-                // Reload the onboarding page — step 1 will now show as done
-                window.location.reload();
+                // User has an org now — redirect to main app
+                window.location.href = '/';
             } else {
                 errEl.textContent = data.error || 'เกิดข้อผิดพลาด กรุณาลองใหม่';
                 errEl.classList.remove('hidden');
@@ -441,12 +441,23 @@
                 const d  = await r.json();
                 if (d.is_paid) {
                     clearInterval(pollTimer);
-                    banner.innerHTML = '<p class="text-emerald-700 font-bold text-sm">ยืนยันการชำระเงินสำเร็จ! กำลังอัปเดต...</p>';
-                    setTimeout(() => location.reload(), 1500);
+                    banner.innerHTML = '<p class="text-emerald-700 font-bold text-sm">ยืนยันการชำระเงินสำเร็จ! กำลังไปที่หน้าหลัก...</p>';
+                    setTimeout(() => window.location.href = '/', 1500);
                 }
             } catch (_) {}
         }, 10000);
     }
+
+    // Auto-check if current user already has an org and redirect to /
+    document.addEventListener('DOMContentLoaded', async () => {
+        try {
+            const res = await fetch('/api/current_user');
+            const data = await res.json();
+            if (data.ok && data.user && data.user.has_org) {
+                window.location.href = '/';
+            }
+        } catch (_) {}
+    });
 </script>
 </body>
 </html>

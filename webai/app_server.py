@@ -247,7 +247,10 @@ def async_startup_tasks():
         except Exception as e:
             print(f">>> Auto-cleanup failed: {e}", flush=True)
 
-            # Seed essential rows — use _get_conn() for WAL + busy_timeout
+        # Seed essential rows — use _get_conn() for WAL + busy_timeout
+        conn = database._get_conn()
+        try:
+            cursor = conn.cursor()
             cursor.execute("SELECT id FROM chat_rooms WHERE id = 1")
             if not cursor.fetchone():
                 cursor.execute("INSERT INTO chat_rooms (id, name, owner, organization_id) VALUES (1, 'กลุ่มทั่วไป (General)', 'System', 1)")
@@ -321,7 +324,7 @@ def schedule_reminder_background_worker():
                         
                         if 0 <= diff_minutes <= 15:
                             reminded_events.add(sid)
-                            from routes.chat import broadcast_line_announcement, send_line_push_notification
+                            from routes.chat import broadcast_line_announcement, send_line_push_notification, push_to_org_line_groups
                             fields_data = {
                                 "หัวข้อ": title,
                                 "กำหนดเวลา": f"{date_str} @ {time_val} น.",
@@ -423,6 +426,7 @@ def create_app():
         response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
         response.headers.setdefault("X-XSS-Protection", "1; mode=block")
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault("X-Permitted-Cross-Domain-Policies", "none")
         response.headers["Server"] = "OrgChat-Shield"
         response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin-allow-popups")
         response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
@@ -482,7 +486,8 @@ def create_app():
                 _req.path.startswith('/api/auth/google/') or
                 _req.path.startswith('/api/auth/forgot-password') or
                 _req.path.startswith('/api/auth/verify-reset-otp') or
-                _req.path.startswith('/api/org/signup')
+                _req.path.startswith('/api/org/signup') or
+                _req.path.startswith('/api/superadmin/')
             )
             if not csrf_exempt and 'user' in session:
                 from routes.shared import validate_csrf_token
@@ -493,6 +498,23 @@ def create_app():
                     return _json_csrf({"ok": False, "error": "csrf_invalid", "message": "คำขอไม่ถูกต้องหรือ CSRF token หมดอายุ กรุณารีเฟรชหน้าเว็บ"}), 403
         if 'user' not in session:
             return
+
+        # 🛡️ Session Hijacking Prevention (User-Agent Fingerprint)
+        import hashlib
+        ua_string = _req.user_agent.string or ""
+        ua_hash = hashlib.sha256(ua_string.encode('utf-8')).hexdigest()[:16]
+        stored_ua = session.get('_ua_hash')
+        if stored_ua is None:
+            session['_ua_hash'] = ua_hash
+        elif stored_ua != ua_hash:
+            logger.warning(f"🛡️ Session Hijacking Blocked: UA mismatch for user={session.get('user')} IP={_req.remote_addr}")
+            session.clear()
+            if _req.path.startswith('/api/') or _req.path.startswith('/line/') or _req.is_json:
+                from flask import jsonify as _json_hijack
+                return _json_hijack({"ok": False, "error": "session_hijack_detected", "message": "ตรวจพบการใช้เซสชันจากอุปกรณ์อื่น กรุณาเข้าสู่ระบบใหม่"}), 401
+            from flask import redirect as _redir_hijack
+            return _redir_hijack('/?session_invalid=1')
+
         now = _time.time()
         last = session.get('_last_active', now)
         if now - last > _IDLE_SECONDS:

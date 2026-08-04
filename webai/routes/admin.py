@@ -60,7 +60,7 @@ logger = logging.getLogger("OrgChatAI.Admin")
 
 admin_bp = Blueprint('admin', __name__)
 
-from routes.chat import get_line_config, save_line_config, broadcast_line_announcement, send_line_push_notification
+from routes.chat import get_line_config, save_line_config, broadcast_line_announcement, send_line_push_notification, push_to_org_line_groups
 
 _recon_cache: dict = {}
 _recon_lock = threading.Lock()
@@ -202,17 +202,41 @@ def toggle_line_group_bot_api(group_id):
         conn.close()
     return jsonify({"ok": True})
 
-@admin_bp.route("/api/org/line/groups/<group_id>", methods=["DELETE"])
+@admin_bp.route("/api/org/line/groups/<group_id>", methods=["PUT", "DELETE"])
 @org_admin_required
-def delete_line_group_api(group_id):
+def update_or_delete_line_group_api(group_id):
     org_id = get_current_org_id()
     conn = database._get_conn()
     try:
-        conn.execute("DELETE FROM line_group_mappings WHERE group_id=? AND org_id=?", (group_id, org_id))
+        if request.method == "DELETE":
+            conn.execute("DELETE FROM line_group_mappings WHERE group_id=? AND org_id=?", (group_id, org_id))
+            conn.commit()
+            return jsonify({"ok": True})
+        
+        data = request.get_json() or {}
+        group_name = data.get("group_name", "").strip()
+        default_folder_id = data.get("default_folder_id", "")
+        bot_enabled = int(data.get("bot_enabled", 1))
+
+        if group_name:
+            conn.execute(
+                """UPDATE line_group_mappings 
+                   SET group_name=?, default_folder_id=?, bot_enabled=? 
+                   WHERE group_id=? AND org_id=?""",
+                (group_name, default_folder_id, bot_enabled, group_id, org_id)
+            )
+        else:
+            conn.execute(
+                """UPDATE line_group_mappings 
+                   SET default_folder_id=?, bot_enabled=? 
+                   WHERE group_id=? AND org_id=?""",
+                (default_folder_id, bot_enabled, group_id, org_id)
+            )
         conn.commit()
+        return jsonify({"ok": True})
     finally:
         conn.close()
-    return jsonify({"ok": True})
+
 
 
 @admin_bp.route("/admin/line-groups")
@@ -860,7 +884,9 @@ def tax_expense_data_api():
             except Exception:
                 return 0.0
 
-        spreadsheet = google_manager.sheets_service.spreadsheets().get(spreadsheetId=google_manager.spreadsheet_id).execute()
+        spreadsheet = google_manager._sheet_exec(
+            lambda: google_manager.sheets_service.spreadsheets().get(spreadsheetId=google_manager.spreadsheet_id)
+        )
         sheet_titles = [s['properties']['title'] for s in spreadsheet.get('sheets', [])]
         
         total_expense = 0.0
@@ -1533,9 +1559,18 @@ def manage_schedules():
         visibility_text = "Public" if is_public else "Private"
         database.log_event(f"Added {visibility_text} schedule: {title} on {start_date}", user=user, org_id=org_id)
         
-        # --- New Public Event Broadcast ---
+        # --- Calendar Event LINE Notification ---
         profile = database.get_user_profile(user)
         display_name = profile.get("display_name", user)
+        sched_fields = {
+            "หัวข้อ": title,
+            "วันที่": start_date,
+            "เวลา": f"{start_time} น.",
+            "ผู้บันทึก": display_name,
+            "หมวดหมู่": category or "ทั่วไป",
+            "รายละเอียด": desc if desc else "-"
+        }
+
         if is_public:
             notification_db.notify_org_members_except(
                 org_id,
@@ -1550,12 +1585,8 @@ def manage_schedules():
                 "กิจกรรมใหม่", 
                 f"-> กำหนดการใหม่!\nหัวข้อ: {title}\nวันที่: {start_date}\nเวลา: {start_time} น.\nโดย: {display_name}",
             ), kwargs={
-                "fields": {
-                    "หัวข้อ": title,
-                    "วันที่": start_date,
-                    "เวลา": f"{start_time} น.",
-                    "โดย": display_name
-                }
+                "fields": sched_fields,
+                "org_id": org_id
             }).start()
         else:
             # Notify specific users if specified
@@ -2022,6 +2053,7 @@ def admin_update_user_route(username):
     can_delete_kb = data.get("can_delete_kb")
     can_view_financial = data.get("can_view_financial")
     line_permissions = data.get("line_permissions")
+    can_manage_leave = data.get("can_manage_leave")
     department = data.get("department")
     notes = data.get("notes")
     password = data.get("password")
@@ -2030,7 +2062,7 @@ def admin_update_user_route(username):
         username, display_name, role, is_active, notes, 
         can_view_kb, can_edit_kb, can_delete_kb, 
         department=department, can_view_financial=can_view_financial,
-        line_permissions=line_permissions
+        line_permissions=line_permissions, can_manage_leave=can_manage_leave
     )
     if password:
         database.admin_reset_user_password(username, password)
@@ -2641,7 +2673,8 @@ def superadmin_set_plan(org_id):
         return jsonify({"ok": False, "error": str(e)}), 400
 
 
-@admin_bp.route("/api/superadmin/org/<int:org_id>", methods=["DELETE"])
+@admin_bp.route("/api/superadmin/org/<int:org_id>", methods=["DELETE", "POST"])
+@admin_bp.route("/api/superadmin/org/<int:org_id>/delete", methods=["DELETE", "POST"])
 @superadmin_required
 def superadmin_delete_org(org_id):
     if org_id == 1:
@@ -2697,7 +2730,8 @@ def superadmin_set_role(username):
     return jsonify({"ok": True, "role": role})
 
 
-@admin_bp.route("/api/superadmin/user/<username>", methods=["DELETE"])
+@admin_bp.route("/api/superadmin/user/<username>", methods=["DELETE", "POST"])
+@admin_bp.route("/api/superadmin/user/<username>/delete", methods=["DELETE", "POST"])
 @superadmin_required
 def superadmin_delete_user(username):
     if username == "Admin":
@@ -4173,9 +4207,12 @@ def fetch_peak_for_reconciliation():
 @admin_bp.route("/api/admin/audit-logs", methods=["GET"])
 @login_required
 def get_audit_logs_endpoint():
-    if not is_admin():
+    me = session.get("user")
+    org_id = session.get("current_org_id") or session.get("org_id")
+    is_admin_user = session.get("role") in ["admin", "superadmin"] or session.get("org_role") == "admin" or (org_id and database.is_org_admin(org_id, me))
+    if not is_admin_user:
         return jsonify({"ok": False, "error": "เฉพาะ Admin เท่านั้น"}), 403
-    org_id = get_current_org_id()
+
     limit = int(request.args.get("limit", 100))
     offset = int(request.args.get("offset", 0))
     username_filter = request.args.get("username", None)
@@ -4198,7 +4235,10 @@ def get_audit_logs_endpoint():
 @admin_bp.route("/api/admin/audit-logs/export", methods=["GET"])
 @login_required
 def export_audit_logs_csv():
-    if not is_admin():
+    me = session.get("user")
+    org_id = session.get("current_org_id") or session.get("org_id")
+    is_admin_user = session.get("role") in ["admin", "superadmin"] or session.get("org_role") == "admin" or (org_id and database.is_org_admin(org_id, me))
+    if not is_admin_user:
         return jsonify({"ok": False, "error": "เฉพาะ Admin เท่านั้น"}), 403
     import io, csv
     from flask import Response

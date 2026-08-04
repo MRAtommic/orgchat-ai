@@ -3956,9 +3956,9 @@ def sync_drive_logs_from_sheets(org_id, username=None):
             return None
 
         # Fetch spreadsheet metadata
-        spreadsheet = google_manager.sheets_service.spreadsheets().get(
-            spreadsheetId=google_manager.spreadsheet_id
-        ).execute()
+        spreadsheet = google_manager._sheet_exec(
+            lambda: google_manager.sheets_service.spreadsheets().get(spreadsheetId=google_manager.spreadsheet_id)
+        )
         sheet_titles = [s['properties']['title'] for s in spreadsheet.get('sheets', [])]
         
         target_sheets = ["ใบเสร็จ/ใบกำกับภาษี", "บันทึกค่าใช้จ่าย", "สลิปโอนเงิน", "ใบหัก ณ ที่จ่าย", "บัตรประชาชน", "ใบเสนอราคา", "peak"]
@@ -3972,9 +3972,11 @@ def sync_drive_logs_from_sheets(org_id, username=None):
                 continue
             
             try:
-                res = google_manager.sheets_service.spreadsheets().values().get(
-                    spreadsheetId=google_manager.spreadsheet_id, range=f"'{s_title}'!A1:Z"
-                ).execute()
+                res = google_manager._sheet_exec(
+                    lambda title=s_title: google_manager.sheets_service.spreadsheets().values().get(
+                        spreadsheetId=google_manager.spreadsheet_id, range=f"'{title}'!A1:Z"
+                    )
+                )
                 vals = res.get('values', [])
                 if not vals or len(vals) <= 1:
                     continue

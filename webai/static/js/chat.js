@@ -1,6 +1,108 @@
 // 🛡️ CSRF Token Auto-Injector & Global Fetch Interceptor
 window._csrfToken = null;
 
+// --- Personal Appearance & Custom UI Settings ---
+const FONT_MAP = {
+  'Inter': "'Inter', sans-serif",
+  'Anuphan': "'Anuphan', sans-serif",
+  'IBM Plex Sans Thai': "'IBM Plex Sans Thai', sans-serif",
+  'Prompt': "'Prompt', sans-serif",
+  'Kanit': "'Kanit', sans-serif",
+  'Noto Sans Thai': "'Noto Sans Thai', sans-serif",
+  'Krub': "'Krub', sans-serif",
+  'K2D': "'K2D', sans-serif",
+  'Fahkwang': "'Fahkwang', sans-serif",
+  'Mitr': "'Mitr', sans-serif",
+  'Athiti': "'Athiti', sans-serif",
+  'Bai Jamjuree': "'Bai Jamjuree', sans-serif",
+  'Pridi': "'Pridi', serif",
+  'Chakra Petch': "'Chakra Petch', sans-serif",
+  'Sarabun': "'Sarabun', sans-serif",
+  'Niramit': "'Niramit', sans-serif",
+  'Mali': "'Mali', cursive, sans-serif"
+};
+
+const FONT_SIZE_MAP = {
+  'small': { size: '13px', label: 'เล็ก (13px)' },
+  'normal': { size: '14.5px', label: 'ปกติ (14.5px)' },
+  'large': { size: '16px', label: 'ใหญ่ (16px)' },
+  'xl': { size: '18px', label: 'ใหญ่มาก (18px)' }
+};
+
+function initCustomUISettings() {
+  const savedFont = localStorage.getItem('custom_font_family') || 'Inter';
+  const savedSize = localStorage.getItem('custom_font_size') || 'normal';
+  const savedAccent = localStorage.getItem('custom_accent_color') || 'indigo';
+
+  setCustomFont(savedFont, false);
+  setCustomFontSize(savedSize, false);
+  setCustomAccent(savedAccent, false);
+}
+
+function setCustomFont(fontName, save = true) {
+  const fontCss = FONT_MAP[fontName] || FONT_MAP['Inter'];
+  document.documentElement.style.setProperty('--user-font-family', fontCss);
+  document.body.style.fontFamily = fontCss;
+
+  if (save) localStorage.setItem('custom_font_family', fontName);
+
+  document.querySelectorAll('.custom-font-btn').forEach(btn => {
+    btn.classList.remove('border-indigo-500', 'ring-2', 'ring-indigo-500/20', 'bg-indigo-50/50', 'dark:bg-indigo-950/20');
+  });
+
+  const activeBtn = document.getElementById(`fontBtn-${fontName}`);
+  if (activeBtn) {
+    activeBtn.classList.add('border-indigo-500', 'ring-2', 'ring-indigo-500/20', 'bg-indigo-50/50', 'dark:bg-indigo-950/20');
+  }
+}
+
+function setCustomFontSize(sizeKey, save = true) {
+  const sizeObj = FONT_SIZE_MAP[sizeKey] || FONT_SIZE_MAP['normal'];
+  document.documentElement.style.fontSize = sizeObj.size;
+
+  if (save) localStorage.setItem('custom_font_size', sizeKey);
+
+  const displayEl = document.getElementById('fontSizeDisplay');
+  if (displayEl) displayEl.textContent = sizeObj.label;
+
+  document.querySelectorAll('.custom-size-btn').forEach(btn => {
+    btn.classList.remove('bg-indigo-600', 'text-white', 'border-indigo-600');
+    btn.classList.add('border-surface-200', 'dark:border-surface-700', 'text-surface-700', 'dark:text-surface-300');
+  });
+
+  const activeBtn = document.getElementById(`fontSizeBtn-${sizeKey}`);
+  if (activeBtn) {
+    activeBtn.classList.remove('border-surface-200', 'dark:border-surface-700', 'text-surface-700', 'dark:text-surface-300');
+    activeBtn.classList.add('bg-indigo-600', 'text-white', 'border-indigo-600');
+  }
+}
+
+function setCustomAccent(colorName, save = true) {
+  if (save) localStorage.setItem('custom_accent_color', colorName);
+
+  document.querySelectorAll('.custom-accent-btn').forEach(btn => {
+    btn.classList.remove('ring-4', 'ring-offset-2', 'ring-slate-400');
+    const check = btn.querySelector('.accent-check');
+    if (check) check.classList.add('hidden');
+  });
+
+  const activeBtn = document.getElementById(`accentBtn-${colorName}`);
+  if (activeBtn) {
+    activeBtn.classList.add('ring-4', 'ring-offset-2', 'ring-slate-400');
+    const check = activeBtn.querySelector('.accent-check');
+    if (check) check.classList.remove('hidden');
+  }
+}
+
+function resetCustomUISettings() {
+  setCustomFont('Inter');
+  setCustomFontSize('normal');
+  setCustomAccent('indigo');
+  if (typeof toast === 'function') toast('คืนค่าการแสดงผลเริ่มต้นเรียบร้อย', 'info');
+}
+
+document.addEventListener('DOMContentLoaded', initCustomUISettings);
+
 async function fetchCsrfToken() {
   try {
     const res = await fetch('/api/csrf-token');
@@ -1448,6 +1550,7 @@ function switchView(viewId) {
   if (viewId === 'quotation') initDocumentGenerator();
   if (viewId === 'receipt-replacement') initReplacementReceiptView();
   if (viewId === 'reply-assistant') initReplyAssistantView();
+  if (viewId === 'line-groups') { if (typeof loadLineGroups === 'function') loadLineGroups(); }
 
   // ─── Feed Auto-Refresh ───────────────────────
   // Clear any existing feed poll interval when changing views
@@ -5579,6 +5682,7 @@ async function checkAuth() {
       state.orgId = data.org_id ?? null;
       state.isOrgAdmin = data.org_role === 'admin';
       applyProfile(data.profile);
+      window._sessionExpired = false;
       loginOverlay.classList.add('hidden');
 
       const noOrgEl = document.getElementById('noOrgOverlay');
@@ -5631,6 +5735,13 @@ loginBtn.onclick = async () => {
     });
     const data = await res.json();
 
+    if (data.requires_2fa) {
+      handle2FAChallenge(data.pre_auth_token);
+      loginBtn.disabled = false;
+      loginBtn.innerHTML = 'เข้าสู่ระบบ';
+      return;
+    }
+
     if (data.ok) {
       state.user = data.user;
       state.username = typeof data.user === 'object' ? data.user.username : data.user;
@@ -5641,6 +5752,7 @@ loginBtn.onclick = async () => {
         return;
       }
 
+      window._sessionExpired = false;
       loginOverlay.classList.add('hidden');
       toast(`ยินดีต้อนรับคุณ ${state.username}`, 'success');
 
@@ -5653,7 +5765,11 @@ loginBtn.onclick = async () => {
       }
 
       setTimeout(() => {
-        window.location.reload();
+        if (window.location.pathname === '/onboarding') {
+          window.location.href = '/';
+        } else {
+          window.location.reload();
+        }
       }, 500);
       return;
     } else {
@@ -5689,11 +5805,12 @@ async function handleGoogleLogin(response) {
       state.username = typeof data.user === 'object' ? data.user.username : data.user;
 
       // ยังไม่มี org → ไปหน้า onboarding
-      if (!data.org_role) {
+      if (!data.has_org && !data.org_role) {
         window.location.href = '/onboarding';
         return;
       }
 
+      window._sessionExpired = false;
       loginOverlay.classList.add('hidden');
       toast(`ยินดีต้อนรับคุณ ${state.username}`, 'success');
 
@@ -5705,7 +5822,11 @@ async function handleGoogleLogin(response) {
       }
 
       setTimeout(() => {
-        window.location.reload();
+        if (window.location.pathname === '/onboarding') {
+          window.location.href = '/';
+        } else {
+          window.location.reload();
+        }
       }, 500);
       return;
     } else {
@@ -5735,9 +5856,11 @@ window.initGoogleSignIn = function () {
     callback: handleGoogleLogin
   });
 
+  const buttonWidth = Math.min(container.clientWidth || container.parentElement.offsetWidth || 300, 320);
+
   google.accounts.id.renderButton(
     container,
-    { theme: 'outline', size: 'large', width: container.parentElement.offsetWidth || 300, shape: 'pill' }
+    { theme: 'outline', size: 'large', width: buttonWidth, shape: 'pill' }
   );
 
   if (separator) {
@@ -8116,30 +8239,17 @@ function applyAdminState(user) {
 }
 // Call on page load if already authed
 document.addEventListener('DOMContentLoaded', async () => {
-  try {
-    const d = await (await fetch('/api/me')).json();
-    if (d.ok) {
-      state.isAdmin = d.profile?.role === 'admin' || d.user === 'Admin';
-      state.canEditKB = !!d.profile?.can_edit_kb;
-      if (state.isAdmin) initAdminChatPanel();
-    }
-  } catch (e) { }
+  if (state.user && state.isAdmin) {
+    initAdminChatPanel();
+  }
 });
 // Also call on every checkAuth success
-const _origCheckAuthFn = window.checkAuth;
 if (typeof checkAuth === 'function') {
   const __origCA = checkAuth;
   window.checkAuth = async function () {
     const ok = await __origCA();
-    if (ok) {
-      try {
-        const d = await (await fetch('/api/me')).json();
-        if (d.ok) {
-          state.isAdmin = d.profile?.role === 'admin' || d.user === 'Admin';
-          state.canEditKB = !!d.profile?.can_edit_kb;
-          if (state.isAdmin) initAdminChatPanel();
-        }
-      } catch { }
+    if (ok && state.isAdmin) {
+      initAdminChatPanel();
     }
     return ok;
   };
@@ -8800,6 +8910,7 @@ function openOrgMemberEditModal(username) {
   if ($('orgEditUserCanEditKB')) $('orgEditUserCanEditKB').checked = !!m.can_edit_kb;
   if ($('orgEditUserCanDeleteKB')) $('orgEditUserCanDeleteKB').checked = !!m.can_delete_kb;
   if ($('orgEditMemberFinancial')) $('orgEditMemberFinancial').checked = !!m.can_view_financial;
+  if ($('orgEditMemberLeave')) $('orgEditMemberLeave').checked = !!m.can_manage_leave;
   if ($('orgEditUserNotes')) $('orgEditUserNotes').value = m.notes || '';
   const managerSelect = $('orgEditMemberManager');
   if (managerSelect) {
@@ -8852,6 +8963,7 @@ async function submitOrgMemberEdit() {
   const canEditKB = $('orgEditUserCanEditKB')?.checked ?? false;
   const canDeleteKB = $('orgEditUserCanDeleteKB')?.checked ?? false;
   const canViewFinancial = $('orgEditMemberFinancial')?.checked ?? false;
+  const canManageLeave = $('orgEditMemberLeave')?.checked ?? false;
   const notes = $('orgEditUserNotes')?.value || '';
 
   const m = _orgMembersCache.find(x => x.username === _orgEditingUsername);
@@ -8875,6 +8987,7 @@ async function submitOrgMemberEdit() {
         can_edit_kb: canEditKB,
         can_delete_kb: canDeleteKB,
         can_view_financial: canViewFinancial,
+        can_manage_leave: canManageLeave,
         notes: notes
       })
     });
@@ -13566,16 +13679,21 @@ function renderLeaveHistory(leaves) {
 async function refreshAdminLeaves() {
     const tableBody = $('adminLeaveTableBody');
     if (!tableBody) return;
-    if (!state.isAdmin && !state.isOrgAdmin) return;
 
     try {
+        tableBody.innerHTML = '<tr><td colspan="6" class="px-6 py-12 text-center text-surface-400"><i data-lucide="loader" class="w-5 h-5 animate-spin inline-block mr-2"></i>กำลังโหลดข้อมูลคำขอลา...</td></tr>';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
         const res = await fetch('/api/admin/leave/all');
         const data = await res.json();
         if (data.ok) {
             renderAdminLeaveTable(data.leaves);
+        } else {
+            tableBody.innerHTML = `<tr><td colspan="6" class="px-6 py-12 text-center text-rose-500">${escHtml(data.error || 'ไม่สามารถโหลดข้อมูลคำขอลาได้')}</td></tr>`;
         }
     } catch (err) {
-        console.error(err);
+        console.error('refreshAdminLeaves error:', err);
+        tableBody.innerHTML = '<tr><td colspan="6" class="px-6 py-12 text-center text-rose-500">เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์</td></tr>';
     }
 }
 
@@ -13794,8 +13912,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const startEl = $('peakStartDate'); if (startEl && !startEl.value) startEl.value = fmt(firstDay);
     const endEl = $('peakEndDate'); if (endEl && !endEl.value) endEl.value = fmt(today);
 
-    // Load PEAK settings status
-    loadPeakSettingsStatus();
+    // Load PEAK settings status (only if authenticated)
+    if (typeof state !== 'undefined' && state.user) {
+        loadPeakSettingsStatus();
+    }
     const downloadBtn = $('downloadReconReportBtn');
     if (downloadBtn) downloadBtn.onclick = () => { if (reconReportUrl) window.open(reconReportUrl, '_blank'); };
     const resetBtn = $('resetReconBtn');
@@ -13871,14 +13991,32 @@ async function initAuth() {
             body: JSON.stringify({ username, password })
         });
 
+        if (data.requires_2fa) {
+            handle2FAChallenge(data.pre_auth_token);
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+            return;
+        }
+
         if (data.ok) {
             state.user = data.user;
             state.username = (typeof data.user === 'object') ? data.user.username : data.user;
             
+            if (!data.has_org) {
+                window.location.href = '/onboarding';
+                return;
+            }
+
             toast(`ยินดีต้อนรับคุณ ${state.username}`, 'success');
             
-            // Initialize application content
-            await initAppContent();
+            // Reload page so browser receives and attaches all session cookies cleanly
+            setTimeout(() => {
+                if (window.location.pathname === '/onboarding') {
+                    window.location.href = '/';
+                } else {
+                    window.location.reload();
+                }
+            }, 500);
         } else {
             const msg = data.error || 'ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง';
             toast(msg, 'error');
@@ -16752,7 +16890,376 @@ window.loadAuditLogsTable = loadAuditLogsTable;
 window.filterAuditLogs = filterAuditLogs;
 window.exportAuditLogsCSV = exportAuditLogsCSV;
 
+// ─── 🎨 Personal Custom UI & Appearance Logic ───
+const CUSTOM_UI_KEY = 'orgchat_custom_ui_settings';
+
+function getCustomUISettings() {
+    try {
+        const stored = localStorage.getItem(CUSTOM_UI_KEY);
+        if (stored) return JSON.parse(stored);
+    } catch (e) {}
+    return { font: 'Inter', fontSize: 'normal', accent: 'blue' };
+}
+
+function saveCustomUISettings(settings) {
+    try {
+        localStorage.setItem(CUSTOM_UI_KEY, JSON.stringify(settings));
+    } catch (e) {}
+}
+
+function applyCustomUI(settings) {
+    const s = settings || getCustomUISettings();
+
+    // 1. Apply Font Family — use global FONT_MAP for all fonts
+    const targetFont = FONT_MAP[s.font] || FONT_MAP['Inter'];
+    document.documentElement.style.setProperty('--user-custom-font', targetFont);
+    document.body.style.fontFamily = targetFont;
+
+    // Highlight Font Button
+    document.querySelectorAll('.custom-font-btn').forEach(btn => {
+        btn.classList.remove('border-indigo-500', 'bg-indigo-50/50', 'dark:bg-indigo-900/20');
+        btn.classList.add('border-surface-200', 'dark:border-surface-700');
+    });
+    const activeFontBtn = document.getElementById(`fontBtn-${s.font}`);
+    if (activeFontBtn) {
+        activeFontBtn.classList.remove('border-surface-200', 'dark:border-surface-700');
+        activeFontBtn.classList.add('border-indigo-500', 'bg-indigo-50/50', 'dark:bg-indigo-900/20');
+    }
+
+    // 2. Apply Font Size
+    const fontSizes = {
+        'small': { root: '13px', label: 'เล็ก (13px)' },
+        'normal': { root: '14.5px', label: 'ปกติ (14.5px)' },
+        'large': { root: '16px', label: 'ใหญ่ (16px)' },
+        'xl': { root: '17.5px', label: 'ใหญ่มาก (17.5px)' }
+    };
+    const sizeConfig = fontSizes[s.fontSize] || fontSizes['normal'];
+    document.documentElement.style.fontSize = sizeConfig.root;
+    
+    const sizeLabelEl = document.getElementById('fontSizeDisplay');
+    if (sizeLabelEl) sizeLabelEl.textContent = sizeConfig.label;
+
+    // Highlight Size Button
+    document.querySelectorAll('.custom-size-btn').forEach(btn => {
+        btn.classList.remove('bg-indigo-600', 'text-white', 'border-indigo-600');
+        btn.classList.add('border-surface-200', 'dark:border-surface-700', 'text-surface-700', 'dark:text-surface-300');
+    });
+    const activeSizeBtn = document.getElementById(`fontSizeBtn-${s.fontSize}`);
+    if (activeSizeBtn) {
+        activeSizeBtn.classList.remove('border-surface-200', 'dark:border-surface-700', 'text-surface-700', 'dark:text-surface-300');
+        activeSizeBtn.classList.add('bg-indigo-600', 'text-white', 'border-indigo-600');
+    }
+
+    // 3. Apply Accent Color
+    const accentColors = {
+        'blue': '#2563eb',
+        'indigo': '#4f46e5',
+        'emerald': '#059669',
+        'amber': '#d97706',
+        'rose': '#e11d48',
+        'purple': '#9333ea'
+    };
+    const targetAccent = accentColors[s.accent] || accentColors['blue'];
+    document.documentElement.style.setProperty('--brand-accent-color', targetAccent);
+
+    // Highlight Accent Checkmarks
+    document.querySelectorAll('.custom-accent-btn').forEach(btn => {
+        const check = btn.querySelector('.accent-check');
+        if (check) check.classList.add('hidden');
+        btn.classList.remove('ring-4', 'ring-indigo-300', 'dark:ring-indigo-800');
+    });
+    const activeAccentBtn = document.getElementById(`accentBtn-${s.accent}`);
+    if (activeAccentBtn) {
+        const check = activeAccentBtn.querySelector('.accent-check');
+        if (check) check.classList.remove('hidden');
+        activeAccentBtn.classList.add('ring-4', 'ring-indigo-300', 'dark:ring-indigo-800');
+    }
+}
+
+function setCustomFont(fontName) {
+    const s = getCustomUISettings();
+    s.font = fontName;
+    saveCustomUISettings(s);
+    applyCustomUI(s);
+}
+
+function setCustomFontSize(sizeKey) {
+    const s = getCustomUISettings();
+    s.fontSize = sizeKey;
+    saveCustomUISettings(s);
+    applyCustomUI(s);
+}
+
+function setCustomAccent(colorKey) {
+    const s = getCustomUISettings();
+    s.accent = colorKey;
+    saveCustomUISettings(s);
+    applyCustomUI(s);
+}
+
+function resetCustomUISettings() {
+    const defaults = { font: 'Inter', fontSize: 'normal', accent: 'blue' };
+    saveCustomUISettings(defaults);
+    applyCustomUI(defaults);
+}
+
+window.setCustomFont = setCustomFont;
+window.setCustomFontSize = setCustomFontSize;
+window.setCustomAccent = setCustomAccent;
+window.resetCustomUISettings = resetCustomUISettings;
+window.applyCustomUI = applyCustomUI;
+
+// ─── 🛡️ Two-Factor Authentication (2FA) Frontend Logic ───
+
+let currentPreAuthToken = null;
+let current2FAMethod = 'authenticator';
+let currentUserEmail = '';
+
+async function check2FAStatus() {
+    try {
+        const res = await fetch('/api/2fa/status');
+        const data = await res.json();
+        if (data.ok) {
+            currentUserEmail = data.email || '';
+            const badge = document.getElementById('totpStatusBadge');
+            const disabledDiv = document.getElementById('totpDisabledActions');
+            const enabledDiv = document.getElementById('totpEnabledActions');
+            
+            if (data.enabled) {
+                if (badge) {
+                    const typeText = data.type === 'email' ? 'เปิดใช้งาน (Gmail OTP)' : 'เปิดใช้งาน (Authenticator App)';
+                    badge.textContent = typeText;
+                    badge.className = 'px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400';
+                }
+                if (disabledDiv) disabledDiv.classList.add('hidden');
+                if (enabledDiv) enabledDiv.classList.remove('hidden');
+            } else {
+                if (badge) {
+                    badge.textContent = 'ปิดใช้งาน';
+                    badge.className = 'px-2 py-0.5 rounded-full text-[9px] font-bold bg-surface-100 text-surface-500 dark:bg-surface-800';
+                }
+                if (disabledDiv) disabledDiv.classList.remove('hidden');
+                if (enabledDiv) enabledDiv.classList.add('hidden');
+            }
+        }
+    } catch (e) {
+        console.warn('[2FA Status] error:', e);
+    }
+}
+
+async function start2FASetup() {
+    try {
+        const res = await fetch('/api/2fa/setup', { method: 'POST' });
+        const data = await res.json();
+        if (!data.ok) {
+            showToast(data.error || 'ไม่สามารถตั้งค่า 2FA ได้', 'error');
+            return;
+        }
+        
+        currentUserEmail = data.email || '';
+        document.getElementById('totpQrImage').src = data.qr_code;
+        document.getElementById('totpSecretText').textContent = 'Secret: ' + data.secret;
+        document.getElementById('totpSetupCodeInput').value = '';
+        document.getElementById('emailOtpSetupCodeInput').value = '';
+        document.getElementById('totpBackupCodesContainer').classList.add('hidden');
+        document.getElementById('totpEnableBtn').classList.remove('hidden');
+        
+        const targetText = document.getElementById('text2FAEmailTarget');
+        if (targetText) {
+            if (currentUserEmail) {
+                targetText.textContent = `ระบบจะส่งรหัส OTP 6 หลักไปยังอีเมล ${currentUserEmail}`;
+            } else {
+                targetText.textContent = `⚠️ บัญชีของคุณยังไม่ได้ตั้งค่าอีเมลในโปรไฟล์ กรุณาระบุอีเมลในโปรไฟล์ก่อนใช้งานวิธีกรอก OTP`;
+            }
+        }
+        
+        switch2FAMethod('authenticator');
+        document.getElementById('totpSetupModal').classList.remove('hidden');
+    } catch (e) {
+        showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
+    }
+}
+
+function switch2FAMethod(method) {
+    current2FAMethod = method;
+    const btnAuth = document.getElementById('btn2FAMethodAuth');
+    const btnEmail = document.getElementById('btn2FAMethodEmail');
+    const secAuth = document.getElementById('section2FAAuth');
+    const secEmail = document.getElementById('section2FAEmail');
+    
+    if (method === 'email') {
+        if (btnEmail) btnEmail.className = 'flex-1 py-2.5 px-3 text-xs font-bold rounded-xl transition-all text-center flex items-center justify-center gap-1.5 bg-white dark:bg-surface-700 text-emerald-600 dark:text-white shadow-sm';
+        if (btnAuth) btnAuth.className = 'flex-1 py-2.5 px-3 text-xs font-bold rounded-xl transition-all text-center flex items-center justify-center gap-1.5 text-surface-500 dark:text-surface-400 hover:text-surface-800 dark:hover:text-surface-200';
+        if (secEmail) secEmail.classList.remove('hidden');
+        if (secAuth) secAuth.classList.add('hidden');
+    } else {
+        if (btnAuth) btnAuth.className = 'flex-1 py-2.5 px-3 text-xs font-bold rounded-xl transition-all text-center flex items-center justify-center gap-1.5 bg-white dark:bg-surface-700 text-emerald-600 dark:text-white shadow-sm';
+        if (btnEmail) btnEmail.className = 'flex-1 py-2.5 px-3 text-xs font-bold rounded-xl transition-all text-center flex items-center justify-center gap-1.5 text-surface-500 dark:text-surface-400 hover:text-surface-800 dark:hover:text-surface-200';
+        if (secAuth) secAuth.classList.remove('hidden');
+        if (secEmail) secEmail.classList.add('hidden');
+    }
+}
+
+async function send2FAEmailOTP(isLoginVerify = false) {
+    try {
+        const payload = isLoginVerify ? { pre_auth_token: currentPreAuthToken } : {};
+        const res = await fetch('/api/2fa/send-email-otp', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!data.ok) {
+            showToast(data.error || 'ส่ง OTP ล้มเหลว', 'error');
+            return;
+        }
+        showToast(data.message || 'ส่ง OTP สำเร็จ กรุณาเช็คกล่องจดหมายใน Gmail', 'success');
+    } catch (e) {
+        showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
+    }
+}
+
+async function confirmEnable2FA() {
+    let code = '';
+    if (current2FAMethod === 'email') {
+        code = document.getElementById('emailOtpSetupCodeInput').value.trim();
+        if (!code) {
+            showToast('กรุณาใส่รหัส OTP 6 หลักที่ส่งไปยัง Gmail', 'error');
+            return;
+        }
+    } else {
+        code = document.getElementById('totpSetupCodeInput').value.trim();
+        if (!code) {
+            showToast('กรุณาใส่รหัส 6 หลักจาก Authenticator App', 'error');
+            return;
+        }
+    }
+    
+    try {
+        const res = await fetch('/api/2fa/enable', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code, type: current2FAMethod })
+        });
+        const data = await res.json();
+        if (!data.ok) {
+            showToast(data.error || 'รหัสไม่ถูกต้อง', 'error');
+            return;
+        }
+        
+        showToast(data.message || 'เปิดใช้งาน 2FA เรียบร้อยแล้ว', 'success');
+        
+        // Show backup codes
+        if (data.backup_codes && data.backup_codes.length > 0) {
+            const listDiv = document.getElementById('totpBackupCodesList');
+            listDiv.innerHTML = data.backup_codes.map(c => `<div class="p-1 text-center bg-surface-100 dark:bg-surface-800 rounded-lg select-all">${c}</div>`).join('');
+            document.getElementById('totpBackupCodesContainer').classList.remove('hidden');
+            document.getElementById('totpEnableBtn').classList.add('hidden');
+        } else {
+            close2FAModal();
+        }
+        check2FAStatus();
+    } catch (e) {
+        showToast('เกิดข้อผิดพลาดในการเปิดใช้งาน 2FA', 'error');
+    }
+}
+
+function close2FAModal() {
+    document.getElementById('totpSetupModal').classList.add('hidden');
+    check2FAStatus();
+}
+
+async function disable2FA() {
+    const confirmChoice = confirm('คุณต้องการยกเลิกการยืนยันตัวตนสองชั้น (2FA) ใช่หรือไม่?');
+    if (!confirmChoice) return;
+    
+    const password = prompt('กรุณายืนยันรหัสผ่านบัญชีผู้ใช้เพื่อยกเลิก 2FA:');
+    if (password === null) return; // กด Cancel
+    
+    try {
+        const res = await fetch('/api/2fa/disable', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password })
+        });
+        const data = await res.json();
+        if (!data.ok) {
+            showToast(data.error || 'ไม่สามารถยกเลิก 2FA ได้', 'error');
+            return;
+        }
+        showToast(data.message || 'ยกเลิกการยืนยันตัวตนสองชั้นเรียบร้อยแล้ว', 'success');
+        check2FAStatus();
+    } catch (e) {
+        showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
+    }
+}
+
+function handle2FAChallenge(preAuthToken) {
+    currentPreAuthToken = preAuthToken;
+    const modal = document.getElementById('totpVerifyModal');
+    const input = document.getElementById('totpVerifyCodeInput');
+    const err = document.getElementById('totpVerifyError');
+    const btnResend = document.getElementById('btnSendVerifyEmailOTPContainer');
+    if (input) input.value = '';
+    if (err) err.classList.add('hidden');
+    if (btnResend) btnResend.classList.remove('hidden');
+    if (modal) modal.classList.remove('hidden');
+}
+
+async function submit2FAVerify() {
+    const code = document.getElementById('totpVerifyCodeInput').value.trim();
+    const err = document.getElementById('totpVerifyError');
+    if (!code) {
+        if (err) { err.textContent = 'กรุณากรอกรหัส 2FA หรือ OTP'; err.classList.remove('hidden'); }
+        return;
+    }
+    
+    try {
+        const res = await fetch('/api/2fa/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pre_auth_token: currentPreAuthToken, code })
+        });
+        const data = await res.json();
+        if (!data.ok) {
+            if (err) { err.textContent = data.error || 'รหัสไม่ถูกต้อง'; err.classList.remove('hidden'); }
+            return;
+        }
+        
+        document.getElementById('totpVerifyModal').classList.add('hidden');
+        showToast('เข้าสู่ระบบสำเร็จ!', 'success');
+        window.location.reload();
+    } catch (e) {
+        if (err) { err.textContent = 'เกิดข้อผิดพลาดในการเชื่อมต่อ'; err.classList.remove('hidden'); }
+    }
+}
+
+function cancel2FAVerify() {
+    currentPreAuthToken = null;
+    document.getElementById('totpVerifyModal').classList.add('hidden');
+}
+
+window.check2FAStatus = check2FAStatus;
+window.start2FASetup = start2FASetup;
+window.switch2FAMethod = switch2FAMethod;
+window.send2FAEmailOTP = send2FAEmailOTP;
+window.confirmEnable2FA = confirmEnable2FA;
+window.close2FAModal = close2FAModal;
+window.disable2FA = disable2FA;
+window.handle2FAChallenge = handle2FAChallenge;
+window.submit2FAVerify = submit2FAVerify;
+window.cancel2FAVerify = cancel2FAVerify;
+window.showQRLogin = showQRLogin;
+window.hideQRLogin = hideQRLogin;
+window.openQRScanner = openQRScanner;
+if (typeof closeQRScanner === 'function') window.closeQRScanner = closeQRScanner;
+window.generateGlobalSummary = generateGlobalSummary;
+window.handleBulkCompare = handleBulkCompare;
+
 document.addEventListener('DOMContentLoaded', () => {
   initChatDragAndResize();
   setTimeout(initLogin3DBackground, 200);
+  applyCustomUI();
+  setTimeout(check2FAStatus, 1500);
 });
+

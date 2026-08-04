@@ -2116,6 +2116,60 @@ def broadcast_line_announcement(title, text, fields=None, org_id=None):
     return True
 
 
+def push_to_org_line_groups(org_id, title, subtitle="", fields=None, color="#2563eb"):
+    """Sends a push Flex Message notification directly to all LINE groups mapped to an organization."""
+    if not org_id:
+        return False
+    token = get_channel_access_token()
+    if not token:
+        return False
+    
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
+    
+    if fields and isinstance(fields, dict):
+        flex_contents = create_line_flex_bubble(title, subtitle or "📢 แจ้งเตือนจากระบบ", fields, color=color)
+        msg_payload = {"type": "flex", "altText": f"📅 {title}", "contents": flex_contents}
+    else:
+        msg_payload = {
+            "type": "flex",
+            "altText": title,
+            "contents": {
+                "type": "bubble",
+                "body": {
+                    "type": "box", "layout": "vertical", "contents": [
+                        { "type": "text", "text": f"📅 {title}", "size": "sm", "color": color, "weight": "bold" },
+                        { "type": "text", "text": str(subtitle), "wrap": True, "margin": "md", "size": "sm", "lineSpacing": "6px", "color": "#334155" }
+                    ]
+                },
+                "footer": {
+                    "type": "box", "layout": "vertical", "contents": [
+                        { "type": "text", "text": "📌 OrgChat — ปฏิทินและกำหนดการองค์กร", "size": "xxs", "color": "#94a3b8", "align": "center" }
+                    ]
+                }
+            }
+        }
+        
+    try:
+        groups = database.get_line_groups_for_org(org_id) or []
+        sent_count = 0
+        for g in groups:
+            gid = g.get("group_id") if isinstance(g, dict) else g
+            if gid:
+                try:
+                    res = requests.post("https://api.line.me/v2/bot/message/push", headers=headers, json={"to": gid, "messages": [msg_payload]}, timeout=10)
+                    if res.status_code == 200:
+                        sent_count += 1
+                        logger.info(f"✅ [LINE Org Group Push] Sent notification to group {gid}")
+                    else:
+                        logger.warning(f"⚠️ [LINE Org Group Push] Group {gid} returned {res.status_code}: {res.text}")
+                except Exception as ge:
+                    logger.error(f"❌ [LINE Org Group Push] Exception for group {gid}: {ge}")
+        return sent_count > 0
+    except Exception as e:
+        logger.error(f"❌ [LINE Org Group Push] Error fetching groups for org {org_id}: {e}")
+        return False
+
+
 def get_folder_flex_message(user_id=None, uploader_id=None, pending_id=None):
     """Generates a Flex Message for selecting target folder from Drive."""
     try:
@@ -3754,7 +3808,8 @@ def process_line_command(text, user_id, reply_token, group_id=None):
             if not is_ok:
                 return
             leave_type = "ลาป่วย" if "ป่วย" in text_lower else "ลากิจ" if "กิจ" in text_lower else "ลาพักร้อน"
-            database.add_leave_request(line_user_id=user_id, username=user_id, leave_type=leave_type, start_date="", end_date="", reason=text)
+            today_str = datetime.now().strftime("%Y-%m-%d")
+            database.add_leave_request(line_user_id=user_id, username=sender_username or user_id, leave_type=leave_type, start_date=today_str, end_date=today_str, reason=text, org_id=_line_org_id)
             reply_to_line(reply_token, f"📝 รับทราบค่ะ! น้องพั้นบันทึกคำ{leave_type}ให้เบื้องต้นแล้วนะคะ พี่อย่าลืมมาแจ้งวันลาที่ชัดเจนด้วยน้า 😊")
             return
 
@@ -3783,11 +3838,15 @@ def process_line_command(text, user_id, reply_token, group_id=None):
                     org_info = database.get_org(_line_org_id)
                     org_name = org_info.get("name", "องค์กรของคุณ") if org_info else "องค์กรของคุณ"
 
-                    # Parse amount from text
+                    # Parse amount from text: look for number preceding 'บาท' or largest monetary float value
                     extracted_net = 0.0
-                    amt_match = re.search(r'(\d+(?:\.\d+)?)', text)
-                    if amt_match:
-                        extracted_net = float(amt_match.group(1))
+                    baht_match = re.search(r'(\d+(?:\.\d+)?)\s*(?:บาท|baht|b)', text, re.IGNORECASE)
+                    if baht_match:
+                        extracted_net = float(baht_match.group(1))
+                    else:
+                        all_nums = [float(n) for n in re.findall(r'(\d+(?:\.\d+)?)', text)]
+                        if all_nums:
+                            extracted_net = max(all_nums)
 
                     extracted_details = text
                     extracted_merchant = "-"
@@ -3861,7 +3920,7 @@ def process_line_command(text, user_id, reply_token, group_id=None):
                         f"📁 **บันทึกลงชีต:** บันทึกค่าใช้จ่าย\n\n"
                         f"📄 **ดาวน์โหลด PDF ใบแทนใบเสร็จ Form 50:**\n{pdf_url}"
                     )
-                    reply_to_line(reply_token, reply_msg, quick_reply=quick_reply)
+                    reply_to_line(reply_token, reply_msg)
                     return
                 except Exception as e_exp:
                     logger.error(f"Error in Text-to-Expense process: {e_exp}", exc_info=True)

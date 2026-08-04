@@ -455,12 +455,15 @@ async function apiFetch(url, options = {}) {
     let errData = null;
     try { errData = JSON.parse(text); } catch (e) {}
     if (res.status === 401) {
-      if (typeof toast === 'function') {
-        toast('เซสชันหมดอายุแล้ว กรุณาเข้าสู่ระบบใหม่เพื่อใช้งานต่อค่ะ', 'error');
-      }
-      const loginOverlay = document.getElementById('loginOverlay');
-      if (loginOverlay) {
-        loginOverlay.classList.remove('hidden');
+      if (!window._sessionExpired) {
+        window._sessionExpired = true;
+        if (typeof toast === 'function') {
+          toast('เซสชันหมดอายุแล้ว กรุณาเข้าสู่ระบบใหม่เพื่อใช้งานต่อค่ะ', 'error');
+        }
+        const loginOverlay = document.getElementById('loginOverlay');
+        if (loginOverlay) {
+          loginOverlay.classList.remove('hidden');
+        }
       }
       throw new Error('Unauthorized');
     }
@@ -871,6 +874,15 @@ function toggleSidebar(force) {
 if (mobileMenuBtn) mobileMenuBtn.onclick = () => toggleSidebar(true);
 
 if (sidebarOverlay) sidebarOverlay.onclick = () => toggleSidebar(false);
+
+// Auto-close mobile sidebar when switching to desktop screen size
+window.addEventListener('resize', () => {
+  if (window.innerWidth >= 1024) {
+    if (navSidebar && navSidebar.classList.contains('open')) {
+      toggleSidebar(false);
+    }
+  }
+});
 
 // ─── Touch Gestures for Sidebar ────────────────
 let touchStartX = 0;
@@ -1421,4 +1433,35 @@ window.showAlert = function(title, message, options = {}) {
       resolve();
     };
   });
+};
+
+// Global Toast Notification Helper
+window.showToast = function (message, type = 'info') {
+  let container = document.getElementById('globalToastContainer');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'globalToastContainer';
+    container.className = 'fixed bottom-5 right-5 z-[10000] flex flex-col gap-2 pointer-events-none';
+    document.body.appendChild(container);
+  }
+
+  const toast = document.createElement('div');
+  const bgClass = type === 'error' || type === 'danger' ? 'bg-rose-600 text-white' : type === 'success' ? 'bg-emerald-600 text-white' : 'bg-slate-900 text-white dark:bg-surface-800';
+  const icon = type === 'error' || type === 'danger' ? '❌' : type === 'success' ? '✅' : 'ℹ️';
+
+  toast.className = `pointer-events-auto flex items-center gap-2 px-4 py-3 rounded-2xl shadow-xl text-xs font-bold transition-all duration-300 transform translate-y-4 opacity-0 ${bgClass}`;
+  toast.innerHTML = `<span>${icon}</span><span>${message}</span>`;
+
+  container.appendChild(toast);
+
+  requestAnimationFrame(() => {
+    toast.classList.remove('translate-y-4', 'opacity-0');
+  });
+
+  setTimeout(() => {
+    toast.classList.add('translate-y-4', 'opacity-0');
+    setTimeout(() => {
+      toast.remove();
+    }, 300);
+  }, 3500);
 };

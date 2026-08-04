@@ -877,6 +877,40 @@
 
 
 <script>
+/* 🛡️ CSRF Token Auto-Injector & Global Fetch Interceptor */
+window._csrfToken = null;
+async function fetchCsrfToken() {
+  try {
+    const res = await fetch('/api/csrf-token');
+    const data = await res.json();
+    if (data && data.csrf_token) window._csrfToken = data.csrf_token;
+  } catch (e) {
+    console.warn("Failed to fetch CSRF token:", e);
+  }
+}
+fetchCsrfToken();
+
+const _originalFetch = window.fetch;
+window.fetch = async function (resource, options = {}) {
+  options = options || {};
+  const method = (options.method || 'GET').toUpperCase();
+  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+    if (!window._csrfToken && resource !== '/api/csrf-token') {
+      await fetchCsrfToken();
+    }
+    if (window._csrfToken && resource !== '/api/csrf-token') {
+      if (options.headers instanceof Headers) {
+        options.headers.set('X-CSRF-Token', window._csrfToken);
+      } else if (typeof options.headers === 'object') {
+        options.headers['X-CSRF-Token'] = window._csrfToken;
+      } else {
+        options.headers = { 'X-CSRF-Token': window._csrfToken };
+      }
+    }
+  }
+  return _originalFetch.call(this, resource, options);
+};
+
 /* ═══════════════════════════════════════════════════════════
    STATE
    ═══════════════════════════════════════════════════════════ */
@@ -1317,10 +1351,10 @@ async function setPlan(orgId) {
 
 async function confirmDeleteOrg(orgId, orgName) {
   if (!confirm(`⚠️ ลบองค์กร "${orgName}" (ID: ${orgId}) ?\n\nสมาชิกจะถูกนำออกจากองค์กร (ตัว user ยังอยู่)\nไม่สามารถยกเลิกได้!`)) return;
-  const r = await fetch(`/api/superadmin/org/${orgId}`, { method: 'DELETE' });
+  const r = await fetch(`/api/superadmin/org/${orgId}/delete`, { method: 'POST' });
   const d = await r.json();
   if (d.ok) { toast(`ลบ org "${orgName}" แล้ว`, 'success'); _orgs=[]; loadOrgs(); loadOverview(); }
-  else toast(d.error || 'Error', 'error');
+  else toast(d.error || 'ลบองค์กรไม่สำเร็จ', 'error');
 }
 
 function openCreateOrgModal() {
@@ -1505,10 +1539,10 @@ async function resetPw(username) {
 }
 async function confirmDeleteUser(username) {
   if (!confirm(`⚠️ ลบ user "@${username}" ทั้งหมด?\n\nข้อมูลทุกอย่างของ user นี้จะหายไป\nไม่สามารถยกเลิกได้!`)) return;
-  const r = await fetch(`/api/superadmin/user/${encodeURIComponent(username)}`, { method:'DELETE' });
+  const r = await fetch(`/api/superadmin/user/${encodeURIComponent(username)}/delete`, { method:'POST' });
   const d = await r.json();
   if (d.ok) { toast(`ลบ @${username} เรียบร้อย`,'success'); closeModal(); _users=[]; loadUsers(); loadOverview(); }
-  else toast(d.error||'Error','error');
+  else toast(d.error||'ลบผู้ใช้ไม่สำเร็จ','error');
 }
 async function saveNotes(username) {
   const notes = document.getElementById(`notes-${username}`).value;

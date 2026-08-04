@@ -803,6 +803,59 @@ def init_db():
             FOREIGN KEY(scope_category_id) REFERENCES kb_categories(id) ON DELETE SET NULL
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS wiki_pages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            slug TEXT,
+            content TEXT,
+            author TEXT,
+            category_id INTEGER,
+            org_id INTEGER DEFAULT 1,
+            views INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS kanban_columns (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            org_id INTEGER DEFAULT 1,
+            position INTEGER DEFAULT 0
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS kanban_cards (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            description TEXT,
+            column_id INTEGER DEFAULT 1,
+            position INTEGER DEFAULT 0,
+            assignee TEXT,
+            due_date TEXT,
+            priority TEXT DEFAULT 'normal',
+            is_done INTEGER DEFAULT 0,
+            created_by TEXT,
+            org_id INTEGER DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    # Migration: Add missing columns to wiki_pages and kanban_cards if tables existed previously
+    for alter_sql in [
+        "ALTER TABLE wiki_pages ADD COLUMN org_id INTEGER DEFAULT 1",
+        "ALTER TABLE wiki_pages ADD COLUMN category_id INTEGER",
+        "ALTER TABLE wiki_pages ADD COLUMN views INTEGER DEFAULT 0",
+        "ALTER TABLE kanban_cards ADD COLUMN org_id INTEGER DEFAULT 1",
+        "ALTER TABLE kanban_cards ADD COLUMN created_by TEXT",
+        "ALTER TABLE kanban_columns ADD COLUMN org_id INTEGER DEFAULT 1",
+    ]:
+        try:
+            cursor.execute(alter_sql)
+        except sqlite3.OperationalError:
+            pass
+
     # Migration: Add organization_id to ai_personas if not exists
     try:
         cursor.execute("ALTER TABLE ai_personas ADD COLUMN organization_id INTEGER DEFAULT 1")
@@ -821,6 +874,9 @@ def init_db():
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    for col, col_type in [("totp_secret", "TEXT"), ("totp_backup_codes", "TEXT"), ("totp_enabled", "INTEGER DEFAULT 0"), ("totp_type", "TEXT DEFAULT 'authenticator'")]:
+        try: cursor.execute(f"ALTER TABLE user_settings ADD COLUMN {col} {col_type}")
+        except sqlite3.OperationalError: pass
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS app_settings (
             key TEXT PRIMARY KEY,
@@ -868,6 +924,9 @@ def init_db():
         cursor.execute("ALTER TABLE user_settings ADD COLUMN can_view_financial INTEGER DEFAULT 0")
     except sqlite3.OperationalError: pass
     try:
+        cursor.execute("ALTER TABLE user_settings ADD COLUMN can_manage_leave INTEGER DEFAULT 0")
+    except sqlite3.OperationalError: pass
+    try:
         cursor.execute("ALTER TABLE user_settings ADD COLUMN line_permissions TEXT DEFAULT 'report,links,reconcile,search,folder,leave'")
     except sqlite3.OperationalError: pass
     try:
@@ -875,6 +934,15 @@ def init_db():
     except sqlite3.OperationalError: pass
     try:
         cursor.execute("ALTER TABLE user_settings ADD COLUMN locked_until DATETIME")
+    except sqlite3.OperationalError: pass
+    try:
+        cursor.execute("ALTER TABLE user_settings ADD COLUMN totp_enabled INTEGER DEFAULT 0")
+    except sqlite3.OperationalError: pass
+    try:
+        cursor.execute("ALTER TABLE user_settings ADD COLUMN totp_secret TEXT")
+    except sqlite3.OperationalError: pass
+    try:
+        cursor.execute("ALTER TABLE user_settings ADD COLUMN totp_backup_codes TEXT")
     except sqlite3.OperationalError: pass
 
     # Migration: Add category_id to knowledge_base
@@ -1886,7 +1954,8 @@ def get_org_members(org_id: int) -> list:
                s.notes,
                CASE WHEN gt.username IS NOT NULL THEN 1 ELSE 0 END as google_connected,
                gt.google_email,
-               om.manager_username
+               om.manager_username,
+               COALESCE(s.can_manage_leave, 0) as can_manage_leave
         FROM organization_members om
         LEFT JOIN user_profiles up ON om.username = up.username
         LEFT JOIN user_settings s ON om.username = s.username
@@ -1905,7 +1974,8 @@ def get_org_members(org_id: int) -> list:
              "notes": r[14] or "",
              "google_connected": bool(r[15]),
              "google_email": r[16] or "",
-             "manager_username": r[17] or ""} for r in rows]
+             "manager_username": r[17] or "",
+             "can_manage_leave": bool(r[18])} for r in rows]
 
 
 def is_org_admin(org_id: int, username: str) -> bool:
@@ -2978,8 +3048,12 @@ def get_posts(category=None, org_id=1):
         LEFT JOIN user_profiles up ON p.author = up.username
         WHERE (p.organization_id = ? OR p.organization_id IS NULL)
     """
-    if category and category != "All":
-        cursor.execute(base_query + " AND p.category = ? ORDER BY p.is_pinned DESC, p.timestamp DESC", (org_id, category))
+    cat_clean = str(category).strip() if category else ""
+    if cat_clean and cat_clean.lower() not in ["all", "ทั้งหมด", "ทุกหมวดหมู่", "none", ""]:
+        if cat_clean.lower() in ["general", "ทั่วไป"]:
+            cursor.execute(base_query + " AND (p.category = 'General' OR p.category = 'ทั่วไป' OR p.category IS NULL OR p.category = '') ORDER BY p.is_pinned DESC, p.timestamp DESC", (org_id,))
+        else:
+            cursor.execute(base_query + " AND p.category = ? ORDER BY p.is_pinned DESC, p.timestamp DESC", (org_id, category))
     else:
         cursor.execute(base_query + " ORDER BY p.is_pinned DESC, p.timestamp DESC", (org_id,))
 
@@ -3866,7 +3940,7 @@ def get_user_setting(username):
     """Get user_settings for a user, returns defaults if not set. Case-insensitive."""
     conn = _get_conn()
     cursor = conn.cursor()
-    cursor.execute("SELECT username, role, is_active, custom_password, notes, can_view_kb, can_edit_kb, can_delete_kb, email, can_view_financial FROM user_settings WHERE username = ? COLLATE NOCASE", (username,))
+    cursor.execute("SELECT username, role, is_active, custom_password, notes, can_view_kb, can_edit_kb, can_delete_kb, email, can_view_financial, totp_enabled, totp_secret, totp_backup_codes, can_manage_leave FROM user_settings WHERE username = ? COLLATE NOCASE", (username,))
     row = cursor.fetchone()
     conn.close()
     if row:
@@ -3881,12 +3955,16 @@ def get_user_setting(username):
             "can_delete_kb": bool(row[7]),
             "email": row[8] or "",
             "can_view_financial": bool(row[9]) if row[9] is not None else False,
+            "totp_enabled": bool(row[10]),
+            "totp_secret": row[11] or "",
+            "totp_backup_codes": row[12] or "",
+            "can_manage_leave": bool(row[13]) if row[13] is not None else False
         }
 
     # Defaults
     if username.lower() == "admin":
-        return {"username_original": "Admin", "role": "admin", "is_active": 1, "custom_password": None, "notes": "Default Admin", "can_view_kb": True, "can_edit_kb": True, "can_delete_kb": True, "can_view_financial": True}
-    return {"username_original": username, "role": "user", "is_active": 1, "custom_password": None, "notes": "", "can_view_kb": False, "can_edit_kb": False, "can_delete_kb": False, "can_view_financial": False}
+        return {"username_original": "Admin", "role": "admin", "is_active": 1, "custom_password": None, "notes": "Default Admin", "can_view_kb": True, "can_edit_kb": True, "can_delete_kb": True, "can_view_financial": True, "totp_enabled": False, "totp_secret": "", "totp_backup_codes": "", "can_manage_leave": True}
+    return {"username_original": username, "role": "user", "is_active": 1, "custom_password": None, "notes": "", "can_view_kb": False, "can_edit_kb": False, "can_delete_kb": False, "can_view_financial": False, "totp_enabled": False, "totp_secret": "", "totp_backup_codes": "", "can_manage_leave": False}
 
 
 def get_user_by_email(email: str) -> dict | None:
@@ -3946,7 +4024,8 @@ def admin_get_all_users(org_id=1):
                om.role as org_role,
                COALESCE(s.can_view_financial, 0) as can_view_financial,
                p.line_user_id,
-               COALESCE(s.line_permissions, 'report,links,reconcile,search,folder,leave') as line_permissions
+               COALESCE(s.line_permissions, 'report,links,reconcile,search,folder,leave') as line_permissions,
+               COALESCE(s.can_manage_leave, 0) as can_manage_leave
         FROM user_profiles p
         JOIN organization_members om ON p.username = om.username COLLATE NOCASE
         LEFT JOIN user_settings s ON p.username = s.username COLLATE NOCASE
@@ -3970,7 +4049,33 @@ def admin_get_all_users(org_id=1):
         "can_view_financial": bool(r[11]),
         "line_user_id": r[12],
         "line_permissions": r[13],
+        "can_manage_leave": bool(r[14]),
     } for r in rows]
+
+def update_user_totp(username, secret, backup_codes_json="", enabled=False):
+    """Update TOTP 2FA secret and backup codes for a user."""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO user_settings (username, totp_secret, totp_backup_codes, totp_enabled)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(username) DO UPDATE SET
+            totp_secret = EXCLUDED.totp_secret,
+            totp_backup_codes = EXCLUDED.totp_backup_codes,
+            totp_enabled = EXCLUDED.totp_enabled
+    """, (username, secret, backup_codes_json, 1 if enabled else 0))
+    conn.commit()
+    conn.close()
+
+def set_totp_status(username, enabled):
+    """Enable or disable TOTP 2FA for a user."""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE user_settings SET totp_enabled = ? WHERE username = ? COLLATE NOCASE
+    """, (1 if enabled else 0, username))
+    conn.commit()
+    conn.close()
 
 # --- Global App Settings ---
 def get_app_setting(key, default=None):
@@ -4010,7 +4115,7 @@ def get_line_permissions(username: str) -> str:
         print(f"Error getting LINE permissions for {username}: {e}")
     return 'report,links,reconcile,search,folder,leave'
 
-def admin_update_user(username, display_name=None, role=None, is_active=None, notes=None, can_view_kb=None, can_edit_kb=None, can_delete_kb=None, department=None, can_view_financial=None, position=None, line_permissions=None):
+def admin_update_user(username, display_name=None, role=None, is_active=None, notes=None, can_view_kb=None, can_edit_kb=None, can_delete_kb=None, department=None, can_view_financial=None, position=None, line_permissions=None, can_manage_leave=None):
     """Admin updates a user's profile and settings."""
     conn = _get_conn()
     cursor = conn.cursor()
@@ -4041,7 +4146,7 @@ def admin_update_user(username, display_name=None, role=None, is_active=None, no
         for col, val in profile_updates.items():
             cursor.execute(f"UPDATE user_profiles SET {col} = ? WHERE username = ?", (val, username))
     # Upsert settings
-    if any(v is not None for v in [role, is_active, notes, can_view_kb, can_edit_kb, can_delete_kb, can_view_financial, line_permissions]):
+    if any(v is not None for v in [role, is_active, notes, can_view_kb, can_edit_kb, can_delete_kb, can_view_financial, line_permissions, can_manage_leave]):
         cursor.execute("INSERT OR IGNORE INTO user_settings (username) VALUES (?)", (username,))
         if role is not None:
             cursor.execute("UPDATE user_settings SET role = ? WHERE username = ?", (role, username))
@@ -4057,6 +4162,8 @@ def admin_update_user(username, display_name=None, role=None, is_active=None, no
             cursor.execute("UPDATE user_settings SET can_view_financial = ? WHERE username = ?", (1 if can_view_financial else 0, username))
         if line_permissions is not None:
             cursor.execute("UPDATE user_settings SET line_permissions = ? WHERE username = ?", (line_permissions, username))
+        if can_manage_leave is not None:
+            cursor.execute("UPDATE user_settings SET can_manage_leave = ? WHERE username = ?", (1 if can_manage_leave else 0, username))
         if notes is not None:
             cursor.execute("UPDATE user_settings SET notes = ?, updated_at = CURRENT_TIMESTAMP WHERE username = ?", (notes, username))
     conn.commit()
@@ -4265,6 +4372,10 @@ def superadmin_delete_org(org_id: int) -> bool:
             ("organization_allowed_emails", "organization_id"),
             ("organization_members", "organization_id"),
             ("usage_tracking", "org_id"),
+            ("leave_requests", "org_id"),
+            ("subscriptions", "org_id"),
+            ("invoices", "org_id"),
+            ("ai_personas", "org_id"),
         ]
         for table, col in tables_with_org_id:
             try:
@@ -5611,13 +5722,34 @@ def add_lunch_place(name, type_str="", location="", added_by="Admin"):
 
 # --- New Features: Leave and Expense ---
 
-def add_leave_request(line_user_id, username, leave_type, start_date, end_date, reason):
+def add_leave_request(line_user_id, username, leave_type, start_date, end_date, reason, org_id=None):
     conn = _get_conn()
     cursor = conn.cursor()
+    # Safe migration check for org_id column
+    try:
+        cursor.execute("ALTER TABLE leave_requests ADD COLUMN org_id INTEGER")
+        conn.commit()
+    except Exception:
+        pass
+    # If org_id is not supplied, lookup from line_group_mappings or organization_members
+    if not org_id:
+        try:
+            r = cursor.execute("SELECT organization_id FROM line_group_mappings WHERE line_group_id = ? LIMIT 1", (line_user_id,)).fetchone()
+            if r and r[0]:
+                org_id = r[0]
+            else:
+                r2 = cursor.execute("SELECT organization_id FROM organization_members WHERE username = ? LIMIT 1", (username,)).fetchone()
+                if r2 and r2[0]:
+                    org_id = r2[0]
+        except Exception:
+            pass
+    if not org_id:
+        org_id = 1  # Fallback default org
+
     cursor.execute("""
-        INSERT INTO leave_requests (line_user_id, username, leave_type, start_date, end_date, reason)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (line_user_id, username, leave_type, start_date, end_date, reason))
+        INSERT INTO leave_requests (line_user_id, username, type, leave_type, start_date, end_date, reason, org_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (line_user_id, username, leave_type, leave_type, start_date, end_date, reason, org_id))
     req_id = cursor.lastrowid
     conn.commit()
     conn.close()
@@ -6850,38 +6982,7 @@ def log_audit_event(username: str, org_id: int, action: str, details: str = "", 
     except Exception as e:
         print(f"⚠️ Error logging audit event: {e}")
 
-def get_audit_logs(org_id: int = 1, limit: int = 100, offset: int = 0, username: str = None, action: str = None):
-    conn = _get_conn()
-    cur = conn.cursor()
-    query = "SELECT id, username, organization_id, action, details, ip_address, timestamp FROM audit_logs WHERE organization_id = ?"
-    params = [org_id]
-    if username:
-        query += " AND username LIKE ?"
-        params.append(f"%{username}%")
-    if action:
-        query += " AND action = ?"
-        params.append(action)
-    query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
-    params.extend([limit, offset])
-    
-    cur.execute(query, params)
-    rows = cur.fetchall()
-    
-    cur.execute("SELECT COUNT(*) FROM audit_logs WHERE organization_id = ?", (org_id,))
-    total_row = cur.fetchone()
-    total = total_row[0] if total_row else 0
-    conn.close()
-    
-    logs = [{
-        "id": r[0],
-        "username": r[1],
-        "organization_id": r[2],
-        "action": r[3],
-        "details": r[4],
-        "ip_address": r[5],
-        "timestamp": str(r[6])
-    } for r in rows]
-    return logs, total
+# Old duplicate get_audit_logs removed - consolidated definition at bottom of file
 
 def get_user_clearance_level(username: str) -> str:
     if not username:
@@ -6963,8 +7064,14 @@ def log_event(action, user="System", org_id=1, details="", ip_address="127.0.0.1
     try:
         conn = _get_conn()
         cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(audit_logs)")
+        cols = [c[1] for c in cursor.fetchall()]
+        org_col = "org_id" if "org_id" in cols else "organization_id" if "organization_id" in cols else "org_id"
+        action_col = "action" if "action" in cols else "event_type"
+        details_col = "details" if "details" in cols else "action_detail"
+        
         cursor.execute(
-            "INSERT INTO audit_logs (org_id, username, action, details, ip_address) VALUES (?, ?, ?, ?, ?)",
+            f"INSERT INTO audit_logs ({org_col}, username, {action_col}, {details_col}, ip_address) VALUES (?, ?, ?, ?, ?)",
             (org_id, user or "System", str(action), str(details or ""), ip_address or "127.0.0.1")
         )
         conn.commit()
@@ -6972,45 +7079,7 @@ def log_event(action, user="System", org_id=1, details="", ip_address="127.0.0.1
     except Exception as e:
         logger.error(f"[log_event error] {e}")
 
-def get_audit_logs(org_id=1, limit=100, offset=0, username_filter=None, action_filter=None):
-    """Retrieve audit logs for an organization with optional filters."""
-    try:
-        conn = _get_conn()
-        cursor = conn.cursor()
-        query = "SELECT id, datetime(timestamp, 'localtime'), username, action, ip_address, details FROM audit_logs WHERE org_id = ?"
-        params = [org_id]
-        if username_filter:
-            query += " AND username LIKE ?"
-            params.append(f"%{username_filter}%")
-        if action_filter:
-            query += " AND action LIKE ?"
-            params.append(f"%{action_filter}%")
-        
-        query += " ORDER BY id DESC LIMIT ? OFFSET ?"
-        params.extend([limit, offset])
-        
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
-        
-        cursor.execute("SELECT COUNT(*) FROM audit_logs WHERE org_id = ?", (org_id,))
-        total_row = cursor.fetchone()
-        total = total_row[0] if total_row else 0
-        conn.close()
-        
-        logs = []
-        for r in rows:
-            logs.append({
-                "id": r[0],
-                "timestamp": str(r[1]),
-                "username": r[2] or "System",
-                "action": r[3] or "",
-                "ip_address": r[4] or "-",
-                "details": r[5] or ""
-            })
-        return logs, total
-    except Exception as e:
-        logger.error(f"[get_audit_logs error] {e}")
-        return [], 0
+# Old duplicate get_audit_logs removed - robust definition maintained at end of file.
 
 
 # ══════════════════════════════════════════════════════
@@ -7226,25 +7295,37 @@ def log_audit_event(username: str, event_type: str, action_detail: str = "", ip_
         return False
 
 
-def get_audit_logs(org_id: int = 1, limit: int = 100, offset: int = 0, event_type: str = None, username: str = None, search: str = None) -> dict:
+def get_audit_logs(org_id: int = 1, limit: int = 100, offset: int = 0, event_type: str = None, username: str = None, search: str = None, action: str = None, username_filter: str = None, action_filter: str = None):
     """Fetches paginated, searchable audit log entries."""
+    username = username or username_filter
+    search = search or action or action_filter
     conn = _get_conn()
     conn.row_factory = sqlite3.Row
     try:
         cursor = conn.cursor()
-        query = "SELECT * FROM audit_logs WHERE org_id = ?"
+        # Check actual column name for organization (org_id or organization_id)
+        cursor.execute("PRAGMA table_info(audit_logs)")
+        cols = [c[1] for c in cursor.fetchall()]
+        org_col = "org_id" if "org_id" in cols else "organization_id" if "organization_id" in cols else "org_id"
+        
+        query = f"SELECT * FROM audit_logs WHERE {org_col} = ?"
         params = [org_id]
         
-        if event_type:
+        if event_type and "event_type" in cols:
             query += " AND event_type = ?"
             params.append(event_type)
-        if username:
-            query += " AND username = ? COLLATE NOCASE"
-            params.append(username.strip())
+        if username and "username" in cols:
+            query += " AND username LIKE ? COLLATE NOCASE"
+            params.append(f"%{username.strip()}%")
         if search:
-            query += " AND (username LIKE ? OR action_detail LIKE ? OR ip_address LIKE ? OR ai_model LIKE ? OR department LIKE ?)"
+            search_conditions = []
             s = f"%{search.strip()}%"
-            params.extend([s, s, s, s, s])
+            for candidate in ["username", "action", "action_detail", "details", "ip_address", "ai_model", "department"]:
+                if candidate in cols:
+                    search_conditions.append(f"{candidate} LIKE ?")
+                    params.append(s)
+            if search_conditions:
+                query += " AND (" + " OR ".join(search_conditions) + ")"
             
         # Count total matches
         count_query = f"SELECT COUNT(*) FROM ({query})"
@@ -7252,13 +7333,17 @@ def get_audit_logs(org_id: int = 1, limit: int = 100, offset: int = 0, event_typ
         total_row = cursor.fetchone()
         total = total_row[0] if total_row else 0
         
-        query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+        order_col = "timestamp" if "timestamp" in cols else "id"
+        query += f" ORDER BY {order_col} DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
         
         cursor.execute(query, params)
         rows = [dict(r) for r in cursor.fetchall()]
         
         return {"total": total, "logs": rows}
+    except Exception as e:
+        logging.getLogger("OrgChatAI").error(f"[get_audit_logs error] {e}")
+        return {"total": 0, "logs": []}
     finally:
         conn.close()
 
@@ -7343,6 +7428,149 @@ def get_security_audit_metrics(org_id: int = 1, days: int = 30) -> dict:
         }
     finally:
         conn.close()
+
+
+# ══════════════════════════════════════════════════════
+# Wiki & Kanban & Posts Database Helpers
+# ══════════════════════════════════════════════════════
+
+def get_all_posts(org_id: int = 1) -> list[dict]:
+    """Retrieve social posts for an organization."""
+    return get_posts(category=None, org_id=org_id)
+
+def get_post_by_id(pid: int) -> dict | None:
+    return get_post(pid)
+
+def wiki_get_all_pages(org_id: int = 1) -> list[dict]:
+    conn = _get_conn()
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("SELECT * FROM wiki_pages WHERE org_id = ? ORDER BY updated_at DESC", (org_id,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def wiki_search(q: str, org_id: int = 1) -> list[dict]:
+    conn = _get_conn()
+    conn.row_factory = sqlite3.Row
+    pattern = f"%{q}%"
+    rows = conn.execute("SELECT * FROM wiki_pages WHERE org_id = ? AND (title LIKE ? OR content LIKE ?) ORDER BY updated_at DESC", (org_id, pattern, pattern)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def wiki_create_page(title: str, content: str = "", author: str = "Anonymous", category_id: int = None, org_id: int = 1) -> tuple[int, str]:
+    import re
+    slug = re.sub(r'[^a-zA-Z0-9_\-]', '_', title.lower()).strip('_') or f"page_{int(time.time())}"
+    conn = _get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO wiki_pages (title, slug, content, author, category_id, org_id) VALUES (?, ?, ?, ?, ?, ?)",
+        (title, slug, content, author, category_id, org_id)
+    )
+    page_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return page_id, slug
+
+def wiki_get_page(page_id: int = None, slug: str = None, org_id: int = 1) -> dict | None:
+    conn = _get_conn()
+    conn.row_factory = sqlite3.Row
+    if page_id:
+        row = conn.execute("SELECT * FROM wiki_pages WHERE id = ? AND org_id = ?", (page_id, org_id)).fetchone()
+    elif slug:
+        row = conn.execute("SELECT * FROM wiki_pages WHERE slug = ? AND org_id = ?", (slug, org_id)).fetchone()
+    else:
+        row = None
+    if row:
+        conn.execute("UPDATE wiki_pages SET views = views + 1 WHERE id = ?", (row["id"],))
+        conn.commit()
+    conn.close()
+    return dict(row) if row else None
+
+def wiki_update_page(page_id: int, title: str = None, content: str = None, category_id: int = None, org_id: int = 1) -> bool:
+    conn = _get_conn()
+    cur = conn.cursor()
+    fields = []
+    params = []
+    if title is not None:
+        fields.append("title = ?"); params.append(title)
+    if content is not None:
+        fields.append("content = ?"); params.append(content)
+    if category_id is not None:
+        fields.append("category_id = ?"); params.append(category_id)
+    fields.append("updated_at = CURRENT_TIMESTAMP")
+    if not fields:
+        conn.close()
+        return False
+    params.extend([page_id, org_id])
+    cur.execute(f"UPDATE wiki_pages SET {', '.join(fields)} WHERE id = ? AND org_id = ?", params)
+    ok = cur.rowcount > 0
+    conn.commit()
+    conn.close()
+    return ok
+
+def wiki_delete_page(page_id: int, org_id: int = 1) -> bool:
+    conn = _get_conn()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM wiki_pages WHERE id = ? AND org_id = ?", (page_id, org_id))
+    ok = cur.rowcount > 0
+    conn.commit()
+    conn.close()
+    return ok
+
+def kanban_get_card(card_id: int) -> dict | None:
+    conn = _get_conn()
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("SELECT * FROM kanban_cards WHERE id = ?", (card_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def kanban_get_column(column_id: int, org_id: int = 1) -> dict | None:
+    conn = _get_conn()
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("SELECT * FROM kanban_columns WHERE id = ? AND org_id = ?", (column_id, org_id)).fetchone()
+    conn.close()
+    if not row:
+        # Fallback dummy column for standard Kanban 1/2/3/4 board setup
+        return {"id": column_id, "name": f"Column {column_id}", "org_id": org_id, "position": column_id}
+    return dict(row)
+
+def kanban_update_card(card_id: int, **kwargs) -> bool:
+    conn = _get_conn()
+    cur = conn.cursor()
+    allowed_cols = {"title", "description", "column_id", "position", "assignee", "due_date", "priority", "is_done"}
+    fields = []
+    params = []
+    for k, v in kwargs.items():
+        if k in allowed_cols:
+            fields.append(f"{k} = ?")
+            params.append(v)
+    if not fields:
+        conn.close()
+        return False
+    fields.append("updated_at = CURRENT_TIMESTAMP")
+    params.append(card_id)
+    cur.execute(f"UPDATE kanban_cards SET {', '.join(fields)} WHERE id = ?", params)
+    ok = cur.rowcount > 0
+    conn.commit()
+    conn.close()
+    return ok
+
+def kanban_move_card(card_id: int, column_id: int, position: int = 0) -> bool:
+    conn = _get_conn()
+    cur = conn.cursor()
+    cur.execute("UPDATE kanban_cards SET column_id = ?, position = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (column_id, position, card_id))
+    ok = cur.rowcount > 0
+    conn.commit()
+    conn.close()
+    return ok
+
+def kanban_delete_card(card_id: int) -> bool:
+    conn = _get_conn()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM kanban_cards WHERE id = ?", (card_id,))
+    ok = cur.rowcount > 0
+    conn.commit()
+    conn.close()
+    return ok
 
 
 

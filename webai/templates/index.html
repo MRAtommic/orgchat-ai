@@ -44,11 +44,9 @@
     }
   </script>
   <link rel="stylesheet" href="/static/style.css?v=3.5" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sarabun:wght@400;500;600&display=swap"
-    rel="stylesheet" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@300;400;500;600;700&family=Athiti:wght@300;400;500;600;700&family=Bai+Jamjuree:wght@300;400;500;600;700&family=Chakra+Petch:wght@400;600;700&family=Fahkwang:wght@300;400;500;600;700&family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700;800;900&family=K2D:wght@300;400;500;600;700&family=Kanit:wght@300;400;500;600;700&family=Krub:wght@300;400;500;600;700&family=Mali:wght@400;600;700&family=Mitr:wght@400;500;600&family=Niramit:wght@300;400;500;600;700&family=Noto+Sans+Thai:wght@300;400;500;600;700&family=Pridi:wght@300;400;500;600&family=Prompt:wght@300;400;500;600;700&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
@@ -211,7 +209,7 @@
                 <span class="flex-shrink-0 mx-4 text-surface-400 text-xs">หรือเข้าระบบด้วย</span>
                 <div class="flex-grow border-t border-surface-200 dark:border-surface-700"></div>
               </div>
-              <div id="googleSignInBtn" class="w-full flex justify-center mt-2"></div>
+              <div id="googleSignInBtn" class="w-full max-w-[320px] mx-auto flex justify-center mt-2 overflow-hidden"></div>
 
               <!-- QR Login -->
               <div class="relative flex items-center py-2 mt-2">
@@ -2328,6 +2326,25 @@
                     </h3>
                   </div>
 
+                  <!-- 🎨 Custom UI & Fonts Modal Trigger Button -->
+                  <div class="space-y-2">
+                    <label class="text-[10px] font-bold text-surface-400 uppercase tracking-widest">การแสดงผล & UI ส่วนตัว</label>
+                    <button type="button" onclick="document.getElementById('uiAppearanceModal').classList.remove('hidden')"
+                      class="flex items-center gap-3 px-4 py-3.5 w-full bg-gradient-to-r from-indigo-500/10 via-sky-500/10 to-purple-500/10 hover:from-indigo-500/20 hover:via-sky-500/20 hover:to-purple-500/20 dark:from-indigo-900/30 dark:to-purple-900/30 rounded-2xl border-2 border-indigo-500/30 hover:border-indigo-500 transition-all group shadow-sm">
+                      <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-sky-500 text-white flex items-center justify-center shadow-md shadow-indigo-500/20 group-hover:scale-110 transition-transform">
+                        <i data-lucide="sparkles" class="w-5 h-5"></i>
+                      </div>
+                      <div class="flex-1 text-left">
+                        <div class="text-sm font-black text-surface-900 dark:text-white flex items-center gap-2">
+                          ปรับแต่ง UI & รูปแบบฟอนต์ระบบ
+                          <span class="px-2 py-0.5 text-[10px] bg-indigo-600 text-white font-bold rounded-full">ใหม่</span>
+                        </div>
+                        <div class="text-[10px] text-surface-500 dark:text-surface-400">เลือกฟอนต์ (8 รูปแบบ), ขนาดอักษร และโทนสีระบบตามสไตล์คุณ</div>
+                      </div>
+                      <i data-lucide="chevron-right" class="w-4 h-4 text-indigo-500 group-hover:translate-x-1 transition-transform"></i>
+                    </button>
+                  </div>
+
                   <!-- Theme Toggle (Dark/Light) -->
                   <div class="space-y-3">
                     <label class="text-[10px] font-bold text-surface-400 uppercase tracking-widest">โหมดการแสดงผล</label>
@@ -2519,9 +2536,211 @@
                     </button>
                   </div>
                 </div>
+
+                <!-- การยืนยันตัวตนแบบสองชั้น (2-Factor Authentication) -->
+                <div class="border-t border-surface-100 dark:border-surface-800 pt-5">
+                  <div class="text-[10px] font-black uppercase tracking-widest text-surface-400 mb-3 flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                      <i data-lucide="shield-check" class="w-3.5 h-3.5 text-emerald-500"></i> การยืนยันตัวตนสองชั้น (2FA)
+                    </div>
+                    <span id="totpStatusBadge" class="px-2 py-0.5 rounded-full text-[9px] font-bold bg-surface-100 text-surface-500 dark:bg-surface-800">
+                      ปิดใช้งาน
+                    </span>
+                  </div>
+                  <p class="text-xs text-surface-500 mb-3">เพิ่มความปลอดภัยด้วยแอปยืนยันตัวตน เช่น Google Authenticator หรือ Microsoft Authenticator</p>
+                  
+                  <div id="totpDisabledActions">
+                    <button onclick="start2FASetup()"
+                      class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase tracking-widest rounded-xl transition-colors flex items-center justify-center gap-2">
+                      <i data-lucide="shield-plus" class="w-3.5 h-3.5"></i> เปิดใช้งาน 2FA (ผู้ใช้เลือกเอง)
+                    </button>
+                  </div>
+
+                  <div id="totpEnabledActions" class="hidden">
+                    <button onclick="disable2FA()"
+                      class="w-full py-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-2">
+                      <i data-lucide="shield-off" class="w-3.5 h-3.5"></i> ปิดใช้งาน 2FA
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
             <!-- /บัญชีของฉัน -->
+
+            <!-- 🎨 การปรับแต่งการแสดงผลส่วนตัว (Appearance & UI Customization) -->
+            <div id="myAppearanceCard" class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-3xl overflow-hidden shadow-sm">
+              <div class="px-6 py-4 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <div class="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center">
+                    <i data-lucide="palette" class="w-4 h-4 text-indigo-600"></i>
+                  </div>
+                  <h3 class="font-black text-sm uppercase tracking-widest text-surface-900 dark:text-white">การแสดงผล & UI ส่วนตัว</h3>
+                </div>
+                <button onclick="resetCustomUISettings()" class="text-xs font-bold text-surface-400 hover:text-rose-500 transition flex items-center gap-1">
+                  <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> คืนค่าเริ่มต้น
+                </button>
+              </div>
+
+              <div class="p-6 space-y-6">
+                <!-- 1. เลือกฟอนต์ (Font Family) -->
+                <div>
+                  <label class="block text-[10px] font-black uppercase tracking-widest text-surface-400 mb-2 ml-1 flex items-center gap-2">
+                    <i data-lucide="type" class="w-3 h-3 text-indigo-500"></i> รูปแบบตัวอักษร (Font Family)
+                  </label>
+                  <div class="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+                    <button onclick="setCustomFont('Inter')" id="fontBtn-Inter"
+                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
+                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'Inter', sans-serif;">Inter</span>
+                      <span class="text-[10px] text-surface-400 mt-1">มินิมอลสากล</span>
+                    </button>
+                    <button onclick="setCustomFont('Anuphan')" id="fontBtn-Anuphan"
+                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
+                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'Anuphan', sans-serif;">อนุพันธ์ (Anuphan)</span>
+                      <span class="text-[10px] text-surface-400 mt-1">คลีนมินิมอล</span>
+                    </button>
+                    <button onclick="setCustomFont('Prompt')" id="fontBtn-Prompt"
+                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
+                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'Prompt', sans-serif;">พร้อมท์ (Prompt)</span>
+                      <span class="text-[10px] text-surface-400 mt-1">สมาร์ท เรียบหรู</span>
+                    </button>
+                    <button onclick="setCustomFont('IBM Plex Sans Thai')" id="fontBtn-IBM Plex Sans Thai"
+                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
+                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'IBM Plex Sans Thai', sans-serif;">IBM Plex Sans</span>
+                      <span class="text-[10px] text-surface-400 mt-1">มินิมอลเท่</span>
+                    </button>
+                    <button onclick="setCustomFont('Kanit')" id="fontBtn-Kanit"
+                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
+                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'Kanit', sans-serif;">ขนิษฐ์ (Kanit)</span>
+                      <span class="text-[10px] text-surface-400 mt-1">ทันสมัย ดีไซน์สวย</span>
+                    </button>
+                    <button onclick="setCustomFont('Noto Sans Thai')" id="fontBtn-Noto Sans Thai"
+                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
+                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'Noto Sans Thai', sans-serif;">Noto Sans Thai</span>
+                      <span class="text-[10px] text-surface-400 mt-1">เรียบสมดุล</span>
+                    </button>
+                    <button onclick="setCustomFont('Krub')" id="fontBtn-Krub"
+                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
+                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'Krub', sans-serif;">กรับ (Krub)</span>
+                      <span class="text-[10px] text-surface-400 mt-1">ลีนเรียบหรู</span>
+                    </button>
+                    <button onclick="setCustomFont('K2D')" id="fontBtn-K2D"
+                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
+                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'K2D', sans-serif;">K2D</span>
+                      <span class="text-[10px] text-surface-400 mt-1">โมเดิร์นไฮเทค</span>
+                    </button>
+                    <button onclick="setCustomFont('Fahkwang')" id="fontBtn-Fahkwang"
+                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
+                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'Fahkwang', sans-serif;">ฟ้ากว้าง (Fahkwang)</span>
+                      <span class="text-[10px] text-surface-400 mt-1">สมาร์ทโปร่ง</span>
+                    </button>
+                    <button onclick="setCustomFont('Mitr')" id="fontBtn-Mitr"
+                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
+                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'Mitr', sans-serif;">มิตร (Mitr)</span>
+                      <span class="text-[10px] text-surface-400 mt-1">โค้งมนนุ่มนวล</span>
+                    </button>
+                    <button onclick="setCustomFont('Athiti')" id="fontBtn-Athiti"
+                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
+                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'Athiti', sans-serif;">อธิติ (Athiti)</span>
+                      <span class="text-[10px] text-surface-400 mt-1">บางลีนมินิมอล</span>
+                    </button>
+                    <button onclick="setCustomFont('Bai Jamjuree')" id="fontBtn-Bai Jamjuree"
+                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
+                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'Bai Jamjuree', sans-serif;">ใบจามจุรี (Bai Jamjuree)</span>
+                      <span class="text-[10px] text-surface-400 mt-1">กึ่งเหลี่ยมลีน</span>
+                    </button>
+                    <button onclick="setCustomFont('Pridi')" id="fontBtn-Pridi"
+                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
+                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'Pridi', serif;">ปรีดี (Pridi)</span>
+                      <span class="text-[10px] text-surface-400 mt-1">เอกลักษณ์ มีหัว</span>
+                    </button>
+                    <button onclick="setCustomFont('Chakra Petch')" id="fontBtn-Chakra Petch"
+                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
+                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'Chakra Petch', sans-serif;">จักรเพชร (Chakra Petch)</span>
+                      <span class="text-[10px] text-surface-400 mt-1">Futuristic</span>
+                    </button>
+                    <button onclick="setCustomFont('Sarabun')" id="fontBtn-Sarabun"
+                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
+                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'Sarabun', sans-serif;">สารบัน (Sarabun)</span>
+                      <span class="text-[10px] text-surface-400 mt-1">ทางการ สบายตา</span>
+                    </button>
+                    <button onclick="setCustomFont('Niramit')" id="fontBtn-Niramit"
+                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
+                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'Niramit', sans-serif;">นิรมิต (Niramit)</span>
+                      <span class="text-[10px] text-surface-400 mt-1">บางเบาสะอาด</span>
+                    </button>
+                    <button onclick="setCustomFont('Mali')" id="fontBtn-Mali"
+                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
+                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'Mali', sans-serif;">มะลิ (Mali)</span>
+                      <span class="text-[10px] text-surface-400 mt-1">การ์ตูนเป็นกันเอง</span>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- 2. ขนาดตัวอักษร (Font Size) -->
+                <div>
+                  <div class="flex justify-between items-center mb-2 ml-1">
+                    <label class="text-[10px] font-black uppercase tracking-widest text-surface-400 flex items-center gap-2">
+                      <i data-lucide="text-cursor" class="w-3 h-3 text-indigo-500"></i> ขนาดตัวอักษรระบบ (Font Size)
+                    </label>
+                    <span id="fontSizeDisplay" class="text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">ปกติ (14.5px)</span>
+                  </div>
+                  <div class="grid grid-cols-4 gap-2">
+                    <button onclick="setCustomFontSize('small')" id="fontSizeBtn-small" class="custom-size-btn py-2 text-xs font-bold rounded-xl border border-surface-200 dark:border-surface-700 hover:border-indigo-500 transition">เล็ก (13px)</button>
+                    <button onclick="setCustomFontSize('normal')" id="fontSizeBtn-normal" class="custom-size-btn py-2 text-xs font-bold rounded-xl border border-surface-200 dark:border-surface-700 hover:border-indigo-500 transition">ปกติ (14.5px)</button>
+                    <button onclick="setCustomFontSize('large')" id="fontSizeBtn-large" class="custom-size-btn py-2 text-xs font-bold rounded-xl border border-surface-200 dark:border-surface-700 hover:border-indigo-500 transition">ใหญ่ (16px)</button>
+                    <button onclick="setCustomFontSize('xl')" id="fontSizeBtn-xl" class="custom-size-btn py-2 text-xs font-bold rounded-xl border border-surface-200 dark:border-surface-700 hover:border-indigo-500 transition">ใหญ่มาก (17.5px)</button>
+                  </div>
+                </div>
+
+                <!-- 3. โทนสีเน้นหลัก (Accent Color) -->
+                <div>
+                  <label class="block text-[10px] font-black uppercase tracking-widest text-surface-400 mb-2 ml-1 flex items-center gap-2">
+                    <i data-lucide="sparkles" class="w-3 h-3 text-indigo-500"></i> โทนสีไฮไลท์หลัก (Accent Theme Color)
+                  </label>
+                  <div class="flex flex-wrap gap-3">
+                    <button onclick="setCustomAccent('blue')" id="accentBtn-blue" title="Brand Blue" class="custom-accent-btn w-9 h-9 rounded-2xl bg-blue-600 flex items-center justify-center text-white shadow-md transition transform active:scale-95">
+                      <i data-lucide="check" class="w-4 h-4 accent-check hidden"></i>
+                    </button>
+                    <button onclick="setCustomAccent('indigo')" id="accentBtn-indigo" title="Royal Indigo" class="custom-accent-btn w-9 h-9 rounded-2xl bg-indigo-600 flex items-center justify-center text-white shadow-md transition transform active:scale-95">
+                      <i data-lucide="check" class="w-4 h-4 accent-check hidden"></i>
+                    </button>
+                    <button onclick="setCustomAccent('emerald')" id="accentBtn-emerald" title="Emerald Mint" class="custom-accent-btn w-9 h-9 rounded-2xl bg-emerald-600 flex items-center justify-center text-white shadow-md transition transform active:scale-95">
+                      <i data-lucide="check" class="w-4 h-4 accent-check hidden"></i>
+                    </button>
+                    <button onclick="setCustomAccent('amber')" id="accentBtn-amber" title="Warm Amber" class="custom-accent-btn w-9 h-9 rounded-2xl bg-amber-500 flex items-center justify-center text-white shadow-md transition transform active:scale-95">
+                      <i data-lucide="check" class="w-4 h-4 accent-check hidden"></i>
+                    </button>
+                    <button onclick="setCustomAccent('rose')" id="accentBtn-rose" title="Rose Pink" class="custom-accent-btn w-9 h-9 rounded-2xl bg-rose-500 flex items-center justify-center text-white shadow-md transition transform active:scale-95">
+                      <i data-lucide="check" class="w-4 h-4 accent-check hidden"></i>
+                    </button>
+                    <button onclick="setCustomAccent('purple')" id="accentBtn-purple" title="Deep Purple" class="custom-accent-btn w-9 h-9 rounded-2xl bg-purple-600 flex items-center justify-center text-white shadow-md transition transform active:scale-95">
+                      <i data-lucide="check" class="w-4 h-4 accent-check hidden"></i>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- 4. ตัวอย่างการแสดงผลแบบเรียลไทม์ (Live Preview Box) -->
+                <div class="p-4 bg-surface-50 dark:bg-surface-800/40 rounded-2xl border border-surface-200/80 dark:border-surface-700">
+                  <div class="text-[10px] font-black uppercase tracking-widest text-surface-400 mb-2 flex items-center gap-1.5">
+                    <i data-lucide="eye" class="w-3.5 h-3.5 text-indigo-500"></i> ตัวอย่างการแสดงผล (Live Preview)
+                  </div>
+                  <div class="p-3.5 bg-white dark:bg-surface-900 rounded-xl border border-surface-200 dark:border-surface-700 space-y-2.5">
+                    <div class="flex items-center justify-between">
+                      <span class="font-bold text-surface-900 dark:text-white">การ์ดข้อความแชท AI & เอกสารองค์กร</span>
+                      <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-brand-500/10 text-brand-600 dark:text-brand-400">ตัวอย่างแท็ก</span>
+                    </div>
+                    <p class="text-surface-600 dark:text-surface-300 leading-relaxed">
+                      ทดสอบตัวอย่างการแสดงผลข้อความเมื่อปรับฟอนต์และขนาดตัวอักษรส่วนตัวของคุณในระบบ OrgChat AI
+                    </p>
+                    <div class="flex gap-2 pt-1">
+                      <button class="px-3.5 py-1.5 bg-brand-600 text-white text-xs font-bold rounded-xl shadow-sm">ปุ่มตัวอย่าง</button>
+                      <button class="px-3.5 py-1.5 bg-surface-100 dark:bg-surface-800 text-surface-700 dark:text-surface-300 text-xs font-bold rounded-xl">ยกเลิก</button>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
 
             <!-- LINE Integration Card -->
             <div class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-3xl overflow-hidden shadow-sm">
@@ -4203,6 +4422,17 @@
                       <div class="w-10 h-5 bg-surface-200 peer-focus:outline-none rounded-full peer dark:bg-surface-800 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500 shadow-inner"></div>
                     </label>
                   </div>
+                  <!-- Manage Leave -->
+                  <div class="flex items-center justify-between p-4 bg-surface-50 dark:bg-surface-950 border border-surface-100 dark:border-surface-800 rounded-2xl">
+                    <label for="orgEditMemberLeave" class="cursor-pointer flex-1">
+                      <div class="text-xs font-bold dark:text-white">สิทธิ์การลา/จัดการวันลา</div>
+                      <div class="text-[10px] font-bold text-surface-400 uppercase tracking-tighter">รีเซ็ตวันลาและดูจำนวนวันลาของคนในองค์กร</div>
+                    </label>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                      <input type="checkbox" id="orgEditMemberLeave" class="sr-only peer">
+                      <div class="w-10 h-5 bg-surface-200 peer-focus:outline-none rounded-full peer dark:bg-surface-800 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500 shadow-inner"></div>
+                    </label>
+                  </div>
                 </div>
               </div>
 
@@ -4233,6 +4463,113 @@
                 class="flex-1 py-3.5 border-2 border-surface-200 dark:border-surface-800 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-surface-100 dark:hover:bg-surface-800 transition-all dark:text-white">ยกเลิก</button>
               <button onclick="submitOrgMemberEdit()"
                 class="flex-1 py-3.5 bg-brand-600 hover:bg-brand-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-brand-600/20 transition-all">บันทึก</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 🛡️ 2FA Setup Modal -->
+        <div id="totpSetupModal" class="fixed inset-0 bg-surface-950/60 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+          <div class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+            <div class="px-6 py-5 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-2xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
+                  <i data-lucide="shield-check" class="w-5 h-5"></i>
+                </div>
+                <div>
+                  <h3 class="font-black text-sm text-surface-900 dark:text-white">ตั้งค่าการยืนยันตัวตนสองชั้น (2FA)</h3>
+                  <p class="text-[10px] text-surface-400 font-bold uppercase tracking-wider">เลือกวิธียืนยันตัวตนที่คุณสะดวก</p>
+                </div>
+              </div>
+              <button onclick="close2FAModal()" class="w-8 h-8 rounded-full hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-400 hover:text-surface-600 dark:hover:text-surface-200 flex items-center justify-center transition-colors">
+                <i data-lucide="x" class="w-4 h-4"></i>
+              </button>
+            </div>
+            <div class="p-6 space-y-4">
+              <!-- Method Selector Tabs -->
+              <div class="flex p-1 bg-surface-100 dark:bg-surface-800/80 rounded-2xl gap-1">
+                <button type="button" onclick="switch2FAMethod('authenticator')" id="btn2FAMethodAuth"
+                  class="flex-1 py-2.5 px-3 text-xs font-bold rounded-xl transition-all text-center flex items-center justify-center gap-1.5 bg-white dark:bg-surface-700 text-emerald-600 dark:text-white shadow-sm">
+                  <i data-lucide="smartphone" class="w-4 h-4"></i> Authenticator App
+                </button>
+                <button type="button" onclick="switch2FAMethod('email')" id="btn2FAMethodEmail"
+                  class="flex-1 py-2.5 px-3 text-xs font-bold rounded-xl transition-all text-center flex items-center justify-center gap-1.5 text-surface-500 dark:text-surface-400 hover:text-surface-800 dark:hover:text-surface-200">
+                  <i data-lucide="mail" class="w-4 h-4"></i> ส่ง OTP เข้า Gmail
+                </button>
+              </div>
+
+              <!-- Content for Authenticator App -->
+              <div id="section2FAAuth" class="space-y-4">
+                <div class="bg-surface-50 dark:bg-surface-950 p-4 rounded-2xl border border-surface-100 dark:border-surface-800 flex flex-col items-center">
+                  <img id="totpQrImage" class="w-44 h-44 rounded-xl bg-white p-2 shadow-inner" alt="2FA QR Code" />
+                  <p class="text-[11px] text-surface-400 font-mono mt-3 text-center break-all select-all" id="totpSecretText"></p>
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-surface-700 dark:text-surface-300 mb-1.5">ใส่รหัส 6 หลักจาก Authenticator App เพื่อยืนยัน</label>
+                  <input id="totpSetupCodeInput" type="text" maxlength="6" placeholder="123456"
+                    class="w-full px-4 py-3 bg-surface-50 dark:bg-surface-950 border border-surface-200 dark:border-surface-800 rounded-2xl text-center text-lg font-mono font-bold tracking-widest focus:ring-2 focus:ring-emerald-500 outline-none dark:text-white">
+                </div>
+              </div>
+
+              <!-- Content for Email OTP -->
+              <div id="section2FAEmail" class="space-y-4 hidden">
+                <div class="p-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50 rounded-2xl space-y-2 text-center">
+                  <i data-lucide="mail-check" class="w-8 h-8 text-emerald-600 dark:text-emerald-400 mx-auto"></i>
+                  <p class="text-xs font-bold text-emerald-900 dark:text-emerald-200">ยืนยันตัวตนผ่านอีเมล Gmail</p>
+                  <p class="text-[11px] text-emerald-700 dark:text-emerald-400 leading-relaxed" id="text2FAEmailTarget">
+                    ระบบจะส่งรหัส OTP 6 หลักไปยังอีเมลที่ผูกไว้กับบัญชีของคุณ
+                  </p>
+                  <button type="button" onclick="send2FAEmailOTP()" id="btnSend2FAOTP" class="mt-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 mx-auto">
+                    <i data-lucide="send" class="w-3.5 h-3.5"></i> กดส่งรหัส OTP ไปที่ Gmail
+                  </button>
+                </div>
+
+                <div>
+                  <label class="block text-xs font-bold text-surface-700 dark:text-surface-300 mb-1.5">กรอกรหัส OTP 6 หลักที่ได้รับจากอีเมล</label>
+                  <input id="emailOtpSetupCodeInput" type="text" maxlength="6" placeholder="123456"
+                    class="w-full px-4 py-3 bg-surface-50 dark:bg-surface-950 border border-surface-200 dark:border-surface-800 rounded-2xl text-center text-lg font-mono font-bold tracking-widest focus:ring-2 focus:ring-emerald-500 outline-none dark:text-white">
+                </div>
+              </div>
+
+              <div id="totpBackupCodesContainer" class="hidden p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50 rounded-2xl space-y-2">
+                <div class="text-xs font-black text-amber-800 dark:text-amber-400 flex items-center gap-1.5">
+                  <i data-lucide="alert-triangle" class="w-4 h-4"></i> บันทึก Backup Codes (สำคัญมาก!)
+                </div>
+                <p class="text-[11px] text-amber-700 dark:text-amber-300">ใช้รหัสเหล่านี้เพื่อเข้าสู่ระบบหากทำมือถือ/อีเมลหาย เก็บไว้ในที่ปลอดภัย:</p>
+                <div id="totpBackupCodesList" class="grid grid-cols-2 gap-1.5 font-mono text-xs font-bold text-surface-800 dark:text-surface-200 bg-white dark:bg-surface-900 p-2.5 rounded-xl border border-amber-200/50 dark:border-amber-900/30"></div>
+              </div>
+            </div>
+            <div class="p-6 border-t border-surface-100 dark:border-surface-800 bg-surface-50/50 dark:bg-surface-950/50 flex gap-3">
+              <button onclick="close2FAModal()" class="flex-1 py-3 border-2 border-surface-200 dark:border-surface-800 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-surface-100 dark:hover:bg-surface-800 transition-all dark:text-white">ปิด</button>
+              <button id="totpEnableBtn" onclick="confirmEnable2FA()" class="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold text-xs uppercase tracking-widest shadow-lg shadow-emerald-600/20 transition-all">ยืนยันเปิดใช้งาน</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 🛡️ 2FA Verification Modal (Login Intercept) -->
+        <div id="totpVerifyModal" class="fixed inset-0 bg-surface-950/70 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+          <div class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+            <div class="px-6 py-5 border-b border-surface-100 dark:border-surface-800 text-center">
+              <div class="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center mx-auto mb-2">
+                <i data-lucide="shield-check" class="w-6 h-6"></i>
+              </div>
+              <h3 class="font-black text-base text-surface-900 dark:text-white">ยืนยันตัวตน 2FA</h3>
+              <p class="text-xs text-surface-400 mt-1">ใส่รหัส 6 หลักจาก Authenticator / Gmail หรือ Backup Code</p>
+            </div>
+            <div class="p-6 space-y-4">
+              <div>
+                <input id="totpVerifyCodeInput" type="text" placeholder="123456 หรือ Backup Code" autofocus
+                  class="w-full px-4 py-3 bg-surface-50 dark:bg-surface-950 border border-surface-200 dark:border-surface-800 rounded-2xl text-center text-lg font-mono font-bold tracking-widest focus:ring-2 focus:ring-emerald-500 outline-none dark:text-white">
+              </div>
+              <div id="btnSendVerifyEmailOTPContainer" class="hidden text-center">
+                <button type="button" onclick="send2FAEmailOTP(true)" id="btnVerifyResendEmailOTP" class="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center justify-center gap-1 mx-auto">
+                  <i data-lucide="mail" class="w-3.5 h-3.5"></i> ขอรหัส OTP ส่งเข้า Gmail อีกครั้ง
+                </button>
+              </div>
+              <p id="totpVerifyError" class="text-xs text-rose-500 font-bold text-center hidden"></p>
+            </div>
+            <div class="p-6 border-t border-surface-100 dark:border-surface-800 bg-surface-50/50 dark:bg-surface-950/50 flex gap-3">
+              <button onclick="cancel2FAVerify()" class="flex-1 py-3 border-2 border-surface-200 dark:border-surface-800 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-surface-100 dark:hover:bg-surface-800 transition-all dark:text-white">ยกเลิก</button>
+              <button onclick="submit2FAVerify()" class="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold text-xs uppercase tracking-widest shadow-lg shadow-emerald-600/20 transition-all">เข้าสู่ระบบ</button>
             </div>
           </div>
         </div>
@@ -10513,8 +10850,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 '<div class="text-center py-8 text-slate-400 text-sm">กำลังดึงข้อมูล...</div>';
 
             // 1. Fetch dashboard summaries, unclear scans, and categories
-            fetch('/api/dashboard/tax-expense-data')
-                .then(r => r.json())
+            apiFetch('/api/dashboard/tax-expense-data')
                 .then(data => {
                     if (!data.ok) { showError(data.error); return; }
                     
@@ -10572,8 +10908,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
 
             // 2. Fetch full list of standardized expenses
-            fetch('/api/dashboard/all-expenses')
-                .then(r => r.json())
+            apiFetch('/api/dashboard/all-expenses')
                 .then(data => {
                     if (icon) icon.classList.remove('spinning');
                     if (data.ok) {
@@ -12524,6 +12859,169 @@ async function deleteMeeting(mid) {
         <button id="customModalCancelBtn" class="px-4 py-2 text-sm font-semibold text-surface-700 dark:text-surface-300 bg-surface-100 dark:bg-surface-800 rounded-xl hover:opacity-90 transition-opacity">ยกเลิก</button>
         <button id="customModalConfirmBtn" class="px-4 py-2 text-sm font-semibold text-white rounded-xl hover:opacity-90 transition-opacity"></button>
       </div>
+    </div>
+  </div>
+  <!-- 🎨 Personal Appearance & Custom UI Modal -->
+  <div id="uiAppearanceModal" class="hidden fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+    <div class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+      
+      <!-- Header -->
+      <div class="px-6 py-5 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between bg-gradient-to-r from-indigo-50/50 via-white to-sky-50/50 dark:from-surface-900 dark:to-surface-800">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-sky-500 flex items-center justify-center text-white shadow-lg shadow-indigo-500/20">
+            <i data-lucide="palette" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="font-black text-base text-surface-900 dark:text-white">ปรับแต่งการแสดงผลส่วนตัว (Appearance)</h3>
+            <p class="text-xs text-surface-500 dark:text-surface-400">เลือกฟอนต์ ขนาดตัวอักษร และโทนสีตามสไตล์ที่คุณชอบ</p>
+          </div>
+        </div>
+        <button onclick="document.getElementById('uiAppearanceModal').classList.add('hidden')" class="p-2 rounded-xl text-surface-400 hover:text-surface-600 dark:hover:text-surface-200 hover:bg-surface-100 dark:hover:bg-surface-800 transition">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="p-6 overflow-y-auto space-y-6 custom-scrollbar">
+        
+        <!-- 1. Font Selection Grid -->
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <label class="block text-xs font-bold uppercase tracking-wider text-surface-400">1. รูปแบบฟอนต์ระบบ (Font Family)</label>
+            <span class="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md">✨ เน้นฟอนต์ไม่มีหัว (Minimal Sans-serif)</span>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
+            <button type="button" onclick="setCustomFont('Inter')" id="fontBtn-Inter" class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/40 text-left transition-all hover:border-indigo-500">
+              <div class="font-bold text-sm text-surface-900 dark:text-white" style="font-family: 'Inter', sans-serif;">Inter</div>
+              <div class="text-[10px] text-surface-500 font-normal">Modern Standard (ไม่มีหัว)</div>
+            </button>
+            <button type="button" onclick="setCustomFont('Anuphan')" id="fontBtn-Anuphan" class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/40 text-left transition-all hover:border-indigo-500">
+              <div class="font-bold text-sm text-surface-900 dark:text-white" style="font-family: 'Anuphan', sans-serif;">Anuphan</div>
+              <div class="text-[10px] text-surface-500 font-normal">อนุพันธ์ (คลีนมินิมอล)</div>
+            </button>
+            <button type="button" onclick="setCustomFont('Prompt')" id="fontBtn-Prompt" class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/40 text-left transition-all hover:border-indigo-500">
+              <div class="font-bold text-sm text-surface-900 dark:text-white" style="font-family: 'Prompt', sans-serif;">Prompt</div>
+              <div class="text-[10px] text-surface-500 font-normal">พร้อมท์ (สมาร์ททันสมัย)</div>
+            </button>
+            <button type="button" onclick="setCustomFont('IBM Plex Sans Thai')" id="fontBtn-IBM Plex Sans Thai" class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/40 text-left transition-all hover:border-indigo-500">
+              <div class="font-bold text-sm text-surface-900 dark:text-white" style="font-family: 'IBM Plex Sans Thai', sans-serif;">IBM Plex Sans</div>
+              <div class="text-[10px] text-surface-500 font-normal">ไอบีเอ็ม (มินิมอลเท่)</div>
+            </button>
+            <button type="button" onclick="setCustomFont('Kanit')" id="fontBtn-Kanit" class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/40 text-left transition-all hover:border-indigo-500">
+              <div class="font-bold text-sm text-surface-900 dark:text-white" style="font-family: 'Kanit', sans-serif;">Kanit</div>
+              <div class="text-[10px] text-surface-500 font-normal">ขนิษฐ์ (ไม่มีหัวอ่านง่าย)</div>
+            </button>
+            <button type="button" onclick="setCustomFont('Noto Sans Thai')" id="fontBtn-Noto Sans Thai" class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/40 text-left transition-all hover:border-indigo-500">
+              <div class="font-bold text-sm text-surface-900 dark:text-white" style="font-family: 'Noto Sans Thai', sans-serif;">Noto Sans</div>
+              <div class="text-[10px] text-surface-500 font-normal">โนโตะ (เรียบสมดุล)</div>
+            </button>
+            <button type="button" onclick="setCustomFont('Mitr')" id="fontBtn-Mitr" class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/40 text-left transition-all hover:border-indigo-500">
+              <div class="font-bold text-sm text-surface-900 dark:text-white" style="font-family: 'Mitr', sans-serif;">Mitr</div>
+              <div class="text-[10px] text-surface-500 font-normal">มิตร (มินิมอลโค้งมน)</div>
+            </button>
+            <button type="button" onclick="setCustomFont('Athiti')" id="fontBtn-Athiti" class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/40 text-left transition-all hover:border-indigo-500">
+              <div class="font-bold text-sm text-surface-900 dark:text-white" style="font-family: 'Athiti', sans-serif;">Athiti</div>
+              <div class="text-[10px] text-surface-500 font-normal">อธิติ (บางลีนมินิมอล)</div>
+            </button>
+            <button type="button" onclick="setCustomFont('Bai Jamjuree')" id="fontBtn-Bai Jamjuree" class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/40 text-left transition-all hover:border-indigo-500">
+              <div class="font-bold text-sm text-surface-900 dark:text-white" style="font-family: 'Bai Jamjuree', sans-serif;">Bai Jamjuree</div>
+              <div class="text-[10px] text-surface-500 font-normal">ใบจามจุรี (กึ่งเหลี่ยมลีน)</div>
+            </button>
+            <button type="button" onclick="setCustomFont('Chakra Petch')" id="fontBtn-Chakra Petch" class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/40 text-left transition-all hover:border-indigo-500">
+              <div class="font-bold text-sm text-surface-900 dark:text-white" style="font-family: 'Chakra Petch', sans-serif;">Chakra Petch</div>
+              <div class="text-[10px] text-surface-500 font-normal">จักรเพชร (Futuristic)</div>
+            </button>
+            <button type="button" onclick="setCustomFont('Sarabun')" id="fontBtn-Sarabun" class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/40 text-left transition-all hover:border-indigo-500">
+              <div class="font-bold text-sm text-surface-900 dark:text-white" style="font-family: 'Sarabun', sans-serif;">Sarabun</div>
+              <div class="text-[10px] text-surface-500 font-normal">สารบัน (ทางการมีหัว)</div>
+            </button>
+            <button type="button" onclick="setCustomFont('Krub')" id="fontBtn-Krub" class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/40 text-left transition-all hover:border-indigo-500">
+              <div class="font-bold text-sm text-surface-900 dark:text-white" style="font-family: 'Krub', sans-serif;">Krub</div>
+              <div class="text-[10px] text-surface-500 font-normal">กรับ (ลีนเรียบหรู)</div>
+            </button>
+            <button type="button" onclick="setCustomFont('K2D')" id="fontBtn-K2D" class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/40 text-left transition-all hover:border-indigo-500">
+              <div class="font-bold text-sm text-surface-900 dark:text-white" style="font-family: 'K2D', sans-serif;">K2D</div>
+              <div class="text-[10px] text-surface-500 font-normal">เคทูดี (โมเดิร์นไฮเทค)</div>
+            </button>
+            <button type="button" onclick="setCustomFont('Fahkwang')" id="fontBtn-Fahkwang" class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/40 text-left transition-all hover:border-indigo-500">
+              <div class="font-bold text-sm text-surface-900 dark:text-white" style="font-family: 'Fahkwang', sans-serif;">Fahkwang</div>
+              <div class="text-[10px] text-surface-500 font-normal">ฟ้ากว้าง (สมาร์ทโปร่ง)</div>
+            </button>
+            <button type="button" onclick="setCustomFont('Pridi')" id="fontBtn-Pridi" class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/40 text-left transition-all hover:border-indigo-500">
+              <div class="font-bold text-sm text-surface-900 dark:text-white" style="font-family: 'Pridi', serif;">Pridi</div>
+              <div class="text-[10px] text-surface-500 font-normal">ปรีดี (เอกลักษณ์มีหัว)</div>
+            </button>
+            <button type="button" onclick="setCustomFont('Niramit')" id="fontBtn-Niramit" class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/40 text-left transition-all hover:border-indigo-500">
+              <div class="font-bold text-sm text-surface-900 dark:text-white" style="font-family: 'Niramit', sans-serif;">Niramit</div>
+              <div class="text-[10px] text-surface-500 font-normal">นิรมิต (บางเบาสะอาด)</div>
+            </button>
+            <button type="button" onclick="setCustomFont('Mali')" id="fontBtn-Mali" class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/40 text-left transition-all hover:border-indigo-500">
+              <div class="font-bold text-sm text-surface-900 dark:text-white" style="font-family: 'Mali', sans-serif;">Mali</div>
+              <div class="text-[10px] text-surface-500 font-normal">มะลิ (การ์ตูนเป็นกันเอง)</div>
+            </button>
+          </div>
+        </div>
+
+        <!-- 2. Font Size -->
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <label class="block text-xs font-bold uppercase tracking-wider text-surface-400">2. ขนาดตัวอักษร (Font Size)</label>
+            <span id="fontSizeDisplay" class="text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2.5 py-0.5 rounded-full">ปกติ (14.5px)</span>
+          </div>
+          <div class="grid grid-cols-4 gap-3">
+            <button type="button" onclick="setCustomFontSize('small')" id="fontSizeBtn-small" class="custom-size-btn p-3 rounded-xl border border-surface-200 dark:border-surface-700 font-bold text-xs transition-all hover:border-indigo-500 text-center">เล็ก</button>
+            <button type="button" onclick="setCustomFontSize('normal')" id="fontSizeBtn-normal" class="custom-size-btn p-3 rounded-xl border border-surface-200 dark:border-surface-700 font-bold text-xs transition-all hover:border-indigo-500 text-center">ปกติ</button>
+            <button type="button" onclick="setCustomFontSize('large')" id="fontSizeBtn-large" class="custom-size-btn p-3 rounded-xl border border-surface-200 dark:border-surface-700 font-bold text-xs transition-all hover:border-indigo-500 text-center">ใหญ่</button>
+            <button type="button" onclick="setCustomFontSize('xl')" id="fontSizeBtn-xl" class="custom-size-btn p-3 rounded-xl border border-surface-200 dark:border-surface-700 font-bold text-xs transition-all hover:border-indigo-500 text-center">ใหญ่มาก</button>
+          </div>
+        </div>
+
+        <!-- 3. Accent Color Theme -->
+        <div>
+          <label class="block text-xs font-bold uppercase tracking-wider text-surface-400 mb-3">3. โทนสีเน้นย้ำระบบ (Accent Color)</label>
+          <div class="flex flex-wrap gap-3">
+            <button type="button" onclick="setCustomAccent('blue')" id="accentBtn-blue" class="custom-accent-btn w-10 h-10 rounded-2xl bg-blue-600 flex items-center justify-center text-white transition-transform hover:scale-110 shadow-md shadow-blue-500/20">
+              <i data-lucide="check" class="accent-check w-5 h-5 hidden"></i>
+            </button>
+            <button type="button" onclick="setCustomAccent('indigo')" id="accentBtn-indigo" class="custom-accent-btn w-10 h-10 rounded-2xl bg-indigo-600 flex items-center justify-center text-white transition-transform hover:scale-110 shadow-md shadow-indigo-500/20">
+              <i data-lucide="check" class="accent-check w-5 h-5 hidden"></i>
+            </button>
+            <button type="button" onclick="setCustomAccent('emerald')" id="accentBtn-emerald" class="custom-accent-btn w-10 h-10 rounded-2xl bg-emerald-600 flex items-center justify-center text-white transition-transform hover:scale-110 shadow-md shadow-emerald-500/20">
+              <i data-lucide="check" class="accent-check w-5 h-5 hidden"></i>
+            </button>
+            <button type="button" onclick="setCustomAccent('amber')" id="accentBtn-amber" class="custom-accent-btn w-10 h-10 rounded-2xl bg-amber-500 flex items-center justify-center text-white transition-transform hover:scale-110 shadow-md shadow-amber-500/20">
+              <i data-lucide="check" class="accent-check w-5 h-5 hidden"></i>
+            </button>
+            <button type="button" onclick="setCustomAccent('rose')" id="accentBtn-rose" class="custom-accent-btn w-10 h-10 rounded-2xl bg-rose-600 flex items-center justify-center text-white transition-transform hover:scale-110 shadow-md shadow-rose-500/20">
+              <i data-lucide="check" class="accent-check w-5 h-5 hidden"></i>
+            </button>
+            <button type="button" onclick="setCustomAccent('purple')" id="accentBtn-purple" class="custom-accent-btn w-10 h-10 rounded-2xl bg-purple-600 flex items-center justify-center text-white transition-transform hover:scale-110 shadow-md shadow-purple-500/20">
+              <i data-lucide="check" class="accent-check w-5 h-5 hidden"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- 4. Live Preview Box -->
+        <div class="p-4 rounded-2xl bg-surface-50 dark:bg-surface-800/50 border border-surface-200 dark:border-surface-700">
+          <div class="text-xs font-bold text-surface-400 uppercase tracking-widest mb-2">ตัวอย่างการแสดงผล (Live Preview)</div>
+          <div class="space-y-1">
+            <h4 class="font-bold text-base text-surface-900 dark:text-white">ระบบช่วยจัดการงานองค์กรด้วย AI</h4>
+            <p class="text-surface-600 dark:text-surface-300 text-xs">คุณสามารถปรับแต่งรูปแบบตัวอักษรและโทนสีเพื่อการใช้งานที่สบายตาและเป็นตัวเองที่สุด</p>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Footer -->
+      <div class="px-6 py-4 border-t border-surface-100 dark:border-surface-800 bg-surface-50/50 dark:bg-surface-900 flex items-center justify-between">
+        <button type="button" onclick="resetCustomUISettings()" class="px-4 py-2 text-xs font-bold text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-xl transition">
+          คืนค่าเริ่มต้น
+        </button>
+        <button type="button" onclick="document.getElementById('uiAppearanceModal').classList.add('hidden')" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/20 transition">
+          เสร็จสิ้น
+        </button>
+      </div>
+
     </div>
   </div>
 </body>

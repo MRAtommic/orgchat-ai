@@ -46,6 +46,7 @@ from routes.shared import (
     _is_safe_url, _get_gemini_api_key,
     validate_uploaded_file,
 )
+from routes.chat import send_line_push_notification
 
 logger = logging.getLogger("OrgChatAI.Social")
 
@@ -1283,18 +1284,15 @@ def export_wiki_page(page_id):
     author = page.get("author", "Unknown")
     updated_at = page.get("updated_at", "")
 
-    import wiki_manager
-    file_path, download_name, error = wiki_manager.export_page_to_file(
-        page_id=page_id,
-        title=title,
-        content=content,
-        author=author,
-        updated_at=updated_at,
-        export_format=export_format
-    )
-
-    if error:
-        return jsonify({"ok": False, "error": error}), 400
+    import tempfile
+    ext = "md" if export_format == "md" else "txt"
+    download_name = f"{title}_{page_id}.{ext}"
+    temp_dir = tempfile.gettempdir()
+    file_path = os.path.join(temp_dir, download_name)
+    
+    export_text = f"# {title}\nAuthor: {author}\nUpdated: {updated_at}\n\n{content}"
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(export_text)
 
     return send_file(file_path, as_attachment=True, download_name=download_name)
 

@@ -227,12 +227,22 @@ def org_admin_required(f):
     return decorated_function
 
 def is_superadmin_user(username):
-    """Check if a username is in the SUPERADMIN_USERS list (case-insensitive)."""
+    """Check if a username is in the SUPERADMIN_USERS list or has system admin role (case-insensitive)."""
     if not username:
         return False
     sa_users_str = os.environ.get("SUPERADMIN_USERS", "Admin")
     sa_users = [u.strip().lower() for u in sa_users_str.split(",") if u.strip()]
-    return username.lower() in sa_users
+    if str(username).strip().lower() in sa_users:
+        return True
+    if session.get("role") in ("admin", "superadmin"):
+        return True
+    try:
+        settings = database.get_user_setting(username)
+        if settings and settings.get("role") in ("admin", "superadmin"):
+            return True
+    except Exception:
+        pass
+    return False
 
 def superadmin_required(f):
     @wraps(f)
@@ -277,9 +287,15 @@ def _set_session_org(username: str):
             session["org_id"] = orgs[0]["id"]
             session["org_role"] = orgs[0]["role"]
     else:
-        # ไม่มี org → ไม่สร้างอัตโนมัติ แสดง empty state ให้ user
-        session["org_id"] = None
-        session["org_role"] = None
+        # Fallback to default organization (org_id = 1) if available
+        default_org = database.get_org(1)
+        if default_org:
+            database.add_org_member(1, username, role="member")
+            session["org_id"] = 1
+            session["org_role"] = "member"
+        else:
+            session["org_id"] = None
+            session["org_role"] = None
 
 def get_current_org_id():
     """Return the org_id for the current request session, with optimized membership checking."""

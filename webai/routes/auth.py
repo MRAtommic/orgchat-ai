@@ -47,6 +47,8 @@ logger = logging.getLogger("OrgChatAI.Auth")
 auth_bp = Blueprint('auth', __name__)
 
 _qr_tokens = {}  # legacy — superseded by DB-backed qr_* functions in database.py
+_2FA_PRE_AUTH_CACHE = {}  # token -> {"user": username, "expires": timestamp}
+_2FA_SETUP_TEMP_SECRETS = {}  # username -> secret (temporary secret before verification)
 
 QR_APPROVE_HTML = """<!DOCTYPE html>
 <html lang="th">
@@ -1153,6 +1155,20 @@ def api_login():
         if wl_err:
             return jsonify({"ok": False, "error": wl_err}), 403
             
+        # 🛡️ 2FA Intercept Check
+        if settings.get("totp_enabled"):
+            # Instead of logging in fully, issue temporary 2FA token
+            pre_auth_token = _sec.token_urlsafe(32)
+            _2FA_PRE_AUTH_CACHE[pre_auth_token] = {
+                "user": settings.get("username_original", username_raw),
+                "expires": time.time() + 300  # 5 minutes valid
+            }
+            return jsonify({
+                "ok": True,
+                "require_2fa": True,
+                "pre_auth_token": pre_auth_token
+            })
+
         database.reset_failed_login(username_raw)
         session.clear()  # ป้องกัน session fixation
         session.permanent = True
@@ -1264,6 +1280,289 @@ def api_login():
 
     return jsonify({"ok": False, "error": "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง"})
 
+
+# ─── 🛡️ Two-Factor Authentication (2FA / TOTP / Email OTP) Endpoints ───
+
+_2FA_EMAIL_OTP_CACHE = {}  # { username: {"otp": str, "expires": float} }
+
+def send_2fa_email_otp(to_email: str, otp_code: str) -> tuple[bool, str]:
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+
+    smtp_server = os.environ.get("SMTP_SERVER", "").strip()
+    smtp_port = os.environ.get("SMTP_PORT", "").strip()
+    smtp_user = os.environ.get("SMTP_USER", "").strip()
+    smtp_password = os.environ.get("SMTP_PASSWORD", "").strip()
+    smtp_sender = os.environ.get("SMTP_SENDER", smtp_user).strip()
+
+    if not smtp_server or not smtp_user or not smtp_password:
+        return False, "ระบบ SMTP อีเมลยังไม่ได้ตั้งค่าใน .env"
+
+    try:
+        port = int(smtp_port) if smtp_port else 587
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"รหัส OTP ยืนยันตัวตนสองชั้น (2FA): {otp_code}"
+        msg["From"] = f"OrgChat AI <{smtp_sender}>"
+        msg["To"] = to_email
+
+        html_content = f"""
+        <html>
+        <body style="font-family: 'Sarabun', Arial, sans-serif; background-color: #f8fafc; padding: 40px 20px; color: #1e293b;">
+            <div style="max-width: 500px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); overflow: hidden; border: 1px solid #e2e8f0;">
+                <div style="background-color: #059669; padding: 25px; text-align: center; color: #ffffff;">
+                    <h2 style="margin: 0; font-size: 22px; font-weight: 800;">OrgChat AI Security</h2>
+                    <p style="margin: 4px 0 0 0; opacity: 0.9; font-size: 13px;">รหัส OTP สำหรับยืนยันตัวตนสองชั้น (2FA)</p>
+                </div>
+                <div style="padding: 30px; line-height: 1.6;">
+                    <p style="font-size: 15px; margin-top: 0;">สวัสดีครับ,</p>
+                    <p style="font-size: 14px;">รหัส OTP สำหรับการเข้าสู่ระบบ/ยืนยันตัวตนสองชั้นของคุณคือ:</p>
+                    
+                    <div style="background-color: #f1f5f9; border-radius: 12px; padding: 20px; text-align: center; margin: 20px 0; border: 1px dashed #cbd5e1;">
+                        <div style="font-size: 36px; font-weight: 900; letter-spacing: 8px; color: #059669; font-family: monospace;">
+                            {otp_code}
+                        </div>
+                        <p style="margin: 8px 0 0 0; font-size: 12px; color: #94a3b8;">(รหัสมีอายุ 5 นาที)</p>
+                    </div>
+
+                    <p style="font-size: 12px; color: #64748b;">หากท่านไม่ได้ทำรายการนี้ กรุณาติดต่อผู้ดูแลระบบองค์กรเพื่อความปลอดภัยของบัญชี</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        msg.attach(MIMEText(html_content, "html"))
+
+        if port == 465:
+            server = smtplib.SMTP_SSL(smtp_server, port, timeout=10)
+        else:
+            server = smtplib.SMTP(smtp_server, port, timeout=10)
+            server.starttls()
+        server.login(smtp_user, smtp_password)
+        server.sendmail(smtp_sender, [to_email], msg.as_string())
+        server.quit()
+        return True, "success"
+    except Exception as e:
+        logger.error(f"[2FA Email OTP] Failed sending to {to_email}: {e}")
+        return False, str(e)
+
+
+@auth_bp.route("/api/2fa/status", methods=["GET"])
+@login_required
+def get_2fa_status():
+    username = session.get("user")
+    settings = database.get_user_setting(username)
+    user_email = settings.get("email", "")
+    return jsonify({
+        "ok": True,
+        "enabled": bool(settings.get("totp_enabled")),
+        "type": settings.get("totp_type", "authenticator"), # 'authenticator' or 'email'
+        "email": user_email
+    })
+
+@auth_bp.route("/api/2fa/setup", methods=["POST"])
+@login_required
+def setup_2fa():
+    import pyotp
+    import qrcode
+    username = session.get("user")
+    
+    secret = pyotp.random_base32()
+    _2FA_SETUP_TEMP_SECRETS[username] = secret
+    
+    totp = pyotp.TOTP(secret)
+    provisioning_uri = totp.provisioning_uri(name=username, issuer_name="OrgChat AI")
+    
+    # Generate QR Code image as Base64 Data URL
+    qr = qrcode.QRCode(version=1, box_size=6, border=2)
+    qr.add_data(provisioning_uri)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    qr_base64 = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("utf-8")
+    
+    settings = database.get_user_setting(username)
+    return jsonify({
+        "ok": True,
+        "secret": secret,
+        "qr_code": qr_base64,
+        "email": settings.get("email", "")
+    })
+
+@auth_bp.route("/api/2fa/send-email-otp", methods=["POST"])
+def send_2fa_email_otp_api():
+    """Send OTP for Email 2FA setup or login verification challenge."""
+    data = request.json or {}
+    pre_auth_token = data.get("pre_auth_token")
+    
+    username = None
+    if pre_auth_token:
+        cached = _2FA_PRE_AUTH_CACHE.get(pre_auth_token)
+        if not cached or time.time() > cached.get("expires", 0):
+            return jsonify({"ok": False, "error": "เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่อีกครั้ง"}), 400
+        username = cached["user"]
+    else:
+        username = session.get("user")
+        
+    if not username:
+        return jsonify({"ok": False, "error": "Unauthorized"}), 401
+        
+    settings = database.get_user_setting(username)
+    email = settings.get("email", "").strip()
+    if not email:
+        return jsonify({"ok": False, "error": "บัญชีของคุณยังไม่ได้ระบุอีเมล ไม่สามารถส่ง OTP ทาง Gmail ได้"}), 400
+        
+    import random
+    otp_code = f"{random.randint(100000, 999999)}"
+    _2FA_EMAIL_OTP_CACHE[username] = {
+        "otp": otp_code,
+        "expires": time.time() + 300
+    }
+    
+    ok, msg = send_2fa_email_otp(email, otp_code)
+    if not ok:
+        return jsonify({"ok": False, "error": f"ส่ง OTP ล้มเหลว: {msg}"}), 500
+        
+    masked_email = email[:2] + "***@" + email.split("@")[-1] if "@" in email else email
+    return jsonify({"ok": True, "message": f"ส่งรหัส OTP ไปที่ {masked_email} เรียบร้อยแล้ว"})
+
+@auth_bp.route("/api/2fa/enable", methods=["POST"])
+@login_required
+def enable_2fa():
+    import pyotp
+    username = session.get("user")
+    data = request.json or {}
+    code = str(data.get("code", "")).strip().replace(" ", "")
+    fa_type = data.get("type", "authenticator")  # 'authenticator' or 'email'
+    
+    if fa_type == "email":
+        cached_otp = _2FA_EMAIL_OTP_CACHE.get(username)
+        if not cached_otp or time.time() > cached_otp.get("expires", 0):
+            return jsonify({"ok": False, "error": "รหัส OTP หมดอายุแล้ว กรุณากดขอ OTP ใหม่"}), 400
+        if not hmac.compare_digest(cached_otp["otp"], code):
+            return jsonify({"ok": False, "error": "รหัส OTP ไม่ถูกต้อง"}), 400
+        secret = "EMAIL_OTP"
+        _2FA_EMAIL_OTP_CACHE.pop(username, None)
+    else:
+        secret = _2FA_SETUP_TEMP_SECRETS.get(username)
+        if not secret:
+            return jsonify({"ok": False, "error": "กรุณากดตั้งค่า 2FA ใหม่"}), 400
+            
+        totp = pyotp.TOTP(secret)
+        if not totp.verify(code, valid_window=1):
+            return jsonify({"ok": False, "error": "รหัส 2FA ไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง"}), 400
+        
+    # Generate 8 random backup codes (8 hex chars each)
+    backup_codes = [_sec.token_hex(4).upper() for _ in range(8)]
+    backup_codes_hashed = [hashlib.sha256(c.encode()).hexdigest() for c in backup_codes]
+    
+    # Save 2FA to DB
+    conn = database._get_conn()
+    conn.execute("""
+        UPDATE user_settings SET totp_secret = ?, totp_backup_codes = ?, totp_enabled = 1, totp_type = ? WHERE username = ?
+    """, (secret, json.dumps(backup_codes_hashed), fa_type, username))
+    conn.commit()
+    conn.close()
+    
+    _2FA_SETUP_TEMP_SECRETS.pop(username, None)
+    
+    return jsonify({
+        "ok": True,
+        "message": f"เปิดใช้งาน 2FA ({'ส่ง OTP ทาง Gmail' if fa_type == 'email' else 'Authenticator App'}) สำเร็จ",
+        "backup_codes": backup_codes
+    })
+
+@auth_bp.route("/api/2fa/disable", methods=["POST"])
+@login_required
+def disable_2fa():
+    username = session.get("user")
+    data = request.json or {}
+    password = data.get("password", "")
+    
+    settings = database.get_user_setting(username)
+    if settings.get("custom_password"):
+        if not database.check_password(password, settings["custom_password"]):
+            return jsonify({"ok": False, "error": "รหัสผ่านไม่ถูกต้อง"}), 400
+            
+    conn = database._get_conn()
+    conn.execute("UPDATE user_settings SET totp_enabled = 0, totp_secret = NULL WHERE username = ?", (username,))
+    conn.commit()
+    conn.close()
+    
+    return jsonify({"ok": True, "message": "ปิดใช้งาน 2FA เรียบร้อยแล้ว"})
+
+@auth_bp.route("/api/2fa/verify", methods=["POST"])
+@_limiter.limit("10 per minute")
+def verify_2fa():
+    import pyotp
+    data = request.json or {}
+    pre_auth_token = data.get("pre_auth_token", "")
+    code = str(data.get("code", "")).strip().replace(" ", "").upper()
+    
+    cached = _2FA_PRE_AUTH_CACHE.get(pre_auth_token)
+    if not cached or time.time() > cached.get("expires", 0):
+        _2FA_PRE_AUTH_CACHE.pop(pre_auth_token, None)
+        return jsonify({"ok": False, "error": "เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่อีกครั้ง"}), 400
+        
+    username = cached["user"]
+    settings = database.get_user_setting(username)
+    secret = settings.get("totp_secret", "")
+    fa_type = settings.get("totp_type", "authenticator")
+    
+    valid = False
+    if fa_type == "email":
+        cached_otp = _2FA_EMAIL_OTP_CACHE.get(username)
+        if cached_otp and time.time() <= cached_otp.get("expires", 0):
+            if hmac.compare_digest(cached_otp["otp"], code):
+                valid = True
+                _2FA_EMAIL_OTP_CACHE.pop(username, None)
+    elif secret:
+        totp = pyotp.TOTP(secret)
+        if totp.verify(code, valid_window=1):
+            valid = True
+            
+    # If standard 2FA failed, check Backup Codes
+    if not valid and settings.get("totp_backup_codes"):
+        try:
+            stored_hashes = json.loads(settings["totp_backup_codes"])
+            code_hash = hashlib.sha256(code.encode()).hexdigest()
+            if code_hash in stored_hashes:
+                valid = True
+                # Consume backup code
+                stored_hashes.remove(code_hash)
+                conn = database._get_conn()
+                conn.execute("UPDATE user_settings SET totp_backup_codes = ? WHERE username = ?", (json.dumps(stored_hashes), username))
+                conn.commit()
+                conn.close()
+        except Exception as _be:
+            logger.warning(f"[2FA Backup Code] error: {_be}")
+            
+    if not valid:
+        return jsonify({"ok": False, "error": "รหัส 2FA หรือ Backup Code ไม่ถูกต้อง"}), 400
+        
+    # Clear pre-auth token
+    _2FA_PRE_AUTH_CACHE.pop(pre_auth_token, None)
+    
+    # Issue actual login session
+    client_ip = request.remote_addr or "unknown"
+    database.reset_failed_login(username)
+    session.clear()
+    session.permanent = True
+    session["user"] = settings.get("username_original", username)
+    session["role"] = settings.get("role", "user")
+    _set_session_org(session["user"])
+    database.record_login_attempt(client_ip, username, success=True)
+    database.log_audit_event(session["user"], session.get("org_id", 1), "USER_LOGIN_2FA", "2FA Login successful", client_ip)
+    
+    return jsonify({
+        "ok": True,
+        "user": session["user"],
+        "role": session["role"],
+        "org_role": session.get("org_role"),
+        "has_org": session.get("org_id") is not None
+    })
 
 
 @auth_bp.route("/api/qr/generate", methods=["POST"])
@@ -1476,7 +1775,7 @@ def api_login_google():
         session["user"] = username
         session["role"] = settings.get("role", "user") if settings else "user"
         _set_session_org(username)
-        return jsonify({"ok": True, "user": username, "role": session["role"], "org_role": session.get("org_role")})
+        return jsonify({"ok": True, "user": username, "role": session["role"], "org_role": session.get("org_role"), "has_org": session.get("org_id") is not None})
 
     except Exception as e:
         logger.error(f"Google Login Error: {e}")
@@ -1848,6 +2147,10 @@ def onboarding_page():
     plan_name   = plan_config.get("name", "Free")
     line_bot_id = os.environ.get("LINE_BOT_BASIC_ID", "").strip()
     is_promptpay = (payment_method == "promptpay")
+
+    # ถ้าผู้ใช้อยู่ในองค์กรเรียบร้อยแล้ว และไม่ได้อยู่ในขั้นตอนชำระเงิน → redirect ไปหน้าหลัก (/) ทันที
+    if has_org and not payment_status and not sid and not prompt_login:
+        return redirect("/")
     has_line_group = False
     if org_id:
         try:
@@ -2479,6 +2782,8 @@ def update_org_member_permissions(username):
         update_kwargs["can_delete_kb"] = bool(data["can_delete_kb"])
     if "can_view_financial" in data:
         update_kwargs["can_view_financial"] = bool(data["can_view_financial"])
+    if "can_manage_leave" in data:
+        update_kwargs["can_manage_leave"] = bool(data["can_manage_leave"])
     if "notes" in data:
         update_kwargs["notes"] = data["notes"]
         

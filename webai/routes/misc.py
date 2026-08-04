@@ -31,7 +31,7 @@ from routes.shared import (
     send_push_notification, batch_send_push_notification,
     get_weather_context, THAI_HOLIDAYS_2026, get_current_time,
     VAPID_PUBLIC_KEY,
-    get_current_org_id, _get_gemini_api_key,
+    get_current_org_id, _get_gemini_api_key, is_superadmin_user,
 )
 
 logger = logging.getLogger("OrgChatAI.Misc")
@@ -118,9 +118,7 @@ def index():
     if user:
         settings = database.get_user_setting(user)
         is_admin = settings.get("role") == "admin"
-        sa_users_str = os.environ.get("SUPERADMIN_USERS", "Admin")
-        sa_users = [u.strip().lower() for u in sa_users_str.split(",") if u.strip()]
-        is_superadmin = user.lower() in sa_users
+        is_superadmin = is_superadmin_user(user)
         # Check org_role from session first, fallback to DB check
         is_org_admin = session.get("org_role") == "admin"
         if not is_org_admin:
@@ -200,9 +198,7 @@ def status():
     user_settings = database.get_user_setting(session.get("user"))
     
     user = session.get("user")
-    sa_users_str = os.environ.get("SUPERADMIN_USERS", "Admin")
-    sa_users = [u.strip().lower() for u in sa_users_str.split(",") if u.strip()]
-    is_superadmin = (user.lower() in sa_users) if user else False
+    is_superadmin = is_superadmin_user(user) if user else False
     
     org_id = session.get("org_id")
     org_role = session.get("org_role")
