@@ -1237,21 +1237,38 @@ function updateThemeIcon() {
   const isDark = document.documentElement.classList.contains('dark');
   if (themeIcon) {
     themeIcon.setAttribute('data-lucide', isDark ? 'sun' : 'moon');
-    themeText.textContent = isDark ? 'โหมดกลางวัน' : 'โหมดกลางคืน';
-    initIcons();
   }
+  if (themeText) {
+    themeText.textContent = isDark ? 'โหมดกลางวัน' : 'โหมดกลางคืน';
+  }
+  
+  // Update class-based theme elements (e.g. inside settings/profile modals)
+  document.querySelectorAll('.themeIcon').forEach(el => {
+    el.setAttribute('data-lucide', isDark ? 'sun' : 'moon');
+  });
+  document.querySelectorAll('.themeText').forEach(el => {
+    el.textContent = isDark ? 'โหมดกลางวัน' : 'โหมดกลางคืน';
+  });
+  
+  initIcons();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  const toggleTheme = () => {
+    document.documentElement.classList.toggle('dark');
+    const isDark = document.documentElement.classList.contains('dark');
+    state.theme = isDark ? 'dark' : 'light';
+    localStorage.setItem('theme', state.theme);
+    updateThemeIcon();
+    toast(`เปลี่ยนธีมเป็น: ${isDark ? 'โหมดกลางคืน' : 'โหมดกลางวัน'}`, 'info');
+  };
+
   if (themeToggle) {
-    themeToggle.onclick = () => {
-      document.documentElement.classList.toggle('dark');
-      const isDark = document.documentElement.classList.contains('dark');
-      state.theme = isDark ? 'dark' : 'light';
-      localStorage.setItem('theme', state.theme);
-      updateThemeIcon();
-      toast(`เปลี่ยนธีมเป็น: ${isDark ? 'โหมดกลางคืน' : 'โหมดกลางวัน'}`, 'info');
-    };
+    themeToggle.onclick = toggleTheme;
+  }
+  const profileThemeToggle = $('profileThemeToggle');
+  if (profileThemeToggle) {
+    profileThemeToggle.onclick = toggleTheme;
   }
 });
 
