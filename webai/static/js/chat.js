@@ -40,7 +40,7 @@ function initCustomUISettings() {
 }
 
 function setCustomFont(fontName, save = true) {
-  const fontCss = FONT_MAP[fontName] || FONT_MAP['Inter'];
+  const fontCss = FONT_MAP[fontName] || FONT_MAP['Sarabun'];
   document.documentElement.style.setProperty('--user-font-family', fontCss);
   document.body.style.fontFamily = fontCss;
 
@@ -16898,7 +16898,7 @@ function getCustomUISettings() {
         const stored = localStorage.getItem(CUSTOM_UI_KEY);
         if (stored) return JSON.parse(stored);
     } catch (e) {}
-    return { font: 'Inter', fontSize: 'normal', accent: 'blue' };
+    return { font: 'Sarabun', fontSize: 'normal', accent: 'blue' };
 }
 
 function saveCustomUISettings(settings) {
@@ -16911,7 +16911,7 @@ function applyCustomUI(settings) {
     const s = settings || getCustomUISettings();
 
     // 1. Apply Font Family — use global FONT_MAP for all fonts
-    const targetFont = FONT_MAP[s.font] || FONT_MAP['Inter'];
+    const targetFont = FONT_MAP[s.font] || FONT_MAP['Sarabun'];
     document.documentElement.style.setProperty('--user-custom-font', targetFont);
     document.body.style.fontFamily = targetFont;
 
@@ -16998,7 +16998,7 @@ function setCustomAccent(colorKey) {
 }
 
 function resetCustomUISettings() {
-    const defaults = { font: 'Inter', fontSize: 'normal', accent: 'blue' };
+    const defaults = { font: 'Sarabun', fontSize: 'normal', accent: 'blue' };
     saveCustomUISettings(defaults);
     applyCustomUI(defaults);
 }
