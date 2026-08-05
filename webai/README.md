@@ -1,76 +1,108 @@
-# 🏢 OrgChat AI — ระบบผู้ช่วยอัจฉริยะและจัดการบัญชีองค์กร
+# 🏢 OrgChat AI — Enterprise AI & Smart Office Platform
 
-**OrgChat AI** คือโซลูชัน AI แบบครบวงจรที่รวมพลังของ **RAG (Retrieval-Augmented Generation)** เข้ากับการเชื่อมต่อ **LINE OA** และ **Google Workspace** เพื่อเปลี่ยนเอกสารในองค์กรให้กลายเป็นฐานความรู้ที่โต้ตอบได้ พร้อมระบบจัดการบัญชีและไฟล์อัตโนมัติ
+[![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
+[![Platform](https://img.shields.io/badge/platform-Flask%20%7C%20SQLite%20%7C%20TailwindCSS-lightgrey.svg)]()
+[![AI Provider](https://img.shields.io/badge/AI-Google%20Gemini-orange.svg)]()
+
+**OrgChat AI** คือแพลตฟอร์มผู้ช่วยอัจฉริยะระดับองค์กร (Enterprise AI Assistant) และระบบจัดการสำนักงานอัจฉริยะ (Smart Office) เชื่อมโยงข้อมูลผ่านระบบ **RAG (Retrieval-Augmented Generation)**, **LINE OA API**, **Google Cloud Suite (Drive, Sheets)**, และระบบการเงิน/ภาษีบัญชีอย่างครบวงจร เพื่อยกระดับความเร็วในการทำงานและความโปร่งใสภายในองค์กร
 
 ---
 
-## ✨ คุณสมบัติเด่น (Core Features)
+## 🚀 คุณสมบัติเด่น (Key Features)
 
 ### 🤖 1. AI Assistant "น้องพั้น" (LINE OA Integration)
-- **Smart Chatbot**: โต้ตอบด้วยบุคลิกที่เป็นมิตร สุภาพ และจดจำบริบทขององค์กรได้แม่นยำ
-- **RAG Engine**: ค้นหาคำตอบจากฐานข้อมูลเอกสาร (PDF, CSV, TXT) ของบริษัทได้ทันที
-- **Multi-File Processing**: อัปโหลดรูปภาพ สลิป หรือไฟล์หลายรายการพร้อมกันผ่าน LINE น้องพั้นจะจัดการเข้า Drive ให้เอง
+* **Smart Chatbot:** สนทนาโต้ตอบอย่างเป็นธรรมชาติ สุภาพ ถูกกาลเทศะ และเข้าใจบริบทองค์กร
+* **Document RAG System:** ค้นหาคำตอบจากไฟล์คลังความรู้องค์กร (PDF, DOCX, XLSX, TXT) ได้โดยตรงผ่านช่องแชท LINE
+* **Multi-File Cloud Storage:** อัปโหลดรูปภาพ สลิปโอนเงิน หรือไฟล์เอกสารหลายรายการพร้อมกันใน LINE เพื่ออัปโหลดขึ้น Google Drive จัดระเบียบแยก ปี > เดือน > วัน ให้อัตโนมัติ
 
-### 📊 2. ระบบจัดการบัญชีและไฟล์อัตโนมัติ (Google Cloud Automations)
-- **Auto-Bookkeeping**: อ่านข้อมูลจากสลิปและใบกำกับภาษีด้วย OCR แล้วบันทึกลง **Google Sheets** แยกหมวดหมู่ให้อัตโนมัติ
-- **Reconciliation System**: ระบบกระทบยอดอัจฉริยะ จับคู่สลิปโอนเงินกับใบกำกับภาษีให้อัตโนมัติ
-- **Expense Summary**: สั่งสรุปรายจ่ายประจำวัน/เดือน ได้ทันทีผ่านคำสั่งเสียงหรือข้อความใน LINE
-- **Smart Drive Storage**: จัดเก็บไฟล์ลง Google Drive แยกตาม ปี > เดือน > วัน > ประเภทเอกสาร อย่างเป็นระเบียบ
+### 📊 2. ระบบจัดการการเงินและบัญชีอัจฉริยะ (Google Cloud & Financial Automations)
+* **Auto-Bookkeeping:** ถอดข้อมูลจากรูปภาพใบเสร็จ/สลิปด้วยระบบ OCR และ AI วิเคราะห์ แล้วนำไปลงบัญชีใน **Google Sheets** แยกหมวดหมู่ให้อัตโนมัติ
+* **Reconciliation System:** ระบบกระทบยอดอัจฉริยะ จับคู่รูปสลิปโอนเงินกับข้อมูลใบกำกับภาษี ป้องกันการส่งซ้ำ
+* **Real-time Expense Reporting:** ตรวจสอบยอดรวมสรุปรายจ่าย สรุปหมวดหมู่ และประเมินภาษีผ่านคำสั่งแชทหรือหน้า Dashboard
 
-### 🏥 3. ระบบสนับสนุนองค์กร (Corporate Tools)
-- **Leave Management**: พนักงานสามารถส่งคำลาป่วย/ลากิจ ผ่าน LINE และแนบใบรับรองแพทย์ได้ทันที
-- **Knowledge Search**: ค้นหาไฟล์งานเก่าๆ ใน Drive ผ่านการพิมพ์ค้นหาใน LINE แชท
+### 🏥 3. ระบบจัดการงานบุคคลและสวัสดิการ (Leave Management & HR Tools)
+* **Leave Requests via LINE:** พนักงานสามารถส่งใบลาป่วย ลากิจ ลาพักร้อน พร้อมแนบภาพเอกสารรับรองแพทย์ได้จาก LINE และแจ้งเตือนทีมทันที
+* **Leave Control Dashboard:** ฝั่งผู้ดูแลระบบ (Admin) สามารถตั้งค่าสิทธิ์การลา อนุมัติ/ปฏิเสธใบลา รีเซ็ตจำนวนวันลาคงเหลือของพนักงานรายบุคคลได้ผ่านแผงควบคุมหลังบ้าน
+
+### 🛡️ 4. แผงควบคุมระบบรักษาความปลอดภัยและการทำงาน (Security & Admin Settings)
+* **Session Fingerprint Security:** ป้องกันการโจรกรรมเซสชัน (Session Hijacking) ด้วยระบบตรวจจับ User-Agent Fingerprint
+* **Multi-Theme Interface:** สลับโหมดมืด (Dark Mode) และโหมดสว่าง (Light Mode) ได้อย่างราบรื่น
+* **Robust CSRF Protection:** ปกป้องข้อมูลในทุกช่องทางการส่งข้อมูล (Forms, File Uploads)
 
 ---
 
-## 🛠 การติดตั้ง (Installation)
+## 📁 โครงสร้างโปรเจกต์ (Project Directory Structure)
 
-### 1. เตรียมความพร้อม
-- Python 3.10 ขึ้นไป
-- [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki) (สำหรับระบบอ่านรูปภาพ)
+```text
+├── webai/
+│   ├── app_server.py           # จุดเริ่มต้นของแอปพลิเคชัน (Flask Server Setup & Middleware)
+│   ├── database.py             # ฟังก์ชันการจัดเก็บและดึงข้อมูลจากฐานข้อมูล SQLite
+│   ├── rag_engine.py           # เครื่องมือจัดการ Vector DB (Chroma) และระบบ Parsing เอกสาร
+│   ├── ai_providers.py         # ตัวเชื่อมต่อ API บริการ LLM (Google Gemini / Groq)
+│   ├── google_drive_service.py # บริการจัดการไฟล์บน Google Drive & Google Sheets
+│   ├── routes/                 # โฟลเดอร์แยกโมดูล API และเส้นทางการประมวลผล (Blueprints)
+│   │   ├── auth.py             # ระบบสมาชิก ความปลอดภัย และการยืนยันตัวตน
+│   │   ├── admin.py            # การตั้งค่าองค์กร จัดการพนักงาน และการเงินหลังบ้าน
+│   │   ├── features.py         # ฟีเจอร์เสริม (CRM, ใบเสนอราคา, การประชุม)
+│   │   └── social.py           # ฟีดข่าวสารภายในองค์กรและระบบ LINE Notifications
+│   ├── static/                 # ไฟล์ Frontend Static (JavaScript Core, Styles, Images)
+│   └── templates/              # หน้าตาเว็บส่วนประสานงานผู้ใช้ (HTML JINJA Templates)
+```
 
-### 2. ติดตั้ง Dependencies
+---
+
+## 🛠️ ขั้นตอนการติดตั้งและการรันระบบ (Setup & Running)
+
+### 1. ติดตั้งซอฟต์แวร์ที่จำเป็น
+* ติดตั้ง **Python 3.10** ขึ้นไปบนเครื่องเซิร์ฟเวอร์
+* ติดตั้ง **Tesseract OCR** บน OS เพื่อใช้งานระบบสแกนเอกสารจากรูปภาพ:
+  * **Windows:** ดาวน์โหลดจาก [Tesseract installer](https://github.com/UB-Mannheim/tesseract/wiki) และเพิ่ม Path ใน Environment Variable
+  * **Linux (Ubuntu/Debian):** `sudo apt-get install tesseract-ocr tesseract-ocr-tha`
+
+### 2. ติดตั้งโมดูลเสริม (Dependencies)
+เปิด Terminal ในโฟลเดอร์โปรเจกต์และพิมพ์:
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. ตั้งค่า Environment Variables (.env)
-สร้างไฟล์ `.env` ในโฟลเดอร์หลักและกำหนดค่าดังนี้:
+### 3. กำหนดค่าตัวแปรระบบ (.env)
+สร้างไฟล์ `.env` ไว้ที่โฟลเดอร์รากของโปรเจกต์ และระบุคีย์สำคัญตามตัวอย่างดังนี้:
 ```env
-GEMINI_API_KEY=your_gemini_key
-LINE_CHANNEL_ACCESS_TOKEN=your_line_token
-LINE_CHANNEL_SECRET=your_line_secret
-SPREADSHEET_ID=your_google_sheet_id
-PARENT_FOLDER_ID=your_google_drive_folder_id
-MY_COMPANY_NAME=ชื่อบริษัทของคุณ
+# AI & Core Settings
+GEMINI_API_KEY=your_gemini_api_key_here
+MY_COMPANY_NAME="ชื่อบริษัทของคุณ"
+
+# LINE API
+LINE_CHANNEL_ACCESS_TOKEN=your_line_channel_access_token
+LINE_CHANNEL_SECRET=your_line_channel_secret
+
+# Google API Credentials
+SPREADSHEET_ID=your_google_spreadsheet_id_here
+PARENT_FOLDER_ID=your_google_drive_folder_id_here
+GOOGLE_APPLICATION_CREDENTIALS="path/to/your/service_account_credentials.json"
+
+# App Security Settings
+FLASK_SECRET_KEY=your_random_secret_key_for_sessions
 ```
 
----
-
-## 🚀 คำสั่งแนะนำสำหรับ LINE OA (Command Guide)
-
-คุณสามารถพิมพ์คำสั่งเหล่านี้หา "น้องพั้น" ได้ทันที:
-- 📊 **"สรุปรายจ่าย"** — เพื่อดูยอดรวมและหมวดหมู่การใช้จ่ายของเดือนนี้
-- 🔍 **"หาไฟล์ [ชื่อไฟล์]"** — ค้นหาไฟล์เอกสารใน Google Drive
-- ⏳ **"กระทบยอด"** — เริ่มระบบจับคู่สลิปกับใบกำกับภาษีอัตโนมัติ
-- 🏥 **"ลาป่วย"** — เพื่อแจ้งการลางานและบันทึกเข้าสู่ระบบ
-- 📁 **"เปิด Drive"** — รับลิงก์เข้าสู่โฟลเดอร์เก็บเอกสารขององค์กร
-
----
-
-## 📂 โครงสร้างโปรเจกต์ (Project Structure)
-- `app_server.py`: หัวใจหลักของระบบ จัดการ Webhook และ API ทั้งหมด
-- `google_drive_service.py`: ระบบเชื่อมต่อ Google Drive และ Sheets อัจฉริยะ
-- `rag_engine.py`: ระบบค้นหาข้อมูลจากฐานความรู้ (Vector Database)
-- `database.py`: จัดการฐานข้อมูล SQLite สำหรับ Logs และระบบลางาน
-- `ai_providers.py`: ส่วนเชื่อมต่อกับ LLM (Google Gemini / Groq)
-- `static/ & templates/`: ส่วนของ Web Interface สำหรับการจัดการหลังบ้าน
+### 4. รันระบบเซิร์ฟเวอร์
+* **โหมดนักพัฒนา (Development Server):**
+  ```bash
+  python app_server.py
+  ```
+* **โหมดใช้งานจริง (Production Server - Gunicorn):**
+  ```bash
+  gunicorn -w 4 -b 0.0.0.0:8000 app_server:app
+  ```
 
 ---
 
-## 🛡 ความปลอดภัย (Security)
-- ข้อมูลและเอกสารของคุณจะถูกประมวลผลและเก็บไว้ใน Google Drive ขององค์กรคุณเอง
-- ระบบรองรับการทำงานแบบ On-premise หรือ Deploy บน Cloud (Google Cloud Run) เพื่อความปลอดภัยสูงสุด
+## 💬 ตัวอย่างคำสั่งใช้งานผ่าน LINE OA
+พนักงานสามารถพิมพ์แชทคำสั่งหาบอทผู้ช่วยได้ทันที เช่น:
+* 🏥 `ขอลาป่วย 1 วัน พร้อมใบรับรองแพทย์` - ระบบบันทึกและส่งแจ้งเตือนใบลา
+* 📊 `สรุปรายจ่ายเดือนนี้` - สรุปรายการใช้จ่ายแบบเรียลไทม์
+* 📁 `ค้นหาไฟล์ [ชื่อไฟล์]` - ค้นหาและขอลิงก์เข้าถึงเอกสารใน Drive ของส่วนกลาง
+* 🤝 `ตรวจสอบกระทบยอด` - ค้นหาและกระทบยอดเงินโอนอัตโนมัติ
 
 ---
-**พัฒนาโดยทีมงาน OrgChat AI — เพิ่มประสิทธิภาพให้องค์กรด้วยพลังแห่งปัญญาประดิษฐ์** 🌟
+**พัฒนาโดยทีมงาน OrgChat AI — เชื่อมต่อการสื่อสาร คลังความรู้ และการทำงานอย่างมีประสิทธิภาพด้วยพลังแห่งปัญญาประดิษฐ์** 🌟
