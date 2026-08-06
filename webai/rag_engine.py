@@ -1251,14 +1251,14 @@ def retrieve_context(question: str, where: dict = None) -> tuple[str, list[dict]
     detailed_sources = []
     seen_source_keys = set()
     
-    for r in results:
+    for idx, r in enumerate(results, 1):
         loc = r.get("location", "Document")
         dept = r.get("department", "General")
         src = r.get("source", "?")
         fid = r.get("file_id", "")
         
         # Build context text for AI
-        context_parts.append(f"--- แหล่งที่มา: {src} [{loc}] ({dept}) ---\n{r['text']}")
+        context_parts.append(f"[เอกสารอ้างอิง {idx}] แหล่งที่มา: {src} [{loc}] ({dept})\nเนื้อหา:\n{r['text']}\n")
         
         # Build structured sources for UI
         source_key = f"{fid}_{loc}"
