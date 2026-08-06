@@ -1224,8 +1224,10 @@ def retrieve_context(question: str, where: dict = None) -> tuple[str, list[dict]
         
         # 2. Standard Hybrid Query (Semantic + Keyword)
         results = _get_kb().hybrid_query(question, where=where)
-        # Filter by score (keep only >= 0.42) - Increased from 0.35 to reduce noise
-        results = [r for r in results if r.get("score", 0) >= 0.42]
+        # Filter by score dynamically (keep only >= 0.42 AND within 0.15 of the top score to prune noisy documents)
+        if results:
+            max_score = max(r.get("score", 0) for r in results)
+            results = [r for r in results if r.get("score", 0) >= 0.42 and r.get("score", 0) >= (max_score - 0.15)]
         
         # Merge results, prioritize filename chunks
         seen_texts = set()
