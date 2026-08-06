@@ -2553,7 +2553,7 @@ def save_message(role, text, sources=None, username="Admin", org_id=1):
 def get_history(username="Admin", limit=50, org_id=1):
     conn = _get_conn()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, role, text, sources FROM messages WHERE username = ? AND organization_id = ? ORDER BY timestamp ASC LIMIT ?", (username, org_id, limit))
+    cursor.execute("SELECT id, role, text, sources FROM messages WHERE username = ? AND organization_id = ? ORDER BY timestamp DESC LIMIT ?", (username, org_id, limit))
     rows = cursor.fetchall()
     conn.close()
 
@@ -2565,6 +2565,7 @@ def get_history(username="Admin", limit=50, org_id=1):
             "text": r[2],
             "sources": json.loads(r[3]) if r[3] else []
         })
+    history.reverse()
     return history
 
 def clear_history(username="Admin", org_id=1):
