@@ -5689,12 +5689,21 @@ def handle_bot_response(cid, user_text, ctype, original_sender=None, image_data=
         if selected_persona_id and str(selected_persona_id).isdigit():
             persona = database.get_persona(int(selected_persona_id))
 
+        p_name = persona.get('name') if persona else 'น้องพั้น'
+        identity_safety = (
+            f"\n[คำเตือนเรื่องตัวตน]: ในคลังข้อมูลอาจมีข้อมูลพนักงานจริงที่มีชื่อเหมือนหรือคล้ายกับชื่อบอทของคุณ ({p_name})\n"
+            f"โปรดจำไว้ว่าคุณคือ AI Assistant ไม่ใช่บุคคลที่มีชื่อเดียวกันในระบบ! "
+            f"หากผู้ใช้ถามข้อมูลส่วนตัว (เบอร์โทร, ตำแหน่ง, ชื่อจริง) ของคนชื่อ {p_name} ให้คุณตอบข้อมูลของพนักงานคนนั้นตามที่ระบุในเอกสารอ้างอิง "
+            f"ห้ามเอาข้อมูลของพนักงานคนนั้นมาอ้างว่าเป็นของตัวคุณเอง (ห้ามบอกว่า 'เบอร์ของฉันคือ...' หรือ 'ตำแหน่งของฉันคือ...') เด็ดขาด เพราะคุณคือ AI ค่ะ\n\n"
+        )
+
         if persona:
             system_prompt = (
                 f"คุณคือ '{persona.get('name')}'\n\n"
                 f"{persona.get('system_prompt', '')}\n\n"
                 f"เวลาปัจจุบันคือ: {now}\n\n"
             )
+            system_prompt += identity_safety
         else:
             system_prompt = (
                 f"คุณคือ 'น้องพั้น' (Nong Punch) ผู้ช่วยประจำองค์กรที่น่ารักและแสนดี เป็นกันเองเหมือนคนจริงๆ\n"
@@ -5710,6 +5719,7 @@ def handle_bot_response(cid, user_text, ctype, original_sender=None, image_data=
                 "8. หากในคลังความรู้ไม่มีข้อมูลเกี่ยวกับเรื่องที่ถามเลยจริงๆ ให้บอกอย่างสุภาพและเป็นธรรมชาติว่า 'น้องพั้นยังไม่พบข้อมูลเรื่องนี้ในระบบเลยค่ะพี่' โดยไม่ต้องพูดปฏิเสธอิงกับคำว่า 'ในไฟล์'\n"
                 "9. **ห้ามระบุหมายเลขวงเล็บเหลี่ยม (เช่น [1], [2]) ลงในข้อความตอบกลับเด็ดขาด** ให้เขียนตอบแบบเนื้อความปกติลื่นไหลได้เลย เนื่องจากระบบหน้าบ้านจะแสดงแถบปุ่มแหล่งอ้างอิงด้านล่างข้อความโดยอัตโนมัติอยู่แล้ว\n"
             )
+            system_prompt += identity_safety
 
         # Inject Schedules into context only if NOT a simple greeting or if specifically asked
         current_date_str = get_current_time().split()[0]
@@ -6109,6 +6119,14 @@ def chat():
         f"{agentic_info}\n"
         f"{kb_inventory}\n"
     )
+
+    identity_safety = (
+        f"\n[คำเตือนเรื่องตัวตน]: ในคลังข้อมูลอาจมีข้อมูลพนักงานจริงที่มีชื่อเหมือนหรือคล้ายกับชื่อบอทของคุณ ({persona_name})\n"
+        f"โปรดจำไว้ว่าคุณคือ AI Assistant ไม่ใช่บุคคลที่มีชื่อเดียวกันในระบบ! "
+        f"หากผู้ใช้ถามข้อมูลส่วนตัว (เบอร์โทร, ตำแหน่ง, ชื่อจริง) ของคนชื่อ {persona_name} ให้คุณตอบข้อมูลของพนักงานคนนั้นตามที่ระบุในเอกสารอ้างอิง "
+        f"ห้ามเอาข้อมูลของพนักงานคนนั้นมาอ้างว่าเป็นของตัวคุณเอง (ห้ามบอกว่า 'เบอร์ของฉันคือ...' หรือ 'ตำแหน่งของฉันคือ...') เด็ดขาด เพราะคุณคือ AI ค่ะ\n\n"
+    )
+    system_prompt += identity_safety
 
     if weather_ctx:
         system_prompt += (
