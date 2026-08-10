@@ -226,6 +226,26 @@ def org_admin_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+def leave_manager_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if "user" not in session:
+            return jsonify({"ok": False, "error": "กรุณาเข้าสู่ระบบก่อนใช้งาน"}), 401
+        me = session.get("user")
+        org_id = get_current_org_id()
+        if not org_id:
+            return jsonify({"ok": False, "error": "คุณยังไม่ได้อยู่ในองค์กร"}), 403
+        # System admin (role="admin") หรือ Org admin มีสิทธิ์จัดการโดยอัตโนมัติ
+        if session.get("role") == "admin" or database.is_org_admin(org_id, me):
+            return f(*args, **kwargs)
+        # ตรวจสอบสิทธิ์ can_manage_leave ของผู้ใช้งาน
+        u_settings = database.get_user_setting(me)
+        if u_settings and u_settings.get("can_manage_leave"):
+            return f(*args, **kwargs)
+        return jsonify({"ok": False, "error": "เฉพาะผู้ที่มีสิทธิ์จัดการวันลาหรือ Admin เท่านั้นที่มีสิทธิ์เข้าถึงส่วนนี้"}), 403
+    return decorated_function
+
+
 def is_superadmin_user(username):
     """Check if a username is in the SUPERADMIN_USERS list or is the authorized superadmin email."""
     if not username:

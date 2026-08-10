@@ -944,6 +944,12 @@ def init_db():
     try:
         cursor.execute("ALTER TABLE user_settings ADD COLUMN totp_backup_codes TEXT")
     except sqlite3.OperationalError: pass
+    try:
+        cursor.execute("ALTER TABLE user_settings ADD COLUMN can_use_ai INTEGER DEFAULT 1")
+    except sqlite3.OperationalError: pass
+    try:
+        cursor.execute("ALTER TABLE user_settings ADD COLUMN can_claim_expense INTEGER DEFAULT 1")
+    except sqlite3.OperationalError: pass
 
     # Migration: Add category_id to knowledge_base
     try:
@@ -4116,7 +4122,7 @@ def get_line_permissions(username: str) -> str:
         print(f"Error getting LINE permissions for {username}: {e}")
     return 'report,links,reconcile,search,folder,leave'
 
-def admin_update_user(username, display_name=None, role=None, is_active=None, notes=None, can_view_kb=None, can_edit_kb=None, can_delete_kb=None, department=None, can_view_financial=None, position=None, line_permissions=None, can_manage_leave=None):
+def admin_update_user(username, display_name=None, role=None, is_active=None, notes=None, can_view_kb=None, can_edit_kb=None, can_delete_kb=None, department=None, can_view_financial=None, position=None, line_permissions=None, can_manage_leave=None, can_use_ai=None, can_claim_expense=None):
     """Admin updates a user's profile and settings."""
     conn = _get_conn()
     cursor = conn.cursor()
@@ -4147,7 +4153,7 @@ def admin_update_user(username, display_name=None, role=None, is_active=None, no
         for col, val in profile_updates.items():
             cursor.execute(f"UPDATE user_profiles SET {col} = ? WHERE username = ?", (val, username))
     # Upsert settings
-    if any(v is not None for v in [role, is_active, notes, can_view_kb, can_edit_kb, can_delete_kb, can_view_financial, line_permissions, can_manage_leave]):
+    if any(v is not None for v in [role, is_active, notes, can_view_kb, can_edit_kb, can_delete_kb, can_view_financial, line_permissions, can_manage_leave, can_use_ai, can_claim_expense]):
         cursor.execute("INSERT OR IGNORE INTO user_settings (username) VALUES (?)", (username,))
         if role is not None:
             cursor.execute("UPDATE user_settings SET role = ? WHERE username = ?", (role, username))
@@ -4165,10 +4171,15 @@ def admin_update_user(username, display_name=None, role=None, is_active=None, no
             cursor.execute("UPDATE user_settings SET line_permissions = ? WHERE username = ?", (line_permissions, username))
         if can_manage_leave is not None:
             cursor.execute("UPDATE user_settings SET can_manage_leave = ? WHERE username = ?", (1 if can_manage_leave else 0, username))
+        if can_use_ai is not None:
+            cursor.execute("UPDATE user_settings SET can_use_ai = ? WHERE username = ?", (1 if can_use_ai else 0, username))
+        if can_claim_expense is not None:
+            cursor.execute("UPDATE user_settings SET can_claim_expense = ? WHERE username = ?", (1 if can_claim_expense else 0, username))
         if notes is not None:
             cursor.execute("UPDATE user_settings SET notes = ?, updated_at = CURRENT_TIMESTAMP WHERE username = ?", (notes, username))
     conn.commit()
     conn.close()
+
 
 def admin_reset_user_password(username, new_password):
     """Admin sets a custom password override for a user (hashed with bcrypt)."""

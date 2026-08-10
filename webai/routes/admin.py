@@ -40,7 +40,7 @@ import peak_service
 import settings_manager
 
 from routes.shared import (
-    VERSION, socketio, _limiter, login_required, admin_required, superadmin_required, org_admin_required, is_superadmin_user,
+    VERSION, socketio, _limiter, login_required, admin_required, superadmin_required, org_admin_required, is_superadmin_user, leave_manager_required,
     PENDING_LINE_LINKS, _OAUTH_STATES, _store_oauth_state, _pop_oauth_state,
     send_push_notification, batch_send_push_notification,
     get_weather_context, THAI_HOLIDAYS_2026, get_current_time,
