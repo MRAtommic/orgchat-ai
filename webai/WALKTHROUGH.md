@@ -161,3 +161,13 @@ To rollback:
 ```bash
 copy _archive\app_server_pre_blueprint.py app_server.py
 ```
+
+---
+
+## 🔒 Persona Identity Safety Update (New)
+* **What**: Added an explicit identity safety guideline (`[คำเตือนเรื่องตัวตน]`) into the system prompt templates across all channels:
+  1. **LINE Webhook / Autoreply**: inside `handle_bot_response` in [chat.py](file:///c:/Users/FEWIT/Desktop/orgchat-ai-main/webai/routes/chat.py).
+  2. **LINE Group Scheduler / Broadcasts**: inside `run_line_bot_scheduler` in [app_server.py](file:///c:/Users/FEWIT/Desktop/orgchat-ai-main/webai/app_server.py).
+  3. **Web AI Chat Client**: inside `api_chat` in [chat.py](file:///c:/Users/FEWIT/Desktop/orgchat-ai-main/webai/routes/chat.py).
+* **Why**: To prevent name collision issues where an AI assistant shares the same name as a real organization employee in the knowledge base docs. The safety system prompt explicitly instructs the LLM that it is an AI assistant, and if asked for personal details of a person sharing its name, it must quote the reference documents instead of misrepresenting those details as its own.
+

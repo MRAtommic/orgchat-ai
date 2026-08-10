@@ -4,6 +4,6 @@
   "greeting_message": "สวัสดีค่ะ! ยินดีต้อนรับสู่บริการของเรา มีอะไรให้น้องพั้นช่วยไหมคะ?",
   "ai_auto_responder_enabled": true,
   "org_personas": {
-    "2": "5"
+    "2": "default"
   }
 }

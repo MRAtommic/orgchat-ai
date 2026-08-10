@@ -456,7 +456,7 @@ def auth_google_callback():
 
         GoogleWorkspaceManager.invalidate_user_cache(username)
 
-        _CSS = """body{font-family:'Inter','Sarabun',sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0}
+        _CSS = """body{font-family:'Sarabun','Inter',sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0}
         .card{background:white;border-radius:20px;padding:40px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.3);max-width:460px}
         .email{background:#F0FDF4;color:#059669;padding:8px 16px;border-radius:10px;font-weight:600;display:inline-block;margin:10px 0}
         .badge{background:#EFF6FF;color:#1D4ED8;padding:4px 12px;border-radius:20px;font-size:13px;font-weight:600}

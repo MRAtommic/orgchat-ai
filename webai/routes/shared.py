@@ -227,21 +227,27 @@ def org_admin_required(f):
     return decorated_function
 
 def is_superadmin_user(username):
-    """Check if a username is in the SUPERADMIN_USERS list or has system admin role (case-insensitive)."""
+    """Check if a username is in the SUPERADMIN_USERS list or is the authorized superadmin email."""
     if not username:
         return False
+    
+    # Authorized Super Admin email
+    AUTHORIZED_SUPERADMIN = "mxmm2547@gmail.com"
+    
+    # Check if the user's email matches (need to retrieve user email)
+    # Or if their username is in the hardcoded list from environment
     sa_users_str = os.environ.get("SUPERADMIN_USERS", "Admin")
     sa_users = [u.strip().lower() for u in sa_users_str.split(",") if u.strip()]
+    
+    # Check by username first
     if str(username).strip().lower() in sa_users:
         return True
-    if session.get("role") in ("admin", "superadmin"):
+        
+    # Check by email
+    settings = database.get_user_setting(username)
+    if settings and settings.get("email") == AUTHORIZED_SUPERADMIN:
         return True
-    try:
-        settings = database.get_user_setting(username)
-        if settings and settings.get("role") in ("admin", "superadmin"):
-            return True
-    except Exception:
-        pass
+        
     return False
 
 def superadmin_required(f):
@@ -250,8 +256,14 @@ def superadmin_required(f):
         user = session.get("user")
         if not user:
             return jsonify({"ok": False, "error": "Unauthorized"}), 401
-        if not is_superadmin_user(user):
+        
+        # Verify role from DB directly to avoid stale session data
+        settings = database.get_user_setting(user)
+        is_admin_in_db = settings and settings.get("role") in ("admin", "superadmin")
+        
+        if not is_superadmin_user(user) and not is_admin_in_db:
             return jsonify({"ok": False, "error": "Super admin only"}), 403
+            
         return f(*args, **kwargs)
     return decorated_function
 

@@ -816,13 +816,9 @@
         <div class="nav-section-label pt-4 pb-1 text-[10px] font-bold text-amber-500 uppercase tracking-widest px-3 flex items-center gap-1.5">
           <i data-lucide="shield" class="w-3 h-3"></i> จัดการระบบ
         </div>
-        <button class="nav-item w-full {{ '' if is_org_admin else 'hidden' }}"
+        <button class="nav-item w-full {{ '' if (is_org_admin or is_admin) else 'hidden' }}"
           data-view="org" id="nav-org" onclick="showView('org'); loadOrgMembers()">
           <i data-lucide="users-round" class="w-4 h-4"></i> <span>จัดการองค์กร</span>
-        </button>
-        <button class="nav-item w-full {{ '' if is_admin else 'hidden' }}"
-          data-view="admin" id="nav-admin" onclick="showView('admin')">
-          <i data-lucide="shield-check" class="w-4 h-4"></i> <span>แผงควบคุม Admin</span>
         </button>
         <button class="nav-item w-full {{ '' if (is_admin or is_org_admin) else 'hidden' }}"
           data-view="line-groups" id="nav-line-groups" onclick="showView('line-groups'); loadLineGroups(); loadGoogleFoldersForGroupRegister();">
@@ -3909,7 +3905,7 @@
                     <p class="text-xs text-blue-700 dark:text-blue-400 leading-relaxed">
                       หากต้องการแก้ไขข้อมูลสำหรับออกใบเสร็จค่าแพ็คเกจ Paypers (เช่น ที่อยู่ หรือเลขผู้เสียภาษี) กรุณากดปุ่มด้านล่างเพื่อแก้ไขข้อมูล
                     </p>
-                    <button type="button" class="w-full py-2.5 px-4 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 hover:bg-surface-50 dark:hover:bg-surface-750 text-xs font-bold rounded-xl transition-all shadow-sm text-surface-700 dark:text-white">
+                    <button type="button" class="w-full py-2.5 px-4 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 hover:bg-surface-50 dark:hover:bg-surface-700 text-xs font-bold rounded-xl transition-all shadow-sm text-surface-700 dark:text-white">
                       แก้ไขข้อมูลใบเสร็จแพ็คเกจ
                     </button>
                   </div>

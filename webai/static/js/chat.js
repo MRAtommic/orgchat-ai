@@ -9958,7 +9958,7 @@ function renderChart() {
   const isDark = document.documentElement.classList.contains('dark');
   const gridColor = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)';
   const tickColor = isDark ? '#94a3b8' : '#64748b'; // slate-400 / slate-500
-  const fontFamily = "'Inter', 'Sarabun', sans-serif";
+  const fontFamily = "'Sarabun', 'Inter', sans-serif";
 
   // Modern soft color palette
   const COLORS = [
