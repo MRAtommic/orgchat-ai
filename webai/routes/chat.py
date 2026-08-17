@@ -7967,3 +7967,149 @@ def financial_insights():
         "insights": insights
     })
 
+
+# ═══════════════════════════════════════════════════════════════
+# 🧠 Multi-Agent AI Debate & Decision Room (Executive Boardroom)
+# ═══════════════════════════════════════════════════════════════
+
+DEBATE_PERSONAS = {
+    "cfo": {
+        "name": "CFO (ผู้อำนวยการฝ่ายการเงิน)",
+        "role_title": "Chief Financial Officer",
+        "avatar": "💰",
+        "color": "emerald",
+        "system_prompt": "คุณคือ CFO ผู้เชี่ยวชาญด้านการเงินระดับสูงขององค์กร ให้วิเคราะห์ประเด็นโดยเน้น: ความคุ้มค่าทางเศรษฐกิจ (ROI), กระแสเงินสด (Cash Flow), งบประมาณความเสี่ยงทางการเงิน, และจุดคุ้มทุน ตอบอย่างสุขุม เด็ดขาด และมีตัวเลข/เหตุผลเชิงการเงินรองรับเสมอ"
+    },
+    "cmo": {
+        "name": "CMO (ผู้อำนวยการฝ่ายการตลาด)",
+        "role_title": "Chief Marketing Officer",
+        "avatar": "🚀",
+        "color": "amber",
+        "system_prompt": "คุณคือ CMO ผู้เชี่ยวชาญด้านการตลาด การเติบโต และแบรนด์ขององค์กร ให้วิเคราะห์ประเด็นโดยเน้น: การเข้าถึงลูกค้า (Customer Acquisition), Brand Value, ภาพลักษณ์องค์กร, ความพึงพอใจของลูกค้า และโอกาสในการขยายตลาด ตอบอย่างมีพลัง สร้างสรรค์ และเน้นการเติบโต"
+    },
+    "cto": {
+        "name": "CTO (ประธานเจ้าหน้าที่ฝ่ายเทคโนโลยี)",
+        "role_title": "Chief Technology Officer",
+        "avatar": "💻",
+        "color": "cyan",
+        "system_prompt": "คุณคือ CTO ผู้เชี่ยวชาญด้านสถาปัตยกรรมระบบ เทคโนโลยี และความปลอดภัย ให้วิเคราะห์ประเด็นโดยเน้น: ความเป็นไปได้ทางเทคนิค (Feasibility), Scalability, ความปลอดภัย (Cybersecurity), ระยะเวลาพัฒนา (Time-to-market), และภาระการบำรุงรักษา (Technical Debt) ตอบอย่างตรงไปตรงมา เน้นหลักการทางวิศวกรรม"
+    },
+    "lawyer": {
+        "name": "Chief Legal Counsel (ที่ปรึกษากฎหมาย)",
+        "role_title": "Legal & Compliance Officer",
+        "avatar": "⚖️",
+        "color": "rose",
+        "system_prompt": "คุณคือ ที่ปรึกษากฎหมายและบรรษัทภิบาลขององค์กร ให้วิเคราะห์ประเด็นโดยเน้น: กฎหมาย PDPA, ข้อบังคับทางกฎหมาย (Compliance), ความเสี่ยงต่อการถูกฟ้องร้อง, ลิขสิทธิ์และทรัพย์สินทางปัญญา (IP), และสัญญาทางธุรกิจ ตอบอย่างรัดกุม แม่นยำ และเตือนจุดเสี่ยงทางกฎหมายอย่างชัดเจน"
+    }
+}
+
+@chat_bp.route("/api/ai/debate/roles", methods=["GET"])
+@login_required
+def get_debate_roles():
+    """Retrieve available board roles for AI Debate Room."""
+    return jsonify({
+        "ok": True,
+        "roles": [
+            {
+                "id": k,
+                "name": v["name"],
+                "role_title": v["role_title"],
+                "avatar": v["avatar"],
+                "color": v["color"]
+            }
+            for k, v in DEBATE_PERSONAS.items()
+        ]
+    })
+
+
+@chat_bp.route("/api/ai/debate/run", methods=["POST"])
+@login_required
+def run_ai_debate():
+    """
+    Executes a multi-agent debate session with selected board members
+    and generates an executive resolution / consensus.
+    """
+    data = request.json or {}
+    topic = data.get("topic", "").strip()
+    selected_role_keys = data.get("roles", ["cfo", "cmo", "cto", "lawyer"])
+
+    if not topic:
+        return jsonify({"ok": False, "error": "กรุณาระบุหัวข้อหรือปัญหาที่ต้องการให้บอร์ด AI ประชุมวิเคราะห์ค่ะ"}), 400
+
+    # Auto PII Masking on the debate topic
+    topic_masked, _ = database.mask_pii_data(topic)
+
+    org_id = get_current_org_id() or 1
+    _allowed, _used, _limit = billing.check_and_increment(org_id, "ai_query_count")
+    if not _allowed:
+        return jsonify({"ok": False, "error": "usage_limit_reached", "message": "โควตาคำสั่ง AI ประจำเดือนเต็มแล้วค่ะ"}), 403
+
+    provider = ai_providers.get_provider()
+    debate_transcripts = []
+
+    # 1. Round 1: Each persona analyzes the topic from their professional angle
+    for role_key in selected_role_keys:
+        if role_key not in DEBATE_PERSONAS:
+            continue
+        persona = DEBATE_PERSONAS[role_key]
+        prompt = f"""หัวข้อการประชุมบอร์ดบริหาร: "{topic_masked}"
+
+ในฐานะ {persona['name']} ({persona['role_title']}):
+โปรดให้ความเห็น มุมมองเชิงลึก วิเคราะห์ข้อดี ข้อเสีย ความเสี่ยง และจุดยืนของคุณต่อเรื่องนี้ (เขียนกระชับ 3-4 ประเด็นชัดเจน):"""
+
+        opinion = ""
+        try:
+            for chunk in provider.chat_stream(prompt, [], persona["system_prompt"]):
+                if chunk: opinion += chunk
+        except Exception as e:
+            opinion = f"❌ ไม่สามารถสร้างความคิดเห็นของ {persona['name']} ได้: {e}"
+
+        debate_transcripts.append({
+            "role_id": role_key,
+            "name": persona["name"],
+            "role_title": persona["role_title"],
+            "avatar": persona["avatar"],
+            "color": persona["color"],
+            "opinion": opinion.strip()
+        })
+
+    # 2. Round 2: Chairman / AI Synthesizer creates Final Executive Consensus & Action Plan
+    summary_context = "\n\n".join([f"=== {d['name']} ({d['role_title']}) ===\n{d['opinion']}" for d in debate_transcripts])
+    chairman_prompt = f"""หัวข้อการประชุม: "{topic_masked}"
+
+ความคิดเห็นจากบอร์ดบริหารแต่ละฝ่าย:
+{summary_context}
+
+ในฐานะประธานคณะกรรมการบริหาร (Chairman of the Board):
+โปรดสรุปมติที่ประชุม (Executive Board Resolution) เป็นภาษาไทยอย่างชัดเจนและทรงคุณค่า:
+1. 🎯 สรุปจุดร่วมและความเห็นพ้องหลักของบอร์ด
+2. ⚠️ ประเด็นขัดแย้ง/ข้อกังวลที่ต้องจับตาเป็นพิเศษ
+3. 📋 มติที่ประชุมและแผนปฏิบัติการขั้นต่อไป (Next Action Items พร้อมกำหนดฝ่ายรับผิดชอบ)
+4. 💡 ดัชนีชี้วัดความสำเร็จ (Key Success Metrics)
+
+ใช้ฟอร์แมต Markdown ที่เป็นมืออาชีพ มี bullet points ชัดเจน:"""
+
+    consensus = ""
+    try:
+        for chunk in provider.chat_stream(chairman_prompt, [], "คุณคือประธานที่ประชุมผู้มีวิสัยทัศน์ สุขุม และตัดสินใจเฉียบขาด"):
+            if chunk: consensus += chunk
+    except Exception as e:
+        consensus = f"❌ ไม่สามารถสร้างมติที่ประชุมได้: {e}"
+
+    # Log debate event
+    database.log_audit_event(
+        session.get("user", "Anonymous"),
+        "AI_MULTI_AGENT_DEBATE",
+        f"Conducted board debate on topic: '{topic_masked[:60]}...' with {len(debate_transcripts)} members",
+        request.remote_addr or "unknown",
+        org_id
+    )
+
+    return jsonify({
+        "ok": True,
+        "topic": topic_masked,
+        "transcripts": debate_transcripts,
+        "executive_consensus": consensus.strip()
+    })
+
+

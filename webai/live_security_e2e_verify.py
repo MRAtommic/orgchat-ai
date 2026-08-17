@@ -177,14 +177,35 @@ def run_live_verification():
     assert ueba_json.get('ok') is True
     analysis = ueba_json.get('analysis', {})
     print(f" -> UEBA User Risk Score: {analysis.get('risk_score')}/100 (Level: {analysis.get('threat_level')})")
-    print(f" -> Recommended Action: {analysis.get('recommended_action')}")
+    # --- 12. TEST MULTI-AGENT AI DEBATE & DECISION ROOM ---
+    print("\n[TEST 12] Testing Multi-Agent AI Debate & Decision Room (/api/ai/debate)...")
+    res_roles = client.get('/api/ai/debate/roles')
+    assert res_roles.status_code == 200, f"Expected 200, got {res_roles.status_code}"
+    roles_data = res_roles.get_json()
+    assert roles_data.get('ok') is True, "Debate roles must return ok=True"
+    assert len(roles_data.get('roles', [])) == 4, "Must have 4 default executive roles"
+    print(f" -> Found {len(roles_data.get('roles'))} Executive Debate Personas: {[r['id'] for r in roles_data['roles']]}")
+
+    # Test Live Debate Execution with CFO and CTO
+    debate_payload = {
+        "topic": "บริษัทควรเปลี่ยนมาใช้ AI Cloud Solution หรือตั้งเซิร์ฟเวอร์ On-Premise เพื่อความคุ้มค่าและความปลอดภัย?",
+        "roles": ["cfo", "cto"]
+    }
+    res_debate = client.post('/api/ai/debate/run', json=debate_payload, headers=headers)
+    assert res_debate.status_code == 200, f"Expected 200, got {res_debate.status_code}"
+    debate_json = res_debate.get_json()
+    assert debate_json.get('ok') is True, "AI Debate run must return ok=True"
+    assert len(debate_json.get('transcripts', [])) == 2, "Expected 2 debate transcripts"
+    assert len(debate_json.get('executive_consensus', '')) > 20, "Executive consensus must be populated"
+    print(f" -> Successfully Generated Multi-Agent Debate Transcripts ({len(debate_json['transcripts'])} members) & Executive Board Consensus ({len(debate_json['executive_consensus'])} chars)!")
 
     print("\n===============================================================")
-    print("🎉 ALL DEFENSIVE SECURITY SYSTEMS ARE 100% OPERATIONAL & VERIFIED!")
+    print("🎉 ALL DEFENSIVE SECURITY & AI AGENT SYSTEMS ARE 100% OPERATIONAL & VERIFIED!")
     print("===============================================================")
 
 if __name__ == '__main__':
     run_live_verification()
+
 
 
 
