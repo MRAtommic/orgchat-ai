@@ -308,6 +308,19 @@ def serve_sw():
     return send_from_directory('static', 'sw.js', mimetype='application/javascript')
 
 
+@misc_bp.route('/favicon.ico')
+def serve_favicon():
+    """Serve favicon.ico to prevent 404 console errors."""
+    static_dir = os.path.join(current_app.root_path, 'static')
+    if os.path.exists(os.path.join(static_dir, 'favicon.ico')):
+        return send_from_directory('static', 'favicon.ico')
+    # Fallback to app icon if exists
+    for icon_name in ['icon-192.png', 'icon.png', 'logo.png']:
+        if os.path.exists(os.path.join(static_dir, icon_name)):
+            return send_from_directory('static', icon_name, mimetype='image/png')
+    return ('', 204)
+
+
 # ═══════════════════════════════════════════════════════════════
 # 🛡️ Security, Audit & FIM Routes (Chapter 1, 3, 4)
 # ═══════════════════════════════════════════════════════════════

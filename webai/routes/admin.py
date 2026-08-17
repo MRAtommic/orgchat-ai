@@ -4398,7 +4398,7 @@ def set_user_clearance():
     
     ok = database.update_user_clearance_level(username, clearance)
     if ok:
-        database.log_audit_event(session.get("user"), get_current_org_id(), "UPDATE_CLEARANCE", f"Set {username} clearance to {clearance}", request.remote_addr)
+        database.log_audit_event(session.get("user", "Admin"), "UPDATE_CLEARANCE", f"Set {username} clearance to {clearance}", request.remote_addr or "unknown", get_current_org_id() or 1)
     return jsonify({"ok": ok})
 
 
@@ -4412,7 +4412,7 @@ def set_category_access_level():
     access_level = data.get("access_level", "public") # public, internal, confidential, executives
     ok = database.update_kb_category_access_level(cat_id, access_level)
     if ok:
-        database.log_audit_event(session.get("user"), get_current_org_id(), "UPDATE_CATEGORY_ACCESS", f"Set category #{cat_id} access to {access_level}", request.remote_addr)
+        database.log_audit_event(session.get("user", "Admin"), "UPDATE_CATEGORY_ACCESS", f"Set category #{cat_id} access to {access_level}", request.remote_addr or "unknown", get_current_org_id() or 1)
     return jsonify({"ok": ok})
 
 

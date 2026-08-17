@@ -1257,7 +1257,7 @@ def api_login():
         session["role"] = settings.get("role", "user")
         _set_session_org(user_to_session)
         database.record_login_attempt(client_ip, username_raw, success=True)
-        database.log_audit_event(user_to_session, session.get("org_id", 1), "USER_LOGIN", "Login successful", client_ip)
+        database.log_audit_event(user_to_session, "USER_LOGIN", "Login successful", client_ip, session.get("org_id", 1))
         return jsonify({"ok": True, "user": user_to_session, "role": session["role"], "org_role": session.get("org_role"), "has_org": session.get("org_id") is not None})
 
     database.record_login_attempt(client_ip, username_raw, success=False)
@@ -1574,7 +1574,7 @@ def verify_2fa():
     session["role"] = settings.get("role", "user")
     _set_session_org(session["user"])
     database.record_login_attempt(client_ip, username, success=True)
-    database.log_audit_event(session["user"], session.get("org_id", 1), "USER_LOGIN_2FA", "2FA Login successful", client_ip)
+    database.log_audit_event(session["user"], "USER_LOGIN_2FA", "2FA Login successful", client_ip, session.get("org_id", 1))
     
     return jsonify({
         "ok": True,

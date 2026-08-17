@@ -7835,10 +7835,36 @@ def verify_file_integrity(filepath: str) -> tuple[bool, str]:
         conn.close()
 
 
-def log_audit_event(username: str, action: str, details: str = "", ip_address: str = "", org_id: int = 1) -> bool:
-    """Log an audit event with HMAC-SHA256 signature for tamper-evident accounting."""
+def log_audit_event(username: str = "System", action: str = "GENERAL", details: str = "", ip_address: str = "", org_id: int = 1, **kwargs) -> bool:
+    """
+    Log an audit event with HMAC-SHA256 signature for tamper-evident accounting.
+    Supports flexible positional arguments and legacy kwargs (event_type, action_detail, etc.).
+    """
     import hmac
     import hashlib
+
+    # Handle legacy positional ordering: log_audit_event(user, org_id, action, details, ip)
+    if isinstance(action, int) or (isinstance(action, str) and action.isdigit()):
+        # swap org_id and action
+        actual_org_id = int(action)
+        actual_action = details if details else "GENERAL"
+        actual_details = ip_address if ip_address else ""
+        actual_ip = kwargs.get("ip_address", "127.0.0.1")
+        action = actual_action
+        details = actual_details
+        ip_address = actual_ip
+        org_id = actual_org_id
+
+    # Handle legacy kwargs
+    if "event_type" in kwargs and (not action or action == "GENERAL"):
+        action = kwargs.get("event_type", "GENERAL")
+    if "action_detail" in kwargs and not details:
+        details = kwargs.get("action_detail", "")
+    if "org_id" in kwargs:
+        try:
+            org_id = int(kwargs.get("org_id", 1))
+        except (ValueError, TypeError):
+            org_id = 1
     
     secret_salt = os.environ.get("SECRET_KEY", "orgchat_secret_audit_salt")
     payload = f"{org_id}:{username}:{action}:{details}:{ip_address}"
