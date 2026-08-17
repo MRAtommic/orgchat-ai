@@ -206,7 +206,11 @@ def admin_required(f):
     def decorated_function(*args, **kwargs):
         if "user" not in session:
             return jsonify({"ok": False, "error": "กรุณาเข้าสู่ระบบก่อนใช้งาน"}), 401
-        if session.get("role") != "admin":
+        me = session.get("user")
+        # Direct DB verification to avoid stale cookie session
+        u_settings = database.get_user_setting(me)
+        is_admin_db = u_settings and u_settings.get("role") in ("admin", "superadmin")
+        if not is_admin_db and session.get("role") != "admin":
             return jsonify({"ok": False, "error": "เฉพาะผู้ดูแลระบบเท่านั้นที่มีสิทธิ์เข้าถึงส่วนนี้"}), 403
         return f(*args, **kwargs)
     return decorated_function
@@ -457,7 +461,12 @@ def _configure_gemini(api_key: str):
 # ═══════════════════════════════════════════════════════════════
 
 def validate_uploaded_file(file_stream, filename) -> tuple[bool, str]:
-    """Validates an uploaded file strictly based on extension, content inspection, and null-byte."""
+    """
+    Validates an uploaded file strictly based on:
+    1. Extension check against ALLOWED_EXTENSIONS
+    2. Deep Magic Bytes / File Signature verification
+    3. Null-byte & Windows PE / ELF / Mach-O executable payload prevention
+    """
     if not filename:
         return False, "ไม่พบชื่อไฟล์"
     ext = os.path.splitext(filename)[1].lower()
@@ -468,15 +477,70 @@ def validate_uploaded_file(file_stream, filename) -> tuple[bool, str]:
         file_stream.seek(0)
     except Exception as e:
         return False, f"ไม่สามารถอ่านข้อมูลโครงสร้างไฟล์ได้: {e}"
+
+    if not header and ext not in ['.txt', '.md', '.csv']:
+        return False, "ไฟล์ว่างเปล่า (0 Bytes)"
+
+    # 🛡️ Global Executable & Script Signature Blocker (even if renamed to allowed extension)
+    if header.startswith(b'MZ') or header.startswith(b'\x7fELF') or header.startswith(b'\xca\xfe\xba\xbe'):
+        return False, "ตรวจพบลายเซ็นต์ไฟล์โปรแกรม Executable / Binary ที่เป็นอันตราย"
+    if header.startswith(b'<?php') or header.startswith(b'#!') or b'<script' in header.lower():
+        return False, "ตรวจพบโค้ดสคริปต์แฝงในไฟล์อัปโหลด"
+
+    # Plain text / CSV / Markdown
     if ext in ['.txt', '.csv', '.md']:
         if b'\x00' in header:
             return False, "โครงสร้างไฟล์ขัดแย้งกับข้อความธรรมดา (พบโค้ดไบนารีแฝงในไฟล์)"
-    if ext == '.pdf' and not header.startswith(b'%PDF'):
-        return False, "โครงสร้างไฟล์ PDF ไม่ถูกต้อง (ลายเซ็นต์ไฟล์ไม่ถูกต้อง)"
-    if ext == '.png' and not header.startswith(b'\x89PNG\r\n\x1a\n'):
-        return False, "โครงสร้างไฟล์ PNG ไม่ถูกต้อง"
-    if ext in ['.jpg', '.jpeg'] and not header.startswith(b'\xff\xd8\xff'):
-        return False, "โครงสร้างไฟล์ JPEG/JPG ไม่ถูกต้อง"
+
+    # PDF
+    elif ext == '.pdf':
+        if not header.startswith(b'%PDF'):
+            return False, "โครงสร้างไฟล์ PDF ไม่ถูกต้อง (ลายเซ็นต์ไฟล์ไม่ตรงกับมาตรฐาน %PDF)"
+
+    # Images
+    elif ext == '.png':
+        if not header.startswith(b'\x89PNG\r\n\x1a\n'):
+            return False, "โครงสร้างไฟล์ PNG ไม่ถูกต้อง"
+    elif ext in ['.jpg', '.jpeg']:
+        if not header.startswith(b'\xff\xd8\xff'):
+            return False, "โครงสร้างไฟล์ JPEG/JPG ไม่ถูกต้อง"
+    elif ext == '.webp':
+        if not (header.startswith(b'RIFF') and len(header) >= 12 and header[8:12] == b'WEBP'):
+            return False, "โครงสร้างไฟล์ WebP ไม่ถูกต้อง"
+    elif ext == '.gif':
+        if not (header.startswith(b'GIF87a') or header.startswith(b'GIF89a')):
+            return False, "โครงสร้างไฟล์ GIF ไม่ถูกต้อง"
+    elif ext == '.bmp':
+        if not header.startswith(b'BM'):
+            return False, "โครงสร้างไฟล์ BMP ไม่ถูกต้อง"
+
+    # Office Documents (ZIP container PK\x03\x04 or legacy OLE b'\xd0\xcf\x11\xe0')
+    elif ext in ['.docx', '.xlsx']:
+        if not (header.startswith(b'PK\x03\x04') or header.startswith(b'\xd0\xcf\x11\xe0')):
+            return False, "โครงสร้างไฟล์เอกสาร Office ไม่ถูกต้อง"
+
+    # Audio & Video
+    elif ext in ['.wav', '.avi']:
+        if not (header.startswith(b'RIFF') and len(header) >= 12 and (header[8:12] == b'WAVE' or header[8:12] == b'AVI ')):
+            return False, "โครงสร้างไฟล์ Audio/Video RIFF ไม่ถูกต้อง"
+    elif ext == '.mp3':
+        # ID3 tag or MPEG sync word (0xFFE or 0xFFF)
+        has_id3 = header.startswith(b'ID3')
+        has_sync = len(header) >= 2 and header[0] == 0xFF and (header[1] & 0xE0) == 0xE0
+        if not (has_id3 or has_sync):
+            return False, "โครงสร้างไฟล์ MP3 ไม่ถูกต้อง"
+    elif ext in ['.mp4', '.m4a', '.mov']:
+        # ISO Base Media File Format (ftyp box within first 32 bytes)
+        if b'ftyp' not in header[:32]:
+            return False, "โครงสร้างไฟล์ Media (MP4/M4A/MOV) ไม่ถูกต้อง"
+    elif ext in ['.webm', '.mkv']:
+        # Matroska / WebM EBML header (0x1A 0x45 0xDF 0xA3)
+        if not header.startswith(b'\x1a\x45\xdf\xa3'):
+            return False, "โครงสร้างไฟล์ WebM ไม่ถูกต้อง"
+    elif ext == '.ogg':
+        if not header.startswith(b'OggS'):
+            return False, "โครงสร้างไฟล์ OGG ไม่ถูกต้อง"
+
     return True, ""
 
 

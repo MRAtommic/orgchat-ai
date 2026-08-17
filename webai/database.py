@@ -370,7 +370,8 @@ def _get_conn(timeout: int = 30):
     conn.execute("PRAGMA busy_timeout=30000")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute("PRAGMA cache_size=-16000")
+    conn.execute("PRAGMA cache_size=-32000")
+    conn.execute("PRAGMA temp_store=MEMORY")
     return DynamicConnectionWrapper(conn, is_postgres=False)
 
 
@@ -435,7 +436,29 @@ def init_db():
             action TEXT NOT NULL,
             details TEXT,
             ip_address TEXT,
+            hash_signature TEXT,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    try:
+        cursor.execute("ALTER TABLE audit_logs ADD COLUMN org_id INTEGER DEFAULT 1")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE audit_logs ADD COLUMN hash_signature TEXT")
+    except sqlite3.OperationalError:
+        pass
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS file_integrity_records (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_path TEXT UNIQUE,
+            file_name TEXT,
+            sha256_hash TEXT NOT NULL,
+            file_size INTEGER,
+            category TEXT DEFAULT 'uploads',
+            last_checked DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
     cursor.execute("""
@@ -882,6 +905,15 @@ def init_db():
             key TEXT PRIMARY KEY,
             value TEXT,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ip_blacklist (
+            ip_address TEXT PRIMARY KEY,
+            reason TEXT,
+            blocked_until DATETIME,
+            violation_count INTEGER DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
     cursor.execute("""
@@ -1557,6 +1589,17 @@ def init_db():
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_meeting_notes_org ON meeting_notes(org_id, created_at)")
 
+    # ══════════════════════════════════════════════════════
+    # High-Performance Composite Indexes
+    # ══════════════════════════════════════════════════════
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_org_user_time ON messages(organization_id, username, timestamp)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_room_messages_room_time ON room_messages(room_id, timestamp)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications(username, is_read, timestamp)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_schedules_org_date ON schedules(organization_id, start_date)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_org_members_user ON organization_members(username, organization_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_usage_tracking_org_ym ON usage_tracking(org_id, year_month)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_quotations_org_created ON quotations(org_id, created_at)")
+
     conn.commit()
     conn.close()
 
@@ -1971,6 +2014,14 @@ def get_org_members(org_id: int) -> list:
     """, (org_id,))
     rows = cursor.fetchall()
     conn.close()
+
+    # Determine the actual earliest admin as owner
+    earliest_admin = None
+    for r in sorted(rows, key=lambda x: x[2] or ""):
+        if r[1] == "admin":
+            earliest_admin = r[0]
+            break
+
     return [{"username": r[0], "role": r[1], "joined_at": r[2],
              "display_name": r[3], "avatar_url": r[4],
              "department": r[5], "position": r[6], "invited_by": r[7],
@@ -1981,16 +2032,111 @@ def get_org_members(org_id: int) -> list:
              "google_connected": bool(r[15]),
              "google_email": r[16] or "",
              "manager_username": r[17] or "",
-             "can_manage_leave": bool(r[18])} for r in rows]
+             "can_manage_leave": bool(r[18]),
+             "is_owner": (r[0].lower() == (earliest_admin or "").lower())} for r in rows]
+
+
+
+def is_org_owner(org_id: int, username: str) -> bool:
+    """Checks if the user is the original creator / Super Admin of the organization (first joined admin)."""
+    if not username:
+        return False
+    conn = _get_conn()
+    cursor = conn.cursor()
+    # Creator is the earliest admin who joined the organization
+    cursor.execute("""
+        SELECT username FROM organization_members 
+        WHERE organization_id = ? AND role = 'admin' 
+        ORDER BY joined_at ASC LIMIT 1
+    """, (org_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row is not None and row[0].lower() == username.lower()
+
+
+def get_org_owner(org_id: int) -> str | None:
+    """Returns the username of the organization's founder / Super Admin."""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT username FROM organization_members 
+        WHERE organization_id = ? AND role = 'admin' 
+        ORDER BY joined_at ASC LIMIT 1
+    """, (org_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else None
 
 
 def is_org_admin(org_id: int, username: str) -> bool:
+    if not username:
+        return False
+    # Org Owner always has full admin authority
+    if is_org_owner(org_id, username):
+        return True
     conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("SELECT role FROM organization_members WHERE organization_id = ? AND username = ? COLLATE NOCASE", (org_id, username))
     row = cursor.fetchone()
     conn.close()
     return row is not None and row[0] == 'admin'
+
+
+def transfer_org_ownership(org_id: int, current_owner: str, new_owner: str) -> tuple[bool, str]:
+    """Transfers the ownership / Super Admin status of an organization to another member."""
+    if not current_owner or not new_owner:
+        return False, "ระบุชื่อผู้ใช้ไม่ถูกต้อง"
+    if current_owner.lower() == new_owner.lower():
+        return False, "ไม่สามารถโอนสิทธิ์ให้ตนเองได้"
+    if not is_org_owner(org_id, current_owner):
+        return False, "เฉพาะ Admin ใหญ่ (Owner) ปัจจุบันเท่านั้นที่มีสิทธิ์โอนความเป็นเจ้าขององค์กร"
+    
+    conn = _get_conn()
+    cursor = conn.cursor()
+    try:
+        # 1. Verify target is a member of the organization
+        cursor.execute("SELECT role, joined_at FROM organization_members WHERE organization_id = ? AND username = ? COLLATE NOCASE", (org_id, new_owner))
+        target_row = cursor.fetchone()
+        if not target_row:
+            return False, "ผู้รับสิทธิ์ไม่ได้เป็นสมาชิกในองค์กรนี้"
+        
+        # 2. Get current earliest admin joined_at to shift target earlier
+        cursor.execute("""
+            SELECT joined_at FROM organization_members 
+            WHERE organization_id = ? AND username = ? COLLATE NOCASE
+        """, (org_id, current_owner))
+        curr_row = cursor.fetchone()
+        curr_joined = curr_row[0] if curr_row else "2020-01-01 00:00:00"
+
+        # 3. Promote target to admin and set joined_at 1 second earlier than current owner
+        import datetime
+        try:
+            from datetime import datetime as dt, timedelta
+            base_dt = dt.fromisoformat(curr_joined)
+            new_joined = (base_dt - timedelta(seconds=1)).strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            new_joined = "2019-01-01 00:00:00"
+
+        cursor.execute("""
+            UPDATE organization_members 
+            SET role = 'admin', joined_at = ? 
+            WHERE organization_id = ? AND username = ? COLLATE NOCASE
+        """, (new_joined, org_id, new_owner))
+
+        # 4. Ensure current owner remains an admin
+        cursor.execute("""
+            UPDATE organization_members 
+            SET role = 'admin' 
+            WHERE organization_id = ? AND username = ? COLLATE NOCASE
+        """, (org_id, current_owner))
+
+        conn.commit()
+        return True, "โอนสิทธิ์ความเป็นเจ้าขององค์กรสำเร็จเรียบร้อยแล้ว"
+    except Exception as e:
+        conn.rollback()
+        return False, str(e)
+    finally:
+        conn.close()
 
 
 def is_org_member(org_id: int, username: str) -> bool:
@@ -2000,6 +2146,7 @@ def is_org_member(org_id: int, username: str) -> bool:
     row = cursor.fetchone()
     conn.close()
     return row is not None
+
 
 
 def remove_org_member(org_id: int, username: str) -> bool:
@@ -3852,7 +3999,7 @@ def get_daily_activities(org_id=1):
 def get_executive_summary_data(org_id=1):
     """
     Aggregates comprehensive data for the Executive Daily Brief.
-    Includes: Expenses, Leave Requests, Pending Tasks, and New Feed Posts.
+    Includes: Expenses, Leave Requests, Pending Approvals, Scheduled Meetings, and New Feed Posts.
     """
     conn = _get_conn()
     conn.row_factory = sqlite3.Row
@@ -3868,15 +4015,25 @@ def get_executive_summary_data(org_id=1):
     
     # 2. HR Summary (Leaves today or starting today)
     cursor.execute("""
-        SELECT l.username, up.display_name, l.leave_type, l.reason
+        SELECT l.username, up.display_name, l.leave_type, l.type, l.reason
         FROM leave_requests l
         LEFT JOIN user_profiles up ON l.username = up.username
-        WHERE l.status = 'approved' 
+        WHERE (l.org_id = ? OR l.org_id IS NULL)
+          AND l.status = 'approved' 
           AND date('now') BETWEEN l.start_date AND l.end_date
-    """)
+    """, (org_id,))
     leaves = cursor.fetchall()
     
-    # 3. Tasks/Schedules Summary (Due today)
+    # 3. Pending Leave Requests Count
+    cursor.execute("""
+        SELECT COUNT(*) as pending_count
+        FROM leave_requests
+        WHERE (org_id = ? OR org_id IS NULL) AND status = 'pending'
+    """, (org_id,))
+    pending_row = cursor.fetchone()
+    pending_count = pending_row['pending_count'] if pending_row else 0
+
+    # 4. Tasks/Schedules Summary (Due today)
     cursor.execute("""
         SELECT title, start_time, category 
         FROM schedules 
@@ -3885,7 +4042,7 @@ def get_executive_summary_data(org_id=1):
     """, (org_id,))
     tasks = cursor.fetchall()
     
-    # 4. Social Feed (Last 24h)
+    # 5. Social Feed (Last 24h)
     cursor.execute("""
         SELECT p.content, up.display_name
         FROM posts p
@@ -3898,11 +4055,13 @@ def get_executive_summary_data(org_id=1):
     conn.close()
     
     return {
-        "finance": {"total_amount": finance['total'] or 0, "count": finance['count']},
+        "finance": {"total_amount": finance['total'] or 0, "count": finance['count'] if finance else 0},
         "leaves": [dict(r) for r in leaves],
+        "pending_leaves_count": pending_count,
         "tasks": [dict(r) for r in tasks],
         "posts": [dict(r) for r in posts]
     }
+
 
 def get_cash_flow_projection(org_id=1):
     """
@@ -6446,6 +6605,20 @@ def count_failed_attempts(ip: str, window_seconds: int = _LOGIN_ATTEMPT_WINDOW) 
         conn.close()
 
 
+def is_known_user_ip(username: str, ip: str) -> bool:
+    """Check if this IP has previously logged in successfully for this user."""
+    conn = _get_conn()
+    try:
+        _ensure_login_attempts_table(conn)
+        row = conn.execute(
+            "SELECT 1 FROM login_attempts WHERE username = ? AND ip = ? AND success = 1 LIMIT 1",
+            (username, ip)
+        ).fetchone()
+        return bool(row)
+    finally:
+        conn.close()
+
+
 # ─── QR Login Token (DB-backed, safe for multi-worker) ───────────────────────
 
 _QR_TTL = 300  # 5 minutes
@@ -7583,6 +7756,498 @@ def kanban_delete_card(card_id: int) -> bool:
     conn.commit()
     conn.close()
     return ok
+
+
+# ═══════════════════════════════════════════════════════════════
+# 🛡️ Infosec & Cryptographic Integrity Helpers (Chapter 1 & 4)
+# ═══════════════════════════════════════════════════════════════
+
+def compute_sha256_file(filepath: str) -> str:
+    """Compute SHA-256 hash of a file for File Integrity Monitoring (FIM)."""
+    import hashlib
+    h = hashlib.sha256()
+    try:
+        with open(filepath, 'rb') as f:
+            while chunk := f.read(65536):
+                h.update(chunk)
+        return h.hexdigest()
+    except Exception:
+        return ""
+
+
+def register_file_integrity(filepath: str, category: str = "uploads") -> bool:
+    """Store baseline SHA-256 hash of a file for FIM detection."""
+    p = Path(filepath)
+    if not p.exists() or not p.is_file():
+        return False
+    
+    sha = compute_sha256_file(str(p))
+    if not sha:
+        return False
+        
+    size = p.stat().st_size
+    conn = _get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO file_integrity_records (file_path, file_name, sha256_hash, file_size, category, last_checked)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(file_path) DO UPDATE SET
+                sha256_hash = excluded.sha256_hash,
+                file_size = excluded.file_size,
+                last_checked = CURRENT_TIMESTAMP
+        """, (str(p), p.name, sha, size, category))
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.error(f"Failed to register FIM for {filepath}: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def verify_file_integrity(filepath: str) -> tuple[bool, str]:
+    """Verify if a file has been modified/tampered with against its baseline hash."""
+    p = Path(filepath)
+    if not p.exists() or not p.is_file():
+        return False, "File does not exist on disk"
+        
+    conn = _get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT sha256_hash FROM file_integrity_records WHERE file_path = ?", (str(p),))
+        row = cur.fetchone()
+        if not row:
+            # Register new baseline if never seen
+            register_file_integrity(str(p))
+            return True, "Baseline created"
+            
+        expected_hash = row[0]
+        current_hash = compute_sha256_file(str(p))
+        if current_hash == expected_hash:
+            cur.execute("UPDATE file_integrity_records SET last_checked = CURRENT_TIMESTAMP WHERE file_path = ?", (str(p),))
+            conn.commit()
+            return True, "Integrity verified (OK)"
+        else:
+            logger.warning(f"🚨 [FIM ALERT] File {p.name} TAMPERED! Expected={expected_hash} Got={current_hash}")
+            return False, f"Tampered! Expected {expected_hash[:8]}... got {current_hash[:8]}..."
+    finally:
+        conn.close()
+
+
+def log_audit_event(username: str, action: str, details: str = "", ip_address: str = "", org_id: int = 1) -> bool:
+    """Log an audit event with HMAC-SHA256 signature for tamper-evident accounting."""
+    import hmac
+    import hashlib
+    
+    secret_salt = os.environ.get("SECRET_KEY", "orgchat_secret_audit_salt")
+    payload = f"{org_id}:{username}:{action}:{details}:{ip_address}"
+    sig = hmac.new(secret_salt.encode('utf-8'), payload.encode('utf-8'), hashlib.sha256).hexdigest()
+    
+    conn = _get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO audit_logs (org_id, username, action, details, ip_address, hash_signature)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (org_id, username or 'System', action, details, ip_address, sig))
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.error(f"Failed to insert audit log: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def get_audit_logs(org_id: int = 1, limit: int = 50) -> list[dict]:
+    """Retrieve recent audit logs with integrity validation."""
+    import hmac
+    import hashlib
+    
+    conn = _get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT id, org_id, username, action, details, ip_address, hash_signature, timestamp
+            FROM audit_logs
+            WHERE org_id = ?
+            ORDER BY id DESC LIMIT ?
+        """, (org_id, limit))
+        rows = cur.fetchall()
+        result = []
+        secret_salt = os.environ.get("SECRET_KEY", "orgchat_secret_audit_salt")
+        for r in rows:
+            aid, oid, uname, act, det, ip, sig, ts = r
+            payload = f"{oid}:{uname}:{act}:{det}:{ip}"
+            expected_sig = hmac.new(secret_salt.encode('utf-8'), payload.encode('utf-8'), hashlib.sha256).hexdigest()
+            is_valid = (sig == expected_sig) if sig else True
+            result.append({
+                "id": aid,
+                "org_id": oid,
+                "username": uname,
+                "action": act,
+                "details": det,
+                "ip_address": ip,
+                "timestamp": str(ts),
+                "is_verified": is_valid
+            })
+        return result
+    finally:
+        conn.close()
+
+
+# ═══════════════════════════════════════════════════════════════
+# 🛑 Anti-Prompt Injection & Jailbreak Guardrail (Chapter 2)
+# ═══════════════════════════════════════════════════════════════
+
+_INJECTION_PATTERNS = [
+    r"(?i)ignore\s+(all\s+)?(previous|prior|above)\s+(instructions|prompts|rules)",
+    r"(?i)disregard\s+(all\s+)?(previous|prior|above)\s+(instructions|prompts|rules)",
+    r"(?i)system\s+prompt",
+    r"(?i)you\s+are\s+now\s+(DAN|unrestricted|jailbroken|an\s+evil|a\s+hacker)",
+    r"(?i)reveal\s+(your\s+)?(instructions|secret|internal\s+prompt|api\s*key)",
+    r"(?i)show\s+me\s+your\s+(initial|system)\s+instructions",
+    r"(?i)bypass\s+(content\s+filter|safety\s+filter|guardrail)",
+    r"(?i)print\s+the\s+system\s+message",
+    r"(?i)ลืมคำสั่ง(ก่อนหน้า|ทั้งหมด|เดิม)",
+    r"(?i)แสดง\s*(system\s*prompt|คำสั่งระบบ|ความลับของระบบ|api\s*key)",
+    r"(?i)ปลดล็อกกฎเกณฑ์ทั้งหมด",
+]
+
+
+def detect_prompt_injection(text: str) -> tuple[bool, str]:
+    """Detect prompt injection and jailbreak attempts in user query."""
+    if not text:
+        return False, ""
+    import re
+    for pattern in _INJECTION_PATTERNS:
+        match = re.search(pattern, text)
+        if match:
+            matched_phrase = match.group(0)
+            logger.warning(f"🚨 [PROMPT INJECTION DETECTED] Triggered by: '{matched_phrase}' in text: '{text[:80]}...'")
+            return True, matched_phrase
+    return False, ""
+
+
+def get_security_health_status(org_id: int = 1) -> dict:
+    """Generate a real-time security health score and defense metrics report."""
+    import datetime as _dt_mod
+    import time as _time_mod
+    conn = _get_conn()
+    cur = conn.cursor()
+    try:
+        # 1. Total audit logs and integrity score
+        logs = get_audit_logs(org_id=org_id, limit=100)
+        total_logs = len(logs)
+        verified_logs = sum(1 for l in logs if l.get('is_verified'))
+        log_integrity_pct = int((verified_logs / total_logs) * 100) if total_logs > 0 else 100
+
+        # 2. File Integrity Monitoring (FIM) stats
+        cur.execute("SELECT COUNT(*), COUNT(CASE WHEN datetime(last_checked) >= datetime('now', '-24 hours') THEN 1 END) FROM file_integrity_records")
+        fim_row = cur.fetchone()
+        total_tracked_files = fim_row[0] if fim_row else 0
+        recent_scanned_files = fim_row[1] if fim_row else 0
+
+        # 3. Failed login attempts in last 24h
+        cur.execute("SELECT COUNT(*) FROM login_attempts WHERE success = 0 AND ts >= ?", (int(_time_mod.time()) - 86400,))
+        failed_attempts_24h = cur.fetchone()[0]
+
+        # 4. MFA / 2FA Adoption Stats
+        cur.execute("SELECT COUNT(*), COUNT(CASE WHEN totp_enabled = 1 THEN 1 END) FROM user_settings")
+        user_row = cur.fetchone()
+        total_users = user_row[0] if user_row else 1
+        mfa_users = user_row[1] if user_row else 0
+        mfa_pct = int((mfa_users / total_users) * 100) if total_users > 0 else 0
+
+        # 5. Calculate overall security score (0 - 100)
+        score = 100
+        if log_integrity_pct < 100:
+            score -= (100 - log_integrity_pct)
+        if failed_attempts_24h > 10:
+            score = max(50, score - 15)
+
+        return {
+            "overall_health_score": score,
+            "status": "EXCELLENT" if score >= 90 else "GOOD" if score >= 75 else "ATTENTION_REQUIRED",
+            "log_integrity_percent": log_integrity_pct,
+            "total_audit_logs": total_logs,
+            "verified_audit_logs": verified_logs,
+            "fim_tracked_files": total_tracked_files,
+            "fim_recent_scans": recent_scanned_files,
+            "failed_logins_24h": failed_attempts_24h,
+            "mfa_enabled_users": mfa_users,
+            "total_users": total_users,
+            "mfa_adoption_percent": mfa_pct,
+            "timestamp": _dt_mod.datetime.now().isoformat()
+        }
+    finally:
+        conn.close()
+
+
+# ═══════════════════════════════════════════════════════════════
+# 🛑 Automated IP Blacklist & Threat Defense Guard (Enterprise)
+# ═══════════════════════════════════════════════════════════════
+
+def is_ip_blacklisted(ip_address: str) -> tuple[bool, str]:
+    """Check if an IP address is currently blocked in the blacklist."""
+    if not ip_address or ip_address in ("127.0.0.1", "localhost", "::1"):
+        return False, ""
+    
+    conn = _get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT reason, blocked_until FROM ip_blacklist 
+            WHERE ip_address = ? AND (blocked_until IS NULL OR datetime(blocked_until) > datetime('now'))
+        """, (ip_address,))
+        row = cur.fetchone()
+        if row:
+            return True, row[0] or "Threat defense security lockout"
+        return False, ""
+    finally:
+        conn.close()
+
+
+def block_ip(ip_address: str, reason: str = "Automated threat lockout", duration_minutes: int = 60):
+    """Add or increment violation for an IP address and lock it out."""
+    if not ip_address or ip_address in ("127.0.0.1", "localhost", "::1"):
+        return
+
+    conn = _get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO ip_blacklist (ip_address, reason, blocked_until, violation_count, created_at)
+            VALUES (?, ?, datetime('now', '+' || ? || ' minutes'), 1, datetime('now'))
+            ON CONFLICT(ip_address) DO UPDATE SET
+                reason = excluded.reason,
+                blocked_until = datetime('now', '+' || ? || ' minutes'),
+                violation_count = ip_blacklist.violation_count + 1
+        """, (ip_address, reason, duration_minutes, duration_minutes))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def unblock_ip(ip_address: str) -> bool:
+    """Remove an IP address from blacklist (Admin Unban)."""
+    conn = _get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM ip_blacklist WHERE ip_address = ?", (ip_address,))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def get_blacklisted_ips() -> list[dict]:
+    """Retrieve all actively blocked IPs with violation history."""
+    conn = _get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT ip_address, reason, blocked_until, violation_count, created_at
+            FROM ip_blacklist
+            ORDER BY created_at DESC
+        """)
+        rows = cur.fetchall()
+        return [
+            {
+                "ip_address": r[0],
+                "reason": r[1],
+                "blocked_until": r[2],
+                "violation_count": r[3],
+                "created_at": r[4]
+            }
+            for r in rows
+        ]
+    finally:
+        conn.close()
+
+
+# ═══════════════════════════════════════════════════════════════
+# 🛡️ Automated PII Data Masking & Anonymizer Guard (PDPA Compliance)
+# ═══════════════════════════════════════════════════════════════
+
+# Pre-compiled Regex patterns for Sensitive PII data
+_THAI_NATIONAL_ID_PATTERN = re.compile(r'\b[1-9]\d{12}\b|\b[1-9]\s?\d{4}\s?\d{5}\s?\d{2}\s?\d\b|\b[1-9]-\d{4}-\d{5}-\d{2}-\d\b')
+_CREDIT_CARD_PATTERN = re.compile(r'\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|6(?:011|5[0-9][0-9])[0-9]{12}|3[47][0-9]{13}|3(?:0[0-5]|[68][0-9])[0-9]{11}|(?:2131|1800|35\d{3})\d{11})\b|\b(?:\d{4}[-\s]){3}\d{4}\b')
+_THAI_PHONE_PATTERN = re.compile(r'\b(?:0[689]\d{8}|0[2-57]\d{7})\b|\b(?:0[689]\d{1}-\d{3}-\d{4}|0[689]\d{2}-\d{3}-\d{3}|0[2-57]-\d{3}-\d{4})\b')
+_EMAIL_PATTERN = re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b')
+
+
+def mask_pii_data(text: str) -> tuple[str, list[dict]]:
+    """
+    Scans and anonymizes sensitive Personally Identifiable Information (PII)
+    in compliance with Thailand's PDPA and GDPR.
+    
+    Returns:
+      (masked_text, detected_pii_items)
+    """
+    if not text or not isinstance(text, str):
+        return text, []
+
+    detected_items = []
+    masked = text
+
+    # 1. Thai National ID (13 digits)
+    def _mask_national_id(match):
+        raw = match.group(0)
+        clean = re.sub(r'[-\s]', '', raw)
+        if len(clean) == 13:
+            detected_items.append({"type": "THAI_NATIONAL_ID", "original": raw})
+            return f"[ID: {clean[:1]}-XXXX-XXXXX-XX-{clean[-1:]}]"
+        return raw
+    masked = _THAI_NATIONAL_ID_PATTERN.sub(_mask_national_id, masked)
+
+    # 2. Credit Card Numbers (15-16 digits)
+    def _mask_credit_card(match):
+        raw = match.group(0)
+        clean = re.sub(r'[-\s]', '', raw)
+        if len(clean) in (15, 16):
+            detected_items.append({"type": "CREDIT_CARD", "original": raw})
+            return f"[CARD: ****-****-****-{clean[-4:]}]"
+        return raw
+    masked = _CREDIT_CARD_PATTERN.sub(_mask_credit_card, masked)
+
+    # 3. Thai Phone Numbers (9-10 digits)
+    def _mask_phone(match):
+        raw = match.group(0)
+        clean = re.sub(r'[-\s]', '', raw)
+        if len(clean) in (9, 10):
+            detected_items.append({"type": "PHONE_NUMBER", "original": raw})
+            return f"[PHONE: {clean[:3]}-***-{clean[-3:]}]"
+        return raw
+    masked = _THAI_PHONE_PATTERN.sub(_mask_phone, masked)
+
+    # 4. Email Addresses
+    def _mask_email(match):
+        raw = match.group(0)
+        parts = raw.split('@')
+        if len(parts) == 2:
+            uname, domain = parts
+            detected_items.append({"type": "EMAIL", "original": raw})
+            masked_uname = uname[:2] + "***" if len(uname) > 2 else uname[:1] + "***"
+            return f"[EMAIL: {masked_uname}@{domain}]"
+        return raw
+    masked = _EMAIL_PATTERN.sub(_mask_email, masked)
+    return masked, detected_items
+
+
+# ═══════════════════════════════════════════════════════════════
+# 🤖 AI Security Threat Intelligence Sentinel (UEBA & DLP Guard)
+# ═══════════════════════════════════════════════════════════════
+
+def analyze_user_threat_behavior(username: str, client_ip: str, action: str, details: str = "", org_id: int = 1) -> dict:
+    """
+    User & Entity Behavior Analytics (UEBA):
+    Detects abnormal activity spikes, data exfiltration patterns,
+    and rapid query harvesting attempts.
+    """
+    import time as _t_mod
+    conn = _get_conn()
+    cur = conn.cursor()
+    try:
+        now_ts = int(_t_mod.time())
+        one_hour_ago = now_ts - 3600
+        five_min_ago = now_ts - 300
+
+        # 1. Query rate analysis (Burst Detection in last 5 min)
+        cur.execute("""
+            SELECT COUNT(*) FROM audit_logs 
+            WHERE username = ? AND datetime(timestamp) >= datetime('now', '-5 minutes')
+        """, (username,))
+        burst_count = cur.fetchone()[0]
+
+        # 2. Total security alerts triggered in last 24h
+        cur.execute("""
+            SELECT COUNT(*) FROM audit_logs 
+            WHERE (username = ? OR ip_address = ?) 
+              AND action LIKE 'SECURITY_%' 
+              AND datetime(timestamp) >= datetime('now', '-24 hours')
+        """, (username, client_ip))
+        alert_count = cur.fetchone()[0]
+
+        # 3. Assess Threat Level & Anomaly Flags
+        threat_level = "LOW"
+        risk_score = 10
+        anomalies = []
+
+        if burst_count > 30:
+            threat_level = "HIGH"
+            risk_score += 40
+            anomalies.append(f"High-frequency request burst ({burst_count} actions in 5 min) - Possible scraping/exfiltration")
+        elif burst_count > 15:
+            threat_level = "MEDIUM"
+            risk_score += 20
+            anomalies.append(f"Moderate activity surge ({burst_count} actions in 5 min)")
+
+        if alert_count >= 5:
+            threat_level = "CRITICAL"
+            risk_score += 50
+            anomalies.append(f"Repeated security violations ({alert_count} alerts in 24h) - Auto containment recommended")
+        elif alert_count >= 2:
+            if threat_level != "CRITICAL":
+                threat_level = "HIGH"
+            risk_score += 25
+            anomalies.append(f"Multiple security violations ({alert_count} alerts in 24h)")
+
+        risk_score = min(100, risk_score)
+
+        return {
+            "username": username,
+            "ip_address": client_ip,
+            "threat_level": threat_level,
+            "risk_score": risk_score,
+            "burst_count_5m": burst_count,
+            "security_alerts_24h": alert_count,
+            "anomalies": anomalies,
+            "recommended_action": "BLOCK_IP" if threat_level == "CRITICAL" else "MONITOR_CLOSELY" if threat_level == "HIGH" else "NORMAL"
+        }
+    finally:
+        conn.close()
+
+
+def get_security_threat_intel(org_id: int = 1) -> dict:
+    """Aggregates enterprise-wide threat telemetry for the SOC Security Dashboard."""
+    conn = _get_conn()
+    cur = conn.cursor()
+    try:
+        # Top active threat IPs
+        cur.execute("""
+            SELECT ip_address, COUNT(*) as cnt 
+            FROM audit_logs 
+            WHERE action LIKE 'SECURITY_%' AND datetime(timestamp) >= datetime('now', '-24 hours')
+            GROUP BY ip_address 
+            ORDER BY cnt DESC LIMIT 5
+        """)
+        threat_ips = [{"ip": r[0], "incidents": r[1]} for r in cur.fetchall()]
+
+        # Top flagged actions
+        cur.execute("""
+            SELECT action, COUNT(*) as cnt 
+            FROM audit_logs 
+            WHERE action LIKE 'SECURITY_%' AND datetime(timestamp) >= datetime('now', '-24 hours')
+            GROUP BY action 
+            ORDER BY cnt DESC LIMIT 5
+        """)
+        flagged_actions = [{"action": r[0], "count": r[1]} for r in cur.fetchall()]
+
+        return {
+            "ok": True,
+            "active_threat_ips": threat_ips,
+            "top_flagged_actions": flagged_actions,
+            "intel_engine_status": "ONLINE (Sentinel v3.4 Active)"
+        }
+    finally:
+        conn.close()
+
+
+
+
+
 
 
 

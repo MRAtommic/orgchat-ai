@@ -12,6 +12,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from celery_app import celery_app
 from redis_manager import RedisManager
+import database
 
 logger = logging.getLogger(__name__)
 

@@ -530,6 +530,11 @@ def meeting_upload():
     if ext not in allowed_audio:
         return jsonify({"ok": False, "error": f"รองรับ: {', '.join(allowed_audio)}"}), 400
 
+    from routes.shared import validate_uploaded_file
+    is_valid, err_msg = validate_uploaded_file(audio_file, audio_file.filename or f"audio{ext}")
+    if not is_valid:
+        return jsonify({"ok": False, "error": f"ไฟล์เสียงไม่ปลอดภัย: {err_msg}"}), 400
+
     # บันทึกไฟล์
     import uuid
     from pathlib import Path
@@ -799,6 +804,11 @@ def receipt_replacement_scan():
     if not file or file.filename == "":
         return jsonify({"ok": False, "error": "ชื่อไฟล์ไม่ถูกต้อง"}), 400
     
+    from routes.shared import validate_uploaded_file
+    is_valid, err_msg = validate_uploaded_file(file, file.filename)
+    if not is_valid:
+        return jsonify({"ok": False, "error": f"ไฟล์ไม่ปลอดภัย: {err_msg}"}), 400
+
     mime_type = file.mimetype or "image/jpeg"
     content = file.read()
     

@@ -310,7 +310,7 @@ def schedule_reminder_background_worker():
             try:
                 cursor = conn.cursor()
                 today_str = now.strftime("%Y-%m-%d")
-                cursor.execute("SELECT id, username, title, date, start_time, is_public, description, category, organization_id FROM schedules WHERE date >= ?", (today_str,))
+                cursor.execute("SELECT id, username, title, start_date, start_time, is_public, description, category, organization_id FROM schedules WHERE start_date >= ?", (today_str,))
                 rows = cursor.fetchall()
                 for row in rows:
                     sid, username, title, date_str, time_str, is_pub, desc, cat, org_id = row
@@ -474,6 +474,14 @@ def create_app():
         # ข้ามสำหรับ static files และ uploads
         if _req.path.startswith('/static') or _req.path.startswith('/uploads'):
             return
+
+        # 🛑 Automated IP Blacklist Enforcement
+        client_ip = _req.remote_addr or "unknown"
+        is_blocked, block_reason = database.is_ip_blacklisted(client_ip)
+        if is_blocked:
+            from flask import jsonify as _json_ip
+            logger.warning(f"🛑 Blocked Request from Blacklisted IP={client_ip} path={_req.path} reason={block_reason}")
+            return _json_ip({"ok": False, "error": "ip_blocked", "message": f"IP ของท่านถูกระงับการเข้าถึงชั่วคราว ({block_reason})"}), 403
 
         # 🛡️ Anti-CSRF Token Enforcement for mutating methods
         if _req.method in ("POST", "PUT", "DELETE", "PATCH"):
@@ -746,52 +754,58 @@ try:
     _scheduler.add_job(_scheduled_daily_summary, 'cron', hour=8, minute=0, id='daily_summary')
 
     def _scheduled_executive_brief():
-        """Aggregates business data per org and sends a briefing to each org's admins only."""
+        """Aggregates business data per org and sends a smart Morning Briefing Flex Card to linked admins & members at 08:30."""
         try:
             all_orgs = database.get_all_orgs_with_stats()
+            today_str = datetime.now().strftime("%d/%m/%Y")
             for org in all_orgs:
                 org_id = org["id"]
+                org_name = org.get("name") or "OrgChat Workspace"
                 try:
-                    # ส่งเฉพาะ paid plan — free plan ไม่มี financial dashboard
-                    if billing.get_effective_plan(org_id) == "free":
-                        continue
-
+                    # ดึงข้อมูลภาพรวมขององค์กร
                     data = database.get_executive_summary_data(org_id=org_id)
                     finance = data.get("finance", {})
                     leaves = data.get("leaves", [])
                     tasks = data.get("tasks", [])
+                    pending_count = data.get("pending_leaves_count", 0)
 
-                    cf_data = database.get_cash_flow_projection(org_id=org_id)
-                    projection = cf_data.get("projection", 0)
-                    top_cats = cf_data.get("top_categories", [])
+                    # สร้าง LINE Flex Bubble สรุปยามเช้า
+                    from routes.chat import create_morning_briefing_flex_bubble, send_line_push_notification
+                    brief_bubble = create_morning_briefing_flex_bubble(
+                        org_name=org_name,
+                        date_str=today_str,
+                        meetings=tasks,
+                        leaves_today=leaves,
+                        expenses_24h=finance,
+                        pending_leaves_count=pending_count
+                    )
 
-                    summary = "📊 **สรุปภาพรวมผู้บริหาร (Executive Brief)**\n\n"
-                    summary += f"💰 **การเงิน:** มีรายจ่ายใหม่ {finance.get('count', 0)} รายการ ยอดรวม {finance.get('total_amount', 0):,.2f} บาท\n"
-                    summary += f"📈 **พยากรณ์รายจ่ายเดือนหน้า:** ~{projection:,.0f} บาท\n"
-
-                    if top_cats:
-                        summary += f"🔍 **หมวดหมู่หลัก:** {', '.join(c['category'] for c in top_cats)}\n"
-
-                    summary += "\n"
-                    if leaves:
-                        summary += "👤 **พนักงานลา:** " + ", ".join([f"{l['display_name']} ({l['leave_type']})" for l in leaves]) + "\n"
-                    else:
-                        summary += "👤 **พนักงานลา:** วันนี้ไม่มีพนักงานแจ้งลา\n"
-
-                    if tasks:
-                        summary += f"📅 **งานวันนี้ ({len(tasks)}):** " + ", ".join([t['title'] for t in tasks[:3]]) + ("..." if len(tasks) > 3 else "") + "\n"
-
-                    # ส่งเฉพาะ admin ของ org — ไม่ใช่ทุกคน (exec brief = สำหรับผู้บริหาร)
                     members = database.get_org_members(org_id)
                     admin_unames = [m["username"] for m in members if m.get("role") == "admin"]
-                    if not admin_unames:
-                        continue
-                    notification_db.notify_users(admin_unames, "exec_brief", "Executive Summary", summary, link="#dashboard")
-                    print(f">>> Executive Briefing org={org_id} → {len(admin_unames)} admins")
+                    all_unames = [m["username"] for m in members]
+
+                    # ส่งแจ้งเตือนในระบบเว็บ Dashboard
+                    summary_web = f"🌅 สรุปยามเช้า {org_name}: วันนี้มี {len(tasks)} นัดหมาย, {len(leaves)} คนลา, ค่าใช้จ่าย 24 ชม. {finance.get('total_amount', 0):,.2f} ฿"
+                    if admin_unames:
+                        notification_db.notify_users(admin_unames, "exec_brief", "Smart Morning Briefing", summary_web, link="#dashboard")
+
+                    # ส่ง LINE Push Notification หาผู้ใช้ทุกคนที่มีการผูก LINE ในองค์กร
+                    for m in members:
+                        uname = m["username"]
+                        threading.Thread(target=send_line_push_notification, args=(
+                            uname,
+                            f"🌅 สรุปภาพรวมยามเช้า • {org_name}",
+                            summary_web
+                        ), kwargs={"flex_bubble": brief_bubble}).start()
+
+                    print(f">>> 🌅 Smart Morning Briefing delivered for org={org_id} ({org_name}) → {len(members)} members")
                 except Exception as _oe:
-                    print(f">>> Executive brief error org={org_id}: {_oe}")
+                    print(f">>> ⚠️ Morning brief error org={org_id}: {_oe}")
         except Exception as e:
-            print(f">>> Scheduled executive brief error: {e}")
+            print(f">>> ⚠️ Scheduled morning brief error: {e}")
+
+    _scheduler.add_job(_scheduled_executive_brief, 'cron', hour=8, minute=30, id='morning_executive_brief')
+
 
     def _scheduled_knowledge_harvest():
         """Analyzes chat to suggest new Wiki content."""
@@ -872,6 +886,21 @@ try:
             logger.warning(f"[ScheduledBroadcasts] error: {_e}")
 
     _scheduler.add_job(_scheduled_line_broadcasts, 'interval', minutes=1, id='line_broadcasts')
+
+    # 🧹 ทำความสะอาดและ Optimize ฐานข้อมูล SQLite ทุกสัปดาห์ (วันอาทิตย์ เวลา 03:00)
+    def _scheduled_db_optimize():
+        try:
+            conn = database._get_conn()
+            try:
+                conn.execute("PRAGMA optimize")
+                conn.execute("PRAGMA incremental_vacuum(500)")
+                logger.info("🧹 [DB Housekeeping] SQLite PRAGMA optimize & incremental_vacuum completed.")
+            finally:
+                conn.close()
+        except Exception as _e:
+            logger.warning(f"[DB Housekeeping] error: {_e}")
+
+    _scheduler.add_job(_scheduled_db_optimize, 'cron', day_of_week='sun', hour=3, minute=0, id='db_optimize')
 
 except ImportError:
     print(">>> APScheduler not installed - run: pip install APScheduler")

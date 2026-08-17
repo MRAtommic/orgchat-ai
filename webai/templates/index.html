@@ -11,10 +11,10 @@
   <title>OrgChat — Corporate AI Assistant</title>
   <script src="https://cdn.tailwindcss.com/3.4.16"></script>
   <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" defer></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" defer></script>
   <script>
     window.onerror = function (m, u, l) { console.error("Early Error:", m, u, l); };
     if (typeof tailwind === 'undefined') {
@@ -43,7 +43,7 @@
       };
     }
   </script>
-  <link rel="stylesheet" href="/static/style.css?v=3.5" />
+  <link rel="stylesheet" href="/static/style.css?v=3.6" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@300;400;500;600;700&family=Athiti:wght@300;400;500;600;700&family=Bai+Jamjuree:wght@300;400;500;600;700&family=Chakra+Petch:wght@400;600;700&family=Fahkwang:wght@300;400;500;600;700&family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700;800;900&family=K2D:wght@300;400;500;600;700&family=Kanit:wght@300;400;500;600;700&family=Krub:wght@300;400;500;600;700&family=Mali:wght@400;600;700&family=Mitr:wght@400;500;600&family=Niramit:wght@300;400;500;600;700&family=Noto+Sans+Thai:wght@300;400;500;600;700&family=Pridi:wght@300;400;500;600&family=Prompt:wght@300;400;500;600;700&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
@@ -127,6 +127,19 @@
       #navSidebar.open {
         transform: translateX(0) !important;
       }
+    }
+    /* Critical Global Utility Overrides */
+    .hidden {
+      display: none !important;
+    }
+    .view {
+      width: 100% !important;
+      max-width: 100% !important;
+      min-width: 0 !important;
+      flex: 1 1 auto !important;
+    }
+    .view.hidden {
+      display: none !important;
     }
   </style>
   <script>
@@ -2563,181 +2576,6 @@
             </div>
             <!-- /บัญชีของฉัน -->
 
-            <!-- 🎨 การปรับแต่งการแสดงผลส่วนตัว (Appearance & UI Customization) -->
-            <div id="myAppearanceCard" class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-3xl overflow-hidden shadow-sm">
-              <div class="px-6 py-4 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                  <div class="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center">
-                    <i data-lucide="palette" class="w-4 h-4 text-indigo-600"></i>
-                  </div>
-                  <h3 class="font-black text-sm uppercase tracking-widest text-surface-900 dark:text-white">การแสดงผล & UI ส่วนตัว</h3>
-                </div>
-                <button onclick="resetCustomUISettings()" class="text-xs font-bold text-surface-400 hover:text-rose-500 transition flex items-center gap-1">
-                  <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> คืนค่าเริ่มต้น
-                </button>
-              </div>
-
-              <div class="p-6 space-y-6">
-                <!-- 1. เลือกฟอนต์ (Font Family) -->
-                <div>
-                  <label class="block text-[10px] font-black uppercase tracking-widest text-surface-400 mb-2 ml-1 flex items-center gap-2">
-                    <i data-lucide="type" class="w-3 h-3 text-indigo-500"></i> รูปแบบตัวอักษร (Font Family)
-                  </label>
-                  <div class="grid grid-cols-2 md:grid-cols-4 gap-2.5">
-                    <button onclick="setCustomFont('Inter')" id="fontBtn-Inter"
-                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
-                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'Inter', sans-serif;">Inter</span>
-                      <span class="text-[10px] text-surface-400 mt-1">มินิมอลสากล</span>
-                    </button>
-                    <button onclick="setCustomFont('Anuphan')" id="fontBtn-Anuphan"
-                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
-                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'Anuphan', sans-serif;">อนุพันธ์ (Anuphan)</span>
-                      <span class="text-[10px] text-surface-400 mt-1">คลีนมินิมอล</span>
-                    </button>
-                    <button onclick="setCustomFont('Prompt')" id="fontBtn-Prompt"
-                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
-                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'Prompt', sans-serif;">พร้อมท์ (Prompt)</span>
-                      <span class="text-[10px] text-surface-400 mt-1">สมาร์ท เรียบหรู</span>
-                    </button>
-                    <button onclick="setCustomFont('IBM Plex Sans Thai')" id="fontBtn-IBM Plex Sans Thai"
-                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
-                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'IBM Plex Sans Thai', sans-serif;">IBM Plex Sans</span>
-                      <span class="text-[10px] text-surface-400 mt-1">มินิมอลเท่</span>
-                    </button>
-                    <button onclick="setCustomFont('Kanit')" id="fontBtn-Kanit"
-                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
-                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'Kanit', sans-serif;">ขนิษฐ์ (Kanit)</span>
-                      <span class="text-[10px] text-surface-400 mt-1">ทันสมัย ดีไซน์สวย</span>
-                    </button>
-                    <button onclick="setCustomFont('Noto Sans Thai')" id="fontBtn-Noto Sans Thai"
-                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
-                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'Noto Sans Thai', sans-serif;">Noto Sans Thai</span>
-                      <span class="text-[10px] text-surface-400 mt-1">เรียบสมดุล</span>
-                    </button>
-                    <button onclick="setCustomFont('Krub')" id="fontBtn-Krub"
-                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
-                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'Krub', sans-serif;">กรับ (Krub)</span>
-                      <span class="text-[10px] text-surface-400 mt-1">ลีนเรียบหรู</span>
-                    </button>
-                    <button onclick="setCustomFont('K2D')" id="fontBtn-K2D"
-                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
-                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'K2D', sans-serif;">K2D</span>
-                      <span class="text-[10px] text-surface-400 mt-1">โมเดิร์นไฮเทค</span>
-                    </button>
-                    <button onclick="setCustomFont('Fahkwang')" id="fontBtn-Fahkwang"
-                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
-                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'Fahkwang', sans-serif;">ฟ้ากว้าง (Fahkwang)</span>
-                      <span class="text-[10px] text-surface-400 mt-1">สมาร์ทโปร่ง</span>
-                    </button>
-                    <button onclick="setCustomFont('Mitr')" id="fontBtn-Mitr"
-                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
-                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'Mitr', sans-serif;">มิตร (Mitr)</span>
-                      <span class="text-[10px] text-surface-400 mt-1">โค้งมนนุ่มนวล</span>
-                    </button>
-                    <button onclick="setCustomFont('Athiti')" id="fontBtn-Athiti"
-                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
-                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'Athiti', sans-serif;">อธิติ (Athiti)</span>
-                      <span class="text-[10px] text-surface-400 mt-1">บางลีนมินิมอล</span>
-                    </button>
-                    <button onclick="setCustomFont('Bai Jamjuree')" id="fontBtn-Bai Jamjuree"
-                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
-                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'Bai Jamjuree', sans-serif;">ใบจามจุรี (Bai Jamjuree)</span>
-                      <span class="text-[10px] text-surface-400 mt-1">กึ่งเหลี่ยมลีน</span>
-                    </button>
-                    <button onclick="setCustomFont('Pridi')" id="fontBtn-Pridi"
-                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
-                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'Pridi', serif;">ปรีดี (Pridi)</span>
-                      <span class="text-[10px] text-surface-400 mt-1">เอกลักษณ์ มีหัว</span>
-                    </button>
-                    <button onclick="setCustomFont('Chakra Petch')" id="fontBtn-Chakra Petch"
-                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
-                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'Chakra Petch', sans-serif;">จักรเพชร (Chakra Petch)</span>
-                      <span class="text-[10px] text-surface-400 mt-1">Futuristic</span>
-                    </button>
-                    <button onclick="setCustomFont('Sarabun')" id="fontBtn-Sarabun"
-                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
-                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'Sarabun', sans-serif;">สารบัน (Sarabun)</span>
-                      <span class="text-[10px] text-surface-400 mt-1">ทางการ สบายตา</span>
-                    </button>
-                    <button onclick="setCustomFont('Niramit')" id="fontBtn-Niramit"
-                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
-                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'Niramit', sans-serif;">นิรมิต (Niramit)</span>
-                      <span class="text-[10px] text-surface-400 mt-1">บางเบาสะอาด</span>
-                    </button>
-                    <button onclick="setCustomFont('Mali')" id="fontBtn-Mali"
-                      class="custom-font-btn p-3 rounded-2xl border border-surface-200 dark:border-surface-700 text-left transition hover:border-indigo-500 flex flex-col justify-between">
-                      <span class="text-xs font-bold text-surface-800 dark:text-white" style="font-family: 'Mali', sans-serif;">มะลิ (Mali)</span>
-                      <span class="text-[10px] text-surface-400 mt-1">การ์ตูนเป็นกันเอง</span>
-                    </button>
-                  </div>
-                </div>
-
-                <!-- 2. ขนาดตัวอักษร (Font Size) -->
-                <div>
-                  <div class="flex justify-between items-center mb-2 ml-1">
-                    <label class="text-[10px] font-black uppercase tracking-widest text-surface-400 flex items-center gap-2">
-                      <i data-lucide="text-cursor" class="w-3 h-3 text-indigo-500"></i> ขนาดตัวอักษรระบบ (Font Size)
-                    </label>
-                    <span id="fontSizeDisplay" class="text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">ปกติ (14.5px)</span>
-                  </div>
-                  <div class="grid grid-cols-4 gap-2">
-                    <button onclick="setCustomFontSize('small')" id="fontSizeBtn-small" class="custom-size-btn py-2 text-xs font-bold rounded-xl border border-surface-200 dark:border-surface-700 hover:border-indigo-500 transition">เล็ก (13px)</button>
-                    <button onclick="setCustomFontSize('normal')" id="fontSizeBtn-normal" class="custom-size-btn py-2 text-xs font-bold rounded-xl border border-surface-200 dark:border-surface-700 hover:border-indigo-500 transition">ปกติ (14.5px)</button>
-                    <button onclick="setCustomFontSize('large')" id="fontSizeBtn-large" class="custom-size-btn py-2 text-xs font-bold rounded-xl border border-surface-200 dark:border-surface-700 hover:border-indigo-500 transition">ใหญ่ (16px)</button>
-                    <button onclick="setCustomFontSize('xl')" id="fontSizeBtn-xl" class="custom-size-btn py-2 text-xs font-bold rounded-xl border border-surface-200 dark:border-surface-700 hover:border-indigo-500 transition">ใหญ่มาก (17.5px)</button>
-                  </div>
-                </div>
-
-                <!-- 3. โทนสีเน้นหลัก (Accent Color) -->
-                <div>
-                  <label class="block text-[10px] font-black uppercase tracking-widest text-surface-400 mb-2 ml-1 flex items-center gap-2">
-                    <i data-lucide="sparkles" class="w-3 h-3 text-indigo-500"></i> โทนสีไฮไลท์หลัก (Accent Theme Color)
-                  </label>
-                  <div class="flex flex-wrap gap-3">
-                    <button onclick="setCustomAccent('blue')" id="accentBtn-blue" title="Brand Blue" class="custom-accent-btn w-9 h-9 rounded-2xl bg-blue-600 flex items-center justify-center text-white shadow-md transition transform active:scale-95">
-                      <i data-lucide="check" class="w-4 h-4 accent-check hidden"></i>
-                    </button>
-                    <button onclick="setCustomAccent('indigo')" id="accentBtn-indigo" title="Royal Indigo" class="custom-accent-btn w-9 h-9 rounded-2xl bg-indigo-600 flex items-center justify-center text-white shadow-md transition transform active:scale-95">
-                      <i data-lucide="check" class="w-4 h-4 accent-check hidden"></i>
-                    </button>
-                    <button onclick="setCustomAccent('emerald')" id="accentBtn-emerald" title="Emerald Mint" class="custom-accent-btn w-9 h-9 rounded-2xl bg-emerald-600 flex items-center justify-center text-white shadow-md transition transform active:scale-95">
-                      <i data-lucide="check" class="w-4 h-4 accent-check hidden"></i>
-                    </button>
-                    <button onclick="setCustomAccent('amber')" id="accentBtn-amber" title="Warm Amber" class="custom-accent-btn w-9 h-9 rounded-2xl bg-amber-500 flex items-center justify-center text-white shadow-md transition transform active:scale-95">
-                      <i data-lucide="check" class="w-4 h-4 accent-check hidden"></i>
-                    </button>
-                    <button onclick="setCustomAccent('rose')" id="accentBtn-rose" title="Rose Pink" class="custom-accent-btn w-9 h-9 rounded-2xl bg-rose-500 flex items-center justify-center text-white shadow-md transition transform active:scale-95">
-                      <i data-lucide="check" class="w-4 h-4 accent-check hidden"></i>
-                    </button>
-                    <button onclick="setCustomAccent('purple')" id="accentBtn-purple" title="Deep Purple" class="custom-accent-btn w-9 h-9 rounded-2xl bg-purple-600 flex items-center justify-center text-white shadow-md transition transform active:scale-95">
-                      <i data-lucide="check" class="w-4 h-4 accent-check hidden"></i>
-                    </button>
-                  </div>
-                </div>
-
-                <!-- 4. ตัวอย่างการแสดงผลแบบเรียลไทม์ (Live Preview Box) -->
-                <div class="p-4 bg-surface-50 dark:bg-surface-800/40 rounded-2xl border border-surface-200/80 dark:border-surface-700">
-                  <div class="text-[10px] font-black uppercase tracking-widest text-surface-400 mb-2 flex items-center gap-1.5">
-                    <i data-lucide="eye" class="w-3.5 h-3.5 text-indigo-500"></i> ตัวอย่างการแสดงผล (Live Preview)
-                  </div>
-                  <div class="p-3.5 bg-white dark:bg-surface-900 rounded-xl border border-surface-200 dark:border-surface-700 space-y-2.5">
-                    <div class="flex items-center justify-between">
-                      <span class="font-bold text-surface-900 dark:text-white">การ์ดข้อความแชท AI & เอกสารองค์กร</span>
-                      <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-brand-500/10 text-brand-600 dark:text-brand-400">ตัวอย่างแท็ก</span>
-                    </div>
-                    <p class="text-surface-600 dark:text-surface-300 leading-relaxed">
-                      ทดสอบตัวอย่างการแสดงผลข้อความเมื่อปรับฟอนต์และขนาดตัวอักษรส่วนตัวของคุณในระบบ OrgChat AI
-                    </p>
-                    <div class="flex gap-2 pt-1">
-                      <button class="px-3.5 py-1.5 bg-brand-600 text-white text-xs font-bold rounded-xl shadow-sm">ปุ่มตัวอย่าง</button>
-                      <button class="px-3.5 py-1.5 bg-surface-100 dark:bg-surface-800 text-surface-700 dark:text-surface-300 text-xs font-bold rounded-xl">ยกเลิก</button>
-                    </div>
-                  </div>
-                </div>
-
-              </div>
-            </div>
-
             <!-- LINE Integration Card -->
             <div class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-3xl overflow-hidden shadow-sm">
               <div class="px-6 py-4 border-b border-surface-100 dark:border-surface-800 flex items-center gap-3">
@@ -2757,8 +2595,11 @@
                       คุณสามารถผูกบัญชี LINE ส่วนตัวเพื่อรับข้อมูลข่าวสารองค์กร สลิปเงินเดือน เอกสาร และวันสำคัญต่างๆ ได้โดยตรงค่ะ
                     </p>
                   </div>
-                  
-                  <div class="flex items-center gap-3">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <!-- ปุ่มทดสอบ Morning Briefing -->
+                    <button onclick="testMorningBriefing()" id="btnTestBriefing" class="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition shadow-sm whitespace-nowrap" title="ทดสอบรับสรุปภาพรวมยามเช้า">
+                      <i data-lucide="sunrise" class="w-3.5 h-3.5"></i> ทดสอบ Morning Brief
+                    </button>
                     <!-- ปุ่มเชื่อมต่อ LINE -->
                     <a href="/api/line/login-init" id="btnMyBindLine" class="flex items-center gap-2 px-4 py-2 bg-[#06C755] hover:bg-[#05a847] text-white text-xs font-bold rounded-xl transition shadow-sm whitespace-nowrap">
                       <i data-lucide="link" class="w-3.5 h-3.5"></i> เชื่อมต่อ LINE
@@ -3027,6 +2868,55 @@
                     </button>
                   </div>
                 </form>
+              </div>
+            </div>
+
+            <!-- Team Leave Calendar Section -->
+            <div class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-[32px] overflow-hidden shadow-xl p-8 space-y-6">
+              <div class="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-surface-100 dark:border-surface-800">
+                <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 rounded-2xl bg-brand-50 dark:bg-brand-950/50 flex items-center justify-center text-brand-600">
+                    <i data-lucide="calendar" class="w-5 h-5"></i>
+                  </div>
+                  <div>
+                    <h3 class="text-sm font-bold text-surface-900 dark:text-white">ปฏิทินวันลาของทีม (Team Leave Calendar)</h3>
+                    <p class="text-xs text-surface-400">ตรวจสอบวันลาและวางแผนงานร่วมกับเพื่อนร่วมทีม</p>
+                  </div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button onclick="changeTeamCalendarMonth(-1)" class="p-2 rounded-xl bg-surface-100 hover:bg-surface-200 dark:bg-surface-800 text-surface-700 dark:text-surface-300 transition">
+                    <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                  </button>
+                  <span id="teamCalendarMonthLabel" class="text-xs font-bold text-surface-900 dark:text-white px-3 py-1 bg-surface-50 dark:bg-surface-800/60 rounded-xl border border-surface-200/50"></span>
+                  <button onclick="changeTeamCalendarMonth(1)" class="p-2 rounded-xl bg-surface-100 hover:bg-surface-200 dark:bg-surface-800 text-surface-700 dark:text-surface-300 transition">
+                    <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Calendar Grid Container -->
+              <div class="overflow-x-auto">
+                <div class="min-w-[600px]">
+                  <div class="grid grid-cols-7 gap-2 mb-2 text-center text-[11px] font-bold text-surface-400 uppercase tracking-wider">
+                    <div class="py-1 text-rose-500">อา.</div>
+                    <div class="py-1">จ.</div>
+                    <div class="py-1">อ.</div>
+                    <div class="py-1">พ.</div>
+                    <div class="py-1">พฤ.</div>
+                    <div class="py-1">ศ.</div>
+                    <div class="py-1 text-rose-500">ส.</div>
+                  </div>
+                  <div id="teamLeaveCalendarGrid" class="grid grid-cols-7 gap-2">
+                    <!-- Calendar days rendered via JS -->
+                  </div>
+                </div>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-4 pt-2 text-[11px] text-surface-500 border-t border-surface-100 dark:border-surface-800">
+                <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> ลาป่วย</span>
+                <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> ลากิจ</span>
+                <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span> ลาพักร้อน</span>
+                <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-purple-500"></span> ลาอื่นๆ</span>
               </div>
             </div>
 
@@ -3820,11 +3710,26 @@
                         <p class="text-[10px] font-semibold text-surface-500 uppercase tracking-wider">Review & Approve Requests</p>
                       </div>
                     </div>
-                    <button onclick="refreshAdminLeaves()" class="p-2 hover:bg-surface-100 dark:hover:bg-surface-700 rounded-lg transition-colors text-surface-400">
-                      <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-                    </button>
+                    
+                    <div class="flex items-center gap-3">
+                      <!-- Segmented Toggle View -->
+                      <div class="flex items-center bg-surface-100 dark:bg-surface-800 p-0.5 rounded-xl border border-surface-200/50 dark:border-surface-700/50">
+                        <button id="btnLeaveViewTable" onclick="switchLeaveView('table')" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-white dark:bg-surface-700 text-brand-600 dark:text-brand-400 shadow-sm">
+                          <span class="flex items-center gap-1.5"><i data-lucide="list" class="w-3.5 h-3.5"></i> รายการคำขอ</span>
+                        </button>
+                        <button id="btnLeaveViewCalendar" onclick="switchLeaveView('calendar')" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200">
+                          <span class="flex items-center gap-1.5"><i data-lucide="calendar" class="w-3.5 h-3.5"></i> ปฏิทินทีม</span>
+                        </button>
+                      </div>
+                      
+                      <button onclick="refreshAdminLeaves()" class="p-2 hover:bg-surface-100 dark:hover:bg-surface-700 rounded-lg transition-colors text-surface-400" title="รีเฟรชข้อมูล">
+                        <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                      </button>
+                    </div>
                   </div>
-                  <div class="p-0 overflow-x-auto">
+
+                  <!-- View: Table List -->
+                  <div id="adminLeaveTableView" class="p-0 overflow-x-auto">
                     <table class="w-full text-left text-xs">
                       <thead class="bg-surface-50 dark:bg-surface-800/30 text-surface-400 font-black uppercase tracking-widest border-b border-surface-100 dark:border-surface-800">
                         <tr>
@@ -3842,6 +3747,47 @@
                         </tr>
                       </tbody>
                     </table>
+                  </div>
+
+                  <!-- View: Team Leave Calendar -->
+                  <div id="adminLeaveCalendarView" class="hidden">
+                    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 px-6 py-4 border-b border-surface-100 dark:border-surface-800 bg-surface-50/50 dark:bg-surface-800/20">
+                      <div class="flex items-center gap-2">
+                        <button onclick="prevLeaveMonth()" class="p-2 hover:bg-surface-100 dark:hover:bg-surface-700 rounded-lg transition-colors border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300">
+                          <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                        </button>
+                        <h4 id="calendarMonthYearLabel" class="text-sm font-bold text-surface-900 dark:text-white min-w-[140px] text-center">สิงหาคม 2569</h4>
+                        <button onclick="nextLeaveMonth()" class="p-2 hover:bg-surface-100 dark:hover:bg-surface-700 rounded-lg transition-colors border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300">
+                          <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                        </button>
+                      </div>
+                      <div class="flex flex-wrap items-center gap-4 text-[11px]">
+                        <div class="flex items-center gap-1.5">
+                          <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                          <span class="text-surface-600 dark:text-surface-400 font-medium">อนุมัติแล้ว (Approved)</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                          <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                          <span class="text-surface-600 dark:text-surface-400 font-medium">รอดำเนินการ (Pending)</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="p-6">
+                      <!-- Days of Week Headers -->
+                      <div class="grid grid-cols-7 gap-2 mb-2 text-center text-xs font-black uppercase tracking-wider text-surface-400 dark:text-surface-500">
+                        <div>อา.</div>
+                        <div>จ.</div>
+                        <div>อ.</div>
+                        <div>พ.</div>
+                        <div>พฤ.</div>
+                        <div>ศ.</div>
+                        <div>ส.</div>
+                      </div>
+                      <!-- Calendar Grid -->
+                      <div id="adminLeaveCalendarGrid" class="grid grid-cols-7 gap-2">
+                        <!-- Dynamic calendar days will be injected here -->
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -6047,7 +5993,7 @@
             </div>
           </header>
 
-          <div class="max-w-3xl mx-auto w-full px-6 py-8 space-y-6">
+          <div class="max-w-6xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 space-y-6">
 
             <!-- 📣 1. LINE OA Broadcast Card -->
             <div class="bg-white dark:bg-surface-900 border border-emerald-500/30 rounded-2xl overflow-hidden shadow-sm">
@@ -7170,37 +7116,41 @@
             .plan-badge-business { background: #e0e7ff; color: #3730a3; border: 1px solid #a5b4fc; }
           </style>
 
-          <!-- Title / Breadcrumb Card -->
-          <div class="flex items-center justify-between border-b border-slate-200 dark:border-surface-800 pb-4 mb-6 flex-shrink-0">
-              <div class="flex items-center gap-3">
-                  <div class="w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center text-white">
-                      <i data-lucide="credit-card" class="w-5 h-5"></i>
-                  </div>
-                  <div>
-                      <h2 class="text-lg font-black text-slate-900 dark:text-white leading-none">จัดการแพลน</h2>
-                      <p class="text-xs text-slate-400 font-bold mt-1.5">จัดการแผนการใช้งานและระบบสมาชิกขององค์กร</p>
-                  </div>
-              </div>
-              <button onclick="showView('home')" class="plan-btn plan-btn-gray text-xs py-2 px-3.5 flex items-center gap-2">
-                  <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> กลับหน้าหลัก
-              </button>
-          </div>
+          <!-- Centered Content Container -->
+          <div class="max-w-6xl mx-auto w-full space-y-6">
 
-          <!-- PAYMENT RETURN BANNER -->
-          <div id="planPayBanner" class="hidden w-full pb-4"></div>
+            <!-- Title / Breadcrumb Card -->
+            <div class="flex items-center justify-between border-b border-slate-200 dark:border-surface-800 pb-4 mb-6 flex-shrink-0">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center text-white">
+                        <i data-lucide="credit-card" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-lg font-black text-slate-900 dark:text-white leading-none">จัดการแพลน</h2>
+                        <p class="text-xs text-slate-400 font-bold mt-1.5">จัดการแผนการใช้งานและระบบสมาชิกขององค์กร</p>
+                    </div>
+                </div>
+                <button onclick="showView('home')" class="plan-btn plan-btn-gray text-xs py-2 px-3.5 flex items-center gap-2">
+                    <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> กลับหน้าหลัก
+                </button>
+            </div>
 
-          <!-- MAIN VIEW WRAPPER -->
-          <div class="w-full space-y-6">
-              <!-- Skeleton -->
-              <div id="planSkeleton" class="space-y-5">
-                  <div class="plan-sk h-32"></div>
-                  <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                      <div class="plan-sk h-32"></div><div class="plan-sk h-32"></div>
-                      <div class="plan-sk h-32"></div><div class="plan-sk h-32"></div>
-                  </div>
-                  <div class="plan-sk h-72"></div>
-              </div>
-              <div id="planContent" class="hidden space-y-6"></div>
+            <!-- PAYMENT RETURN BANNER -->
+            <div id="planPayBanner" class="hidden w-full pb-4"></div>
+
+            <!-- MAIN VIEW WRAPPER -->
+            <div class="w-full space-y-6">
+                <!-- Skeleton -->
+                <div id="planSkeleton" class="space-y-5">
+                    <div class="plan-sk h-32"></div>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div class="plan-sk h-32"></div><div class="plan-sk h-32"></div>
+                        <div class="plan-sk h-32"></div><div class="plan-sk h-32"></div>
+                    </div>
+                    <div class="plan-sk h-72"></div>
+                </div>
+                <div id="planContent" class="hidden space-y-6"></div>
+            </div>
           </div>
 
           <!-- CANCEL MODAL -->
@@ -10309,11 +10259,11 @@
     </div>
   </div>
 
-  <script src="/static/js/core.js?v=2.3"></script>
-  <script src="/static/js/chat.js?v=2.3"></script>
-  <script src="/static/js/billing.js?v=2.3"></script>
-  <script src="/static/js/kb.js?v=2.3"></script>
-  <script src="/static/js/admin.js?v=2.3"></script>
+  <script src="/static/js/core.js?v=2.4"></script>
+  <script src="/static/js/chat.js?v=2.4"></script>
+  <script src="/static/js/billing.js?v=2.4"></script>
+  <script src="/static/js/kb.js?v=2.4"></script>
+  <script src="/static/js/admin.js?v=2.4"></script>
   <!-- 🌩️ Weather Detail Modal -->
   <div id="weatherDetailModal" class="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-xl hidden flex items-center justify-center animate-in fade-in duration-500 p-0 sm:p-4">
     <div class="bg-white dark:bg-surface-900 w-full h-full sm:w-[95%] sm:max-w-xl sm:h-auto flex flex-col sm:rounded-[3rem] shadow-[0_0_100px_rgba(0,0,0,0.5)] overflow-hidden border border-white/20">
@@ -12996,12 +12946,50 @@ async function deleteMeeting(mid) {
           </div>
         </div>
 
-        <!-- 4. Live Preview Box -->
+        <!-- 4. Sound & Haptic FX Settings -->
+        <div class="space-y-3">
+          <label class="block text-xs font-bold uppercase tracking-wider text-surface-400">4. เสียงและการสั่นตอบสนอง (Sound & Haptics)</label>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div class="flex items-center justify-between p-3.5 rounded-2xl border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/40">
+              <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                  <i data-lucide="volume-2" class="w-4 h-4"></i>
+                </div>
+                <div>
+                  <div class="font-bold text-xs text-surface-900 dark:text-white">เสียงเอฟเฟกต์ (Sound FX)</div>
+                  <div class="text-[10px] text-surface-500">เสียงพิมพ์ Typewriter & แจ้งเตือน</div>
+                </div>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="soundFxToggle" class="sr-only peer" checked>
+                <div class="w-9 h-5 bg-surface-200 peer-focus:outline-none rounded-full peer dark:bg-surface-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+              </label>
+            </div>
+
+            <div class="flex items-center justify-between p-3.5 rounded-2xl border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/40">
+              <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+                  <i data-lucide="smartphone" class="w-4 h-4"></i>
+                </div>
+                <div>
+                  <div class="font-bold text-xs text-surface-900 dark:text-white">ระบบสั่น (Haptic FX)</div>
+                  <div class="text-[10px] text-surface-500">สั่นเมื่อส่ง/รับข้อความบนมือถือ</div>
+                </div>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="hapticFxToggle" class="sr-only peer" checked>
+                <div class="w-9 h-5 bg-surface-200 peer-focus:outline-none rounded-full peer dark:bg-surface-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5. Live Preview Box -->
         <div class="p-4 rounded-2xl bg-surface-50 dark:bg-surface-800/50 border border-surface-200 dark:border-surface-700">
           <div class="text-xs font-bold text-surface-400 uppercase tracking-widest mb-2">ตัวอย่างการแสดงผล (Live Preview)</div>
           <div class="space-y-1">
             <h4 class="font-bold text-base text-surface-900 dark:text-white">ระบบช่วยจัดการงานองค์กรด้วย AI</h4>
-            <p class="text-surface-600 dark:text-surface-300 text-xs">คุณสามารถปรับแต่งรูปแบบตัวอักษรและโทนสีเพื่อการใช้งานที่สบายตาและเป็นตัวเองที่สุด</p>
+            <p class="text-surface-600 dark:text-surface-300 text-xs">คุณสามารถปรับแต่งรูปแบบตัวอักษร, โทนสี, และเสียงเอฟเฟกต์การพิมพ์เพื่อประสบการณ์การใช้งานที่สมบูรณ์แบบ</p>
           </div>
         </div>
 
@@ -13019,6 +13007,256 @@ async function deleteMeeting(mid) {
 
     </div>
   </div>
+
+  <!-- 🍪 PDPA Cookie Consent Banner (Chapter 3) -->
+  <div id="pdpaConsentBanner" class="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-md z-[9999] bg-white/95 dark:bg-surface-900/95 backdrop-blur-xl border border-surface-200 dark:border-surface-700 rounded-3xl p-5 shadow-2xl shadow-black/20 hidden animate-in slide-in-from-bottom-5 duration-300">
+    <div class="flex items-start gap-3">
+      <div class="w-10 h-10 rounded-2xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 flex items-center justify-center flex-shrink-0">
+        <i data-lucide="shield-check" class="w-5 h-5"></i>
+      </div>
+      <div class="flex-1 min-w-0">
+        <h4 class="font-black text-xs text-surface-900 dark:text-white uppercase tracking-wider mb-1">การคุ้มครองข้อมูลส่วนบุคคล (PDPA)</h4>
+        <p class="text-[11px] text-surface-500 leading-relaxed">
+          เราใช้คุกกี้เพื่อเพิ่มประสิทธิภาพการใช้งาน จดจำการตั้งค่า และรักษาความปลอดภัยสูงสุดให้กับบัญชีของคุณ 
+        </p>
+      </div>
+    </div>
+    <div class="mt-4 flex items-center gap-2 justify-end">
+      <button type="button" onclick="window.pdpaConsent.openSettings()" class="px-3.5 py-2 rounded-xl text-xs font-bold text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition">
+        ตั้งค่าคุกกี้
+      </button>
+      <button type="button" onclick="window.pdpaConsent.saveConsent(true, true, true)" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/20 transition">
+        ยินยอมทั้งหมด
+      </button>
+    </div>
+  </div>
+
+  <!-- 🍪 PDPA Preferences Modal -->
+  <div id="pdpaPreferencesModal" class="fixed inset-0 z-[10000] bg-black/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-surface-900 w-full max-w-lg rounded-3xl border border-surface-200 dark:border-surface-700 shadow-2xl overflow-hidden p-6 space-y-4">
+      <div class="flex items-center justify-between border-b border-surface-100 dark:border-surface-800 pb-3">
+        <div class="flex items-center gap-2.5">
+          <i data-lucide="cookie" class="w-5 h-5 text-amber-500"></i>
+          <h3 class="font-black text-sm text-surface-900 dark:text-white">การตั้งค่าคุกกี้และความเป็นส่วนตัว</h3>
+        </div>
+        <button type="button" onclick="window.pdpaConsent.hideBanner()" class="text-surface-400 hover:text-surface-600">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <div class="space-y-3 text-xs">
+        <div class="p-3.5 rounded-2xl bg-surface-50 dark:bg-surface-800/40 border border-surface-200 dark:border-surface-700 flex items-start justify-between gap-3">
+          <div>
+            <div class="font-bold text-surface-900 dark:text-white">1. คุกกี้ที่จำเป็น (Strictly Necessary)</div>
+            <div class="text-surface-500 text-[10px] mt-0.5">จำเป็นต่อการเข้าสู่ระบบ, การป้องกัน CSRF, และความมั่นคงปลอดภัยของระบบ (เปิดใช้งานเสมอ)</div>
+          </div>
+          <span class="text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full">จำเป็น</span>
+        </div>
+
+        <div class="p-3.5 rounded-2xl bg-surface-50 dark:bg-surface-800/40 border border-surface-200 dark:border-surface-700 flex items-start justify-between gap-3">
+          <div>
+            <div class="font-bold text-surface-900 dark:text-white">2. คุกกี้จดจำการตั้งค่า (Preferences)</div>
+            <div class="text-surface-500 text-[10px] mt-0.5">บันทึกฟอนต์, ขนาดตัวอักษร, ธีม และเสียงเอฟเฟกต์ที่คุณเลือก</div>
+          </div>
+          <input type="checkbox" id="pdpaPrefCookies" checked class="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 mt-1">
+        </div>
+
+        <div class="p-3.5 rounded-2xl bg-surface-50 dark:bg-surface-800/40 border border-surface-200 dark:border-surface-700 flex items-start justify-between gap-3">
+          <div>
+            <div class="font-bold text-surface-900 dark:text-white">3. คุกกี้สถิติและความปลอดภัย (Security Analytics)</div>
+            <div class="text-surface-500 text-[10px] mt-0.5">ช่วยตรวจสอบพฤติกรรมการเข้าสู่ระบบที่ผิดปกติเพื่อแจ้งเตือนความปลอดภัย</div>
+          </div>
+          <input type="checkbox" id="pdpaAnalCookies" checked class="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 mt-1">
+        </div>
+      </div>
+      <div class="pt-3 border-t border-surface-100 dark:border-surface-800 flex justify-end gap-2">
+        <button type="button" onclick="window.pdpaConsent.saveConsent(true, document.getElementById('pdpaPrefCookies').checked, document.getElementById('pdpaAnalCookies').checked)" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/20 transition">
+          บันทึกการตั้งค่า
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 📊 Security Health & Audit Dashboard Modal (Chapter 1, 2, 4) -->
+  <div id="securityHealthModal" class="fixed inset-0 z-[10000] bg-black/70 backdrop-blur-md hidden flex items-center justify-center p-4 animate-in fade-in duration-300">
+    <div class="bg-white dark:bg-surface-900 w-full max-w-2xl rounded-[2.5rem] border border-surface-200 dark:border-surface-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <!-- Header -->
+      <div class="px-6 py-5 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between bg-surface-50/50 dark:bg-surface-900/50">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+            <i data-lucide="shield-alert" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="font-black text-sm text-surface-900 dark:text-white">ศูนย์ความมั่นคงปลอดภัยองค์กร (Security Health Dashboard)</h3>
+            <p class="text-[11px] text-surface-400">ตรวจสอบสถานะ FIM, ความถูกต้องของ Log (HMAC), และความพยายามโจมตี</p>
+          </div>
+        </div>
+        <button type="button" onclick="document.getElementById('securityHealthModal').classList.add('hidden')" class="text-surface-400 hover:text-surface-600 dark:hover:text-surface-200 p-1.5 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800 transition">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Content -->
+      <div class="p-6 overflow-y-auto space-y-6 flex-1 text-xs">
+        <!-- Health Score Grid -->
+        <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <div class="p-4 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40 text-center">
+            <div class="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mb-1">Health Score</div>
+            <div id="secScoreVal" class="text-3xl font-black text-indigo-700 dark:text-indigo-300">100%</div>
+            <div class="text-[9px] text-indigo-500/80 mt-1 font-semibold">สถานะ: สมบูรณ์สูงสุด</div>
+          </div>
+          <div class="p-4 rounded-2xl bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/40 text-center">
+            <div class="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-1">Log Integrity</div>
+            <div id="secLogIntegrityVal" class="text-3xl font-black text-emerald-700 dark:text-emerald-300">100%</div>
+            <div class="text-[9px] text-emerald-500/80 mt-1 font-semibold">HMAC-SHA256 Signed</div>
+          </div>
+          <div class="p-4 rounded-2xl bg-teal-50/60 dark:bg-teal-950/30 border border-teal-100 dark:border-teal-900/40 text-center">
+            <div class="text-[10px] font-bold text-teal-600 dark:text-teal-400 uppercase tracking-widest mb-1">2FA / MFA Adoption</div>
+            <div id="secMfaAdoptionVal" class="text-3xl font-black text-teal-700 dark:text-teal-300">0%</div>
+            <div class="text-[9px] text-teal-500/80 mt-1 font-semibold">Google Authenticator</div>
+          </div>
+          <div class="p-4 rounded-2xl bg-amber-50/60 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/40 text-center">
+            <div class="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-1">Failed Logins (24h)</div>
+            <div id="secFailedLoginsVal" class="text-3xl font-black text-amber-700 dark:text-amber-300">0</div>
+            <div class="text-[9px] text-amber-500/80 mt-1 font-semibold">Brute-force Guard</div>
+          </div>
+        </div>
+
+        <!-- FIM Actions Section -->
+        <div class="p-4 rounded-2xl bg-surface-50 dark:bg-surface-800/40 border border-surface-200 dark:border-surface-700 space-y-3">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="font-bold text-surface-900 dark:text-white">File Integrity Monitoring (FIM SHA-256)</div>
+              <div class="text-[10px] text-surface-500">สแกนตรวจสอบการแอบดัดแปลงไฟล์ในระบบและคลังความรู้</div>
+            </div>
+            <button type="button" id="btnScanFim" onclick="runFimScan()" class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-sm flex items-center gap-1.5 transition">
+              <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> สแกนเดี๋ยวนี้
+            </button>
+          </div>
+          <div id="fimScanStatusBox" class="p-3 rounded-xl bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-700 text-[11px] text-surface-600 dark:text-surface-300 font-mono hidden">
+            กำลังสแกน...
+          </div>
+        </div>
+
+        <!-- 🔍 Automated Knowledge Base Duplicate & Anomaly Detector Section -->
+        <div class="p-4 rounded-2xl bg-surface-50 dark:bg-surface-800/40 border border-surface-200 dark:border-surface-700 space-y-3">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="font-bold text-surface-900 dark:text-white">ตรวจจับไฟล์ซ้ำซ้อนและข้อมูลผิดปกติในคลัง (KB Anomaly Detector)</div>
+              <div class="text-[10px] text-surface-500">ตรวจจับไฟล์เนื้อหาซ้ำเป๊ะ (SHA-256 Collision), ไฟล์ขนาด 0 Chunks, หรือไฟล์หายบนดิสก์</div>
+            </div>
+            <button type="button" id="btnScanKbAnomalies" onclick="runKbAnomalyScan()" class="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold shadow-sm flex items-center gap-1.5 transition">
+              <i data-lucide="search" class="w-3.5 h-3.5"></i> ตรวจสอบคลังความรู้
+            </button>
+          </div>
+          <div id="kbAnomalyStatusBox" class="p-3 rounded-xl bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-700 text-[11px] text-surface-600 dark:text-surface-300 font-mono hidden">
+            กำลังตรวจสอบคลังข้อมูล...
+          </div>
+        </div>
+
+        <!-- 🛑 Automated IP Blacklist & Threat Defense Guard -->
+        <div class="p-4 rounded-2xl bg-rose-50/50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/40 space-y-3">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="font-bold text-rose-900 dark:text-rose-300 flex items-center gap-1.5">
+                <i data-lucide="shield-ban" class="w-4 h-4 text-rose-600"></i> รายการระงับ IP อัตโนมัติ (Automated IP Blacklist)
+              </div>
+              <div class="text-[10px] text-rose-600/80 dark:text-rose-400">ระบบจะแบน IP ที่พยายามโจมตีหรือ Login ผิดเกินกำหนดโดยอัตโนมัติ</div>
+            </div>
+            <button type="button" onclick="loadSecurityBlacklist()" class="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[11px] font-bold shadow-sm flex items-center gap-1 transition">
+              <i data-lucide="refresh-cw" class="w-3 h-3"></i> รีเฟรช
+            </button>
+          </div>
+          <div id="secBlacklistContainer" class="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+            <div class="text-center py-2 text-surface-400 text-[11px]">ไม่มี IP ที่ถูกระงับในขณะนี้</div>
+          </div>
+        </div>
+
+        <!-- 🛡️ PDPA Auto PII Data Masking & Anonymizer Guard Section -->
+        <div class="p-4 rounded-2xl bg-teal-50/50 dark:bg-teal-950/20 border border-teal-200 dark:border-teal-900/40 space-y-3">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="font-bold text-teal-900 dark:text-teal-300 flex items-center gap-1.5">
+                <i data-lucide="user-x" class="w-4 h-4 text-teal-600"></i> ตัวเซ็นเซอร์ข้อมูลส่วนบุคคลอัตโนมัติ (Auto PII Data Masking)
+              </div>
+              <div class="text-[10px] text-teal-600/80 dark:text-teal-400">คุ้มครองข้อมูล PDPA: เซ็นเซอร์เลขบัตรประชาชน 13 หลัก, บัตรเครดิต, เบอร์โทรศัพท์, อีเมล ก่อนส่งเข้า AI</div>
+            </div>
+            <span class="px-2.5 py-1 bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 rounded-full font-bold text-[10px]">
+              Active (PDPA Standard)
+            </span>
+          </div>
+          <div class="flex gap-2">
+            <input type="text" id="testPiiInput" placeholder="ทดลองพิมพ์ข้อความ เช่น บัตร ปชช 1103701234567 เบอร์ 0812345678" class="flex-1 px-3 py-1.5 rounded-xl border border-teal-200 dark:border-teal-800 text-[11px] bg-white dark:bg-surface-900 focus:outline-none focus:ring-2 focus:ring-teal-500">
+            <button type="button" onclick="testPiiMasking()" class="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-[11px] font-bold shadow-sm transition">
+              ทดสอบ Mask
+            </button>
+          </div>
+          <div id="testPiiResultBox" class="p-2.5 rounded-xl bg-white dark:bg-surface-900 border border-teal-100 dark:border-teal-800/40 text-[11px] font-mono text-surface-600 dark:text-surface-300 hidden">
+          </div>
+        </div>
+
+        <!-- 🤖 AI Threat Intelligence Sentinel & UEBA Section -->
+        <div class="p-4 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-900/40 space-y-3">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="font-bold text-indigo-900 dark:text-indigo-300 flex items-center gap-1.5">
+                <i data-lucide="radar" class="w-4 h-4 text-indigo-600"></i> AI Threat Intelligence Sentinel (UEBA & DLP)
+              </div>
+              <div class="text-[10px] text-indigo-600/80 dark:text-indigo-400">ตรวจจับพฤติกรรมผิดปกติ การยิงคำสั่งรัวผิดปกติ และการพยายามขโมยข้อมูล (Exfiltration)</div>
+            </div>
+            <button type="button" onclick="runUebaBehaviorScan()" class="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold shadow-sm flex items-center gap-1 transition">
+              <i data-lucide="activity" class="w-3 h-3"></i> วิเคราะห์พฤติกรรม UEBA
+            </button>
+          </div>
+          <div id="secThreatIntelBox" class="p-3 rounded-xl bg-white dark:bg-surface-900 border border-indigo-100 dark:border-indigo-800/40 text-[11px] font-mono text-surface-600 dark:text-surface-300">
+            กำลังโหลดข้อมูลข่าวกรองภัยคุกคาม...
+          </div>
+        </div>
+
+        <!-- Recent Tamper-Evident Audit Logs -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <h4 class="font-bold text-surface-900 dark:text-white">บันทึกเหตุการณ์ความปลอดภัยล่าสุด (Tamper-Evident Logs)</h4>
+            <span class="text-[10px] text-surface-400 font-mono">HMAC-SHA256 Signed</span>
+          </div>
+          <div id="secAuditLogList" class="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+            <div class="text-center py-4 text-surface-400">กำลังโหลดข้อมูล...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="px-6 py-4 border-t border-surface-100 dark:border-surface-800 bg-surface-50/50 dark:bg-surface-900 flex items-center justify-between">
+        <a href="/api/security/export-report" download class="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition">
+          <i data-lucide="file-down" class="w-4 h-4"></i> ดาวน์โหลดรายงานความปลอดภัย (PDF)
+        </a>
+        <button type="button" onclick="document.getElementById('securityHealthModal').classList.add('hidden')" class="px-5 py-2.5 bg-surface-200 dark:bg-surface-800 text-surface-700 dark:text-surface-200 hover:bg-surface-300 rounded-xl text-xs font-bold transition">
+          ปิดหน้าต่าง
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 🔒 Auto Session Lock Screen Overlay (Chapter 1 & 2) -->
+  <div id="screenLockOverlay" class="fixed inset-0 z-[10001] bg-surface-950/80 backdrop-blur-2xl hidden flex items-center justify-center p-4 animate-in fade-in duration-300">
+    <div class="bg-surface-900/90 border border-white/10 w-full max-w-sm rounded-[2.5rem] p-8 text-center shadow-2xl space-y-6">
+      <div class="w-16 h-16 rounded-full bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 mx-auto shadow-lg shadow-indigo-500/10">
+        <i data-lucide="lock" class="w-8 h-8"></i>
+      </div>
+      <div>
+        <h3 class="font-black text-lg text-white mb-1">หน้าจอถูกล็อกเพื่อความปลอดภัย</h3>
+        <p class="text-xs text-surface-400">ไม่มีการใช้งานเกินกำหนดเวลา กรุณาป้อนรหัสผ่านเพื่อปลดล็อก</p>
+      </div>
+      <form onsubmit="event.preventDefault(); window.sessionLock.unlock(document.getElementById('lockScreenPassword').value);" class="space-y-4">
+        <div>
+          <input type="password" id="lockScreenPassword" placeholder="รหัสผ่านของคุณ" required class="w-full px-4 py-3 rounded-2xl bg-surface-800/80 border border-surface-700 text-white text-xs text-center tracking-widest focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
+        </div>
+        <button type="submit" class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-2xl shadow-lg shadow-indigo-600/30 transition">
+          ปลดล็อกหน้าจอ
+        </button>
+      </form>
+    </div>
+  </div>
+
 </body>
 
 

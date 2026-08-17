@@ -1,6 +1,152 @@
 // 🛡️ CSRF Token Auto-Injector & Global Fetch Interceptor
 window._csrfToken = null;
 
+// --- Premium Sound FX & Haptic Engine (Web Audio API) ---
+class OrgAudioEngine {
+  constructor() {
+    this.ctx = null;
+    this.soundEnabled = localStorage.getItem('orgchat_sound_fx') !== 'false';
+    this.hapticEnabled = localStorage.getItem('orgchat_haptic_fx') !== 'false';
+    this._lastTypeSound = 0;
+  }
+
+  _initCtx() {
+    if (!this.ctx) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) this.ctx = new AudioCtx();
+    }
+    if (this.ctx && this.ctx.state === 'suspended') {
+      this.ctx.resume();
+    }
+  }
+
+  triggerHaptic(type = 'light') {
+    if (!this.hapticEnabled || !navigator.vibrate) return;
+    try {
+      if (type === 'light') navigator.vibrate(8);
+      else if (type === 'medium') navigator.vibrate(15);
+      else if (type === 'success') navigator.vibrate([10, 30, 15]);
+      else if (type === 'error') navigator.vibrate([20, 50, 20]);
+    } catch (e) {}
+  }
+
+  playTypingClick() {
+    if (!this.soundEnabled) return;
+    const now = Date.now();
+    if (now - this._lastTypeSound < 60) return; // throttle
+    this._lastTypeSound = now;
+
+    try {
+      this._initCtx();
+      if (!this.ctx) return;
+
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      // Soft mechanical typewriter click pitch
+      const freq = 350 + Math.random() * 120;
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(80, this.ctx.currentTime + 0.025);
+
+      gain.gain.setValueAtTime(0.015, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + 0.025);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start();
+      osc.stop(this.ctx.currentTime + 0.03);
+    } catch (e) {}
+  }
+
+  playStreamTick() {
+    if (!this.soundEnabled) return;
+    const now = Date.now();
+    if (now - this._lastTypeSound < 90) return;
+    this._lastTypeSound = now;
+
+    try {
+      this._initCtx();
+      if (!this.ctx) return;
+
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(520 + Math.random() * 60, this.ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(200, this.ctx.currentTime + 0.02);
+
+      gain.gain.setValueAtTime(0.008, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + 0.02);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start();
+      osc.stop(this.ctx.currentTime + 0.025);
+    } catch (e) {}
+  }
+
+  playSendChime() {
+    this.triggerHaptic('medium');
+    if (!this.soundEnabled) return;
+    try {
+      this._initCtx();
+      if (!this.ctx) return;
+
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(380, now);
+      osc.frequency.exponentialRampToValueAtTime(620, now + 0.12);
+
+      gain.gain.setValueAtTime(0.035, now);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.14);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.15);
+    } catch (e) {}
+  }
+
+  playReceiveChime() {
+    this.triggerHaptic('success');
+    if (!this.soundEnabled) return;
+    try {
+      this._initCtx();
+      if (!this.ctx) return;
+
+      const now = this.ctx.currentTime;
+
+      // Two-tone bright notification bell
+      [580, 880].forEach((freq, i) => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        const startTime = now + (i * 0.08);
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, startTime);
+
+        gain.gain.setValueAtTime(0.03, startTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.22);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.start(startTime);
+        osc.stop(startTime + 0.25);
+      });
+    } catch (e) {}
+  }
+}
+
+window.soundEngine = new OrgAudioEngine();
+
 // --- Personal Appearance & Custom UI Settings ---
 const FONT_MAP = {
   'Inter': "'Inter', sans-serif",
@@ -37,6 +183,27 @@ function initCustomUISettings() {
   setCustomFont(savedFont, false);
   setCustomFontSize(savedSize, false);
   setCustomAccent(savedAccent, false);
+
+  // Sound & Haptic switches sync
+  const soundToggle = document.getElementById('soundFxToggle');
+  if (soundToggle) {
+    soundToggle.checked = window.soundEngine.soundEnabled;
+    soundToggle.onchange = (e) => {
+      window.soundEngine.soundEnabled = e.target.checked;
+      localStorage.setItem('orgchat_sound_fx', e.target.checked);
+      if (e.target.checked) window.soundEngine.playSendChime();
+    };
+  }
+
+  const hapticToggle = document.getElementById('hapticFxToggle');
+  if (hapticToggle) {
+    hapticToggle.checked = window.soundEngine.hapticEnabled;
+    hapticToggle.onchange = (e) => {
+      window.soundEngine.hapticEnabled = e.target.checked;
+      localStorage.setItem('orgchat_haptic_fx', e.target.checked);
+      if (e.target.checked) window.soundEngine.triggerHaptic('success');
+    };
+  }
 }
 
 function setCustomFont(fontName, save = true) {
@@ -693,7 +860,7 @@ function renderPersonas() {
 }
 
 function initAdminPanel() {
-  if (!state.isAdmin) return;
+  if (!state.isAdmin && !state.isOrgAdmin) return;
   loadAdminUsers();
   loadAdminDashboardStats();
   refreshAdminLeaves();
@@ -1428,8 +1595,8 @@ function switchView(viewId) {
     toast('เฉพาะ Super Admin เท่านั้น', 'error');
     return;
   }
-  if (_ADMIN_VIEWS.includes(viewId) && !state.isAdmin) {
-    toast('คุณไม่มีสิทธิ์เข้าถึงส่วนนี้', 'error');
+  if (_ADMIN_VIEWS.includes(viewId) && !state.isAdmin && !state.isOrgAdmin) {
+    toast('เฉพาะ Admin เท่านั้นที่มีสิทธิ์เข้าถึงส่วนนี้', 'error');
     return;
   }
   if (_ORG_ADMIN_VIEWS.includes(viewId) && !state.isOrgAdmin && !state.isAdmin) {
@@ -1440,6 +1607,11 @@ function switchView(viewId) {
 
   console.log("🚀 Switching view to:", viewId);
   state.currentView = viewId;
+  
+  // Sync URL hash
+  if (window.location.hash.replace('#', '') !== viewId) {
+    history.replaceState(null, null, '#' + viewId);
+  }
   
   // Highlight active menu item
   const navItems = document.querySelectorAll('.nav-item');
@@ -1883,11 +2055,11 @@ function appendMessage(role, html, sources = [], scroll = true, msgId = null) {
   chatArea.appendChild(row);
   
   // Trigger Auto-Speak if enabled and it's an AI message
-  if (!isUser && autoSpeakEnabled) {
+  if (!isUser && (typeof _isAutoSpeakEnabled !== 'undefined' ? _isAutoSpeakEnabled : false)) {
     // Extract plain text from HTML content (stripping tags for cleaner speech)
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = html;
-    speak(tempDiv.textContent || tempDiv.innerText || "");
+    speakTextThai(tempDiv.textContent || tempDiv.innerText || "");
   }
 
   // Attach translate listener
@@ -1925,7 +2097,7 @@ function appendMessage(role, html, sources = [], scroll = true, msgId = null) {
   if (speakBtn) {
     speakBtn.onclick = () => {
       const p = row.querySelector('.prose');
-      if (p) speak(p.innerText);
+      if (p) speakTextThai(p.innerText);
     };
   }
 
@@ -2143,6 +2315,11 @@ async function sendMessage(text) {
   state.history.push({ role: 'user', text });
   saveHistory();
 
+  // 🔔 Play Send Chime & Haptic
+  if (window.soundEngine) {
+    window.soundEngine.playSendChime();
+  }
+
   showTyping(); 
 
   try {
@@ -2250,6 +2427,11 @@ async function sendMessage(text) {
         if (data.content) {
           botText += data.content;
           
+          // 🎵 Play streaming tick
+          if (window.soundEngine) {
+            window.soundEngine.playStreamTick();
+          }
+
           if (!botMsgEl) {
             // Create the bubble if it doesn't exist
             botMsgEl = appendMessage('bot', '<span class="typing-dots">...</span>', sources, true, botId);
@@ -2271,6 +2453,11 @@ async function sendMessage(text) {
 
   // Display the complete bot message once streaming is done to finalize parsing (actions etc)
   if (botText) {
+    // 🔔 Play Bot Completion Chime & Haptic
+    if (window.soundEngine) {
+      window.soundEngine.playReceiveChime();
+    }
+
     const { displayHtml, calendarData, reconcileData } = parseAIActions(botText);
     
     if (botMsgEl) {
@@ -2291,6 +2478,14 @@ async function sendMessage(text) {
       state.history = state.history.slice(-20);
     }
     saveHistory();
+
+    // 🌟 Update Dynamic Suggestion Chips based on latest interaction
+    updateDynamicSuggestions(botText, text);
+
+    // 🔊 Auto-Speak TTS if enabled
+    if (_isAutoSpeakEnabled) {
+      speakTextThai(botText);
+    }
   }
 
   // Final scroll
@@ -2630,6 +2825,12 @@ if (msgInput) {
 
   msgInput.addEventListener('input', (e) => {
     autoResize();
+    
+    // 🔊 Mechanical Typing Click Sound
+    if (window.soundEngine) {
+      window.soundEngine.playTypingClick();
+    }
+
     const val = msgInput.value;
     const lastAt = val.lastIndexOf('@');
     if (lastAt !== -1 && lastAt >= val.length - 1) {
@@ -2694,58 +2895,215 @@ clearChatBtn.addEventListener('click', async () => {
   }
 });
 
-// ─── Voice Interaction (STT/TTS) ──────────────
+// ─── Dynamic AI Suggestion Chips & Smart Voice Mode ──────────────
 let recognition = null;
+let _isAutoSpeakEnabled = localStorage.getItem('orgchat_auto_speak') === 'true';
+let _isContinuousVoiceMode = false;
 
+// Initialize Auto-Speak Button state
+const _chatAutoSpeakBtn = document.getElementById('autoSpeakBtn');
+if (_chatAutoSpeakBtn) {
+  if (_isAutoSpeakEnabled) {
+    _chatAutoSpeakBtn.classList.add('text-brand-600', 'bg-brand-50', 'dark:bg-brand-950/40');
+  }
+  _chatAutoSpeakBtn.addEventListener('click', () => {
+    _isAutoSpeakEnabled = !_isAutoSpeakEnabled;
+    localStorage.setItem('orgchat_auto_speak', _isAutoSpeakEnabled);
+    if (_isAutoSpeakEnabled) {
+      _chatAutoSpeakBtn.classList.add('text-brand-600', 'bg-brand-50', 'dark:bg-brand-950/40');
+      toast('เปิดโหมดอ่านออกเสียงอัตโนมัติ 🔊', 'info');
+    } else {
+      _chatAutoSpeakBtn.classList.remove('text-brand-600', 'bg-brand-50', 'dark:bg-brand-950/40');
+      if (window.speechSynthesis) window.speechSynthesis.cancel();
+      toast('ปิดโหมดอ่านออกเสียง', 'info');
+    }
+  });
+}
+
+/**
+ * Speaks text out loud using native Thai Speech Synthesis
+ */
+function speakTextThai(text) {
+  if (!('speechSynthesis' in window) || !text) return;
+  try {
+    window.speechSynthesis.cancel(); // Stop current speech
+
+    // Clean markdown and emojis for smoother speech
+    const cleanText = text
+      .replace(/```[\s\S]*?```/g, '') // remove code blocks
+      .replace(/`([^`]+)`/g, '$1')
+      .replace(/[*#_~>]/g, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
+      .trim();
+
+    if (!cleanText) return;
+
+    const utterance = new SpeechSynthesisUtterance(cleanText.substring(0, 400)); // cap length for quick response
+    utterance.lang = 'th-TH';
+    utterance.rate = 1.05;
+    utterance.pitch = 1.0;
+
+    const voices = window.speechSynthesis.getVoices();
+    const thaiVoice = voices.find(v => v.lang.includes('th') || v.lang.includes('TH'));
+    if (thaiVoice) utterance.voice = thaiVoice;
+
+    utterance.onend = () => {
+      // If in continuous voice mode, auto-listen for user follow-up
+      if (_isContinuousVoiceMode && recognition) {
+        try { recognition.start(); } catch (e) {}
+      }
+    };
+
+    window.speechSynthesis.speak(utterance);
+  } catch (e) {
+    console.warn('[TTS Error]', e);
+  }
+}
+
+/**
+ * Dynamically updates the quick-action suggestion chips under the chat box
+ * based on the conversation context and AI response
+ */
+function updateDynamicSuggestions(lastBotText = '', userQuery = '') {
+  const suggestionsBox = document.getElementById('suggestions');
+  if (!suggestionsBox) return;
+
+  const defaultChips = [
+    { label: 'สรุปวันนี้', query: 'สรุปความเคลื่อนไหววันนี้ให้หน่อย', icon: 'sparkles' },
+    { label: 'เช็คคิวพรุ่งนี้', query: 'พรุ่งนี้ฉันมีประชุมหรือนัดหมายอะไรบ้าง', icon: 'calendar-clock' },
+    { label: 'ร่างประกาศ', query: 'ร่างประกาศข่าวกิจกรรมบริษัทให้หน่อย', icon: 'megaphone' },
+    { label: 'สรุปไฟล์ล่าสุด', query: 'ช่วยสรุปไฟล์ PDF ล่าสุดที่ฉันอัปโหลด', icon: 'file-text' }
+  ];
+
+  let chips = [];
+  const text = (lastBotText + ' ' + userQuery).toLowerCase();
+
+  // Smart Context Detection
+  if (text.includes('ประชุม') || text.includes('นัดหมาย') || text.includes('calendar') || text.includes('ตาราง')) {
+    chips = [
+      { label: 'เพิ่มนัดหมายใหม่', query: 'ช่วยสร้างนัดหมายใหม่ให้หน่อย', icon: 'calendar-plus' },
+      { label: 'ส่งสรุปการประชุม', query: 'ช่วยร่างสรุปประเด็นการประชุมนี้', icon: 'file-check' },
+      { label: 'เช็คคิวตลอดสัปดาห์', query: 'สัปดาห์นี้ฉันมีตารางงานอะไรบ้าง', icon: 'clock' },
+      { label: 'แจ้งเตือนเพื่อนร่วมงาน', query: 'ร่างข้อความแจ้งเตือนผู้เข้าร่วมประชุม', icon: 'send' }
+    ];
+  } else if (text.includes('สลิป') || text.includes('ใบเสร็จ') || text.includes('ภาษี') || text.includes('เงิน') || text.includes('ยอด')) {
+    chips = [
+      { label: 'บันทึกเข้า Google Sheets', query: 'บันทึกรายการยอดเงินนี้ลงชีตให้หน่อย', icon: 'file-spreadsheet' },
+      { label: 'สรุปยอดรวมค่าใช้จ่าย', query: 'สรุปยอดรวมค่าใช้จ่ายเดือนนี้ให้หน่อย', icon: 'calculator' },
+      { label: 'เช็คหัก ณ ที่จ่าย (WHT)', query: 'ช่วยตรวจสอบอัตราหัก ณ ที่จ่ายของรายการนี้', icon: 'percent' },
+      { label: 'ดูประวัติสลิป', query: 'ขอดูประวัติการอัปโหลดสลิปล่าสุด', icon: 'history' }
+    ];
+  } else if (text.includes('ประกาศ') || text.includes('ข่าว') || text.includes('แจ้ง')) {
+    chips = [
+      { label: 'บรอดแคสต์ LINE', query: 'ช่วยตั้งเวลาบรอดแคสต์ข้อความนี้เข้า LINE องค์กร', icon: 'message-circle' },
+      { label: 'ปรับภาษาให้เป็นทางการ', query: 'ช่วยปรับข้อความนี้ให้สุภาพและเป็นทางการมากขึ้น', icon: 'pencil-line' },
+      { label: 'ย่อให้กระชับ', query: 'ช่วยสรุปให้สั้นกระชับเหลือ 3 บรรทัด', icon: 'minimize-2' },
+      { label: 'แปลเป็นภาษาอังกฤษ', query: 'ช่วยแปลประกาศนี้เป็นภาษาอังกฤษ', icon: 'languages' }
+    ];
+  } else if (lastBotText.length > 50) {
+    chips = [
+      { label: 'อธิบายเพิ่มเติม', query: 'ช่วยขยายความและอธิบายรายละเอียดเพิ่มเติม', icon: 'help-circle' },
+      { label: 'สรุปเป็นหัวข้อย่อย', query: 'ช่วยสรุปคำตอบข้างต้นเป็น Bullet Points สั้นๆ', icon: 'list' },
+      { label: 'ร่างเป็นอีเมล', query: 'ช่วยนำข้อมูลนี้ไปร่างเป็นอีเมลแจ้งทีมงาน', icon: 'mail' },
+      { label: 'ถามคำถามอื่น', query: 'วันนี้มีอะไรที่ฉันควรรู้อีกบ้าง', icon: 'sparkles' }
+    ];
+  } else {
+    chips = defaultChips;
+  }
+
+  suggestionsBox.innerHTML = chips.map(c => `
+    <button class="quick-action-chip animate-in fade-in zoom-in-95 duration-300" data-q="${c.query.replace(/"/g, '&quot;')}">
+      <i data-lucide="${c.icon}" class="w-3.5 h-3.5"></i> ${c.label}
+    </button>
+  `).join('');
+
+  // Re-bind click events
+  suggestionsBox.querySelectorAll('.quick-action-chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const q = btn.dataset.q;
+      if (q) sendMessage(q);
+    });
+  });
+
+  if (window.lucide) lucide.createIcons();
+}
+
+// ─── Voice Interaction (STT / SpeechRecognition) ──────────────
 if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   recognition = new SpeechRecognition();
-  recognition.lang = 'th-TH'; // Default to Thai
+  recognition.lang = 'th-TH';
   recognition.continuous = false;
-  recognition.interimResults = false;
+  recognition.interimResults = true;
 
   recognition.onstart = () => {
     voiceBtn.classList.add('voice-active');
-    voiceBtn.innerHTML = '<i data-lucide="mic-off" class="w-4 h-4"></i>';
-    initIcons();
-    toast('กำลังฟัง...', 'info');
+    voiceBtn.innerHTML = `
+      <div class="voice-wave-container">
+        <div class="voice-wave-bar"></div>
+        <div class="voice-wave-bar"></div>
+        <div class="voice-wave-bar"></div>
+        <div class="voice-wave-bar"></div>
+      </div>
+    `;
+    toast('กำลังฟังเสียงพูดของคุณ... (พูดเสร็จจะส่งอัตโนมัติ)', 'info');
   };
 
   recognition.onend = () => {
     voiceBtn.classList.remove('voice-active');
     voiceBtn.innerHTML = '<i data-lucide="mic" class="w-4 h-4"></i>';
-    initIcons();
+    if (window.lucide) lucide.createIcons();
   };
 
   recognition.onresult = (event) => {
-    const text = event.results[0][0].transcript;
-    msgInput.value = text;
-    autoResize();
-    // Auto-send after a short delay for better UX
-    setTimeout(() => {
-      const currentText = msgInput.value.trim();
-      if (currentText) {
-        msgInput.value = '';
+    let finalTranscript = '';
+    for (let i = event.resultIndex; i < event.results.length; ++i) {
+      if (event.results[i].isFinal) {
+        finalTranscript += event.results[i][0].transcript;
+      } else {
+        msgInput.value = event.results[i][0].transcript;
         autoResize();
-        sendMessage(currentText);
       }
-    }, 1000);
+    }
+
+    if (finalTranscript) {
+      msgInput.value = finalTranscript;
+      autoResize();
+      setTimeout(() => {
+        const currentText = msgInput.value.trim();
+        if (currentText) {
+          msgInput.value = '';
+          autoResize();
+          sendMessage(currentText);
+        }
+      }, 600);
+    }
   };
 
   recognition.onerror = (e) => {
     console.error('Speech Recognition Error:', e);
-    toast('ไม่สามารถรับข้อมูลจากไมค์ได้', 'error');
+    voiceBtn.classList.remove('voice-active');
+    voiceBtn.innerHTML = '<i data-lucide="mic" class="w-4 h-4"></i>';
+    if (window.lucide) lucide.createIcons();
+    if (e.error !== 'no-speech') {
+      toast('ไม่สามารถรับข้อมูลจากไมค์ได้: ' + e.error, 'error');
+    }
   };
 }
 
 if (voiceBtn) {
   voiceBtn.onclick = () => {
     if (!recognition) {
-      toast('เบราว์เซอร์ของคุณไม่รองรับการสั่งงานด้วยเสียง', 'error');
+      toast('เบราว์เซอร์ของคุณไม่รองรับการสั่งงานด้วยเสียง กรุณาใช้ Chrome หรือ Edge', 'error');
       return;
     }
     try {
-      recognition.start();
+      if (voiceBtn.classList.contains('voice-active')) {
+        recognition.stop();
+      } else {
+        recognition.start();
+      }
     } catch (e) {
       recognition.stop();
     }
@@ -4495,34 +4853,37 @@ function renderUpcoming() {
     const dateStr = new Date(s.date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
 
     return `
-    <div class="flex items-start gap-2 group">
-      <div class="w-8 h-8 rounded-lg ${cat.bg} flex items-center justify-center ${cat.color} flex-shrink-0 mt-0.5">
+    <div class="flex items-start gap-2.5 p-2 rounded-2xl transition hover:bg-surface-50 dark:hover:bg-surface-800/40 group">
+      <div class="w-8 h-8 rounded-xl ${cat.bg} flex items-center justify-center ${cat.color} flex-shrink-0 mt-0.5 shadow-sm">
         <i data-lucide="${cat.icon}" class="w-4 h-4"></i>
       </div>
       <div class="flex-1 min-w-0">
-        <div class="flex items-start justify-between gap-1 leading-tight">
-          <div class="text-xs font-bold leading-tight text-surface-900 dark:text-surface-100 group-hover:text-brand-600 transition-colors break-words flex-1 ${s.status === 'done' ? 'line-through opacity-50' : ''}">
-            ${s.status === 'done' ? '<i data-lucide="check-circle-2" class="w-3 h-3 inline-block mr-1 text-emerald-500"></i>' : (new Date(s.date) < (new Date().setHours(0,0,0,0)) ? '<span class="text-[8px] bg-rose-600 text-white px-1.5 py-0.5 rounded-full uppercase mr-1 animate-pulse">Overdue</span>' : '')}
-            ${s.title}${s.is_public ? ' <span class="text-[8px] bg-emerald-500 text-white px-1.5 py-0.5 rounded-full uppercase">Shared</span>' : ''}
+        <div class="flex items-start justify-between gap-1 leading-tight mb-1">
+          <div class="text-xs font-bold text-surface-900 dark:text-surface-100 group-hover:text-brand-600 transition-colors break-words flex-1 leading-snug ${s.status === 'done' ? 'line-through opacity-50' : ''}">
+            ${s.status === 'done' ? '<i data-lucide="check-circle-2" class="w-3 h-3 inline-block mr-1 text-emerald-500"></i>' : (new Date(s.date) < (new Date().setHours(0,0,0,0)) ? '<span class="text-[8px] bg-rose-600 text-white px-1.5 py-0.5 rounded-full uppercase mr-1 inline-block animate-pulse">Overdue</span>' : '')}
+            ${s.title}
           </div>
 
           <div class="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0">
-            <button class="p-1 text-surface-300 hover:text-emerald-500" title="Toggle Status" onclick="toggleScheduleStatus(${s.id})">
+            <button class="p-1 text-surface-300 hover:text-emerald-500 rounded" title="Toggle Status" onclick="toggleScheduleStatus(${s.id})">
               <i data-lucide="${s.status === 'done' ? 'rotate-ccw' : 'check'}" class="w-3 h-3"></i>
             </button>
-            <button class="p-1 text-surface-300 hover:text-brand-600" title="Edit" onclick="editSchedule(${s.id})">
+            <button class="p-1 text-surface-300 hover:text-brand-600 rounded" title="Edit" onclick="editSchedule(${s.id})">
               <i data-lucide="edit-3" class="w-3 h-3"></i>
             </button>
-            <button class="p-1 text-surface-300 hover:text-red-500" title="Delete" onclick="deleteSchedule(${s.id})">
+            <button class="p-1 text-surface-300 hover:text-red-500 rounded" title="Delete" onclick="deleteSchedule(${s.id})">
               <i data-lucide="trash-2" class="w-3 h-3"></i>
             </button>
           </div>
         </div>
-        <div class="flex items-center gap-1.5 -mt-1.5">
-          <span class="text-[9px] font-black text-brand-600 bg-brand-50 dark:bg-brand-900/30 px-1.5 py-0.5 rounded">${dateStr} · ${s.time || '09:00'}</span>
+        
+        <div class="flex flex-wrap items-center gap-1.5 mb-1">
+          ${s.is_public ? '<span class="text-[8px] font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 px-1.5 py-0.2 rounded uppercase">Shared</span>' : ''}
+          <span class="text-[9px] font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-900/30 px-2 py-0.5 rounded-md border border-brand-500/10">${dateStr} · ${s.time || '09:00'}</span>
         </div>
-        <div class="text-[10px] text-surface-400 mt-1 leading-tight line-clamp-1">${s.desc || 'ไม่มีรายละเอียด'}</div>
-        <div class="flex items-center gap-1.5 mt-1 pt-1 border-t border-surface-100 dark:border-surface-800/60">
+
+        <div class="text-[10px] text-surface-400 leading-normal line-clamp-2">${s.desc || 'ไม่มีรายละเอียด'}</div>
+        <div class="flex items-center gap-1.5 mt-1.5 pt-1.5 border-t border-surface-100 dark:border-surface-800/60">
           <div class="w-4 h-4 rounded-full bg-surface-200 dark:bg-surface-700 flex items-center justify-center overflow-hidden flex-shrink-0 ring-1 ring-surface-300/30">
             ${s.avatar_url ? `<img src="${s.avatar_url}" class="w-full h-full object-cover">` : `<i data-lucide="user" class="w-2.5 h-2.5 text-surface-400"></i>`}
           </div>
@@ -8819,9 +9180,12 @@ function renderOrgMembers(members, canManage) {
       ? `<img src="${m.avatar_url}" class="w-10 h-10 rounded-xl object-cover flex-shrink-0" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
         + `<div class="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-400 to-indigo-500 items-center justify-center text-white text-sm font-black flex-shrink-0" style="display:none">${(m.display_name || m.username).charAt(0).toUpperCase()}</div>`
       : `<div class="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-400 to-indigo-500 flex items-center justify-center text-white text-sm font-black flex-shrink-0">${(m.display_name || m.username).charAt(0).toUpperCase()}</div>`;
-    const roleBadge = m.role === 'admin'
-      ? `<span class="admin-role-badge admin">Admin</span>`
-      : `<span class="admin-role-badge user">Member</span>`;
+    let roleBadge = `<span class="admin-role-badge user">Member</span>`;
+    if (m.is_owner) {
+      roleBadge = `<span class="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-full shadow-sm flex items-center gap-1"><i data-lucide="crown" class="w-2.5 h-2.5"></i> Owner (Admin ใหญ่)</span>`;
+    } else if (m.role === 'admin') {
+      roleBadge = `<span class="admin-role-badge admin">Admin</span>`;
+    }
     const statusDot = `<span class="admin-status-dot" style="background:${isActive ? '#22c55e' : '#ef4444'}" title="${isActive ? 'ใช้งานอยู่' : 'ปิดใช้งาน'}"></span>`;
     const financialBadge = m.can_view_financial
       ? `<span class="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full">รายจ่าย</span>`
@@ -8842,7 +9206,7 @@ function renderOrgMembers(members, canManage) {
           class="px-3 py-1.5 text-[10px] font-bold rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors">
           <i data-lucide="pencil" class="w-3 h-3 inline mr-1"></i>แก้ไข
         </button>
-        ${!isMe ? `<button onclick="removeOrgMember('${m.username}')"
+        ${!isMe && !m.is_owner ? `<button onclick="removeOrgMember('${m.username}')"
           class="p-1.5 text-surface-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors" title="ลบออกจากองค์กร">
           <i data-lucide="user-minus" class="w-4 h-4"></i>
         </button>` : ''}
@@ -13532,10 +13896,113 @@ function closeQRScanner() {
 
 // ─── Leave Management ─────────────────────────────────────
 
+let _currentCalendarYear = new Date().getFullYear();
+let _currentCalendarMonth = new Date().getMonth() + 1; // 1-12
+
 async function loadLeaveData() {
   await loadMyLeaves();
+  await loadTeamLeaveCalendar();
   initLeaveForm();
 }
+
+async function changeTeamCalendarMonth(delta) {
+  _currentCalendarMonth += delta;
+  if (_currentCalendarMonth < 1) {
+    _currentCalendarMonth = 12;
+    _currentCalendarYear -= 1;
+  } else if (_currentCalendarMonth > 12) {
+    _currentCalendarMonth = 1;
+    _currentCalendarYear += 1;
+  }
+  await loadTeamLeaveCalendar();
+}
+
+async function loadTeamLeaveCalendar() {
+  const grid = $('teamLeaveCalendarGrid');
+  const label = $('teamCalendarMonthLabel');
+  if (!grid || !label) return;
+
+  const monthStr = `${_currentCalendarYear}-${String(_currentCalendarMonth).padStart(2, '0')}`;
+  const monthNamesTH = ["", "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+  label.textContent = `${monthNamesTH[_currentCalendarMonth]} ${_currentCalendarYear + 543}`;
+
+  grid.innerHTML = `<div class="col-span-7 py-8 text-center text-xs text-surface-400">กำลังโหลดปฏิทินวันลา...</div>`;
+
+  try {
+    const res = await fetch(`/api/leave/team-calendar?month=${monthStr}`).then(r => r.json());
+    if (!res.ok) {
+      grid.innerHTML = `<div class="col-span-7 py-8 text-center text-xs text-rose-500">ไม่สามารถโหลดปฏิทินได้</div>`;
+      return;
+    }
+
+    const events = res.events || [];
+    
+    // Build days of the current month
+    const firstDay = new Date(_currentCalendarYear, _currentCalendarMonth - 1, 1).getDay(); // 0 = Sun
+    const daysInMonth = new Date(_currentCalendarYear, _currentCalendarMonth, 0).getDate();
+    
+    let html = '';
+    
+    // Empty cells before day 1
+    for (let i = 0; i < firstDay; i++) {
+      html += `<div class="min-h-[85px] p-1.5 bg-surface-50/50 dark:bg-surface-800/20 rounded-2xl border border-transparent"></div>`;
+    }
+
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateStr = `${_currentCalendarYear}-${String(_currentCalendarMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const isToday = dateStr === todayStr;
+
+      // Find events spanning this date
+      const dayEvents = events.filter(e => {
+        return dateStr >= e.start_date && dateStr <= e.end_date;
+      });
+
+      let eventsHtml = dayEvents.map(e => {
+        let badgeColor = 'bg-purple-500/10 text-purple-600 border-purple-500/20';
+        let dotColor = 'bg-purple-500';
+        const lType = (e.type || '').toLowerCase();
+        if (lType.includes('ป่วย') || lType.includes('sick')) {
+          badgeColor = 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20';
+          dotColor = 'bg-emerald-500';
+        } else if (lType.includes('กิจ') || lType.includes('personal')) {
+          badgeColor = 'bg-amber-500/10 text-amber-600 border-amber-500/20';
+          dotColor = 'bg-amber-500';
+        } else if (lType.includes('พักร้อน') || lType.includes('vacation')) {
+          badgeColor = 'bg-blue-500/10 text-blue-600 border-blue-500/20';
+          dotColor = 'bg-blue-500';
+        }
+
+        const isPending = e.status === 'pending';
+        return `
+          <div class="px-1.5 py-0.5 rounded-lg border text-[10px] font-bold flex items-center gap-1 truncate ${badgeColor} ${isPending ? 'opacity-70 border-dashed' : ''}" title="${e.display_name} (${e.type})${isPending ? ' - รออนุมัติ' : ''}">
+            <span class="w-1.5 h-1.5 rounded-full ${dotColor} flex-shrink-0"></span>
+            <span class="truncate">${e.display_name}</span>
+          </div>
+        `;
+      }).join('');
+
+      html += `
+        <div class="min-h-[85px] p-1.5 bg-white dark:bg-surface-800/40 rounded-2xl border ${isToday ? 'border-brand-500 shadow-sm shadow-brand-500/10' : 'border-surface-100 dark:border-surface-800'} flex flex-col justify-between transition hover:border-surface-300 dark:hover:border-surface-700">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-[11px] font-bold ${isToday ? 'w-5 h-5 rounded-full bg-brand-600 text-white flex items-center justify-center' : 'text-surface-600 dark:text-surface-300'}">${day}</span>
+            ${dayEvents.length > 0 ? `<span class="text-[9px] font-bold text-surface-400">${dayEvents.length}</span>` : ''}
+          </div>
+          <div class="space-y-1 overflow-y-auto max-h-[60px] no-scrollbar">
+            ${eventsHtml}
+          </div>
+        </div>
+      `;
+    }
+
+    grid.innerHTML = html;
+  } catch (err) {
+    console.error('Failed to load team leave calendar:', err);
+    grid.innerHTML = `<div class="col-span-7 py-8 text-center text-xs text-rose-500">เกิดข้อผิดพลาดในการโหลดปฏิทิน</div>`;
+  }
+}
+
 
 let _leaveFormInitialized = false;
 function initLeaveForm() {
@@ -13866,6 +14333,74 @@ function renderLeaveComments(comments) {
         };
     }
 })();
+
+function switchLeaveView(viewMode) {
+    const tableView = $('adminLeaveTableView');
+    const calView = $('adminLeaveCalendarView');
+    const btnTable = $('btnLeaveViewTable');
+    const btnCal = $('btnLeaveViewCalendar');
+
+    if (viewMode === 'calendar') {
+        if (tableView) tableView.classList.add('hidden');
+        if (calView) calView.classList.remove('hidden');
+
+        if (btnTable) {
+            btnTable.className = "px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200";
+        }
+        if (btnCal) {
+            btnCal.className = "px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-white dark:bg-surface-700 text-brand-600 dark:text-brand-400 shadow-sm";
+        }
+        loadTeamLeaveCalendar();
+    } else {
+        if (calView) calView.classList.add('hidden');
+        if (tableView) tableView.classList.remove('hidden');
+
+        if (btnCal) {
+            btnCal.className = "px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200";
+        }
+        if (btnTable) {
+            btnTable.className = "px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-white dark:bg-surface-700 text-brand-600 dark:text-brand-400 shadow-sm";
+        }
+        refreshAdminLeaves();
+    }
+}
+
+function prevLeaveMonth() {
+    changeTeamCalendarMonth(-1);
+}
+
+function nextLeaveMonth() {
+    changeTeamCalendarMonth(1);
+}
+
+async function testMorningBriefing() {
+    const btn = $('btnTestBriefing');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> กำลังส่ง...';
+        if (typeof initIcons === 'function') initIcons();
+    }
+    try {
+        const res = await fetch('/api/admin/briefing/trigger', { method: 'POST' });
+        const data = await res.json();
+        if (data.ok) {
+            toast('ส่ง Morning Briefing เข้า LINE เรียบร้อยแล้วค่ะ 🌅', 'success');
+        } else {
+            toast(data.error || 'เกิดข้อผิดพลาดในการส่ง', 'error');
+        }
+    } catch (e) {
+        console.error(e);
+        toast('ไม่สามารถติดต่อเซิร์ฟเวอร์ได้', 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i data-lucide="sunrise" class="w-3.5 h-3.5"></i> ทดสอบ Morning Brief';
+            if (typeof initIcons === 'function') initIcons();
+        }
+    }
+}
+
+
 
 
 
@@ -17261,5 +17796,20 @@ document.addEventListener('DOMContentLoaded', () => {
   setTimeout(initLogin3DBackground, 200);
   applyCustomUI();
   setTimeout(check2FAStatus, 1500);
+
+  // 🌐 Hash Routing Support (e.g. #admin, #plan, #super-admin, #line-groups)
+  function handleHashRoute() {
+    const hash = window.location.hash.replace('#', '').trim();
+    if (hash) {
+      setTimeout(() => {
+        if (typeof switchView === 'function') {
+          switchView(hash);
+        }
+      }, 250);
+    }
+  }
+  handleHashRoute();
+  window.addEventListener('hashchange', handleHashRoute);
 });
+
 

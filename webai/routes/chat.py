@@ -126,33 +126,7 @@ def on_user_typing(data):
         emit('user_typing', data, broadcast=True)
 
 
-def validate_uploaded_file(file_stream, filename) -> tuple[bool, str]:
-    """
-    Validates an uploaded file strictly based on:
-    1. Extension check against ALLOWED_EXTENSIONS
-    2. Actual content inspection (MIME type / magic headers)
-    3. Null-byte validation for text files
-    """
-    if not filename:
-        return False, "ไม่พบชื่อไฟล์"
-    ext = os.path.splitext(filename)[1].lower()
-    if ext not in ALLOWED_EXTENSIONS:
-        return False, f"ไม่รองรับนามสกุลไฟล์ {ext}"
-    try:
-        header = file_stream.read(2048)
-        file_stream.seek(0)
-    except Exception as e:
-        return False, f"ไม่สามารถอ่านข้อมูลโครงสร้างไฟล์ได้: {e}"
-    if ext in ['.txt', '.csv', '.md']:
-        if b'\x00' in header:
-            return False, "โครงสร้างไฟล์ขัดแย้งกับข้อความธรรมดา (พบโค้ดไบนารีแฝงในไฟล์)"
-    if ext == '.pdf' and not header.startswith(b'%PDF'):
-        return False, "โครงสร้างไฟล์ PDF ไม่ถูกต้อง (ลายเซ็นต์ไฟล์ไม่ถูกต้อง)"
-    if ext == '.png' and not header.startswith(b'\x89PNG\r\n\x1a\n'):
-        return False, "โครงสร้างไฟล์ PNG ไม่ถูกต้อง"
-    if ext in ['.jpg', '.jpeg'] and not header.startswith(b'\xff\xd8\xff'):
-        return False, "โครงสร้างไฟล์ JPEG/JPG ไม่ถูกต้อง"
-    return True, ""
+from routes.shared import validate_uploaded_file
 
 
 def safe_thread_target(target_fn):
@@ -265,7 +239,495 @@ def create_magic_link_flex_bubble(magic_link_url):
             ]
         }
     }
+
+def create_leave_approval_flex_bubble(leave_id, applicant_name, leave_type, start_date, end_date, reason):
+    """Creates a high-end 1-Click approval Flex Message for Managers/Admins in LINE."""
+    bubble = {
+        "type": "bubble",
+        "size": "mega",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#0F172A",
+            "paddingAll": "20px",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": "HR LEAVE REQUEST",
+                    "color": "#94A3B8",
+                    "weight": "bold",
+                    "size": "xs",
+                    "letterSpacing": "1px"
+                },
+                {
+                    "type": "text",
+                    "text": f"คำขออนุมัติการลา #{leave_id}",
+                    "color": "#FFFFFF",
+                    "weight": "bold",
+                    "size": "lg",
+                    "margin": "xs"
+                }
+            ]
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#FFFFFF",
+            "paddingAll": "20px",
+            "contents": [
+                {
+                    "type": "box",
+                    "layout": "vertical",
+                    "spacing": "sm",
+                    "contents": [
+                        {
+                            "type": "box",
+                            "layout": "baseline",
+                            "contents": [
+                                {"type": "text", "text": "ผู้ขอลา", "color": "#64748B", "size": "xs", "flex": 3},
+                                {"type": "text", "text": str(applicant_name), "color": "#0F172A", "size": "xs", "weight": "bold", "flex": 7}
+                            ]
+                        },
+                        {
+                            "type": "box",
+                            "layout": "baseline",
+                            "contents": [
+                                {"type": "text", "text": "ประเภทการลา", "color": "#64748B", "size": "xs", "flex": 3},
+                                {"type": "text", "text": str(leave_type), "color": "#2563EB", "size": "xs", "weight": "bold", "flex": 7}
+                            ]
+                        },
+                        {
+                            "type": "box",
+                            "layout": "baseline",
+                            "contents": [
+                                {"type": "text", "text": "ช่วงวันลา", "color": "#64748B", "size": "xs", "flex": 3},
+                                {"type": "text", "text": f"{start_date} ถึง {end_date}", "color": "#0F172A", "size": "xs", "weight": "bold", "flex": 7}
+                            ]
+                        },
+                        {
+                            "type": "box",
+                            "layout": "baseline",
+                            "contents": [
+                                {"type": "text", "text": "เหตุผล", "color": "#64748B", "size": "xs", "flex": 3},
+                                {"type": "text", "text": str(reason or "-"), "color": "#334155", "size": "xs", "wrap": True, "flex": 7}
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        "footer": {
+            "type": "box",
+            "layout": "horizontal",
+            "spacing": "md",
+            "paddingAll": "16px",
+            "backgroundColor": "#F8FAFC",
+            "contents": [
+                {
+                    "type": "button",
+                    "style": "primary",
+                    "color": "#10B981",
+                    "height": "sm",
+                    "action": {
+                        "type": "postback",
+                        "label": "✅ อนุมัติ",
+                        "data": f"action=approve_leave&id={leave_id}",
+                        "displayText": f"อนุมัติคำขอลา #{leave_id}"
+                    }
+                },
+                {
+                    "type": "button",
+                    "style": "primary",
+                    "color": "#EF4444",
+                    "height": "sm",
+                    "action": {
+                        "type": "postback",
+                        "label": "❌ ปฏิเสธ",
+                        "data": f"action=reject_leave&id={leave_id}",
+                        "displayText": f"ปฏิเสธคำขอลา #{leave_id}"
+                    }
+                }
+            ]
+        }
+    }
     return clean_flex_payload(bubble)
+
+
+def create_morning_briefing_flex_bubble(org_name, date_str, meetings, leaves_today, expenses_24h, pending_leaves_count=0):
+    """
+    Creates a premium, rich Executive & Team Morning Briefing Flex Card for LINE.
+    Includes:
+      - 📅 Today's Meetings & Schedules
+      - 🏖️ Team Members on Leave Today
+      - 💰 Financial Expenses Summary (Last 24h)
+      - ⏳ Pending Leave Requests requiring Admin approval
+    """
+    # 1. Schedule Items Box
+    schedule_rows = []
+    if meetings:
+        for s in meetings[:4]:
+            t_str = s.get('start_time') or s.get('time') or '09:00'
+            title = s.get('title', 'นัดหมาย')
+            schedule_rows.append({
+                "type": "box",
+                "layout": "baseline",
+                "spacing": "sm",
+                "contents": [
+                    {"type": "text", "text": "•", "color": "#3B82F6", "size": "xs", "flex": 1},
+                    {"type": "text", "text": f"{t_str} น.", "color": "#1D4ED8", "size": "xs", "weight": "bold", "flex": 3},
+                    {"type": "text", "text": title[:30], "color": "#1E293B", "size": "xs", "weight": "bold", "flex": 8, "wrap": False}
+                ]
+            })
+        if len(meetings) > 4:
+            schedule_rows.append({
+                "type": "text",
+                "text": f"+ อีก {len(meetings) - 4} นัดหมายในระบบ...",
+                "size": "xxs",
+                "color": "#64748B",
+                "margin": "xs"
+            })
+    else:
+        schedule_rows.append({
+            "type": "text",
+            "text": "✨ วันนี้ไม่มีกำหนดการนัดหมาย",
+            "size": "xs",
+            "color": "#94A3B8",
+            "style": "italic"
+        })
+
+    # 2. Leaves Today Box
+    leave_rows = []
+    if leaves_today:
+        for lv in leaves_today[:3]:
+            name = lv.get('display_name') or lv.get('username') or 'พนักงาน'
+            ltype = lv.get('type') or lv.get('leave_type') or 'ลาหยุด'
+            leave_rows.append({
+                "type": "box",
+                "layout": "baseline",
+                "spacing": "sm",
+                "contents": [
+                    {"type": "text", "text": "🏖️", "size": "xs", "flex": 1},
+                    {"type": "text", "text": name, "color": "#0F172A", "size": "xs", "weight": "bold", "flex": 6},
+                    {"type": "text", "text": f"({ltype})", "color": "#E11D48", "size": "xs", "align": "end", "flex": 4}
+                ]
+            })
+        if len(leaves_today) > 3:
+            leave_rows.append({
+                "type": "text",
+                "text": f"+ อีก {len(leaves_today) - 3} ท่าน...",
+                "size": "xxs",
+                "color": "#64748B",
+                "margin": "xs"
+            })
+    else:
+        leave_rows.append({
+            "type": "text",
+            "text": "👥 ทุกคนปฏิบัติงานพร้อมเพรียง (ไม่มีใครลา)",
+            "size": "xs",
+            "color": "#10B981"
+        })
+
+    # 3. Financial Box
+    exp_count = expenses_24h.get('count', 0)
+    exp_total = expenses_24h.get('total_amount', 0)
+    finance_text = f"บันทึก {exp_count} รายการ ({exp_total:,.2f} ฿)" if exp_count > 0 else "ไม่มีรายการใหม่ใน 24 ชม."
+
+    # 4. Pending Approval Banner
+    pending_box = []
+    if pending_leaves_count > 0:
+        pending_box = [
+            {
+                "type": "box",
+                "layout": "vertical",
+                "backgroundColor": "#FEF2F2",
+                "cornerRadius": "12px",
+                "paddingAll": "10px",
+                "margin": "md",
+                "contents": [
+                    {
+                        "type": "box",
+                        "layout": "baseline",
+                        "contents": [
+                            {"type": "text", "text": "⏳", "size": "xs", "flex": 1},
+                            {"type": "text", "text": f"มี {pending_leaves_count} ใบลาค้างรออนุมัติ", "color": "#DC2626", "size": "xs", "weight": "bold", "flex": 10}
+                        ]
+                    }
+                ]
+            }
+        ]
+
+    bubble = {
+        "type": "bubble",
+        "size": "giga",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#1E1B4B",
+            "paddingAll": "20px",
+            "contents": [
+                {
+                    "type": "box",
+                    "layout": "baseline",
+                    "contents": [
+                        {
+                            "type": "text",
+                            "text": "SMART MORNING BRIEFING",
+                            "color": "#A5B4FC",
+                            "size": "xxs",
+                            "weight": "bold",
+                            "flex": 8
+                        },
+                        {
+                            "type": "text",
+                            "text": "🌅 08:30",
+                            "color": "#FBBF24",
+                            "size": "xs",
+                            "weight": "bold",
+                            "align": "end",
+                            "flex": 4
+                        }
+                    ]
+                },
+                {
+                    "type": "text",
+                    "text": f"สวัสดีตอนเช้า 🌿",
+                    "color": "#FFFFFF",
+                    "size": "xl",
+                    "weight": "bold",
+                    "margin": "sm"
+                },
+                {
+                    "type": "text",
+                    "text": f"สรุปภาพรวมประจำวัน • {org_name} ({date_str})",
+                    "color": "#C7D2FE",
+                    "size": "xs",
+                    "margin": "xs"
+                }
+            ]
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "paddingAll": "20px",
+            "backgroundColor": "#FFFFFF",
+            "contents": [
+                # Section: Meetings
+                {
+                    "type": "box",
+                    "layout": "vertical",
+                    "contents": [
+                        {
+                            "type": "text",
+                            "text": "📅 กำหนดการ & นัดหมายวันนี้",
+                            "size": "xs",
+                            "weight": "bold",
+                            "color": "#334155",
+                            "margin": "none"
+                        },
+                        {
+                            "type": "box",
+                            "layout": "vertical",
+                            "margin": "sm",
+                            "spacing": "xs",
+                            "contents": schedule_rows
+                        }
+                    ]
+                },
+                {"type": "separator", "margin": "lg"},
+                # Section: Team Leaves
+                {
+                    "type": "box",
+                    "layout": "vertical",
+                    "margin": "md",
+                    "contents": [
+                        {
+                            "type": "text",
+                            "text": "🏖️ การลางานของทีมวันนี้",
+                            "size": "xs",
+                            "weight": "bold",
+                            "color": "#334155"
+                        },
+                        {
+                            "type": "box",
+                            "layout": "vertical",
+                            "margin": "sm",
+                            "spacing": "xs",
+                            "contents": leave_rows
+                        }
+                    ]
+                },
+                {"type": "separator", "margin": "lg"},
+                # Section: Expenses
+                {
+                    "type": "box",
+                    "layout": "vertical",
+                    "margin": "md",
+                    "contents": [
+                        {
+                            "type": "text",
+                            "text": "💰 บันทึกค่าใช้จ่าย (24 ชม. ที่ผ่านมา)",
+                            "size": "xs",
+                            "weight": "bold",
+                            "color": "#334155"
+                        },
+                        {
+                            "type": "text",
+                            "text": finance_text,
+                            "size": "xs",
+                            "color": "#059669" if exp_count > 0 else "#64748B",
+                            "weight": "bold" if exp_count > 0 else "regular",
+                            "margin": "xs"
+                        }
+                    ]
+                },
+                *pending_box
+            ]
+        },
+        "footer": {
+            "type": "box",
+            "layout": "vertical",
+            "paddingAll": "16px",
+            "backgroundColor": "#F8FAFC",
+            "contents": [
+                {
+                    "type": "button",
+                    "style": "primary",
+                    "color": "#4F46E5",
+                    "height": "sm",
+                    "action": {
+                        "type": "uri",
+                        "label": "🚀 เปิด Dashboard องค์กร",
+                        "uri": "https://openchat.sbs/"
+                    }
+                }
+            ]
+        }
+    }
+    return clean_flex_payload(bubble)
+
+
+
+def create_onboarding_guide_flex_bubble(base_url, link_magic_url=None):
+    """Creates a welcome & onboarding guide Flex Bubble for newly joined users in LINE."""
+    actions = []
+    if link_magic_url:
+        actions.append({
+            "type": "button",
+            "style": "primary",
+            "color": "#6366F1",
+            "height": "sm",
+            "action": {
+                "type": "uri",
+                "label": "🔗 ผูกบัญชีผู้ใช้งานทันที",
+                "uri": link_magic_url
+            }
+        })
+    
+    actions.append({
+        "type": "button",
+        "style": "secondary",
+        "color": "#F1F5F9",
+        "height": "sm",
+        "action": {
+            "type": "uri",
+            "label": "🌐 เข้าสู่ Web Portal",
+            "uri": f"{base_url}/dashboard"
+        }
+    })
+
+    bubble = {
+        "type": "bubble",
+        "size": "mega",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#4F46E5",
+            "paddingAll": "20px",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": "WELCOME TO ORGCHAT AI",
+                    "color": "#E0E7FF",
+                    "weight": "bold",
+                    "size": "xs",
+                    "letterSpacing": "1px"
+                },
+                {
+                    "type": "text",
+                    "text": "ยินดีต้อนรับสู่น้องพั้น AI ผู้ช่วยองค์กร ✨",
+                    "color": "#FFFFFF",
+                    "weight": "bold",
+                    "size": "md",
+                    "margin": "xs"
+                }
+            ]
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#FFFFFF",
+            "paddingAll": "20px",
+            "spacing": "md",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": "น้องพั้นพร้อมช่วยคุณจัดการงานและข้อมูลองค์กรได้ง่ายๆ ใน LINE เลยค่ะ:",
+                    "color": "#475569",
+                    "size": "xs",
+                    "wrap": True
+                },
+                {
+                    "type": "box",
+                    "layout": "vertical",
+                    "spacing": "xs",
+                    "contents": [
+                        {
+                            "type": "box",
+                            "layout": "baseline",
+                            "contents": [
+                                {"type": "text", "text": "📸", "size": "xs", "flex": 1},
+                                {"type": "text", "text": "ส่งรูปสลิป / ใบเสร็จ → AI ถอดข้อมูลลง Google Sheets และเซฟลง Drive อัตโนมัติ", "color": "#1E293B", "size": "xs", "wrap": True, "flex": 9}
+                            ]
+                        },
+                        {
+                            "type": "box",
+                            "layout": "baseline",
+                            "contents": [
+                                {"type": "text", "text": "📝", "size": "xs", "flex": 1},
+                                {"type": "text", "text": "พิมพ์ 'ขอลาป่วย' หรือ 'ลากิจ' → ยื่นใบลาส่งตรงหาหัวหน้างานทันที", "color": "#1E293B", "size": "xs", "wrap": True, "flex": 9}
+                            ]
+                        },
+                        {
+                            "type": "box",
+                            "layout": "baseline",
+                            "contents": [
+                                {"type": "text", "text": "📊", "size": "xs", "flex": 1},
+                                {"type": "text", "text": "พิมพ์ 'สรุปรายจ่ายวันนี้' → ดูยอดเงินและหมวดหมู่การเบิกจ่าย", "color": "#1E293B", "size": "xs", "wrap": True, "flex": 9}
+                            ]
+                        },
+                        {
+                            "type": "box",
+                            "layout": "baseline",
+                            "contents": [
+                                {"type": "text", "text": "🔍", "size": "xs", "flex": 1},
+                                {"type": "text", "text": "ถามคำถามเรื่ององค์กรหรือค้นหาเอกสาร (RAG) ได้ 24 ชม.", "color": "#1E293B", "size": "xs", "wrap": True, "flex": 9}
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        "footer": {
+            "type": "box",
+            "layout": "vertical",
+            "spacing": "sm",
+            "paddingAll": "16px",
+            "backgroundColor": "#F8FAFC",
+            "contents": actions
+        }
+    }
+    return clean_flex_payload(bubble)
+
 
 
 def create_expense_flex_bubble(sheet_name, folder_name, net_amount, date_str, memo, vendor, file_link, sheet_url, edit_data_postback, raw_result=None, org_id=None, username=None):
@@ -1928,25 +2390,37 @@ def create_line_flex_bubble(title, subtitle, fields=None, color="#2563eb"):
     return clean_flex_payload(bubble)
 
 
-def send_line_push_notification(target_username, title, text, fields=None):
+def send_line_push_notification(target_username, title, text, fields=None, flex_bubble=None):
     """Sends a one-to-one message to a specific user via LINE."""
     line_id = database.get_line_id_by_username(target_username)
-    if not line_id: return
+    if not line_id:
+        logger.info(f"ℹ️ [LINE Push] Target user '{target_username}' has no linked LINE ID. Skipping.")
+        return
     
     token = get_channel_access_token()
+    if not token:
+        logger.warning(f"⚠️ [LINE Push] Missing Channel Access Token for '{target_username}'.")
+        return
+
     url = "https://api.line.me/v2/bot/message/push"
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
     
-    if fields:
+    if flex_bubble:
+        msg = {"type": "flex", "altText": f"แจ้งเตือน: {title}", "contents": clean_flex_payload(flex_bubble)}
+    elif fields:
         flex_contents = create_line_flex_bubble(title, "การแจ้งเตือนส่วนตัว", fields, color="#E67E22")
         msg = {"type": "flex", "altText": f"แจ้งเตือน: {title}", "contents": flex_contents}
     else:
         msg = {"type": "text", "text": f"🔔 {title}\n{text}"}
         
     try:
-        requests.post(url, headers=headers, json={"to": line_id, "messages": [msg]}, timeout=10)
+        res = requests.post(url, headers=headers, json={"to": line_id, "messages": [msg]}, timeout=10)
+        if res.status_code == 200:
+            logger.info(f"✅ [LINE Push] Sent to '{target_username}' ({line_id}) successfully.")
+        else:
+            logger.error(f"❌ [LINE Push Failed] HTTP {res.status_code}: {res.text}")
     except Exception as e:
-        logger.error(f"❌ LINE Push Error: {e}")
+        logger.error(f"❌ [LINE Push Error]: {e}")
 
 
 def get_line_config():
@@ -2802,8 +3276,81 @@ def process_line_event(event_data):
                     ok, err = google_manager.move_row_between_sheets(from_sheet, int(row), to_sheet)
                     if ok:
                         reply_to_line(reply_token, f"✅ ย้ายข้อมูลสำเร็จแล้วค่ะพี่!\n\n📂 ย้ายจาก: '{from_sheet}'\n➡️ ไปยังชีตใหม่: '{to_sheet}'\n\nน้องพั้นทำการลบแถวเดิมและย้ายไปต่อชีตใหม่ พร้อมกระทบยอดบัญชีเรียบร้อยค่ะ ✨💖")
-                    else:
-                        reply_to_line(reply_token, f"❌ เกิดข้อผิดพลาดในการย้ายชีต: {err}")
+            elif parsed.get('action') in ['approve_leave', 'reject_leave']:
+                leave_id = parsed.get('id')
+                status = "approved" if parsed.get('action') == 'approve_leave' else "rejected"
+                
+                # Verify approver permission (must be admin or manager)
+                approver_username = database.get_username_by_line_id(user_id)
+                is_admin_user = False
+                if approver_username:
+                    u_setting = database.get_user_setting(approver_username)
+                    if u_setting and u_setting.get("role") in ["admin", "superadmin", "manager"]:
+                        is_admin_user = True
+                    elif database.is_org_admin(_org_id, approver_username):
+                        is_admin_user = True
+
+                if not is_admin_user:
+                    reply_to_line(reply_token, "⚠️ ขออภัยค่ะ เฉพาะผู้ดูแลระบบหรือหัวหน้างานเท่านั้นที่มีสิทธิ์กดอนุมัติ/ปฏิเสธการลานี้ค่ะ")
+                    return "OK", 200
+
+                leave = database.get_leave_request(leave_id)
+                if not leave:
+                    reply_to_line(reply_token, f"⚠️ ไม่พบข้อมูลคำขอลา #{leave_id} ในระบบค่ะ")
+                    return "OK", 200
+
+                # 🛡️ Safety Rule: Approver cannot approve their own leave request
+                if approver_username and leave.get("username", "").lower() == approver_username.lower():
+                    reply_to_line(reply_token, "🚫 คุณไม่สามารถอนุมัติใบลาของตัวเองได้ค่ะ ต้องให้ Admin ท่านอื่นหรือ Admin ใหญ่เป็นผู้อนุมัติ")
+                    return "OK", 200
+
+                approver_display = approver_username or "ผู้ดูแลระบบ"
+                ok = database.update_leave_status(leave_id, status, approver_display, note="อนุมัติผ่าน LINE")
+                if ok:
+                    status_text = "อนุมัติ" if status == "approved" else "ปฏิเสธ"
+                    status_badge = "อนุมัติแล้ว ✅" if status == "approved" else "ปฏิเสธแล้ว ❌"
+                    reply_to_line(reply_token, f"✅ ดำเนินการ{status_text}คำขอลา #{leave_id} เรียบร้อยแล้วค่ะ!")
+                    
+                    # Push notification to employee
+                    if leave:
+                        emp_user = leave.get("username")
+                        try:
+                            threading.Thread(target=send_line_push_notification, args=(
+                                emp_user,
+                                "🏖️ อัปเดตผลการขออนุมัติการลา",
+                                f"คำขอลาของคุณตั้งแต่วันที่ {leave['start_date']} ถึง {leave['end_date']} ได้รับการ{status_text}แล้วค่ะ",
+                            ), kwargs={
+                                "fields": {
+                                    "ผลการพิจารณา": status_badge,
+                                    "ผู้อนุมัติ": approver_display,
+                                    "ประเภทการลา": leave.get("type", "ทั่วไป"),
+                                    "ช่วงวันลา": f"{leave['start_date']} ถึง {leave['end_date']}"
+                                }
+                            }).start()
+                        except Exception as _push_e:
+                            logger.error(f"Error sending leave push to employee: {_push_e}")
+                else:
+                    reply_to_line(reply_token, f"⚠️ ไม่สามารถอัปเดตคำขอลา #{leave_id} ได้ (อาจถูกดำเนินการไปแล้วค่ะ)")
+
+        # 5. Handler for FOLLOW (เพิ่มเพื่อน / Add Friend Event)
+        if event_data.get('type') == 'follow':
+            import secrets
+            import time
+            token = secrets.token_urlsafe(32)
+            PENDING_LINE_LINKS[token] = {
+                "line_user_id": user_id,
+                "timestamp": time.time()
+            }
+            _base_url = os.environ.get("BASE_URL", "https://openchat.sbs").rstrip('/')
+            magic_url = f"{_base_url}/line/link_magic?token={token}"
+            onboarding_bubble = create_onboarding_guide_flex_bubble(_base_url, link_magic_url=magic_url)
+            reply_to_line(reply_token, {
+                "type": "flex",
+                "altText": "✨ ยินดีต้อนรับสู่น้องพั้น AI ผู้ช่วยองค์กร",
+                "contents": onboarding_bubble
+            })
+            return "OK", 200
+
     except Exception as e:
         logger.error(f"Event processing failed: {e}")
     finally:
@@ -6013,6 +6560,23 @@ def chat():
 
     if not question and not image_bytes:
         return jsonify({"ok": False, "error": "กรุณาพิมพ์คำถามหรือส่งรูปภาพค่ะ"}), 400
+
+    # 🛑 Anti-Prompt Injection & Jailbreak Guardrail Check (Chapter 2)
+    is_injection, triggered_phrase = database.detect_prompt_injection(question)
+    if is_injection:
+        database.log_audit_event(session.get("user", "Anonymous"), "SECURITY_ALERT_PROMPT_INJECTION", f"Blocked injection phrase: '{triggered_phrase}'", request.remote_addr or "unknown", get_current_org_id() or 1)
+        return jsonify({
+            "ok": True,
+            "response": "⚠️ ขออภัยค่ะ ระบบความปลอดภัย (AI Security Guardrail) ตรวจพบคำสั่งที่มีความเสี่ยงต่อความปลอดภัยของข้อมูลองค์กร จึงไม่สามารถประมวลผลคำสั่งนี้ได้ค่ะ หากมีข้อสงสัยกรุณาติดต่อผู้ดูแลระบบค่ะ 🛡️",
+            "sources": []
+        })
+
+    # 🛡️ Auto PII Data Masking & Anonymizer Guard (PDPA Compliance)
+    masked_question, detected_pii = database.mask_pii_data(question)
+    if detected_pii:
+        pii_summary = ", ".join(p['type'] for p in detected_pii)
+        database.log_audit_event(session.get("user", "Anonymous"), "SECURITY_PII_MASKED", f"Masked sensitive PII items: {pii_summary}", request.remote_addr or "unknown", get_current_org_id() or 1)
+        question = masked_question
 
     # Check monthly AI query usage limit
     _org_id = get_current_org_id()

@@ -1,18 +1,19 @@
 // --- OrgChat AI: BILLING Module ---
 
-// --- Unified Thai Voice Engine (v11.0.2) ---
-let autoSpeakEnabled = false;
+(function() {
+  const _billingAutoSpeakBtn = document.getElementById('autoSpeakBtn');
+  let _billingAutoSpeakEnabled = false;
 
-const autoSpeakBtn = document.getElementById('autoSpeakBtn');
-
-if (autoSpeakBtn) {
-  autoSpeakBtn.onclick = () => {
-    autoSpeakEnabled = !autoSpeakEnabled;
-    autoSpeakBtn.classList.toggle('text-brand-600', autoSpeakEnabled);
-    autoSpeakBtn.classList.toggle('bg-brand-50', autoSpeakEnabled);
-    toast(`อ่านข้อความอัตโนมัติ: ${autoSpeakEnabled ? 'เปิด' : 'ปิด'}`, 'info');
-  };
-}
+  if (_billingAutoSpeakBtn && !_billingAutoSpeakBtn._hasHandler) {
+    _billingAutoSpeakBtn._hasHandler = true;
+    _billingAutoSpeakBtn.onclick = () => {
+      _billingAutoSpeakEnabled = !_billingAutoSpeakEnabled;
+      _billingAutoSpeakBtn.classList.toggle('text-brand-600', _billingAutoSpeakEnabled);
+      _billingAutoSpeakBtn.classList.toggle('bg-brand-50', _billingAutoSpeakEnabled);
+      toast(`อ่านข้อความอัตโนมัติ: ${_billingAutoSpeakEnabled ? 'เปิด' : 'ปิด'}`, 'info');
+    };
+  }
+})();
 
 function speak(text) {
   if (!('speechSynthesis' in window)) return;

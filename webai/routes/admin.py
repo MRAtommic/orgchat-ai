@@ -383,7 +383,12 @@ def billing_status():
             downgrade_warnings.append(f"ไฟล์ KB: มี {kb_used} ไฟล์ (Free limit: {free_limits['kb_files']} ไฟล์)")
 
     # is_paid — PromptPay polling ใน onboarding.html ใช้ field นี้
-    is_org_admin = session.get("org_role") == "admin" or session.get("role") in ["admin", "superadmin"]
+    me = session.get("user")
+    is_org_admin = (
+        session.get("role") in ["admin", "superadmin"]
+        or database.is_org_admin(org_id, me)
+        or session.get("org_role") == "admin"
+    )
     return jsonify({
         "ok": True,
         "is_paid": status.get("plan", "free") != "free",
@@ -2278,14 +2283,20 @@ def api_leave_request():
     org_id = get_current_org_id()
     leave_id = database.create_leave_request(user, l_type, s_date, e_date, reason, org_id=org_id)
     if leave_id:
-        # แจ้ง org admins เท่านั้น — ไม่ใช่ system admins ทั้งหมด
+        # แจ้ง org admins
         if org_id:
             org_members = database.get_org_members(org_id)
             notify_targets = [m["username"] for m in org_members
                               if m.get("role") == "admin" and m["username"].lower() != user.lower()]
+            # ถ้าไม่มี admin คนอื่นใน org (เช่น ทดสอบคนเดียว) ให้ส่งหาตัวเองเพื่อทดสอบ
+            if not notify_targets:
+                notify_targets = [m["username"] for m in org_members if m.get("role") == "admin"]
         else:
             # fallback: system admins ถ้าไม่มี org context
             notify_targets = [a for a in database.get_all_admins() if a.lower() != user.lower()]
+            if not notify_targets:
+                notify_targets = database.get_all_admins()
+
 
         profile = database.get_user_profile(user)
         user_display = profile.get("display_name", user)
@@ -2297,13 +2308,23 @@ def api_leave_request():
                 f"คุณพี่ {user_display} ได้ส่งคำขอลาหยุด {l_type} ตั้งแต่วันที่ {s_date} ถึง {e_date}",
                 "/#admin"
             )
-            # --- LINE Push Notification to Linked Admin ---
+            # --- LINE Push Notification to Linked Admin (1-Click Approval Flex Bubble) ---
             try:
+                from routes.chat import create_leave_approval_flex_bubble, send_line_push_notification
+                leave_bubble = create_leave_approval_flex_bubble(
+                    leave_id=leave_id,
+                    applicant_name=user_display,
+                    leave_type=l_type,
+                    start_date=s_date,
+                    end_date=e_date,
+                    reason=reason
+                )
                 threading.Thread(target=send_line_push_notification, args=(
                     admin,
-                    "🏖️ มีคำขอลาหยุดใหม่!",
-                    f"ผู้ใช้งาน {user_display} ได้ยื่นคำขอลาหยุด {l_type} ตั้งแต่วันที่ {s_date} ถึง {e_date}",
+                    "🏖️ มีคำขอลาหยุดใหม่รอการอนุมัติ!",
+                    f"ผู้ใช้งาน {user_display} ได้ยื่นคำขอลาหยุด {l_type} ({s_date} ถึง {e_date})",
                 ), kwargs={
+                    "flex_bubble": leave_bubble,
                     "fields": {
                         "ผู้ขอลา": user_display,
                         "ประเภทการลา": l_type,
@@ -2335,6 +2356,47 @@ def api_admin_leave_all():
     return jsonify({"ok": True, "leaves": leaves})
 
 
+@admin_bp.route("/api/leave/team-calendar")
+@login_required
+def api_leave_team_calendar():
+    """Provides approved & pending team leave events for calendar visualization."""
+    org_id = get_current_org_id()
+    month = request.args.get("month") # format YYYY-MM
+    leaves = database.get_all_leaves(limit=500, org_id=org_id)
+    
+    calendar_events = []
+    for l in leaves:
+        if l.get("status") == "rejected":
+            continue
+        s_date = l.get("start_date") or ""
+        e_date = l.get("end_date") or ""
+        
+        # Filter by month if provided
+        if month:
+            if not (s_date.startswith(month) or e_date.startswith(month)):
+                continue
+                
+        # Resolve display name for applicant
+        prof = database.get_user_profile(l.get("username", "")) or {}
+        d_name = prof.get("display_name") or l.get("username")
+        
+        calendar_events.append({
+            "id": l.get("id"),
+            "username": l.get("username"),
+            "display_name": d_name,
+            "avatar_url": prof.get("avatar_url") or "",
+            "department": prof.get("department") or "",
+            "type": l.get("type", "ลาอื่นๆ"),
+            "start_date": s_date,
+            "end_date": e_date,
+            "status": l.get("status", "pending"),
+            "reason": l.get("reason", "")
+        })
+        
+    return jsonify({"ok": True, "events": calendar_events})
+
+
+
 @admin_bp.route("/api/admin/leave/status", methods=["POST"])
 @org_admin_required
 def api_admin_leave_status():
@@ -2346,10 +2408,17 @@ def api_admin_leave_status():
     
     if not leave_id or status not in ["approved", "rejected"]:
         return jsonify({"ok": False, "error": "ข้อมูลไม่ถูกต้องหรือครบถ้วนค่ะ"}), 400
+
+    leave = database.get_leave_request(leave_id)
+    if not leave:
+        return jsonify({"ok": False, "error": "ไม่พบคำขอลาที่ระบุ"}), 404
+
+    # 🛡️ Safety Rule: Cannot approve your own leave request
+    if leave.get("username", "").lower() == admin_user.lower():
+        return jsonify({"ok": False, "error": "คุณไม่สามารถอนุมัติหรือปฏิเสธคำขอลาของตนเองได้ค่ะ ต้องให้ Admin ท่านอื่นหรือ Admin ใหญ่เป็นผู้อนุมัติ"}), 403
         
     ok = database.update_leave_status(leave_id, status, admin_user, note)
     if ok:
-        leave = database.get_leave_request(leave_id)
         if leave:
             status_text = "อนุมัติ" if status == "approved" else "ปฏิเสธ"
             target_user = leave["username"]
@@ -2454,6 +2523,46 @@ def api_leave_add_comment():
             notification_db.add_notification(leave["username"], "leave_comment", "มีข้อความใหม่จากผู้ดูแลระบบเกี่ยวกับคำขอลา", msg, "/#leave")
             
     return jsonify({"ok": True})
+
+
+@admin_bp.route("/api/admin/briefing/trigger", methods=["POST"])
+@login_required
+def api_admin_trigger_briefing():
+    """Manually triggers the Morning Executive Briefing for testing."""
+    user = session.get("user")
+    org_id = get_current_org_id()
+    today_str = datetime.now().strftime("%d/%m/%Y")
+    
+    org_name = "OrgChat Workspace"
+    if org_id:
+        org_info = database.get_organization_by_id(org_id)
+        if org_info:
+            org_name = org_info.get("name", org_name)
+
+    data = database.get_executive_summary_data(org_id=org_id)
+    finance = data.get("finance", {})
+    leaves = data.get("leaves", [])
+    tasks = data.get("tasks", [])
+    pending_count = data.get("pending_leaves_count", 0)
+
+    from routes.chat import create_morning_briefing_flex_bubble, send_line_push_notification
+    brief_bubble = create_morning_briefing_flex_bubble(
+        org_name=org_name,
+        date_str=today_str,
+        meetings=tasks,
+        leaves_today=leaves,
+        expenses_24h=finance,
+        pending_leaves_count=pending_count
+    )
+
+    send_line_push_notification(
+        user,
+        f"🌅 ทดสอบ: สรุปภาพรวมยามเช้า • {org_name}",
+        f"สรุปภาพรวมประจำวันสำหรับ {user}",
+        flex_bubble=brief_bubble
+    )
+
+    return jsonify({"ok": True, "message": "ส่ง Morning Briefing เข้า LINE เรียบร้อยแล้วค่ะ"})
 
 
 @admin_bp.route("/api/leave/comments/<int:leave_id>")

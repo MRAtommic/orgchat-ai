@@ -41,6 +41,11 @@
     :root.light .btn-success { background: #d1fae5; color: #10b981; border-color: #a7f3d0; }
     :root.light .btn-info { background: #dbeafe; color: #3b82f6; border-color: #bfdbfe; }
 
+    /* ── Embedded Mode (when loaded in iframe inside OrgChat SPA) ── */
+    html.embedded-iframe aside { display: none !important; }
+    html.embedded-iframe .topbar-nav { display: flex !important; }
+    .topbar-nav { display: none; }
+    
     * { box-sizing: border-box; }
     body { font-family: 'Outfit', sans-serif; background: var(--bg); color: var(--text); margin: 0; }
     .mono { font-family: 'JetBrains Mono', monospace; }
@@ -58,6 +63,7 @@
       transition: all .15s; text-align: left;
     }
     .nav-item:hover { background: var(--surface2); color: var(--text); }
+
     .nav-item.active { background: var(--surface2); color: var(--accent); border: 1px solid var(--border); }
     .nav-section { font-size: 10px; font-weight: 800; letter-spacing: .1em; color: var(--muted); padding: 12px 12px 4px; text-transform: uppercase; }
     .nav-badge { margin-left: auto; background: var(--surface2); color: var(--muted); font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 20px; border: 1px solid var(--border); }
@@ -198,6 +204,7 @@
       }
 
       if (window.self !== window.top) {
+        document.documentElement.classList.add('embedded-iframe');
         try {
           const parentDoc = window.parent.document;
           const isDark = parentDoc.documentElement.classList.contains('dark');
@@ -307,7 +314,7 @@
   <main style="flex:1; overflow-y:auto; display:flex; flex-direction:column;">
 
     <!-- Topbar -->
-    <div style="position:sticky; top:0; z-index:10; background: var(--surface); border-bottom:1px solid var(--border); padding:10px 24px; display:flex; align-items:center; justify-content:space-between;">
+    <div style="position:sticky; top:0; z-index:10; background: var(--surface); border-bottom:1px solid var(--border); padding:10px 24px; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;">
       <div style="display:flex; align-items:center; gap:12px;">
         <span class="mono" style="font-size:11px; color: var(--muted);" id="tb-version">—</span>
         <span style="color: var(--border);">|</span>
@@ -315,6 +322,22 @@
         <span style="color: var(--border);">|</span>
         <span style="font-size:11px; color: var(--muted);">Provider: <span style="color: var(--accent); font-weight:700;" id="tb-provider">—</span></span>
       </div>
+
+      <!-- Topbar Tab Nav (Visible when embedded in OrgChat iframe) -->
+      <div class="topbar-nav" style="display:none; align-items:center; gap:4px; overflow-x:auto; padding:2px 0;">
+        <button class="nav-item active btn-xs" data-tab="overview" onclick="showTab('overview')" style="width:auto; padding:6px 12px;">📊 ภาพรวม</button>
+        <button class="nav-item btn-xs" data-tab="billing" onclick="showTab('billing')" style="width:auto; padding:6px 12px;">💰 รายได้ & Billing</button>
+        <button class="nav-item btn-xs" data-tab="analytics" onclick="showTab('analytics')" style="width:auto; padding:6px 12px;">📈 Analytics</button>
+        <button class="nav-item btn-xs" data-tab="orgs" onclick="showTab('orgs')" style="width:auto; padding:6px 12px;">🏢 องค์กร</button>
+        <button class="nav-item btn-xs" data-tab="users" onclick="showTab('users')" style="width:auto; padding:6px 12px;">👥 ผู้ใช้งาน</button>
+        <button class="nav-item btn-xs" data-tab="broadcast" onclick="showTab('broadcast')" style="width:auto; padding:6px 12px;">📢 Broadcast</button>
+        <button class="nav-item btn-xs" data-tab="maintenance" onclick="showTab('maintenance')" style="width:auto; padding:6px 12px;">🛠️ Maintenance</button>
+        <button class="nav-item btn-xs" data-tab="system" onclick="showTab('system')" style="width:auto; padding:6px 12px;">⚙️ Config</button>
+        <button class="nav-item btn-xs" data-tab="db" onclick="showTab('db')" style="width:auto; padding:6px 12px;">🗄️ DB Explorer</button>
+        <button class="nav-item btn-xs" data-tab="sql" onclick="showTab('sql')" style="width:auto; padding:6px 12px;">💻 SQL</button>
+        <button class="nav-item btn-xs" data-tab="logs" onclick="showTab('logs')" style="width:auto; padding:6px 12px;">📜 Logs</button>
+      </div>
+
       <div style="display:flex; align-items:center; gap:8px;">
         <span style="font-size:11px; color: var(--muted);">Uptime: <span class="mono" style="color: var(--text);" id="tb-uptime">—</span></span>
         <button class="btn btn-ghost" onclick="refreshAll()" style="padding:5px 10px; font-size:11px;">

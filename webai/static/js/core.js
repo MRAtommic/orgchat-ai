@@ -1498,4 +1498,497 @@ window.showToast = function (message, type = 'info') {
       toast.remove();
     }, 300);
   }, 3500);
-};
+};
+
+// ═══════════════════════════════════════════════════════════════
+// 🍪 PDPA & Cookie Consent Manager (Chapter 3: Ethics & PDPA)
+// ═══════════════════════════════════════════════════════════════
+class PDPAConsentManager {
+  constructor() {
+    this.storageKey = 'orgchat_pdpa_consent_v1';
+    this.consent = this.loadConsent();
+  }
+
+  loadConsent() {
+    try {
+      const val = localStorage.getItem(this.storageKey);
+      return val ? JSON.parse(val) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  saveConsent(necessary = true, preferences = true, analytics = true) {
+    const data = {
+      necessary: true,
+      preferences: Boolean(preferences),
+      analytics: Boolean(analytics),
+      timestamp: new Date().toISOString()
+    };
+    try {
+      localStorage.setItem(this.storageKey, JSON.stringify(data));
+      this.consent = data;
+    } catch (e) {}
+    this.hideBanner();
+  }
+
+  init() {
+    if (!this.consent) {
+      const banner = document.getElementById('pdpaConsentBanner');
+      if (banner) banner.classList.remove('hidden');
+    }
+  }
+
+  hideBanner() {
+    const banner = document.getElementById('pdpaConsentBanner');
+    if (banner) banner.classList.add('hidden');
+    const modal = document.getElementById('pdpaPreferencesModal');
+    if (modal) modal.classList.add('hidden');
+  }
+
+  openSettings() {
+    const modal = document.getElementById('pdpaPreferencesModal');
+    if (modal) {
+      const prefCheck = document.getElementById('pdpaPrefCookies');
+      const analCheck = document.getElementById('pdpaAnalCookies');
+      if (prefCheck) prefCheck.checked = this.consent ? this.consent.preferences : true;
+      if (analCheck) analCheck.checked = this.consent ? this.consent.analytics : true;
+      modal.classList.remove('hidden');
+    }
+  }
+}
+
+window.pdpaConsent = new PDPAConsentManager();
+
+// ═══════════════════════════════════════════════════════════════
+// ⏱️ Auto-Session Lock & Inactivity Guard (Chapter 1 & 2)
+// ═══════════════════════════════════════════════════════════════
+class AutoSessionLockManager {
+  constructor(timeoutMs = 15 * 60 * 1000) { // 15 minutes default
+    this.timeoutMs = timeoutMs;
+    this.timer = null;
+    this.isLocked = false;
+    this.enabled = localStorage.getItem('orgchat_autolock_enabled') !== 'false';
+  }
+
+  init() {
+    if (!this.enabled) return;
+    const events = ['mousedown', 'mousemove', 'keydown', 'touchstart', 'scroll'];
+    events.forEach(e => window.addEventListener(e, () => this.resetTimer(), { passive: true }));
+    this.resetTimer();
+  }
+
+  resetTimer() {
+    if (this.isLocked) return;
+    if (this.timer) clearTimeout(this.timer);
+    if (!this.enabled) return;
+    
+    // Only lock if user is authenticated (not on login screen)
+    if (document.body.classList.contains('authenticated') || document.getElementById('chatArea')) {
+      this.timer = setTimeout(() => this.lockScreen(), this.timeoutMs);
+    }
+  }
+
+  lockScreen() {
+    this.isLocked = true;
+    const lockEl = document.getElementById('screenLockOverlay');
+    if (lockEl) {
+      lockEl.classList.remove('hidden');
+      const input = document.getElementById('lockScreenPassword');
+      if (input) {
+        input.value = '';
+        setTimeout(() => input.focus(), 100);
+      }
+    }
+  }
+
+  unlock(password) {
+    if (!password) {
+      if (window.showToast) window.showToast('กรุณากรอกรหัสผ่านเพื่อปลดล็อก', 'error');
+      return;
+    }
+    // Verify password against API
+    fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: state.username || localStorage.getItem('orgchat_username') || 'Admin',
+        password: password
+      })
+    })
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) {
+        this.isLocked = false;
+        const lockEl = document.getElementById('screenLockOverlay');
+        if (lockEl) lockEl.classList.add('hidden');
+        if (window.showToast) window.showToast('ปลดล็อกหน้าจอเรียบร้อยแล้วค่ะ', 'success');
+        this.resetTimer();
+      } else {
+        if (window.showToast) window.showToast('รหัสผ่านไม่ถูกต้อง: ' + (d.error || ''), 'error');
+      }
+    })
+    .catch(() => {
+      if (window.showToast) window.showToast('ไม่สามารถตรวจสอบรหัสผ่านได้', 'error');
+    });
+  }
+}
+
+window.sessionLock = new AutoSessionLockManager();
+
+// ═══════════════════════════════════════════════════════════════
+// 📊 Security Health Dashboard Controller (Chapter 1, 2, 4)
+// ═══════════════════════════════════════════════════════════════
+
+window.openSecurityDashboard = function() {
+  const modal = document.getElementById('securityHealthModal');
+  if (!modal) return;
+  modal.classList.remove('hidden');
+  window.loadSecurityDashboard();
+};
+
+window.loadSecurityDashboard = async function() {
+  try {
+    const res = await fetch('/api/security/health-status');
+    const data = await res.json();
+    if (data.ok && data.health) {
+      const h = data.health;
+      const scoreEl = document.getElementById('secScoreVal');
+      const logIntEl = document.getElementById('secLogIntegrityVal');
+      const mfaEl = document.getElementById('secMfaAdoptionVal');
+      const failEl = document.getElementById('secFailedLoginsVal');
+      if (scoreEl) scoreEl.innerText = `${h.overall_health_score}%`;
+      if (logIntEl) logIntEl.innerText = `${h.log_integrity_percent}%`;
+      if (mfaEl) mfaEl.innerText = `${h.mfa_adoption_percent || 0}%`;
+      if (failEl) failEl.innerText = `${h.failed_logins_24h}`;
+    }
+  } catch (e) {
+    console.warn('Failed to load health metrics:', e);
+  }
+
+  // Load audit logs
+  try {
+    const res = await fetch('/api/security/audit-logs');
+    const data = await res.json();
+    const listEl = document.getElementById('secAuditLogList');
+    if (listEl && data.ok && Array.isArray(data.logs)) {
+      if (data.logs.length === 0) {
+        listEl.innerHTML = '<div class="text-center py-4 text-surface-400">ยังไม่มีบันทึกเหตุการณ์</div>';
+      } else {
+        listEl.innerHTML = data.logs.slice(0, 15).map(l => {
+          const verifiedBadge = l.is_verified 
+            ? '<span class="text-[9px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full">✓ Verified HMAC</span>'
+            : '<span class="text-[9px] font-bold text-rose-600 bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded-full">⚠️ TAMPERED</span>';
+          return `
+            <div class="p-2.5 rounded-xl bg-surface-50 dark:bg-surface-800/40 border border-surface-200 dark:border-surface-700/60 flex items-center justify-between gap-2">
+              <div class="min-w-0">
+                <div class="font-bold text-surface-900 dark:text-white truncate">${l.action} <span class="text-[10px] text-surface-400 font-normal">(${l.username})</span></div>
+                <div class="text-[10px] text-surface-500 truncate">${l.details || '-'} · IP: ${l.ip_address || '-'}</div>
+              </div>
+              <div class="flex items-center gap-2 flex-shrink-0">
+                ${verifiedBadge}
+                <span class="text-[9px] text-surface-400">${(l.timestamp || '').split(' ')[1] || ''}</span>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to load audit logs:', e);
+  }
+
+  // Load Blacklisted IPs
+  window.loadSecurityBlacklist();
+
+  // Load SOC Threat Intelligence Telemetry
+  window.loadSecurityThreatIntel();
+};
+
+window.loadSecurityBlacklist = async function() {
+  const container = document.getElementById('secBlacklistContainer');
+  if (!container) return;
+
+  try {
+    const res = await fetch('/api/security/blacklist');
+    const data = await res.json();
+    if (data.ok && Array.isArray(data.blacklist)) {
+      if (data.blacklist.length === 0) {
+        container.innerHTML = '<div class="text-center py-2 text-surface-400 text-[11px]">ไม่มี IP ที่ถูกระงับในขณะนี้</div>';
+      } else {
+        container.innerHTML = data.blacklist.map(b => `
+          <div class="p-2.5 rounded-xl bg-white dark:bg-surface-900 border border-rose-100 dark:border-rose-900/30 flex items-center justify-between">
+            <div>
+              <div class="font-bold text-rose-600 font-mono text-[11px]">${b.ip_address}</div>
+              <div class="text-[10px] text-surface-500">${b.reason} (พบการโจมตี ${b.violation_count} ครั้ง)</div>
+            </div>
+            <button type="button" onclick="unblockSecurityIp('${b.ip_address}')" class="px-2.5 py-1 bg-rose-100 hover:bg-rose-200 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 rounded-lg text-[10px] font-bold transition">
+              ปลดบล็อค
+            </button>
+          </div>
+        `).join('');
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to load blacklist:', e);
+  }
+};
+
+window.unblockSecurityIp = async function(ip) {
+  if (!confirm(`ยืนยันการปลดล็อค IP ${ip}?`)) return;
+  try {
+    const res = await fetch('/api/security/unblock-ip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ip_address: ip })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      window.loadSecurityBlacklist();
+      window.loadSecurityDashboard();
+    } else {
+      alert(data.message || 'เกิดข้อผิดพลาด');
+    }
+  } catch (e) {
+    alert('เกิดข้อผิดพลาดในการปลดล็อค IP');
+  }
+};
+
+window.testPiiMasking = async function() {
+  const input = document.getElementById('testPiiInput');
+  const box = document.getElementById('testPiiResultBox');
+  if (!input || !box) return;
+
+  const text = input.value.trim();
+  if (!text) {
+    box.classList.remove('hidden');
+    box.innerHTML = '<span class="text-amber-600">กรุณากรอกข้อความเพื่อทดสอบ</span>';
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/security/mask-pii', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: text })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      box.classList.remove('hidden');
+      if (data.count === 0) {
+        box.innerHTML = `<span class="text-emerald-600 font-bold">✅ ปลอดภัย:</span> ไม่พบข้อมูลส่วนบุคคลอ่อนไหว (PII)<div class="text-surface-400 mt-1">${data.masked_text}</div>`;
+      } else {
+        box.innerHTML = `
+          <div class="text-rose-600 font-bold mb-1">🛡️ เซ็นเซอร์ข้อมูลอ่อนไหวแล้ว (${data.count} รายการ):</div>
+          <div class="p-2 rounded bg-surface-100 dark:bg-surface-800 text-teal-600 dark:text-teal-400 font-bold">${data.masked_text}</div>
+          <div class="text-[10px] text-surface-400 mt-1">ตรวจพบ: ${data.detected_items.map(i => i.type).join(', ')}</div>
+        `;
+      }
+    }
+  } catch (e) {
+    box.classList.remove('hidden');
+    box.innerText = '❌ เกิดข้อผิดพลาดในการทดสอบ Mask';
+  }
+};
+
+window.loadSecurityThreatIntel = async function() {
+  const box = document.getElementById('secThreatIntelBox');
+  if (!box) return;
+
+  try {
+    const res = await fetch('/api/security/threat-intel');
+    const data = await res.json();
+    if (data.ok) {
+      const threatIps = (data.active_threat_ips || []).map(t => `<span class="px-2 py-0.5 rounded bg-rose-100 dark:bg-rose-900/30 text-rose-600 font-bold">${t.ip} (${t.incidents} ครั้ง)</span>`).join(' ') || '<span class="text-emerald-600">ไม่มี IP ผิดปกติใน 24h</span>';
+      const actions = (data.top_flagged_actions || []).map(a => `<span class="px-2 py-0.5 rounded bg-surface-100 dark:bg-surface-800 text-surface-700 dark:text-surface-300">${a.action}: ${a.count}</span>`).join(' ') || '<span class="text-surface-400">ไม่มี Alert</span>';
+      
+      box.innerHTML = `
+        <div class="flex items-center justify-between mb-2 pb-1.5 border-b border-indigo-100 dark:border-indigo-900/30">
+          <span class="font-bold text-indigo-600 dark:text-indigo-400">🛡️ SOC Threat Telemetry</span>
+          <span class="text-[9px] text-emerald-600 font-bold">● ${data.intel_engine_status}</span>
+        </div>
+        <div class="space-y-1.5 text-[10px]">
+          <div><strong class="text-surface-600 dark:text-surface-300">🚨 Top Flagged Threat IPs (24h):</strong> <div class="mt-0.5 flex flex-wrap gap-1">${threatIps}</div></div>
+          <div><strong class="text-surface-600 dark:text-surface-300">📊 Security Alert Actions (24h):</strong> <div class="mt-0.5 flex flex-wrap gap-1">${actions}</div></div>
+        </div>
+      `;
+    }
+  } catch (e) {
+    console.warn('Failed to load threat intel:', e);
+  }
+};
+
+window.runUebaBehaviorScan = async function() {
+  const box = document.getElementById('secThreatIntelBox');
+  if (!box) return;
+  box.innerHTML = '<span class="text-indigo-600 font-bold animate-pulse">🔍 กำลังรวบรวมและวิเคราะห์พฤติกรรม UEBA Telemetry...</span>';
+
+  try {
+    const res = await fetch('/api/security/analyze-behavior', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    const data = await res.json();
+    if (data.ok && data.analysis) {
+      const a = data.analysis;
+      const badgeColor = a.threat_level === 'CRITICAL' ? 'bg-rose-600 text-white' : a.threat_level === 'HIGH' ? 'bg-amber-600 text-white' : 'bg-emerald-600 text-white';
+      const anomaliesList = a.anomalies.length > 0 ? a.anomalies.map(an => `<li class="text-rose-500">• ${an}</li>`).join('') : '<li class="text-emerald-600">• พฤติกรรมการใช้งานปกติ ไม่พบความเสี่ยง Data Exfiltration</li>';
+
+      box.innerHTML = `
+        <div class="space-y-2">
+          <div class="flex items-center justify-between pb-1.5 border-b border-indigo-100 dark:border-indigo-900/30">
+            <span class="font-bold text-surface-900 dark:text-white">👤 ผลการวิเคราะห์พฤติกรรมผู้ใช้: <code>${a.username}</code></span>
+            <span class="px-2.5 py-0.5 rounded-full font-bold text-[10px] ${badgeColor}">Threat Level: ${a.threat_level} (${a.risk_score}/100)</span>
+          </div>
+          <div class="text-[10px] space-y-1">
+            <div><strong>IP:</strong> <code>${a.ip_address}</code> | <strong>5-min Request Burst:</strong> ${a.burst_count_5m} | <strong>24h Alerts:</strong> ${a.security_alerts_24h}</div>
+            <ul class="mt-1 space-y-0.5">${anomaliesList}</ul>
+            <div class="mt-1 text-[9px] text-surface-400">SOC Recommendation: <strong class="text-indigo-600 dark:text-indigo-400">${a.recommended_action}</strong></div>
+          </div>
+        </div>
+      `;
+    }
+  } catch (e) {
+    box.innerHTML = '<span class="text-rose-600">❌ เกิดข้อผิดพลาดในการวิเคราะห์ UEBA</span>';
+  }
+};
+
+window.runFimScan = async function() {
+  const btn = document.getElementById('btnScanFim');
+  const box = document.getElementById('fimScanStatusBox');
+  if (btn) btn.disabled = true;
+  if (box) {
+    box.classList.remove('hidden');
+    box.innerText = '🔍 กำลังคำนวณและตรวจสอบ SHA-256 Hash ของไฟล์ทั้งหมดในระบบ...';
+  }
+
+  try {
+    const res = await fetch('/api/security/verify-integrity', { method: 'POST' });
+    const data = await res.json();
+    if (data.ok && box) {
+      const total = data.total_scanned || 0;
+      const tampered = (data.files || []).filter(f => !f.valid);
+      if (tampered.length === 0) {
+        box.innerHTML = `<span class="text-emerald-600 font-bold">✅ การตรวจสอบเสร็จสิ้น:</span> สแกนไฟล์ทั้งหมด ${total} รายการ ทุกไฟล์มีความสมบูรณ์ตรงตาม Baseline 100%`;
+      } else {
+        box.innerHTML = `<span class="text-rose-600 font-bold">🚨 ตรวจพบไฟล์ถูกดัดแปลง (${tampered.length} ไฟล์):</span> ${tampered.map(t => t.file).join(', ')}`;
+      }
+    }
+  } catch (e) {
+    if (box) box.innerText = '❌ เกิดข้อผิดพลาดในการสแกนไฟล์';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+};
+
+window.runKbAnomalyScan = async function() {
+  const btn = document.getElementById('btnScanKbAnomalies');
+  const box = document.getElementById('kbAnomalyStatusBox');
+  if (btn) btn.disabled = true;
+  if (box) {
+    box.classList.remove('hidden');
+    box.innerText = '🔍 กำลังวิเคราะห์โครงสร้างคลังความรู้ ตรวจหา Binary Duplicates (SHA-256) และ Anomaly Files...';
+  }
+
+  try {
+    const res = await fetch('/api/kb/anomalies');
+    const data = await res.json();
+    if (data.ok && box) {
+      const dupCount = data.duplicate_groups_count || 0;
+      const anoCount = data.anomalies_count || 0;
+      const total = data.total_scanned || 0;
+
+      if (dupCount === 0 && anoCount === 0) {
+        box.innerHTML = `<span class="text-emerald-600 font-bold">✅ คลังข้อมูลสมบูรณ์ 100%:</span> สแกนไฟล์ทั้งหมด ${total} รายการ ไม่พบไฟล์ซ้ำซ้อนหรือไฟล์ผิดปกติ`;
+      } else {
+        let detailsHtml = '';
+        if (dupCount > 0) {
+          detailsHtml += `<div class="mt-1 text-amber-600 font-bold">⚠️ พบกลุ่มไฟล์ซ้ำซ้อน ${dupCount} กลุ่ม:</div>`;
+          data.duplicates.forEach(d => {
+            detailsHtml += `<div class="text-[10px] text-surface-500">• ${d.suggestion}</div>`;
+          });
+        }
+        if (anoCount > 0) {
+          detailsHtml += `<div class="mt-1 text-rose-600 font-bold">🚨 พบความผิดปกติ ${anoCount} รายการ:</div>`;
+          data.anomalies.forEach(a => {
+            detailsHtml += `<div class="text-[10px] text-surface-500">• [${a.type}] ${a.description}</div>`;
+          });
+        }
+        box.innerHTML = detailsHtml;
+      }
+    }
+  } catch (e) {
+    if (box) box.innerText = '❌ เกิดข้อผิดพลาดในการตรวจสอบคลังข้อมูล';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════
+// 🖨️ Dynamic Digital Watermarking & Screen Capture Guard
+// ═══════════════════════════════════════════════════════════════
+
+class DigitalWatermarkManager {
+  constructor() {
+    this.overlayId = 'enterpriseWatermarkOverlay';
+    this.interval = null;
+  }
+
+  init() {
+    // Only show watermark when user is logged in
+    const username = state.username || localStorage.getItem('orgchat_username') || sessionStorage.getItem('username');
+    if (!username) return;
+
+    this.renderWatermark(username);
+    
+    // Periodically update timestamp every 60 seconds
+    if (this.interval) clearInterval(this.interval);
+    this.interval = setInterval(() => {
+      this.renderWatermark(username);
+    }, 60000);
+  }
+
+  renderWatermark(username) {
+    let overlay = document.getElementById(this.overlayId);
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = this.overlayId;
+      document.body.appendChild(overlay);
+    }
+
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' });
+    const timeStr = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+    const orgName = (state.currentOrg && state.currentOrg.name) || 'OrgChat Enterprise';
+
+    // Build repeating pattern
+    const itemsCount = 36;
+    let itemsHtml = '';
+    for (let i = 0; i < itemsCount; i++) {
+      itemsHtml += `
+        <div class="watermark-item">
+          <span>🔒 ${username} • ${orgName}</span>
+          <span style="font-size: 9px; opacity: 0.85;">${dateStr} ${timeStr} • CONFIDENTIAL</span>
+        </div>
+      `;
+    }
+
+    overlay.innerHTML = `<div class="watermark-pattern">${itemsHtml}</div>`;
+  }
+
+  toggle(visible) {
+    const overlay = document.getElementById(this.overlayId);
+    if (overlay) {
+      overlay.style.display = visible ? 'block' : 'none';
+    }
+  }
+}
+
+window.digitalWatermark = new DigitalWatermarkManager();
+
+document.addEventListener('DOMContentLoaded', () => {
+  window.pdpaConsent.init();
+  window.sessionLock.init();
+  window.digitalWatermark.init();
+});

@@ -200,8 +200,21 @@ def status():
     user = session.get("user")
     is_superadmin = is_superadmin_user(user) if user else False
     
-    org_id = session.get("org_id")
+    org_id = get_current_org_id()
     org_role = session.get("org_role")
+    if user and org_id:
+        try:
+            if database.is_org_admin(org_id, user):
+                org_role = "admin"
+                session["org_role"] = "admin"
+            elif database.is_org_member(org_id, user):
+                org_role = "member"
+                session["org_role"] = "member"
+            else:
+                org_role = None
+                session["org_role"] = None
+        except Exception:
+            pass
 
     response = jsonify({
         "api_key_set": has_key,
@@ -293,6 +306,153 @@ def serve_manifest():
 @misc_bp.route('/sw.js')
 def serve_sw():
     return send_from_directory('static', 'sw.js', mimetype='application/javascript')
+
+
+# ═══════════════════════════════════════════════════════════════
+# 🛡️ Security, Audit & FIM Routes (Chapter 1, 3, 4)
+# ═══════════════════════════════════════════════════════════════
+
+@misc_bp.route("/api/security/audit-logs")
+@login_required
+def get_security_audit_logs():
+    org_id = get_current_org_id() or 1
+    logs = database.get_audit_logs(org_id=org_id, limit=60)
+    return jsonify({"ok": True, "logs": logs})
+
+
+@misc_bp.route("/api/security/health-status")
+@login_required
+def get_security_health():
+    """Retrieve system security health score and defensive telemetry."""
+    org_id = get_current_org_id() or 1
+    health_data = database.get_security_health_status(org_id=org_id)
+    return jsonify({"ok": True, "health": health_data})
+
+
+@misc_bp.route("/api/security/export-report")
+@login_required
+def export_security_report():
+    """Generate and send downloadable Security Audit & Compliance PDF Report."""
+    from flask import send_file
+    from pathlib import Path
+    import export_service
+
+    org_id = get_current_org_id() or 1
+    user_orgs = database.get_user_orgs(session.get("user", "Admin"))
+    org_name = user_orgs[0]["name"] if user_orgs else "Enterprise Workspace"
+
+    health_data = database.get_security_health_status(org_id=org_id)
+    audit_logs = database.get_audit_logs(org_id=org_id, limit=50)
+
+    export_folder = Path("exports")
+    pdf_path = export_service.export_security_audit_report_pdf(
+        health_data=health_data,
+        audit_logs=audit_logs,
+        folder=export_folder,
+        org_name=org_name
+    )
+
+    return send_file(
+        str(pdf_path),
+        as_attachment=True,
+        download_name=f"Security_Audit_Report_{datetime.now().strftime('%Y%m%d')}.pdf",
+        mimetype="application/pdf"
+    )
+
+
+@misc_bp.route("/api/security/verify-integrity", methods=["POST"])
+@login_required
+def verify_system_file_integrity():
+    """Verify integrity of uploaded files and KB documents."""
+    from pathlib import Path
+    uploads_dir = Path("uploads")
+    results = []
+    if uploads_dir.exists():
+        for f in uploads_dir.rglob("*"):
+            if f.is_file():
+                valid, msg = database.verify_file_integrity(str(f))
+                results.append({
+                    "file": f.name,
+                    "valid": valid,
+                    "status": msg
+                })
+    return jsonify({"ok": True, "files": results, "total_scanned": len(results)})
+
+
+@misc_bp.route("/api/kb/anomalies")
+@login_required
+def get_kb_anomalies():
+    """Scan and detect duplicate documents, hash collisions, and file anomalies in knowledge base."""
+    import rag_engine
+    org_id = get_current_org_id() or 1
+    scan_report = rag_engine.detect_kb_duplicates_and_anomalies(org_id=org_id)
+    return jsonify(scan_report)
+
+
+@misc_bp.route("/api/security/blacklist")
+@admin_required
+def get_security_blacklist():
+    """Retrieve list of blacklisted IP addresses and reasons."""
+    blacklisted = database.get_blacklisted_ips()
+    return jsonify({"ok": True, "blacklist": blacklisted})
+
+
+@misc_bp.route("/api/security/unblock-ip", methods=["POST"])
+@admin_required
+def unblock_security_ip():
+    """Admin endpoint to unban an IP address."""
+    user = session.get("user", "Admin")
+    data = request.json or {}
+    ip_to_unblock = data.get("ip_address", "").strip()
+    if not ip_to_unblock:
+        return jsonify({"ok": False, "error": "missing_ip"}), 400
+
+    success = database.unblock_ip(ip_to_unblock)
+    if success:
+        database.log_audit_event(user, "SECURITY_IP_UNBLOCKED", f"Unblocked IP: {ip_to_unblock}", request.remote_addr or "unknown", get_current_org_id() or 1)
+        return jsonify({"ok": True, "message": f"ปลดบล็อค IP {ip_to_unblock} เรียบร้อยแล้ว"})
+    return jsonify({"ok": False, "error": "not_found", "message": "ไม่พบ IP นี้ในรายการที่ถูกบล็อค"}), 404
+
+
+@misc_bp.route("/api/security/mask-pii", methods=["POST"])
+@login_required
+def test_mask_pii():
+    """Test and preview PII data masking & anonymization on arbitrary text."""
+    data = request.json or {}
+    raw_text = data.get("text", "")
+    masked_text, detected_items = database.mask_pii_data(raw_text)
+    return jsonify({
+        "ok": True,
+        "original_text": raw_text,
+        "masked_text": masked_text,
+        "detected_items": detected_items,
+        "count": len(detected_items)
+    })
+
+
+@misc_bp.route("/api/security/threat-intel")
+@admin_required
+def get_security_threat_intel():
+    """Retrieve SOC threat intelligence and live incident aggregation."""
+    org_id = get_current_org_id() or 1
+    intel = database.get_security_threat_intel(org_id=org_id)
+    return jsonify(intel)
+
+
+@misc_bp.route("/api/security/analyze-behavior", methods=["POST"])
+@admin_required
+def analyze_user_behavior_endpoint():
+    """Analyze behavioral risk score for a specific user and IP."""
+    data = request.json or {}
+    target_user = data.get("username", session.get("user", "Anonymous"))
+    target_ip = data.get("ip_address", request.remote_addr or "127.0.0.1")
+    analysis = database.analyze_user_threat_behavior(
+        username=target_user,
+        client_ip=target_ip,
+        action="UEBA_AUDIT_QUERY",
+        org_id=get_current_org_id() or 1
+    )
+    return jsonify({"ok": True, "analysis": analysis})
 
 
 @misc_bp.route("/health")

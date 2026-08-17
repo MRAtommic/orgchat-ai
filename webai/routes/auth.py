@@ -1127,6 +1127,7 @@ def api_login():
     # ตรวจสอบ IP จาก SQLite (persist ข้าม restart — ป้องกัน brute-force)
     client_ip = request.remote_addr or "unknown"
     if database.count_failed_attempts(client_ip) >= database._LOGIN_ATTEMPT_LIMIT:
+        database.block_ip(client_ip, reason="Exceeded failed login attempts (Brute-Force Protection)", duration_minutes=60)
         return jsonify({"ok": False, "error": "IP นี้ถูกล็อคชั่วคราวเนื่องจากพยายามเข้าสู่ระบบผิดพลาดหลายครั้ง กรุณาลองใหม่ใน 1 ชั่วโมง"}), 429
     
     # 1. Check Database first (Dynamic Users) — supports bcrypt hashed passwords
@@ -1200,26 +1201,45 @@ def api_login():
                 except Exception as _we:
                     logger.warning(f"[Login] whitelist auto-join failed for '{_uname}': {_we}")
 
+        _is_known_ip = database.is_known_user_ip(username_raw, client_ip)
         _set_session_org(session["user"])
         database.record_login_attempt(client_ip, username_raw, success=True)
-        database.log_audit_event(session["user"], session.get("org_id", 1), "USER_LOGIN", "Login successful", client_ip)
+        database.log_audit_event(session["user"], "USER_LOGIN", f"Login successful (New IP: {not _is_known_ip})", client_ip, session.get("org_id", 1))
         
-        # --- 🚨 Security Alert: Send LINE Push Notification on successful login ---
+        # --- 🚨 Security Alert: Send LINE Push Notification on login (High priority if new IP) ---
         try:
             from routes.chat import send_line_push_notification
-            ua_short = request.user_agent.string[:50] if request.user_agent else "Web Browser"
+            ua_short = request.user_agent.string[:60] if request.user_agent else "Web Browser"
+            alert_title = "🚨 แจ้งเตือนความปลอดภัย: เข้าสู่ระบบจาก IP ใหม่!" if not _is_known_ip else "🔐 แจ้งเตือน: มีการเข้าสู่ระบบ"
+            alert_desc = f"บัญชี {session['user']} เข้าสู่ระบบจาก IP ที่ไม่คุ้นเคย ({client_ip})" if not _is_known_ip else f"บัญชี {session['user']} ได้เข้าสู่ระบบสำเร็จ"
+            
+            sec_fields = {
+                "ผู้ใช้งาน": session["user"],
+                "IP Address": client_ip,
+                "สถานะ": "⚠️ IP ใหม่ที่ไม่คุ้นเคย" if not _is_known_ip else "✅ IP ปกติ",
+                "อุปกรณ์": ua_short,
+                "เวลา": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+            
+            # Send to user
             threading.Thread(target=send_line_push_notification, args=(
                 session["user"],
-                "🚨 แจ้งเตือนความปลอดภัย: มีการเข้าสู่ระบบ",
-                f"บัญชี {session['user']} ได้เข้าสู่ระบบสำเร็จจาก IP {client_ip}",
-            ), kwargs={
-                "fields": {
-                    "ผู้ใช้งาน": session["user"],
-                    "IP Address": client_ip,
-                    "อุปกรณ์": ua_short,
-                    "เวลา": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                }
-            }).start()
+                alert_title,
+                alert_desc,
+            ), kwargs={"fields": sec_fields}).start()
+
+            # If New IP, notify Org Admin as well
+            if not _is_known_ip:
+                user_orgs = database.get_user_orgs(session["user"])
+                org_id = user_orgs[0]["id"] if user_orgs else 1
+                org_members = database.get_org_members(org_id)
+                for m in org_members:
+                    if m.get("role") == "admin" and m.get("username") != session["user"]:
+                        threading.Thread(target=send_line_push_notification, args=(
+                            m["username"],
+                            f"🚨 แจ้งเตือนแอดมิน: สมาชิกเข้าใช้งานจาก IP ใหม่ ({session['user']})",
+                            f"ตรวจพบผู้ใช้ {session['user']} เข้าสู่ระบบจาก IP ใหม่ {client_ip}",
+                        ), kwargs={"fields": sec_fields}).start()
         except Exception as _se:
             logger.warning(f"[Security LINE Alert] Failed: {_se}")
 
@@ -2351,13 +2371,23 @@ def switch_org(target_org_id):
 @auth_bp.route("/api/org/members/<username>/role", methods=["POST"])
 @login_required
 def update_org_member_role(username):
-    """Org admin changes another member's role (admin ↔ member)."""
+    """Org admin changes another member's role (admin ↔ member). Only Owner / Super Admin can promote/demote admins."""
     me = session.get("user")
     org_id = get_current_org_id()
     if not org_id:
         return jsonify({"ok": False, "error": "คุณยังไม่ได้อยู่ในองค์กร"}), 403
     if not database.is_org_admin(org_id, me):
         return jsonify({"ok": False, "error": "เฉพาะ Admin องค์กรเท่านั้นที่เปลี่ยนตำแหน่งได้"}), 403
+
+    # 🛡️ Owner Check: Only Org Owner / Super Admin can grant or revoke Admin roles
+    is_owner = database.is_org_owner(org_id, me) or session.get("role") == "admin"
+    if not is_owner:
+        return jsonify({"ok": False, "error": "เฉพาะ Admin ใหญ่ (ผู้ก่อตั้ง/Owner) เท่านั้นที่มีสิทธิ์แต่งตั้งหรือปลดตำแหน่ง Admin ค่ะ"}), 403
+
+    # Prevent demoting the Owner
+    if database.is_org_owner(org_id, username) and username.lower() != me.lower():
+        return jsonify({"ok": False, "error": "ไม่สามารถเปลี่ยนตำแหน่งของ Admin ใหญ่ (Owner) ขององค์กรได้ค่ะ"}), 403
+
     data = request.get_json(force=True)
     new_role = data.get("role", "").strip()
     if new_role not in ("admin", "member"):
@@ -2369,7 +2399,32 @@ def update_org_member_role(username):
         return jsonify({"ok": False, "error": "ไม่พบสมาชิกคนนี้ในองค์กร"}), 404
     if username == me:
         session["org_role"] = new_role
+
+    database.log_event(f"Role updated for {username} -> {new_role} by {me}", user=me, org_id=org_id)
     return jsonify({"ok": True, "username": username, "role": new_role})
+
+
+@auth_bp.route("/api/org/transfer-ownership", methods=["POST"])
+@login_required
+def transfer_org_ownership_endpoint():
+    """Transfer Organization Super Admin (Owner) to another member."""
+    me = session.get("user")
+    org_id = get_current_org_id()
+    if not org_id:
+        return jsonify({"ok": False, "error": "คุณยังไม่ได้อยู่ในองค์กร"}), 403
+    
+    data = request.get_json(force=True) or {}
+    new_owner = data.get("new_owner", "").strip()
+    if not new_owner:
+        return jsonify({"ok": False, "error": "กรุณาระบุชื่อผู้ใช้ที่จะรับโอนสิทธิ์"}), 400
+
+    ok, msg = database.transfer_org_ownership(org_id, me, new_owner)
+    if not ok:
+        return jsonify({"ok": False, "error": msg}), 403
+
+    database.log_event(f"Organization ownership transferred from {me} to {new_owner}", user=me, org_id=org_id)
+    return jsonify({"ok": True, "message": msg, "new_owner": new_owner})
+
 
 
 @auth_bp.route("/api/org/members/<username>/manager", methods=["POST"])
@@ -2760,6 +2815,18 @@ def update_org_member_permissions(username):
         return jsonify({"ok": False, "error": "เฉพาะ Admin องค์กรเท่านั้นที่แก้ไขสิทธิ์ได้"}), 403
     if not database.is_org_member(org_id, username):
         return jsonify({"ok": False, "error": "ไม่พบสมาชิกคนนี้ในองค์กร"}), 404
+
+    is_owner = database.is_org_owner(org_id, me) or session.get("role") == "admin"
+    is_target_admin = database.is_org_admin(org_id, username)
+
+    # 🛡️ Safety Rule 1: Admin cannot edit their own permissions/privileges (prevents self-promotion)
+    if username.lower() == me.lower() and not is_owner:
+        return jsonify({"ok": False, "error": "ไม่สามารถปรับเปลี่ยนหรือเปิดสิทธิ์ฟังก์ชันให้กับตนเองได้ค่ะ ต้องให้ Admin ท่านอื่นหรือ Admin ใหญ่เป็นผู้กำหนด"}), 403
+
+    # 🛡️ Safety Rule 2: Only Owner can modify permissions of other Admins
+    if is_target_admin and username.lower() != me.lower() and not is_owner:
+        return jsonify({"ok": False, "error": "เฉพาะ Admin ใหญ่ (Owner) เท่านั้นที่มีสิทธิ์แก้ไขการตั้งค่าของ Admin ท่านอื่นค่ะ"}), 403
+
     data = request.get_json(force=True)
     
     update_kwargs = {}
@@ -2788,7 +2855,9 @@ def update_org_member_permissions(username):
         update_kwargs["notes"] = data["notes"]
         
     database.admin_update_user(username, **update_kwargs)
+    database.log_event(f"Permissions updated for {username} by {me}", user=me, org_id=org_id)
     return jsonify({"ok": True})
+
 
 
 @auth_bp.route("/api/org/members/<username>/reset-password", methods=["POST"])
@@ -2830,6 +2899,18 @@ def remove_org_member(username):
     # Security check: Ensure user is a member of the admin's organization
     if not database.is_org_member(org_id, username):
         return jsonify({"ok": False, "error": "ไม่พบสมาชิกคนนี้ในองค์กร"}), 404
+
+    is_owner = database.is_org_owner(org_id, me) or session.get("role") == "admin"
+    is_target_admin = database.is_org_admin(org_id, username)
+    is_target_owner = database.is_org_owner(org_id, username)
+
+    # 🛡️ Safety Rule: Nobody can delete the Owner
+    if is_target_owner:
+        return jsonify({"ok": False, "error": "ไม่สามารถลบ Admin ใหญ่ (Owner) ออกจากองค์กรได้ค่ะ"}), 403
+
+    # 🛡️ Safety Rule: Only Owner can delete another Admin
+    if is_target_admin and not is_owner:
+        return jsonify({"ok": False, "error": "เฉพาะ Admin ใหญ่ (Owner) เท่านั้นที่มีสิทธิ์ลบผู้ดูแลระบบ (Admin) ออกจากองค์กรค่ะ"}), 403
 
     is_system_admin = session.get("role") == "admin"
     if is_system_admin:
@@ -3000,6 +3081,10 @@ def update_my_profile():
             ext = Path(avatar_file.filename).suffix.lower()
             if ext not in {".jpg", ".jpeg", ".png", ".webp", ".gif"}:
                 return jsonify({"ok": False, "error": "รองรับเฉพาะไฟล์รูป (.jpg, .png, .webp, .gif)"}), 400
+            from routes.shared import validate_uploaded_file
+            is_valid, err_msg = validate_uploaded_file(avatar_file, avatar_file.filename)
+            if not is_valid:
+                return jsonify({"ok": False, "error": f"ไฟล์รูปประจำตัวไม่ปลอดภัย: {err_msg}"}), 400
             avatar_filename = f"avatar_{username}_{int(time.time())}{ext}"
             upload_dir = Path("uploads") / "profiles"
             upload_dir.mkdir(parents=True, exist_ok=True)
@@ -3278,5 +3363,86 @@ def line_login_callback():
         return render_success_page(username)
     else:
         return render_link_error("เกิดข้อผิดพลาดในการบันทึกข้อมูลการเชื่อมต่อลงฐานข้อมูลค่ะ"), 500
+
+
+@auth_bp.route("/api/org/upload-logo", methods=["POST"])
+@login_required
+def upload_org_logo():
+    if "file" not in request.files:
+        return jsonify({"ok": False, "error": "ไม่พบไฟล์อัปโหลด"}), 400
+    file = request.files["file"]
+    if not file or file.filename == "":
+        return jsonify({"ok": False, "error": "ชื่อไฟล์ไม่ถูกต้อง"}), 400
+        
+    allowed_extensions = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+    file_ext = os.path.splitext(file.filename.lower())[1]
+    if file_ext not in allowed_extensions:
+        return jsonify({"ok": False, "error": "ประเภทไฟล์ไม่ถูกต้อง อนุญาตเฉพาะไฟล์รูปภาพเท่านั้น"}), 400
+
+    from routes.shared import validate_uploaded_file
+    is_valid, err_msg = validate_uploaded_file(file, file.filename)
+    if not is_valid:
+        return jsonify({"ok": False, "error": f"ไฟล์โลโก้ไม่ปลอดภัย: {err_msg}"}), 400
+
+    upload_dir = os.path.join("static", "uploads", "logos")
+    os.makedirs(upload_dir, exist_ok=True)
+    
+    unique_name = f"{uuid.uuid4().hex}_{int(time.time())}{file_ext}"
+    dest_path = os.path.join(upload_dir, unique_name)
+    file.save(dest_path)
+    
+    url = f"/static/uploads/logos/{unique_name}"
+    return jsonify({"ok": True, "url": url})
+
+
+@auth_bp.route("/api/signature/process-background", methods=["POST"])
+@login_required
+def process_signature_background():
+    if "file" not in request.files:
+        return jsonify({"ok": False, "error": "ไม่พบไฟล์อัปโหลด"}), 400
+    file = request.files["file"]
+    if not file or file.filename == "":
+        return jsonify({"ok": False, "error": "ชื่อไฟล์ไม่ถูกต้อง"}), 400
+        
+    allowed_extensions = {".png", ".jpg", ".jpeg", ".webp"}
+    file_ext = os.path.splitext(file.filename.lower())[1]
+    if file_ext not in allowed_extensions:
+        return jsonify({"ok": False, "error": "ประเภทไฟล์ไม่ถูกต้อง อนุญาตเฉพาะไฟล์รูปภาพเท่านั้น"}), 400
+
+    from routes.shared import validate_uploaded_file
+    is_valid, err_msg = validate_uploaded_file(file, file.filename)
+    if not is_valid:
+        return jsonify({"ok": False, "error": f"ไฟล์ลายเซ็นต์ไม่ปลอดภัย: {err_msg}"}), 400
+
+    remove_bg = request.form.get("remove_bg") == "true"
+    
+    upload_dir = os.path.join("static", "uploads", "signatures")
+    os.makedirs(upload_dir, exist_ok=True)
+    
+    unique_name = f"{uuid.uuid4().hex}_{int(time.time())}.png"
+    dest_path = os.path.join(upload_dir, unique_name)
+    
+    try:
+        if remove_bg:
+            from PIL import Image
+            img = Image.open(file.stream).convert("RGBA")
+            datas = img.getdata()
+            new_data = []
+            for item in datas:
+                if item[0] > 220 and item[1] > 220 and item[2] > 220:
+                    new_data.append((255, 255, 255, 0))
+                else:
+                    new_data.append(item)
+            img.putdata(new_data)
+            img.save(dest_path, "PNG")
+        else:
+            file.save(dest_path)
+    except Exception as e:
+        logger.error(f"Error processing signature background: {e}")
+        return jsonify({"ok": False, "error": f"เกิดข้อผิดพลาดในการประมวลผลลายเซ็น: {str(e)}"}), 500
+        
+    url = f"/static/uploads/signatures/{unique_name}"
+    return jsonify({"ok": True, "url": url})
+
 
 

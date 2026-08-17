@@ -1434,3 +1434,122 @@ def get_all_chunks(where: dict = None, limit: int = 20) -> list[dict]:
         item.update(m)
         results.append(item)
     return results
+
+
+# ═══════════════════════════════════════════════════════════════
+# 🔍 Automated KB Duplicate & Anomaly File Detector (Enterprise)
+# ═══════════════════════════════════════════════════════════════
+
+def detect_kb_duplicates_and_anomalies(org_id: int = 1) -> dict:
+    """
+    Scans all files in knowledge base metadata and uploads to detect:
+      1. Exact file content duplicates (SHA-256 Hash collisions)
+      2. Duplicate original file names uploaded under different IDs
+      3. Orphaned / Corrupted / Missing disk files
+      4. Empty or unindexed document chunks (Zero Chunk Anomalies)
+    """
+    meta = _load_meta()
+    
+    hash_map = {}          # { sha256: [file_info, ...] }
+    name_map = {}          # { name_lower: [file_info, ...] }
+    duplicates = []
+    anomalies = []
+    healthy_files = []
+
+    for fid, info in meta.items():
+        if info.get("organization_id") and info.get("organization_id") != org_id:
+            continue
+
+        name = info.get("name", "Unnamed")
+        file_path_str = info.get("path")
+        chunks_count = info.get("chunks", 0)
+        size = info.get("size", 0)
+        status = info.get("status", "unknown")
+
+        file_entry = {
+            "file_id": fid,
+            "name": name,
+            "path": file_path_str,
+            "chunks": chunks_count,
+            "size": size,
+            "status": status,
+            "department": info.get("department", "General")
+        }
+
+        # 1. Check physical existence on disk
+        if not file_path_str or not Path(file_path_str).exists():
+            anomalies.append({
+                "type": "MISSING_DISK_FILE",
+                "severity": "HIGH",
+                "file_id": fid,
+                "name": name,
+                "description": f"ไฟล์ '{name}' มีบันทึกในระบบแต่ไฟล์จริงบน Disk หายไป"
+            })
+            continue
+
+        p = Path(file_path_str)
+
+        # 2. Check 0-byte or 0-chunk anomaly
+        if size == 0 or chunks_count == 0:
+            anomalies.append({
+                "type": "EMPTY_OR_UNINDEXED",
+                "severity": "MEDIUM",
+                "file_id": fid,
+                "name": name,
+                "description": f"ไฟล์ '{name}' มีขนาด 0 bytes หรือไม่มี Chunks ถูกแปลงลงฐานข้อมูล AI"
+            })
+
+        # 3. Calculate SHA-256 for exact binary duplication
+        try:
+            h = hashlib.sha256(p.read_bytes()).hexdigest()
+            file_entry["sha256"] = h
+            hash_map.setdefault(h, []).append(file_entry)
+        except Exception as e:
+            anomalies.append({
+                "type": "READ_ERROR",
+                "severity": "HIGH",
+                "file_id": fid,
+                "name": name,
+                "description": f"ไม่สามารถอ่านไฟล์ '{name}' ได้: {e}"
+            })
+            continue
+
+        # 4. Track file names for duplicate names
+        name_lower = name.strip().lower()
+        name_map.setdefault(name_lower, []).append(file_entry)
+        healthy_files.append(file_entry)
+
+    # Detect exact binary duplicates
+    for sha, group in hash_map.items():
+        if len(group) > 1:
+            duplicates.append({
+                "type": "EXACT_BINARY_DUPLICATE",
+                "sha256": sha,
+                "count": len(group),
+                "files": group,
+                "suggestion": f"ตรวจพบไฟล์เนื้อหาซ้ำกันเป๊ะ {len(group)} ไฟล์ ({', '.join(f['name'] for f in group)}) ควรลบไฟล์ส่วนเกินเพื่อประหยัดพื้นที่และลดความสับสนของ AI"
+            })
+
+    # Detect duplicate filenames
+    for name, group in name_map.items():
+        if len(group) > 1 and not any(d["sha256"] == group[0].get("sha256") for d in duplicates if "sha256" in d):
+            duplicates.append({
+                "type": "FILENAME_COLLISION",
+                "name": name,
+                "count": len(group),
+                "files": group,
+                "suggestion": f"ตรวจพบชื่อไฟล์ซ้ำกัน {len(group)} รายการแต่เนื้อหาต่างกัน ({', '.join(f['file_id'] for f in group)})"
+            })
+
+    total_scanned = len(meta)
+    return {
+        "ok": True,
+        "total_scanned": total_scanned,
+        "healthy_count": len(healthy_files),
+        "duplicate_groups_count": len(duplicates),
+        "anomalies_count": len(anomalies),
+        "duplicates": duplicates,
+        "anomalies": anomalies,
+        "scan_time": datetime.now().isoformat()
+    }
+

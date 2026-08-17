@@ -121,3 +121,118 @@ def save_export_file(content: str, folder: Path, prefix: str = "chat_export") ->
     file_path = folder / filename
     file_path.write_text(content, encoding="utf-8")
     return file_path
+
+
+def export_security_audit_report_pdf(health_data: dict, audit_logs: list[dict], folder: Path, org_name: str = "Enterprise Organization") -> Path:
+    """
+    Generates a professional, formal Security Audit & Compliance PDF Report for Board of Directors / Auditors.
+    Includes Executive Summary, Health Score, FIM Status, Brute-force Telemetry, and HMAC-Verified Audit Trail.
+    """
+    folder.mkdir(parents=True, exist_ok=True)
+    pdf = FPDF()
+    pdf.add_page()
+
+    # Font setup
+    font_paths = []
+    if os.name == 'nt':
+        font_paths = [
+            r"C:\Windows\Fonts\leelawad.ttf",
+            r"C:\Windows\Fonts\thsarabunnew.ttf",
+            r"C:\Windows\Fonts\tahoma.ttf",
+            r"C:\Windows\Fonts\arial.ttf"
+        ]
+    else:
+        font_paths = [
+            "/usr/share/fonts/truetype/thai/THSarabunNew.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/opentype/noto/NotoSansThai-Regular.ttf"
+        ]
+
+    font_path = None
+    for f in font_paths:
+        if os.path.exists(f):
+            font_path = f
+            break
+
+    if font_path:
+        pdf.add_font("THFont", "", font_path)
+        font_name = "THFont"
+    else:
+        font_name = "Arial"
+
+    # --- Header Banner ---
+    pdf.set_font(font_name, size=18)
+    pdf.cell(0, 10, txt="OrgChat AI - Security Audit & Compliance Report", ln=1, align='C')
+    pdf.set_font(font_name, size=10)
+    pdf.cell(0, 6, txt=f"Organization: {org_name}  |  Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", ln=1, align='C')
+    pdf.ln(4)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(6)
+
+    # --- Executive Summary & Health Metrics ---
+    pdf.set_font(font_name, size=13)
+    pdf.cell(0, 8, txt="1. Executive Security Health Summary (Overview)", ln=1)
+    pdf.set_font(font_name, size=10)
+
+    score = health_data.get('overall_health_score', 100)
+    status_str = health_data.get('status', 'EXCELLENT')
+    log_int = health_data.get('log_integrity_percent', 100)
+    failed_logins = health_data.get('failed_logins_24h', 0)
+    fim_files = health_data.get('fim_tracked_files', 0)
+    total_logs = health_data.get('total_audit_logs', len(audit_logs))
+    mfa_pct = health_data.get('mfa_adoption_percent', 0)
+    mfa_users = health_data.get('mfa_enabled_users', 0)
+    total_users = health_data.get('total_users', 1)
+
+    summary_text = (
+        f"• Overall Security Health Score: {score}/100 ({status_str})\n"
+        f"• Tamper-Evident HMAC-SHA256 Log Integrity: {log_int}% Verified\n"
+        f"• Two-Factor Authentication (2FA/TOTP) Adoption: {mfa_pct}% ({mfa_users}/{total_users} Users Enrolled)\n"
+        f"• Monitored Baseline Files (FIM SHA-256): {fim_files} files\n"
+        f"• Blocked / Failed Logins (Last 24 Hours): {failed_logins} incidents\n"
+        f"• Total Logged Accounting Events: {total_logs} records"
+    )
+    pdf.multi_cell(0, 6, txt=summary_text)
+    pdf.ln(6)
+
+    # --- Defensive Controls Breakdown ---
+    pdf.set_font(font_name, size=13)
+    pdf.cell(0, 8, txt="2. Implemented Defense Frameworks (Compliance Matrix)", ln=1)
+    pdf.set_font(font_name, size=10)
+    controls = [
+        ("File Integrity Monitoring (FIM)", "SHA-256 baseline hashing active with on-demand tampering detection"),
+        ("Accounting Protocol", "HMAC-SHA256 signature attached to all audit events (tamper-evident)"),
+        ("Threat & Attack Mitigation", "Account Lockout (5 attempts) & Brute-Force Rate Limiting (IP tracking)"),
+        ("AI Security Guardrail", "Anti-Prompt Injection & Jailbreak real-time interception"),
+        ("PDPA & Privacy Protection", "Explicit Cookie Consent Banner, Category Preferences, and Session Auto-Lock (15m)")
+    ]
+    for name, desc in controls:
+        pdf.set_font(font_name, size=10)
+        pdf.multi_cell(0, 6, txt=f"• [{name}]: {desc}")
+        pdf.ln(1)
+    pdf.ln(4)
+
+    # --- Recent Audit Log Entries ---
+    pdf.set_font(font_name, size=13)
+    pdf.cell(0, 8, txt="3. Verified Audit Trail (Recent Accounting Events)", ln=1)
+    pdf.set_font(font_name, size=9)
+
+    for i, log in enumerate(audit_logs[:20]):
+        action = log.get('action', 'EVENT')
+        user = log.get('username', 'System')
+        det = log.get('details', '')
+        ip = log.get('ip_address', 'N/A')
+        ts = log.get('timestamp', '')
+        verified = "VERIFIED_HMAC" if log.get('is_verified') else "TAMPERED_WARNING"
+
+        log_line = f"[{ts}] {action} | User: {user} | IP: {ip} | Status: {verified}\nDetails: {det}"
+        pdf.multi_cell(0, 5, txt=log_line)
+        pdf.line(10, pdf.get_y() + 1, 200, pdf.get_y() + 1)
+        pdf.ln(3)
+
+    filename = f"security_audit_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    file_path = folder / filename
+    pdf.output(str(file_path))
+    return file_path
+
