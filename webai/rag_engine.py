@@ -63,6 +63,12 @@ try:
 except ImportError:
     IMAGE_SUPPORTED = False
 
+try:
+    import pptx
+    PPTX_SUPPORTED = True
+except ImportError:
+    PPTX_SUPPORTED = False
+
 
 BASE_DIR = Path(__file__).parent.absolute()
 
@@ -821,6 +827,8 @@ class FileProcessor:
             return FileProcessor._parse_text(file_path)
         elif suffix in (".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".webp"):
             return FileProcessor._parse_image(file_path)
+        elif suffix in (".pptx", ".ppt"):
+            return FileProcessor._parse_pptx(file_path)
         else:
             return [], []
 
@@ -950,6 +958,42 @@ class FileProcessor:
             return chunks, [{"location": "Image OCR"}] * len(chunks)
         except Exception as e:
             return [f"[OCR Error: {e}]"], [{"location": "error"}]
+
+    @staticmethod
+    def _parse_pptx(path: Path) -> tuple[list[str], list[dict]]:
+        if not PPTX_SUPPORTED:
+            return ["[PowerPoint parser unavailable — python-pptx not installed]"], [{"location": "error"}]
+        chunks, metas = [], []
+        try:
+            prs = pptx.Presentation(str(path))
+            for i, slide in enumerate(prs.slides, 1):
+                slide_parts = []
+                for shape in slide.shapes:
+                    if shape.has_text_frame:
+                        for paragraph in shape.text_frame.paragraphs:
+                            t = paragraph.text.strip()
+                            if t:
+                                slide_parts.append(t)
+                    elif shape.has_table:
+                        for row in shape.table.rows:
+                            row_vals = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+                            if row_vals:
+                                slide_parts.append(" | ".join(row_vals))
+                if slide.has_notes_slide and slide.notes_slide.notes_text_frame:
+                    note = slide.notes_slide.notes_text_frame.text.strip()
+                    if note:
+                        slide_parts.append(f"[Speaker Notes: {note}]")
+                if slide_parts:
+                    slide_text = "\n".join(slide_parts)
+                    sub_chunks = _chunk_text(slide_text) or [slide_text]
+                    for sc in sub_chunks:
+                        chunks.append(sc)
+                        metas.append({"location": f"Slide {i}"})
+            if not chunks:
+                return ["[Presentation has no readable text]"], [{"location": "Slide 1"}]
+            return chunks, metas
+        except Exception as e:
+            return [f"[PowerPoint Error: {e}]"], [{"location": "error"}]
 
 
 # ─────────────────────────────────────────────
@@ -1161,6 +1205,61 @@ def update_file_category(file_id: str, category_id: int) -> bool:
     # Also update vector database chunks
     _get_kb().update_metadata_by_file_id(file_id, {"category_id": category_id})
     return True
+
+
+def rename_file(file_id: str, new_name: str, org_id: int = None) -> dict:
+    """Renames a file in file_meta.json, renames file on disk if exists, and updates ChromaDB chunk metadata."""
+    meta = _load_meta()
+    if file_id not in meta:
+        return {"ok": False, "error": "ไม่พบไฟล์ที่ระบุในระบบ"}
+
+    info = meta[file_id]
+    if org_id is not None and info.get("organization_id") is not None and info.get("organization_id") != org_id:
+        return {"ok": False, "error": "คุณไม่มีสิทธิ์แก้ไขไฟล์ในองค์กรนี้"}
+
+    new_name = (new_name or "").strip()
+    if not new_name:
+        return {"ok": False, "error": "ชื่อไฟล์ต้องไม่ว่างเปล่า"}
+
+    old_name = info.get("name", "")
+    old_ext = Path(old_name).suffix
+    new_ext = Path(new_name).suffix
+
+    # If new_name does not have an extension, retain original extension
+    if not new_ext and old_ext:
+        new_name = new_name + old_ext
+        new_ext = old_ext
+
+    # Rename physical file on disk safely
+    old_path_str = info.get("path")
+    new_path_str = old_path_str
+    if old_path_str:
+        try:
+            old_path = Path(old_path_str)
+            if old_path.exists():
+                safe_name = re.sub(r'[\\/:*?"<>|]', '_', new_name).strip()
+                prefix = f"{file_id[:8]}_"
+                new_disk_filename = f"{prefix}{safe_name}"
+                new_disk_path = old_path.parent / new_disk_filename
+                if old_path != new_disk_path:
+                    old_path.rename(new_disk_path)
+                    new_path_str = str(new_disk_path)
+        except Exception as e:
+            print(f"⚠️ Warning: Could not rename file on disk: {e}")
+
+    info["name"] = new_name
+    info["path"] = new_path_str
+    if new_ext:
+        info["type"] = new_ext.lower().lstrip(".")
+    _save_meta(meta)
+
+    # Sync metadata in vector database
+    try:
+        _get_kb().update_metadata_by_file_id(file_id, {"source": new_name})
+    except Exception as e:
+        print(f"⚠️ Warning: vector metadata rename update: {e}")
+
+    return {"ok": True, "file_id": file_id, "name": new_name}
 
 
 def get_file_content(file_id: str) -> str:

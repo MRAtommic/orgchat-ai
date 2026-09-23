@@ -1,5 +1,19 @@
 // 🛡️ CSRF Token Auto-Injector & Global Fetch Interceptor
-window._csrfToken = null;
+window._csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || null;
+
+// 🛡️ Global XSS Prevention Helper
+if (typeof window.escapeHtml !== 'function') {
+  window.escapeHtml = function(text) {
+    if (!text) return '';
+    return String(text)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  };
+}
+var escapeHtml = window.escapeHtml;
 
 // --- Premium Sound FX & Haptic Engine (Web Audio API) ---
 class OrgAudioEngine {
@@ -191,7 +205,7 @@ function initCustomUISettings() {
     soundToggle.onchange = (e) => {
       window.soundEngine.soundEnabled = e.target.checked;
       localStorage.setItem('orgchat_sound_fx', e.target.checked);
-      if (e.target.checked) window.soundEngine.playSendChime();
+      if (e.isTrusted && e.target.checked) window.soundEngine.playSendChime();
     };
   }
 
@@ -201,7 +215,7 @@ function initCustomUISettings() {
     hapticToggle.onchange = (e) => {
       window.soundEngine.hapticEnabled = e.target.checked;
       localStorage.setItem('orgchat_haptic_fx', e.target.checked);
-      if (e.target.checked) window.soundEngine.triggerHaptic('success');
+      if (e.isTrusted && e.target.checked) window.soundEngine.triggerHaptic('success');
     };
   }
 }
@@ -760,7 +774,15 @@ async function loadStatus() {
     }
     state.isAdmin = !!data.is_admin;
     state.isSuperAdmin = !!data.is_superadmin;
+    state.canViewKB = !!data.can_view_kb;
     state.canEditKB = !!data.can_edit_kb;
+    state.canDeleteKB = !!data.can_delete_kb;
+    state.canViewFinancial = !!data.can_view_financial;
+    state.canManageLeave = !!data.can_manage_leave;
+    state.canBroadcastLine = !!data.can_broadcast_line;
+    state.canManagePeak = !!data.can_manage_peak;
+    state.canUseAI = data.can_use_ai !== false;
+    state.canClaimExpense = data.can_claim_expense !== false;
     state.user = data.user;
     state.username = data.user;
     state.appSettings = data.app_settings || {};
@@ -801,7 +823,7 @@ async function loadStatus() {
     // Sync UI with settings if needed
     const uploadBtn = $('uploadFilesBtn');
     if (uploadBtn) {
-      if (canEditKB()) uploadBtn.classList.remove('hidden');
+      if (typeof canEditKB === 'function' && canEditKB()) uploadBtn.classList.remove('hidden');
       else uploadBtn.classList.add('hidden');
     }
   } catch (e) {
@@ -834,29 +856,71 @@ function toggleAdminFeatures(isAdmin, isSuperAdmin) {
     initAdminChatPanel();
   }
 
-  // nav-org (จัดการองค์กร): แสดงสำหรับ org admin
+  // nav-org (จัดการองค์กร): แสดงสำหรับ org admin หรือ system admin
   const navOrg = $('nav-org');
   if (navOrg) {
-    navOrg.classList.toggle('hidden', !state.isOrgAdmin);
+    navOrg.classList.toggle('hidden', !(state.isOrgAdmin || isAdmin));
+  }
+
+  // Financial nav permissions
+  const canFinancial = isAdmin || state.isOrgAdmin || state.canViewFinancial;
+  const navDashboard = $('nav-dashboard');
+  if (navDashboard && !canFinancial && !isAdmin) {
+    // If not admin and doesn't have financial permission, hide or disable
+    navDashboard.classList.add('hidden');
+  } else if (navDashboard) {
+    navDashboard.classList.remove('hidden');
+  }
+
+  // LINE Groups & Broadcast nav permission
+  const navLineGroups = $('nav-line-groups');
+  if (navLineGroups) {
+    navLineGroups.classList.toggle('hidden', !(isAdmin || state.isOrgAdmin || state.canBroadcastLine));
   }
 }
 
+
+function selectPersona(id) {
+  const p = (state.personas || []).find(x => x.id == id);
+  state.activePersona = p || null;
+  const activeName = document.getElementById('activePersonaName');
+  if (activeName) {
+    activeName.textContent = p ? p.name : 'Default';
+  }
+  const dd = document.getElementById('personaDropdown');
+  if (dd) {
+    dd.classList.add('hidden');
+  }
+  renderPersonas();
+  if (typeof toast === 'function') {
+    toast(p ? `สลับเป็นตัวตน: ${p.name}` : 'กลับสู่โหมดพื้นฐาน (Default)', 'info');
+  }
+}
+window.selectPersona = selectPersona;
+
 function renderPersonas() {
-  if (!personaList) return;
-  personaList.innerHTML = `
-    <div class="px-2 py-1.5 rounded-lg hover:bg-brand-50 dark:hover:bg-brand-900/30 cursor-pointer transition-all flex items-center gap-2 ${!state.activePersona ? 'bg-brand-50 dark:bg-brand-900/40 text-brand-600' : ''}" onclick="selectPersona(null)">
-      <div class="w-2 h-2 rounded-full bg-brand-600"></div>
-      <div class="text-[11px] font-bold">Standard Chat (Default)</div>
+  const list = document.getElementById('personaList');
+  if (!list) return;
+  const personas = state.personas || [];
+  const isDefault = !state.activePersona;
+
+  list.innerHTML = `
+    <div class="px-2 py-1.5 rounded-lg hover:bg-brand-50 dark:hover:bg-brand-900/30 cursor-pointer transition-all flex items-center gap-2 ${isDefault ? 'bg-brand-50 dark:bg-brand-900/40 text-brand-600 font-bold' : ''}" onclick="selectPersona(null)">
+      <div class="w-2 h-2 rounded-full ${isDefault ? 'bg-brand-600 ring-2 ring-brand-600/30' : 'bg-surface-300'}"></div>
+      <div class="text-[11px]">Standard Chat (Default)</div>
     </div>
-  ` + state.personas.map(p => `
-    <div class="px-2 py-1.5 rounded-lg hover:bg-brand-50 dark:hover:bg-brand-900/30 cursor-pointer transition-all flex items-center gap-2 ${state.activePersona?.id === p.id ? 'bg-brand-50 dark:bg-brand-900/40 text-brand-600' : ''}" onclick="selectPersona(${p.id})">
-      <div class="w-1.5 h-1.5 rounded-full bg-surface-300"></div>
-      <div>
-        <div class="text-[11px] font-bold">${p.name}</div>
-        <div class="text-[9px] text-surface-400 line-clamp-1">${p.description || ''}</div>
+  ` + personas.map(p => {
+    const isActive = state.activePersona && state.activePersona.id == p.id;
+    return `
+    <div class="px-2 py-1.5 rounded-lg hover:bg-brand-50 dark:hover:bg-brand-900/30 cursor-pointer transition-all flex items-center gap-2 ${isActive ? 'bg-brand-50 dark:bg-brand-900/40 text-brand-600 font-bold' : ''}" onclick="selectPersona(${p.id})">
+      <div class="w-2 h-2 rounded-full ${isActive ? 'bg-brand-600 ring-2 ring-brand-600/30' : 'bg-surface-300'}"></div>
+      <div class="flex-1 min-w-0">
+        <div class="text-[11px] font-bold truncate">${escHtml(p.name)}</div>
+        <div class="text-[9px] text-surface-400 line-clamp-1">${escHtml(p.description || '')}</div>
       </div>
     </div>
-  `).join('');
+    `;
+  }).join('');
 }
 
 function initAdminPanel() {
@@ -1405,16 +1469,29 @@ async function loadDashboard() {
       if (typeof fetchWeather === 'function') fetchWeather();
       if (typeof updateSystemStatus === 'function') updateSystemStatus('Live');
 
+      // Populate dynamic date badge
+      const todayDateEl = $('dashTodayDateText');
+      if (todayDateEl) {
+        const d = new Date();
+        const thMonths = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+        const thDays = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
+        todayDateEl.textContent = `วัน${thDays[d.getDay()]}ที่ ${d.getDate()} ${thMonths[d.getMonth()]} ${d.getFullYear() + 543}`;
+      }
+
       if (greetingEl) {
           const hour = new Date().getHours();
-          let msg = "สวัสดีตอนเช้าครับ";
-          if (hour >= 12) msg = "สวัสดีตอนบ่ายครับ";
-          if (hour >= 17) msg = "สวัสดีตอนเย็นครับ";
-          greetingEl.textContent = `${msg}, ${state.user || 'User'}`;
+          let msg = "สวัสดีตอนเช้า";
+          if (hour >= 11 && hour < 13) msg = "สวัสดีตอนกลางวัน";
+          else if (hour >= 13 && hour < 17) msg = "สวัสดีตอนบ่าย";
+          else if (hour >= 17 && hour < 21) msg = "สวัสดีตอนเย็น";
+          else if (hour >= 21 || hour < 5) msg = "สวัสดีตอนค่ำ";
+          
+          const userName = state.displayName || state.username || state.user || '';
+          greetingEl.textContent = userName ? `${msg}, คุณ${userName}` : `${msg}, ยินดีต้อนรับ`;
       }
       
       if (summaryEl) {
-        summaryEl.textContent = 'กำลังเตรียมสรุปข่าวสารประจำวันของคุณ...';
+        summaryEl.textContent = 'กำลังประมวลผลข้อมูลและสรุปภาพรวมกิจกรรมสำหรับวันนี้...';
         apiFetch('/api/dashboard/briefing').then(briefData => {
            if (briefData.ok) summaryEl.textContent = briefData.briefing;
         }).catch(err => {
@@ -1437,10 +1514,10 @@ async function loadDashboard() {
                const contentEl = $('dashAnnContent');
                
                if (priorityEl) {
-                  priorityEl.textContent = latest.priority === 'important' ? '📌 สำคัญมาก' : (latest.priority === 'update' ? '🚀 อัปเดตงาน' : '📢 ทั่วไป');
-                  priorityEl.className = `px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${latest.priority === 'important' ? 'bg-red-500 text-white' : (latest.priority === 'update' ? 'bg-purple-500 text-white' : 'bg-blue-500 text-white')}`;
+                  priorityEl.textContent = latest.priority === 'important' ? 'สำคัญมาก' : (latest.priority === 'update' ? 'อัปเดตงาน' : 'ทั่วไป');
+                  priorityEl.className = `px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide ${latest.priority === 'important' ? 'bg-red-500/10 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/50' : (latest.priority === 'update' ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-900/50' : 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-900/50')}`;
                }
-               if (metaEl) metaEl.textContent = `โพสต์โดย @${latest.created_by} • ${latest.created_at}`;
+               if (metaEl) metaEl.textContent = `โดย @${latest.created_by} • ${latest.created_at}`;
                if (titleEl) titleEl.textContent = latest.title;
                if (contentEl) contentEl.textContent = latest.content;
             }
@@ -1605,6 +1682,17 @@ function switchView(viewId) {
   }
   // ─────────────────────────────────────────────────────────────
 
+  // ── Knowledge Base Sub-tabs Delegation ──────────────────────
+  if (viewId === 'search' || viewId === 'summary' || viewId === 'crawler') {
+    state._delegatingKBTab = viewId;
+    switchView('kb');
+    state._delegatingKBTab = null;
+    if (typeof switchKBSubTab === 'function') {
+      switchKBSubTab(viewId);
+    }
+    return;
+  }
+
   console.log("🚀 Switching view to:", viewId);
   state.currentView = viewId;
   
@@ -1622,14 +1710,14 @@ function switchView(viewId) {
   }
 
   // Cross-view nav highlighting (views merged into parent nav item)
-  const _crossNavMap = { 'csv-explorer': 'nav-viz', 'search': 'nav-kb', 'summary': 'nav-kb', 'stats': 'nav-admin' };
+  const _crossNavMap = { 'csv-explorer': 'nav-viz', 'search': 'nav-kb', 'summary': 'nav-kb', 'crawler': 'nav-kb', 'stats': 'nav-admin' };
   if (_crossNavMap[viewId]) {
     const _crossBtn = document.getElementById(_crossNavMap[viewId]);
     if (_crossBtn) _crossBtn.classList.add('active');
   }
 
   // KB tab active state
-  const _kbTabMap = { 'kb': 'kb-tab-files', 'search': 'kb-tab-search', 'summary': 'kb-tab-summary' };
+  const _kbTabMap = { 'kb': 'kb-tab-files', 'search': 'kb-tab-search', 'summary': 'kb-tab-summary', 'crawler': 'kb-tab-crawler' };
   document.querySelectorAll('.kb-main-tab').forEach(btn => btn.classList.remove('active-tab', 'bg-white', 'dark:bg-surface-700', 'shadow-sm', 'text-brand-600'));
   if (_kbTabMap[viewId]) {
     const _kbTab = document.getElementById(_kbTabMap[viewId]);
@@ -1669,6 +1757,7 @@ function switchView(viewId) {
     kanban: 'Kanban Board', meetings: 'บันทึกประชุม', viz: 'วิเคราะห์ข้อมูล',
     wiki: 'Internal Wiki', drive: 'Google Drive', search: 'ค้นหา AI',
     summary: 'สรุป AI', leave: 'ลางาน', settings: 'การตั้งค่า',
+    attendance: 'ลงเวลาเข้างาน',
     profile: 'โปรไฟล์', notifications: 'การแจ้งเตือน', plan: 'จัดการแพลน',
     admin: 'แผงควบคุม', 'super-admin': 'Super Admin', whiteboard: 'ไวท์บอร์ด',
     'csv-explorer': 'CSV Explorer', stats: 'สถิติ',
@@ -1686,9 +1775,9 @@ function switchView(viewId) {
   // This tells the system we are no longer viewing the chat window
   if (viewId !== 'dm' && viewId !== 'ai-chat') {
     if (state.currentChat && state.currentChat.id) {
-        console.log("👋 Leaving chat room:", state.currentChat.id);
-        stopChatPolling();
-        state.currentChat = { type: null, id: null, name: null };
+      console.log("👋 Leaving chat room:", state.currentChat.id);
+      stopChatPolling();
+      state.currentChat = { type: null, id: null, name: null };
     }
   }
 
@@ -1714,11 +1803,17 @@ function switchView(viewId) {
       iframe.src = '/admin/super';
     }
   }
-  if (viewId === 'kb') loadFiles();
+  if (viewId === 'kb') {
+    if (!state._delegatingKBTab && typeof switchKBSubTab === 'function') {
+      switchKBSubTab('files');
+    }
+    loadFiles();
+  }
   if (viewId === 'drive') loadDriveContents(state.drive.currentFolderId);
   if (viewId === 'summary') renderSummary();
   if (viewId === 'whiteboard') initWhiteboard();
   if (viewId === 'leave') loadLeaveData();
+  if (viewId === 'attendance') { if (typeof initAttendanceSystem === 'function') initAttendanceSystem(); }
   if (viewId === 'quotation') initDocumentGenerator();
   if (viewId === 'receipt-replacement') initReplacementReceiptView();
   if (viewId === 'reply-assistant') initReplyAssistantView();
@@ -1855,7 +1950,7 @@ async function loadHistory(isBackground = false) {
 const _FINANCIAL_CAT_KEYWORDS = ['บัญชี','finance','ค่าใช้จ่าย','invoice','slip','receipt','ใบเสร็จ','สลิป','รายจ่าย','expense','tax','ภาษี'];
 
 // ─── Document Viewer Logic ────────────────────────
-function openPdfViewer(fileId, fileName) {
+function openPdfViewer(fileId, fileName, location = null) {
   const modal = $('pdfViewerModal');
   const frame = $('pdfFrame');
   const title = $('pdfViewerTitle');
@@ -1867,24 +1962,34 @@ function openPdfViewer(fileId, fileName) {
 
   if (!modal || !frame) return;
 
-  title.textContent = `เปิดดู: ${fileName}`;
+  // Extract page number if location like "Page 3" or "Slide 4"
+  let pageNum = 1;
+  if (location) {
+    const m = String(location).match(/(?:page|slide|หน้า|แผ่นที่)\s*(\d+)/i);
+    if (m) pageNum = parseInt(m[1], 10);
+  }
+
+  const pageInfo = location ? ` (${location})` : '';
+  title.textContent = `เปิดดู: ${fileName}${pageInfo}`;
   loading.classList.remove('hidden');
   modal.classList.remove('hidden');
+  modal.classList.add('flex', 'items-center', 'justify-center');
   csvContainer.classList.add('hidden');
   frame.classList.add('hidden');
 
   const isCsv = fileName.toLowerCase().endsWith('.csv');
+  const isPdf = fileName.toLowerCase().endsWith('.pdf');
   if (icon) {
-    icon.setAttribute('data-lucide', isCsv ? 'table' : 'file-text');
+    icon.setAttribute('data-lucide', isCsv ? 'table' : (isPdf ? 'file-text' : 'file'));
     initIcons();
   }
 
-  const viewUrl = `/api/kb/files/view/${fileId}`;
-  download.href = viewUrl;
+  const baseViewUrl = `/api/kb/files/view/${fileId}`;
+  download.href = baseViewUrl;
 
   if (isCsv) {
     // Parse and render CSV
-    fetch(viewUrl)
+    fetch(baseViewUrl)
       .then(res => res.text())
       .then(text => {
         csvTarget.innerHTML = renderCsvAsHtmlTable(text);
@@ -1896,9 +2001,16 @@ function openPdfViewer(fileId, fileName) {
         csvContainer.classList.remove('hidden');
         loading.classList.add('hidden');
       });
+  } else if (isPdf) {
+    // Jump directly to the referenced page in PDF standard viewer
+    const pdfUrl = `${baseViewUrl}#page=${pageNum}`;
+    frame.src = pdfUrl;
+    frame.classList.remove('hidden');
+    frame.onload = () => {
+      loading.classList.add('hidden');
+    };
   } else {
-    // Standard PDF/Text viewer with Iframe
-    frame.src = viewUrl;
+    frame.src = baseViewUrl;
     frame.classList.remove('hidden');
     frame.onload = () => {
       loading.classList.add('hidden');
@@ -2033,8 +2145,10 @@ function appendMessage(role, html, sources = [], scroll = true, msgId = null) {
                     <img src="${s.url}" class="w-full h-auto object-cover cursor-pointer" onclick="openImageViewer('${s.url}')" alt="Attached Image">
                   </div>`;
               }
+              const safeName = (s.name || s.source || 'Document').replace(/'/g, "\\'");
+              const safeLoc = (s.location || '').replace(/'/g, "\\'");
               return `
-                <button onclick="openPdfViewer('${s.file_id}', '${s.name}')" 
+                <button onclick="openPdfViewer('${s.file_id}', '${safeName}', '${safeLoc}')" 
                   class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white/50 dark:bg-surface-900/40 text-surface-600 dark:text-surface-300 text-[10px] font-bold border border-surface-200 dark:border-surface-700 hover:border-brand-500 hover:text-brand-600 dark:hover:text-brand-400 transition-all shadow-sm">
                   <i data-lucide="${FILE_LUCIDE[s.type] || 'file-text'}" class="w-3 h-3 text-brand-500"></i>
                   <span class="truncate max-w-[120px]">${s.name || s.source || 'Document'}</span>
@@ -2053,14 +2167,6 @@ function appendMessage(role, html, sources = [], scroll = true, msgId = null) {
     </div>`;
 
   chatArea.appendChild(row);
-  
-  // Trigger Auto-Speak if enabled and it's an AI message
-  if (!isUser && (typeof _isAutoSpeakEnabled !== 'undefined' ? _isAutoSpeakEnabled : false)) {
-    // Extract plain text from HTML content (stripping tags for cleaner speech)
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = html;
-    speakTextThai(tempDiv.textContent || tempDiv.innerText || "");
-  }
 
   // Attach translate listener
   const transBtn = row.querySelector('.translate-msg-btn');
@@ -2921,44 +3027,221 @@ if (_chatAutoSpeakBtn) {
 }
 
 /**
- * Speaks text out loud using native Thai Speech Synthesis
+ * Speaks text out loud using high quality Edge-TTS with Web Speech fallback
  */
-function speakTextThai(text) {
-  if (!('speechSynthesis' in window) || !text) return;
+let _currentTtsAudio = null;
+let _isVoiceModeActive = false;
+let _voiceRecognition = null;
+
+async function speakTextThai(text) {
+  if (!text) return;
+  if (_currentTtsAudio) {
+    try { _currentTtsAudio.pause(); _currentTtsAudio = null; } catch (e) {}
+  }
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+  }
+
+  // Clean markdown and emojis for smoother speech
+  const cleanText = text
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/[*#_~>]/g, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
+    .trim()
+    .substring(0, 500);
+
+  if (!cleanText) return;
+
+  if (_isVoiceModeActive) {
+    setVoiceVisualState('speaking', 'น้องพั้นกำลังพูดตอบกลับ...');
+  }
+
+  // Priority 1: Edge-TTS neural speech synthesis
   try {
-    window.speechSynthesis.cancel(); // Stop current speech
+    const res = await fetch('/api/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: cleanText })
+    });
+    if (res.ok) {
+      const blob = await res.blob();
+      const audioUrl = URL.createObjectURL(blob);
+      const audio = new Audio(audioUrl);
+      _currentTtsAudio = audio;
+      audio.onended = () => {
+        URL.revokeObjectURL(audioUrl);
+        _currentTtsAudio = null;
+        if (_isVoiceModeActive) {
+          startVoiceListening();
+        }
+      };
+      await audio.play();
+      return;
+    }
+  } catch (ttsErr) {
+    console.warn('[Edge-TTS error, falling back to Web Speech]:', ttsErr);
+  }
 
-    // Clean markdown and emojis for smoother speech
-    const cleanText = text
-      .replace(/```[\s\S]*?```/g, '') // remove code blocks
-      .replace(/`([^`]+)`/g, '$1')
-      .replace(/[*#_~>]/g, '')
-      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-      .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
-      .trim();
+  // Priority 2: Native browser SpeechSynthesis fallback
+  if ('speechSynthesis' in window) {
+    try {
+      const utterance = new SpeechSynthesisUtterance(cleanText.substring(0, 400));
+      utterance.lang = 'th-TH';
+      utterance.rate = 1.05;
+      utterance.pitch = 1.0;
 
-    if (!cleanText) return;
+      const voices = window.speechSynthesis.getVoices();
+      const thaiVoice = voices.find(v => v.lang.includes('th') || v.lang.includes('TH'));
+      if (thaiVoice) utterance.voice = thaiVoice;
 
-    const utterance = new SpeechSynthesisUtterance(cleanText.substring(0, 400)); // cap length for quick response
-    utterance.lang = 'th-TH';
-    utterance.rate = 1.05;
-    utterance.pitch = 1.0;
+      utterance.onend = () => {
+        if (_isVoiceModeActive) {
+          startVoiceListening();
+        }
+      };
+      window.speechSynthesis.speak(utterance);
+    } catch (e) {
+      console.warn('[TTS Error]', e);
+    }
+  }
+}
 
-    const voices = window.speechSynthesis.getVoices();
-    const thaiVoice = voices.find(v => v.lang.includes('th') || v.lang.includes('TH'));
-    if (thaiVoice) utterance.voice = thaiVoice;
+// ─── Live Voice Chat Mode Functions ─────────────────────────
 
-    utterance.onend = () => {
-      // If in continuous voice mode, auto-listen for user follow-up
-      if (_isContinuousVoiceMode && recognition) {
-        try { recognition.start(); } catch (e) {}
+function toggleLiveVoiceMode() {
+  let modal = $('liveVoiceModal');
+  if (!modal) {
+    createLiveVoiceModal();
+    modal = $('liveVoiceModal');
+  }
+  if (modal.classList.contains('hidden')) {
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    _isVoiceModeActive = true;
+    startVoiceListening();
+  } else {
+    closeLiveVoiceMode();
+  }
+}
+
+function closeLiveVoiceMode() {
+  const m = $('liveVoiceModal');
+  if (m) {
+    m.classList.add('hidden');
+    m.classList.remove('flex');
+  }
+  _isVoiceModeActive = false;
+  if (_voiceRecognition) {
+    try { _voiceRecognition.stop(); } catch (e) {}
+  }
+  if (_currentTtsAudio) {
+    try { _currentTtsAudio.pause(); _currentTtsAudio = null; } catch (e) {}
+  }
+}
+
+function startVoiceListening() {
+  if (!_voiceRecognition) {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      toast('เบราว์เซอร์นี้ไม่รองรับ Speech Recognition กรุณาใช้ Chrome หรือ Edge ค่ะ', 'warning');
+      return;
+    }
+    _voiceRecognition = new SpeechRecognition();
+    _voiceRecognition.lang = 'th-TH';
+    _voiceRecognition.continuous = false;
+    _voiceRecognition.interimResults = true;
+
+    _voiceRecognition.onstart = () => {
+      setVoiceVisualState('listening', 'น้องพั้นกำลังฟังเสียงคุณอยู่ค่ะ...');
+    };
+
+    _voiceRecognition.onresult = (event) => {
+      let interim = '';
+      let finalTranscript = '';
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript;
+        } else {
+          interim += event.results[i][0].transcript;
+        }
+      }
+      const caption = $('liveVoiceTranscript');
+      if (caption) caption.textContent = finalTranscript || interim || '...';
+
+      if (finalTranscript && finalTranscript.trim()) {
+        setVoiceVisualState('thinking', 'กำลังคิดคำตอบ...');
+        sendMessage(finalTranscript.trim());
       }
     };
 
-    window.speechSynthesis.speak(utterance);
-  } catch (e) {
-    console.warn('[TTS Error]', e);
+    _voiceRecognition.onerror = (e) => {
+      console.warn('[Live Voice Error]', e);
+      setVoiceVisualState('idle', 'แตะปุ่มวงกลมเพื่อเริ่มพูด');
+    };
+
+    _voiceRecognition.onend = () => {
+      if (_isVoiceModeActive && !_currentTtsAudio) {
+        setVoiceVisualState('idle', 'แตะปุ่มเพื่อพูดต่อ');
+      }
+    };
   }
+
+  try {
+    _voiceRecognition.start();
+  } catch (e) {
+    console.debug('Recognition already running or busy:', e);
+  }
+}
+
+function setVoiceVisualState(state, text) {
+  const caption = $('liveVoiceStatusText');
+  const orb = $('liveVoiceOrb');
+  if (caption) caption.textContent = text;
+  if (orb) {
+    orb.className = 'w-32 h-32 rounded-full flex items-center justify-center transition-all duration-300 shadow-2xl relative cursor-pointer mb-8';
+    if (state === 'listening') {
+      orb.classList.add('bg-gradient-to-tr', 'from-brand-500', 'to-indigo-500', 'animate-pulse', 'scale-110');
+    } else if (state === 'thinking') {
+      orb.classList.add('bg-gradient-to-tr', 'from-amber-500', 'to-orange-500', 'animate-spin');
+    } else if (state === 'speaking') {
+      orb.classList.add('bg-gradient-to-tr', 'from-emerald-500', 'to-teal-500', 'animate-bounce');
+    } else {
+      orb.classList.add('bg-gradient-to-tr', 'from-surface-500', 'to-surface-700');
+    }
+  }
+}
+
+function createLiveVoiceModal() {
+  const div = document.createElement('div');
+  div.id = 'liveVoiceModal';
+  div.className = 'fixed inset-0 z-50 bg-surface-950/80 backdrop-blur-md hidden flex-col items-center justify-center p-6 select-none';
+  div.innerHTML = `
+    <div class="relative w-full max-w-md bg-white/10 dark:bg-surface-900/80 border border-white/20 dark:border-surface-700/50 rounded-3xl p-8 flex flex-col items-center text-center shadow-2xl backdrop-blur-xl">
+      <button onclick="closeLiveVoiceMode()" class="absolute top-4 right-4 p-2 text-surface-400 hover:text-white rounded-full bg-white/5 hover:bg-white/10 transition-colors">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+
+      <div class="mb-2 text-xs font-bold uppercase tracking-wider text-brand-400">Live Voice Mode</div>
+      <h3 class="text-xl font-bold text-white mb-8">สนทนาด้วยเสียงสดกับน้องพั้น</h3>
+
+      <div id="liveVoiceOrb" onclick="startVoiceListening()" class="w-32 h-32 rounded-full bg-gradient-to-tr from-brand-500 to-indigo-500 flex items-center justify-center transition-all duration-300 shadow-2xl relative cursor-pointer mb-8">
+        <i data-lucide="mic" class="w-12 h-12 text-white"></i>
+      </div>
+
+      <div id="liveVoiceStatusText" class="text-sm font-semibold text-surface-300 mb-2">น้องพั้นกำลังฟังเสียงคุณอยู่ค่ะ...</div>
+      <div id="liveVoiceTranscript" class="text-xs text-surface-400 italic max-w-xs min-h-[2.5rem] flex items-center justify-center">พูดภาษาไทยเพื่อเริ่มคุยได้ทันที</div>
+
+      <div class="mt-8 flex gap-3">
+        <button onclick="closeLiveVoiceMode()" class="px-5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-all">
+          ปิดโหมดเสียง
+        </button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(div);
+  initIcons();
 }
 
 /**
@@ -3092,22 +3375,319 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
   };
 }
 
-if (voiceBtn) {
-  voiceBtn.onclick = () => {
-    if (!recognition) {
-      toast('เบราว์เซอร์ของคุณไม่รองรับการสั่งงานด้วยเสียง กรุณาใช้ Chrome หรือ Edge', 'error');
-      return;
+// ─── 🌐 Autonomous Browser Agent Controller ────────────────────
+const browserAgentBtn = $('browserAgentBtn');
+const browserAgentModal = $('browserAgentModal');
+const browserTaskInput = $('browserTaskInput');
+const browserTaskProgress = $('browserTaskProgress');
+const browserTaskResult = $('browserTaskResult');
+const startBrowserTaskBtn = $('startBrowserTaskBtn');
+
+function openBrowserAgentModal() {
+  if (browserAgentModal) browserAgentModal.classList.remove('hidden');
+  if (browserTaskInput) browserTaskInput.focus();
+}
+window.openBrowserAgentModal = openBrowserAgentModal;
+
+function closeBrowserAgentModal() {
+  if (browserAgentModal) browserAgentModal.classList.add('hidden');
+}
+window.closeBrowserAgentModal = closeBrowserAgentModal;
+
+function setBrowserPrompt(text) {
+  if (browserTaskInput) {
+    browserTaskInput.value = text;
+    browserTaskInput.focus();
+  }
+}
+window.setBrowserPrompt = setBrowserPrompt;
+
+async function runBrowserTask() {
+  const taskText = (browserTaskInput ? browserTaskInput.value : '').trim();
+  if (!taskText) {
+    toast('กรุณาระบุงานหรือเว็บไซต์ที่ต้องการให้ AI เข้าไปสำรวจค่ะ', 'warning');
+    return;
+  }
+
+  if (browserTaskProgress) browserTaskProgress.classList.remove('hidden');
+  if (browserTaskResult) {
+    browserTaskResult.classList.add('hidden');
+    browserTaskResult.innerHTML = '';
+  }
+  if (startBrowserTaskBtn) startBrowserTaskBtn.disabled = true;
+
+  try {
+    const res = await fetch('/api/browser-agent/execute', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': window.csrfToken || ''
+      },
+      body: JSON.stringify({ task: taskText })
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      throw new Error(data.error || 'เกิดข้อผิดพลาดในการท่องเว็บ');
     }
-    try {
-      if (voiceBtn.classList.contains('voice-active')) {
-        recognition.stop();
-      } else {
-        recognition.start();
+
+    if (browserTaskResult) {
+      let pagesHtml = '';
+      if (data.pages && data.pages.length > 0) {
+        pagesHtml = data.pages.map(p => `
+          <div class="p-3 bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded-xl space-y-2">
+            <div class="flex items-center justify-between">
+              <a href="${p.url}" target="_blank" rel="noopener noreferrer" class="text-xs font-bold text-emerald-600 hover:underline flex items-center gap-1.5 truncate">
+                <i data-lucide="external-link" class="w-3.5 h-3.5"></i> ${p.title || p.url}
+              </a>
+            </div>
+            ${p.screenshot ? `
+              <div class="rounded-lg overflow-hidden border border-surface-150 max-h-48">
+                <img src="${p.screenshot}" alt="Web screenshot" class="w-full object-top object-cover cursor-pointer" onclick="window.open('${p.screenshot}', '_blank')">
+              </div>
+            ` : ''}
+          </div>
+        `).join('');
       }
-    } catch (e) {
-      recognition.stop();
+
+      browserTaskResult.innerHTML = `
+        <div class="p-4 bg-emerald-50/40 dark:bg-emerald-950/20 border border-emerald-200/40 rounded-xl space-y-2">
+          <div class="text-xs font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
+            <i data-lucide="check-circle" class="w-4 h-4"></i> สรุปผลการท่องเว็บโดยน้องพั้น
+          </div>
+          <div class="text-xs text-surface-800 dark:text-surface-100 whitespace-pre-wrap leading-relaxed">
+            ${data.summary ? marked.parse(data.summary) : 'ไม่มีข้อมูลสรุป'}
+          </div>
+        </div>
+        ${pagesHtml ? `<div class="text-[11px] font-bold text-surface-400 mt-2">หน้าเว็บที่สำรวจ:</div><div class="space-y-2">${pagesHtml}</div>` : ''}
+      `;
+      browserTaskResult.classList.remove('hidden');
+      if (window.lucide) lucide.createIcons();
+    }
+  } catch (err) {
+    toast('ท่องเว็บไม่สำเร็จ: ' + err.message, 'error');
+    if (browserTaskResult) {
+      browserTaskResult.innerHTML = `<div class="p-3 text-xs text-rose-600 bg-rose-50 rounded-xl">${err.message}</div>`;
+      browserTaskResult.classList.remove('hidden');
+    }
+  } finally {
+    if (browserTaskProgress) browserTaskProgress.classList.add('hidden');
+    if (startBrowserTaskBtn) startBrowserTaskBtn.disabled = false;
+  }
+}
+window.runBrowserTask = runBrowserTask;
+
+if (browserAgentBtn) {
+  browserAgentBtn.onclick = openBrowserAgentModal;
+}
+
+// ─── 🎙️ Real-Time Voice Call Agent (Hands-Free Duplex Call) ─────
+const realTimeCallBtn = $('realTimeCallBtn');
+const realTimeVoiceModal = $('realTimeVoiceModal');
+const callDurationTimer = $('callDurationTimer');
+const voiceCallStatusText = $('voiceCallStatusText');
+const voiceTranscriptText = $('voiceTranscriptText');
+const voicePulseRing = $('voicePulseRing');
+const voiceWaveOrb = $('voiceWaveOrb');
+const muteIcon = $('muteIcon');
+
+let callActive = false;
+let callMuted = false;
+let callStartTime = 0;
+let callTimerInterval = null;
+let callRecognition = null;
+let callSynth = window.speechSynthesis || null;
+let thaiVoice = null;
+
+function loadThaiVoice() {
+  if (!callSynth) return;
+  const voices = callSynth.getVoices();
+  thaiVoice = voices.find(v => v.lang.includes('th') || v.lang.includes('TH')) || null;
+}
+if (callSynth && callSynth.onvoiceschanged !== undefined) {
+  callSynth.onvoiceschanged = loadThaiVoice;
+}
+
+function startRealTimeCall() {
+  if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+    toast('เบราว์เซอร์ของคุณไม่รองรับ Voice Stream กรุณาใช้ Chrome หรือ Edge', 'error');
+    return;
+  }
+
+  loadThaiVoice();
+  callActive = true;
+  callMuted = false;
+  callStartTime = Date.now();
+
+  if (realTimeVoiceModal) realTimeVoiceModal.classList.remove('hidden');
+  if (voiceCallStatusText) voiceCallStatusText.innerText = 'กำลังฟังเสียงพูดของคุณ...';
+  if (voiceTranscriptText) voiceTranscriptText.innerText = '"สวัสดีค่ะ น้องพั้นพร้อมคุยแล้วค่ะ มีอะไรให้ช่วยเหลือบอกได้เลยนะคะ"';
+
+  // Play greeting
+  speakCallResponse("สวัสดีค่ะ น้องพั้นพร้อมคุยแล้วค่ะ มีเรื่องอะไรให้ช่วยเหลือบอกได้เลยนะคะ");
+
+  // Start duration timer
+  if (callTimerInterval) clearInterval(callTimerInterval);
+  callTimerInterval = setInterval(() => {
+    if (!callActive) return;
+    const elapsed = Math.floor((Date.now() - callStartTime) / 1000);
+    const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
+    const ss = String(elapsed % 60).padStart(2, '0');
+    if (callDurationTimer) callDurationTimer.innerText = `${mm}:${ss}`;
+  }, 1000);
+
+  initCallRecognition();
+}
+window.startRealTimeCall = startRealTimeCall;
+
+function initCallRecognition() {
+  if (callRecognition) {
+    try { callRecognition.abort(); } catch (e) {}
+  }
+
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  callRecognition = new SpeechRecognition();
+  callRecognition.lang = 'th-TH';
+  callRecognition.continuous = true;
+  callRecognition.interimResults = true;
+
+  callRecognition.onresult = (event) => {
+    if (!callActive || callMuted) return;
+
+    let interim = '';
+    let finalStr = '';
+
+    for (let i = event.resultIndex; i < event.results.length; ++i) {
+      if (event.results[i].isFinal) {
+        finalStr += event.results[i][0].transcript;
+      } else {
+        interim += event.results[i][0].transcript;
+      }
+    }
+
+    if (interim && voiceTranscriptText) {
+      voiceTranscriptText.innerText = `"${interim}"`;
+      if (voiceCallStatusText) voiceCallStatusText.innerText = 'กำลังฟัง...';
+      // User is speaking: interrupt AI speech if currently speaking
+      if (callSynth && callSynth.speaking) {
+        callSynth.cancel();
+      }
+    }
+
+    if (finalStr.trim()) {
+      const userText = finalStr.trim();
+      if (voiceTranscriptText) voiceTranscriptText.innerText = `"${userText}"`;
+      if (voiceCallStatusText) voiceCallStatusText.innerText = 'น้องพั้นกำลังคิดคำตอบ...';
+      handleCallTurn(userText);
     }
   };
+
+  callRecognition.onerror = (e) => {
+    if (!callActive) return;
+    if (e.error !== 'no-speech') {
+      console.warn('[Voice Call Recognition Error]', e.error);
+    }
+  };
+
+  callRecognition.onend = () => {
+    if (callActive && !callMuted) {
+      try { callRecognition.start(); } catch (e) {}
+    }
+  };
+
+  try {
+    callRecognition.start();
+  } catch (e) {
+    console.warn('[Call Recognition Start Failed]', e);
+  }
+}
+
+async function handleCallTurn(userSpeech) {
+  if (voiceWaveOrb) voiceWaveOrb.style.transform = 'scale(1.15)';
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': window.csrfToken || ''
+      },
+      body: JSON.stringify({
+        message: userSpeech,
+        history: [],
+        voice_mode: true
+      })
+    });
+
+    const data = await res.json();
+    if (data.ok && data.response) {
+      // Strip markdown asterisks and URLs for crisp voice delivery
+      const spokenText = data.response
+        .replace(/\*\*/g, '')
+        .replace(/###/g, '')
+        .replace(/https?:\/\/[^\s]+/g, 'ตามลิงก์ที่แสดง')
+        .slice(0, 350); // Keep voice answer concise
+
+      if (voiceTranscriptText) voiceTranscriptText.innerText = `"${spokenText}"`;
+      if (voiceCallStatusText) voiceCallStatusText.innerText = 'น้องพั้นกำลังพูดตอบกลับ...';
+      speakCallResponse(spokenText);
+    }
+  } catch (err) {
+    console.error('[Call Turn Error]', err);
+    if (voiceCallStatusText) voiceCallStatusText.innerText = 'เกิดข้อผิดพลาดในการประมวลผลเสียง';
+  } finally {
+    if (voiceWaveOrb) voiceWaveOrb.style.transform = 'scale(1)';
+  }
+}
+
+function speakCallResponse(text) {
+  if (!callSynth || !callActive) return;
+  try {
+    callSynth.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'th-TH';
+    utterance.rate = 1.05;
+    utterance.pitch = 1.02;
+    if (thaiVoice) utterance.voice = thaiVoice;
+
+    utterance.onstart = () => {
+      if (voicePulseRing) voicePulseRing.classList.remove('hidden');
+    };
+    utterance.onend = () => {
+      if (voicePulseRing) voicePulseRing.classList.add('hidden');
+      if (callActive && voiceCallStatusText) voiceCallStatusText.innerText = 'กำลังฟังเสียงพูดของคุณ...';
+    };
+    callSynth.speak(utterance);
+  } catch (e) {
+    console.warn('[Speech synthesis error]', e);
+  }
+}
+
+function toggleMuteCall() {
+  callMuted = !callMuted;
+  if (muteIcon) {
+    muteIcon.setAttribute('data-lucide', callMuted ? 'mic-off' : 'mic');
+    if (window.lucide) lucide.createIcons();
+  }
+  toast(callMuted ? 'ปิดไมค์แล้ว' : 'เปิดไมค์แล้ว', 'info');
+}
+window.toggleMuteCall = toggleMuteCall;
+
+function endRealTimeCall() {
+  callActive = false;
+  if (callTimerInterval) clearInterval(callTimerInterval);
+  if (callRecognition) {
+    try { callRecognition.stop(); } catch (e) {}
+  }
+  if (callSynth) {
+    callSynth.cancel();
+  }
+  if (realTimeVoiceModal) realTimeVoiceModal.classList.add('hidden');
+  toast('วางสายเรียบร้อยแล้วค่ะ', 'info');
+}
+window.endRealTimeCall = endRealTimeCall;
+
+if (realTimeCallBtn) {
+  realTimeCallBtn.onclick = startRealTimeCall;
 }
 
 // ─── Bootstrap ────────────────────────────────
@@ -4718,9 +5298,9 @@ function renderCalendar() {
     const dayOfWeek = new Date(year, month, day).getDay();
     const isSunday = dayOfWeek === 0;
 
-    div.className = `bg-white dark:bg-surface-900 min-h-[80px] p-2 border-t border-l border-surface-100 dark:border-surface-800 transition-all hover:bg-brand-50/30 dark:hover:bg-brand-900/10 relative ${isToday ? 'ring-1 ring-inset ring-brand-600/50' : ''} ${isSunday ? 'bg-rose-50/50 dark:bg-rose-900/10' : ''}`;
+    div.className = `bg-white dark:bg-surface-900 min-h-[80px] md:min-h-[115px] p-1.5 md:p-2 border-t border-l border-surface-100 dark:border-surface-800 transition-all hover:bg-brand-50/30 dark:hover:bg-brand-900/10 relative ${isToday ? 'ring-1 ring-inset ring-brand-600/50' : ''} ${isSunday ? 'bg-rose-50/50 dark:bg-rose-900/10' : ''}`;
 
-    let html = `<span class="text-[10px] font-bold ${isToday ? 'bg-brand-600 text-white w-5 h-5 flex items-center justify-center rounded-full' : (isSunday ? 'text-rose-600' : 'text-surface-400')}">${day}</span>`;
+    let html = `<span class="text-[10px] md:text-xs font-bold ${isToday ? 'bg-brand-600 text-white w-5 h-5 flex items-center justify-center rounded-full' : (isSunday ? 'text-rose-600' : 'text-surface-400')}">${day}</span>`;
 
     // Check for schedules on this day
     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -4731,22 +5311,22 @@ function renderCalendar() {
 
 
     if (holidayName || daySchedules.length > 0) {
-      html += `<div class="mt-1 space-y-1">`;
+      html += `<div class="mt-1 space-y-1 w-full min-w-0">`;
 
       // Render Holiday first
       if (holidayName) {
-        html += `<div class="text-[7.5px] px-1.5 py-1 mb-1.5 rounded-md font-black bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 border border-rose-200/30 flex items-center gap-1" title="${holidayName}">
+        html += `<div class="text-[7.5px] md:text-[8.5px] px-1.5 py-0.5 md:py-1 mb-1 rounded-md font-black bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 border border-rose-200/30 flex items-center gap-1 w-full" title="${escHtml(holidayName)}">
           <i data-lucide="sun" class="w-2.5 h-2.5 shrink-0 opacity-70"></i>
-          <span class="truncate">หยุด: ${holidayName}</span>
+          <span class="truncate md:whitespace-normal md:break-words leading-tight">หยุด: ${escHtml(holidayName)}</span>
         </div>`;
       }
 
       daySchedules.forEach(s => {
         const catColors = {
-          Meeting: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400',
-          Event: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
-          Task: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-          Holiday: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400'
+          Meeting: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 border-indigo-500',
+          Event: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 border-emerald-500',
+          Task: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 border-amber-500',
+          Holiday: 'bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300 border-rose-500'
         };
         const isDone = s.status === 'done';
         const isPast = dateStr < new Date().toISOString().split('T')[0];
@@ -4757,23 +5337,23 @@ function renderCalendar() {
         const doneClass = isDone ? 'opacity-50 grayscale' : (isPast ? 'opacity-75' : '');
         const doneIcon = isDone ? '<i data-lucide="check-circle-2" class="w-2.5 h-2.5 inline-block mr-1 text-emerald-600 shrink-0"></i>' : (isOverdue ? '<i data-lucide="alert-circle" class="w-2.5 h-2.5 inline-block mr-1 text-rose-600 shrink-0"></i>' : '');
 
-        html += `<div class="group/item relative flex flex-col p-1.5 mb-1.5 rounded-lg border-l-4 border-l-current ${catColors[s.category] || 'bg-surface-100 text-surface-600'} ${doneClass} cursor-pointer hover:scale-[1.02] transition-transform active:scale-95 duration-200" 
-                    title="${s.title}" onclick="event.stopPropagation(); editSchedule(${s.id})" style="border-left-color: currentColor;">
+        html += `<div class="group/item relative flex flex-col p-1.5 mb-1 rounded-lg border-l-[3.5px] ${catColors[s.category] || 'bg-surface-100 text-surface-600 border-surface-400'} ${doneClass} cursor-pointer hover:scale-[1.01] transition-transform active:scale-95 duration-200 w-full" 
+                    title="${escHtml(s.title)}" onclick="event.stopPropagation(); editSchedule(${s.id})">
           
-          <div class="flex flex-col gap-0.5 w-full overflow-hidden">
-            <div class="flex flex-wrap items-center justify-between gap-0.5 w-full mb-0.5">
-              <div class="flex items-center shrink-0 text-[7.5px] font-black uppercase tracking-tight opacity-70">
+          <div class="flex flex-col gap-0.5 w-full min-w-0">
+            <div class="flex items-center justify-between gap-1 w-full mb-0.5">
+              <div class="flex items-center shrink-0 text-[7.5px] md:text-[8.5px] font-black uppercase tracking-tight opacity-75">
                  ${doneIcon}
                  <span>${s.time || '09:00'}</span>
               </div>
-              <div class="flex items-center gap-0.5">
+              <div class="flex items-center gap-0.5 shrink-0">
                 ${publicBadge}
                 ${overdueBadge}
               </div>
             </div>
             
-            <div class="text-[9px] md:text-[10px] font-bold leading-snug break-words whitespace-normal text-left">
-              ${s.title}
+            <div class="text-[9px] md:text-[10.5px] font-bold leading-snug text-left truncate md:whitespace-normal md:break-words w-full" title="${escHtml(s.title)}">
+              ${escHtml(s.title)}
             </div>
           </div>
           
@@ -4951,7 +5531,9 @@ function openAddModal(dateStr = null) {
   if ($('scheduleTargetUsers')) $('scheduleTargetUsers').value = '';
   const visSection = $('scheduleVisibilitySection');
   if (visSection) visSection.classList.remove('hidden');
-  setVisibilityTab('me');
+  _scheduleSelectedDepts.clear();
+  _scheduleSelectedUsers.clear();
+  setVisibilityTab('dept');
 
   if (scheduleStatusInput) scheduleStatusInput.value = 'todo';
   document.getElementById('scheduleModalTitle').textContent = 'เพิ่มกิจกรรมใหม่';
@@ -4988,10 +5570,10 @@ function editSchedule(id) {
   if (pubToggle) pubToggle.checked = !!s.is_public;
   if (visStatus) {
     if (s.is_public) {
-      visStatus.textContent = 'สาธารณะ (ทุกคนเห็น)';
+      visStatus.textContent = 'สาธารณะ (ทุกคนในองค์กรเห็น)';
       visStatus.className = 'text-[10px] font-bold text-emerald-600 uppercase';
     } else {
-      visStatus.textContent = 'ส่วนตัว (กำหนดเอง)';
+      visStatus.textContent = 'ส่วนตัว (เฉพาะคุณ)';
       visStatus.className = 'text-[10px] font-bold text-brand-600 uppercase';
     }
   }
@@ -5021,14 +5603,14 @@ let _scheduleAllDepts = [];
 let _scheduleAllUsers = [];
 let _scheduleSelectedDepts = new Set();
 let _scheduleSelectedUsers = new Set();
-let _currentVisTab = 'me';
+let _currentVisTab = 'dept';
 
 function onSchedulePublicToggle(isPublic) {
   const visStatus = $('visibilityStatus');
   const visSection = $('scheduleVisibilitySection');
   if (isPublic) {
     if (visStatus) {
-      visStatus.textContent = 'สาธารณะ (ทุกคนเห็น)';
+      visStatus.textContent = 'สาธารณะ (ทุกคนในองค์กรเห็น)';
       visStatus.className = 'text-[10px] font-bold text-emerald-600 uppercase';
     }
     if (visSection) visSection.classList.add('hidden');
@@ -5037,19 +5619,17 @@ function onSchedulePublicToggle(isPublic) {
     if ($('scheduleTargetUsers')) $('scheduleTargetUsers').value = '';
     _scheduleSelectedDepts.clear();
     _scheduleSelectedUsers.clear();
+    updateSelectedCounts();
   } else {
-    if (visStatus) {
-      visStatus.textContent = 'ส่วนตัว (กำหนดเอง)';
-      visStatus.className = 'text-[10px] font-bold text-brand-600 uppercase';
-    }
     if (visSection) visSection.classList.remove('hidden');
-    setVisibilityTab(_currentVisTab);
+    updateSelectedCounts();
+    setVisibilityTab(_currentVisTab || 'dept');
   }
 }
 
 function setVisibilityTab(tab) {
-  _currentVisTab = tab;
-  const tabs = { me: $('visTabOnlyMe'), dept: $('visTabDept'), users: $('visTabUsers') };
+  _currentVisTab = tab || 'dept';
+  const tabs = { dept: $('visTabDept'), users: $('visTabUsers') };
   const panels = { dept: $('visDeptsPanel'), users: $('visUsersPanel') };
 
   // Reset all tab styles
@@ -5063,22 +5643,14 @@ function setVisibilityTab(tab) {
   });
 
   // Activate selected tab
-  if (tabs[tab]) {
-    tabs[tab].classList.remove('text-surface-400');
-    tabs[tab].classList.add('bg-white', 'dark:bg-surface-700', 'shadow-sm', 'text-brand-600', 'dark:text-brand-400');
+  if (tabs[_currentVisTab]) {
+    tabs[_currentVisTab].classList.remove('text-surface-400');
+    tabs[_currentVisTab].classList.add('bg-white', 'dark:bg-surface-700', 'shadow-sm', 'text-brand-600', 'dark:text-brand-400');
   }
 
-  // Show/hide panels and clear hidden input if switching away
-  if (panels.dept) panels.dept.classList.toggle('hidden', tab !== 'dept');
-  if (panels.users) panels.users.classList.toggle('hidden', tab !== 'users');
-
-  // When switching to 'me' only, clear any targeted visibility
-  if (tab === 'me') {
-    _scheduleSelectedDepts.clear();
-    _scheduleSelectedUsers.clear();
-    if ($('scheduleTargetDepts')) $('scheduleTargetDepts').value = '';
-    if ($('scheduleTargetUsers')) $('scheduleTargetUsers').value = '';
-  }
+  // Show/hide panels
+  if (panels.dept) panels.dept.classList.toggle('hidden', _currentVisTab !== 'dept');
+  if (panels.users) panels.users.classList.toggle('hidden', _currentVisTab !== 'users');
 }
 
 async function loadScheduleVisibilityData(preFillDepts = '', preFillUsers = '') {
@@ -5195,15 +5767,31 @@ function filterScheduleUsers(val) {
 function updateSelectedCounts() {
   const deptCount = $('deptSelectedCount');
   const userCount = $('userSelectedCount');
+  const visStatus = $('visibilityStatus');
+  const pubToggle = $('schedulePublicToggle');
+  const nDept = _scheduleSelectedDepts.size;
+  const nUser = _scheduleSelectedUsers.size;
+
   if (deptCount) {
-    const n = _scheduleSelectedDepts.size;
-    deptCount.textContent = n + ' แผนก';
-    deptCount.classList.toggle('hidden', n === 0);
+    deptCount.textContent = nDept + ' แผนก';
+    deptCount.classList.toggle('hidden', nDept === 0);
   }
   if (userCount) {
-    const n = _scheduleSelectedUsers.size;
-    userCount.textContent = n + ' คน';
-    userCount.classList.toggle('hidden', n === 0);
+    userCount.textContent = nUser + ' คน';
+    userCount.classList.toggle('hidden', nUser === 0);
+  }
+
+  if (visStatus && (!pubToggle || !pubToggle.checked)) {
+    if (nDept > 0 || nUser > 0) {
+      const parts = [];
+      if (nDept > 0) parts.push(`${nDept} แผนก`);
+      if (nUser > 0) parts.push(`${nUser} คน`);
+      visStatus.textContent = `แชร์ให้ (${parts.join(', ')})`;
+      visStatus.className = 'text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase';
+    } else {
+      visStatus.textContent = 'ส่วนตัว (เฉพาะคุณ)';
+      visStatus.className = 'text-[10px] font-bold text-brand-600 uppercase';
+    }
   }
 }
 
@@ -6204,14 +6792,17 @@ async function handleGoogleLogin(response) {
   }
 }
 
+let _googleSignInInitialized = false;
 window.initGoogleSignIn = function () {
+  if (_googleSignInInitialized) return;
   const container = document.getElementById('googleSignInBtn');
   const separator = document.getElementById('googleSignInSeparator');
   const clientId = window.GOOGLE_CLIENT_ID;
 
-  if (!container || typeof google === 'undefined') return;
+  if (!container || typeof google === 'undefined' || !google.accounts || !google.accounts.id) return;
   if (!clientId || !clientId.endsWith('.apps.googleusercontent.com')) return;
 
+  _googleSignInInitialized = true;
   google.accounts.id.initialize({
     client_id: clientId,
     callback: handleGoogleLogin
@@ -6234,6 +6825,11 @@ window.initGoogleSignIn = function () {
 if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
   window.initGoogleSignIn();
 }
+document.addEventListener('DOMContentLoaded', () => {
+  if (typeof window.initGoogleSignIn === 'function') {
+    window.initGoogleSignIn();
+  }
+});
 
 function showLoginError(msg) {
   loginErrorMsg.textContent = msg;
@@ -8070,14 +8666,33 @@ async function init() {
   // Handle Google OAuth return
   const _urlParams = new URLSearchParams(window.location.search);
   if (_urlParams.has('google_connected') || _urlParams.has('google_cancelled') || _urlParams.has('google_error')) {
-    history.replaceState({}, '', '/');
+    history.replaceState({}, '', window.location.pathname + window.location.hash);
+    
+    // Explicitly hide login overlay in case it rendered before session sync
+    const _loginOv = document.getElementById('loginOverlay');
+    if (_loginOv) _loginOv.classList.add('hidden');
+    
+    // Ensure sidebar overlay is dismissed
+    const _sbOverlay = document.getElementById('sidebarOverlay');
+    if (_sbOverlay) {
+      _sbOverlay.classList.remove('active');
+      _sbOverlay.classList.add('hidden');
+    }
+    
     if (_urlParams.get('google_connected') === '1') {
       toast('เชื่อมต่อ Google สำเร็จ!', 'success');
       if (typeof loadGoogleDriveStatus === 'function') loadGoogleDriveStatus();
+      if (typeof loadOrgGoogleStatus === 'function') loadOrgGoogleStatus();
+      if (window.location.hash === '#admin' || window.location.hash === '#org') {
+        if (typeof switchView === 'function') switchView('admin');
+      }
     } else if (_urlParams.get('google_cancelled') === '1') {
       if (typeof loadGoogleDriveStatus === 'function') loadGoogleDriveStatus();
+      if (typeof loadOrgGoogleStatus === 'function') loadOrgGoogleStatus();
     } else if (_urlParams.get('google_error') === '1') {
       toast('เชื่อมต่อ Google ไม่สำเร็จ กรุณาลองใหม่', 'error');
+      if (typeof loadGoogleDriveStatus === 'function') loadGoogleDriveStatus();
+      if (typeof loadOrgGoogleStatus === 'function') loadOrgGoogleStatus();
     }
   }
 }
@@ -8146,17 +8761,20 @@ function renderNotifications(notifs) {
     };
     const icon = iconMap[n.type] || 'bell';
     const timeAgo = formatTimeAgo(n.timestamp);
+    const safeTitle = escapeHtml(n.title || '');
+    const safeMessage = escapeHtml(n.message || '');
+    const safeLink = encodeURI(n.link || '').replace(/'/g, '%27');
     return `
       <div id="notif-item-${n.id}" class="p-4 bg-white dark:bg-surface-900 border ${n.is_read ? 'border-surface-100 dark:border-surface-800 opacity-60' : 'border-brand-100 dark:border-brand-900/30 bg-brand-50/10'} rounded-2xl flex gap-4 transition-all hover:shadow-md group">
-        <div class="w-10 h-10 rounded-xl ${n.is_read ? 'bg-surface-100 dark:bg-surface-800 text-surface-400' : 'bg-brand-600 text-white'} flex items-center justify-center flex-shrink-0 cursor-pointer" onclick="handleNotifClick(${n.id}, '${n.link || ''}')">
+        <div class="w-10 h-10 rounded-xl ${n.is_read ? 'bg-surface-100 dark:bg-surface-800 text-surface-400' : 'bg-brand-600 text-white'} flex items-center justify-center flex-shrink-0 cursor-pointer" onclick="handleNotifClick(${n.id}, '${safeLink}')">
           <i data-lucide="${icon}" class="w-5 h-5"></i>
         </div>
-        <div class="flex-1 min-w-0 cursor-pointer" onclick="handleNotifClick(${n.id}, '${n.link || ''}')">
+        <div class="flex-1 min-w-0 cursor-pointer" onclick="handleNotifClick(${n.id}, '${safeLink}')">
           <div class="flex justify-between items-start mb-1">
-            <h4 class="text-sm font-bold ${n.is_read ? '' : 'text-brand-600'}">${n.title}</h4>
+            <h4 class="text-sm font-bold ${n.is_read ? '' : 'text-brand-600'}">${safeTitle}</h4>
             <span class="text-[10px] text-surface-400 font-bold uppercase">${timeAgo}</span>
           </div>
-          <p class="text-xs text-surface-500 line-clamp-2">${n.message}</p>
+          <p class="text-xs text-surface-500 line-clamp-2">${safeMessage}</p>
         </div>
         <div class="flex flex-col items-center gap-2 flex-shrink-0">
           ${!n.is_read ? `<div class="w-2 h-2 bg-brand-600 rounded-full mt-1"></div>` : ''}
@@ -8623,8 +9241,10 @@ let _orgMembersLoaded = false;
 
 let _orgLogsCache = [];
 
+let _orgDepartmentsCache = [];
+
 function switchOrgTab(tab) {
-  ['members', 'tree', 'leave', 'google', 'business', 'peak', 'announcements', 'categories', 'logs'].forEach(t => {
+  ['members', 'tree', 'departments', 'leave', 'google', 'business', 'peak', 'announcements', 'categories', 'logs'].forEach(t => {
     const btn = $(`orgTab-${t}`);
     const content = $(`orgTabContent-${t}`);
     const active = t === tab;
@@ -8634,6 +9254,7 @@ function switchOrgTab(tab) {
   // Reset scroll so the new tab content is visible from the top
   const scrollEl = document.querySelector('#view-org .overflow-y-auto');
   if (scrollEl) scrollEl.scrollTop = 0;
+  if (tab === 'departments') loadOrgDepartments();
   if (tab === 'leave') refreshAdminLeaves();
   if (tab === 'google') loadOrgGoogleStatus();
   if (tab === 'business') loadOrgBusinessProfile();
@@ -8643,6 +9264,225 @@ function switchOrgTab(tab) {
   if (tab === 'categories') loadCustomCategoriesAndRules();
   if (tab === 'logs') loadOrgLogs();
 }
+
+// ─── Organization Departments JS ───
+async function loadOrgDepartments() {
+  const grid = $('orgDepartmentsGrid');
+  const empty = $('orgDepartmentsEmpty');
+  if (!grid) return;
+
+  grid.innerHTML = `<div class="col-span-full text-center py-10 text-surface-400 text-xs font-semibold">กำลังโหลดข้อมูลแผนก...</div>`;
+  if (empty) empty.classList.add('hidden');
+
+  try {
+    const res = await fetch('/api/org/departments');
+    const data = await res.json();
+    if (!data.ok) {
+      grid.innerHTML = `<div class="col-span-full text-center py-10 text-rose-500 text-xs">${escHtml(data.error || 'โหลดไม่สำเร็จ')}</div>`;
+      return;
+    }
+
+    _orgDepartmentsCache = data.departments || [];
+
+    // Also update org department filter dropdown if present
+    const deptSelect = $('orgFilterDept');
+    if (deptSelect) {
+      const currentVal = deptSelect.value;
+      deptSelect.innerHTML = `<option value="">🏢 ทุกแผนก</option>` +
+        _orgDepartmentsCache.map(d => `<option value="${escHtml(d.department_name)}">${escHtml(d.department_name)}</option>`).join('');
+      deptSelect.value = currentVal;
+    }
+
+    if (_orgDepartmentsCache.length === 0) {
+      grid.innerHTML = '';
+      if (empty) empty.classList.remove('hidden');
+      return;
+    }
+
+    if (empty) empty.classList.add('hidden');
+    grid.innerHTML = _orgDepartmentsCache.map(d => {
+      const color = d.color || '#6366f1';
+      const headName = d.head_display_name || d.head_username || 'ยังไม่ระบุหัวหน้า';
+      const memberCount = d.member_count || 0;
+      return `
+        <div class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-3xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between group relative overflow-hidden">
+          <div class="absolute top-0 left-0 right-0 h-1.5" style="background: ${color};"></div>
+          <div>
+            <div class="flex items-center justify-between mb-3 pt-1">
+              <div class="flex items-center gap-2.5">
+                <span class="w-4 h-4 rounded-full flex-shrink-0 shadow-sm" style="background: ${color};"></span>
+                <h4 class="font-black text-sm text-surface-900 dark:text-white truncate">${escHtml(d.department_name)}</h4>
+              </div>
+              <button onclick="openEditDeptModal(${d.id})" title="แก้ไขแผนก" class="p-1.5 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-400 hover:text-surface-700 dark:hover:text-surface-200 transition-colors">
+                <i data-lucide="edit-3" class="w-4 h-4"></i>
+              </button>
+            </div>
+            ${d.description ? `<p class="text-xs text-surface-500 line-clamp-2 mb-4 font-normal">${escHtml(d.description)}</p>` : `<p class="text-xs text-surface-400 italic mb-4">ไม่มีคำอธิบาย</p>`}
+          </div>
+
+          <div class="pt-4 border-t border-surface-100 dark:border-surface-800 flex items-center justify-between text-xs">
+            <div class="flex items-center gap-1.5 text-surface-500">
+              <i data-lucide="users" class="w-3.5 h-3.5"></i>
+              <span class="font-bold text-surface-700 dark:text-surface-300">${memberCount}</span> คน
+            </div>
+            <div class="flex items-center gap-1.5 text-surface-500 max-w-[150px] truncate" title="หัวหน้าแผนก: ${escHtml(headName)}">
+              <i data-lucide="crown" class="w-3.5 h-3.5 text-amber-500"></i>
+              <span class="truncate font-medium text-surface-600 dark:text-surface-300">${escHtml(headName)}</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    if (window.lucide) lucide.createIcons();
+  } catch (err) {
+    console.error('Error loading org departments:', err);
+    grid.innerHTML = `<div class="col-span-full text-center py-10 text-rose-500 text-xs">เกิดข้อผิดพลาดในการโหลดแผนก</div>`;
+  }
+}
+
+function selectDeptColor(color) {
+  const input = $('deptModalColor');
+  if (input) input.value = color;
+  document.querySelectorAll('#deptColorPickerContainer .dept-color-swatch').forEach(btn => {
+    if (btn.dataset.color === color) {
+      btn.classList.add('ring-2', 'ring-offset-2', 'ring-indigo-500');
+    } else {
+      btn.classList.remove('ring-2', 'ring-offset-2', 'ring-indigo-500');
+    }
+  });
+}
+
+function populateDeptHeadSelect(selectedUsername) {
+  const headSelect = $('deptModalHead');
+  if (!headSelect) return;
+  let html = `<option value="">-- ไม่ระบุหัวหน้าแผนก --</option>`;
+  if (Array.isArray(_orgMembersCache)) {
+    _orgMembersCache.forEach(m => {
+      const selected = m.username === selectedUsername ? 'selected' : '';
+      const label = `${m.display_name || m.username} (@${m.username})`;
+      html += `<option value="${escHtml(m.username)}" ${selected}>${escHtml(label)}</option>`;
+    });
+  }
+  headSelect.innerHTML = html;
+}
+
+function openCreateDeptModal() {
+  const modal = $('departmentModal');
+  if (!modal) return;
+  $('deptModalTitle').textContent = 'เพิ่มแผนกใหม่';
+  $('deptModalId').value = '';
+  $('deptModalName').value = '';
+  $('deptModalDesc').value = '';
+  selectDeptColor('#6366f1');
+  $('deptModalDeleteBtn').classList.add('hidden');
+  populateDeptHeadSelect('');
+  modal.classList.remove('hidden');
+}
+
+function openEditDeptModal(deptId) {
+  const dept = _orgDepartmentsCache.find(d => d.id === deptId);
+  if (!dept) return;
+  const modal = $('departmentModal');
+  if (!modal) return;
+  $('deptModalTitle').textContent = 'แก้ไขข้อมูลแผนก';
+  $('deptModalId').value = dept.id;
+  $('deptModalName').value = dept.department_name || dept.name || '';
+  $('deptModalDesc').value = dept.description || '';
+  selectDeptColor(dept.color || '#6366f1');
+  $('deptModalDeleteBtn').classList.remove('hidden');
+  populateDeptHeadSelect(dept.head_username || '');
+  modal.classList.remove('hidden');
+}
+
+function closeDeptModal() {
+  const modal = $('departmentModal');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function saveDeptModal() {
+  const deptId = $('deptModalId').value.trim();
+  const name = $('deptModalName').value.trim();
+  const description = $('deptModalDesc').value.trim();
+  const head_username = $('deptModalHead').value.trim();
+  const color = $('deptModalColor').value.trim() || '#6366f1';
+
+  if (!name) {
+    if (typeof showToast === 'function') showToast('กรุณาระบุชื่อแผนก', 'error');
+    return;
+  }
+
+  const payload = {
+    name: name,
+    department_name: name,
+    description: description,
+    head_username: head_username,
+    color: color
+  };
+
+  const isEdit = !!deptId;
+  const url = isEdit ? `/api/org/departments/${deptId}` : '/api/org/departments';
+  const method = isEdit ? 'PUT' : 'POST';
+
+  try {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const res = await fetch(url, {
+      method: method,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrfToken
+      },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.ok) {
+      if (typeof showToast === 'function') showToast(isEdit ? 'อัปเดตข้อมูลแผนกสำเร็จ' : 'สร้างแผนกใหม่สำเร็จ', 'success');
+      closeDeptModal();
+      loadOrgDepartments();
+      if (typeof loadOrgMembers === 'function') loadOrgMembers();
+    } else {
+      if (typeof showToast === 'function') showToast(data.error || 'บันทึกไม่สำเร็จ', 'error');
+    }
+  } catch (err) {
+    console.error(err);
+    if (typeof showToast === 'function') showToast('เกิดข้อผิดพลาดในการเชื่อมต่อ', 'error');
+  }
+}
+
+async function deleteCurrentDept() {
+  const deptId = $('deptModalId').value.trim();
+  if (!deptId) return;
+  if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการลบแผนกนี้?')) return;
+
+  try {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const res = await fetch(`/api/org/departments/${deptId}`, {
+      method: 'DELETE',
+      headers: { 'X-CSRF-Token': csrfToken }
+    });
+    const data = await res.json();
+    if (data.ok) {
+      if (typeof showToast === 'function') showToast('ลบแผนกสำเร็จ', 'success');
+      closeDeptModal();
+      loadOrgDepartments();
+      if (typeof loadOrgMembers === 'function') loadOrgMembers();
+    } else {
+      if (typeof showToast === 'function') showToast(data.error || 'ลบไม่สำเร็จ', 'error');
+    }
+  } catch (err) {
+    console.error(err);
+    if (typeof showToast === 'function') showToast('เกิดข้อผิดพลาดในการลบ', 'error');
+  }
+}
+
+window.loadOrgDepartments = loadOrgDepartments;
+window.selectDeptColor = selectDeptColor;
+window.populateDeptHeadSelect = populateDeptHeadSelect;
+window.openCreateDeptModal = openCreateDeptModal;
+window.openEditDeptModal = openEditDeptModal;
+window.closeDeptModal = closeDeptModal;
+window.saveDeptModal = saveDeptModal;
+window.deleteCurrentDept = deleteCurrentDept;
 
 // ─── Custom Categories & AI Rules JS ───
 async function loadCustomCategoriesAndRules() {
@@ -8765,6 +9605,12 @@ async function deleteAIRuleBtn(id) {
     }
   } catch(e) {}
 }
+
+window.loadCustomCategoriesAndRules = loadCustomCategoriesAndRules;
+window.addCustomCategoryBtn = addCustomCategoryBtn;
+window.deleteCustomCategoryBtn = deleteCustomCategoryBtn;
+window.addAIRuleBtn = addAIRuleBtn;
+window.deleteAIRuleBtn = deleteAIRuleBtn;
 
 function updatePVBatchButton() {
   const checkedBoxes = document.querySelectorAll('.pv-checkbox:checked');
@@ -9091,6 +9937,19 @@ async function loadOrgMembers() {
       if ($('orgStatTotal')) $('orgStatTotal').textContent = total;
       if ($('orgStatAdmins')) $('orgStatAdmins').textContent = admins;
       if ($('orgPanelName') && data.org?.name) $('orgPanelName').textContent = data.org.name;
+
+      // Populate department filter dropdown
+      const deptSelect = $('orgFilterDept');
+      if (deptSelect) {
+        const currVal = deptSelect.value;
+        const depts = Array.from(new Set(_orgMembersCache.map(m => (m.department || '').trim()).filter(Boolean))).sort();
+        deptSelect.innerHTML = '<option value="">🏢 ทุกแผนก</option>' + depts.map(d => `<option value="${escapeHtml(d)}">${escapeHtml(d)}</option>`).join('');
+        if (currVal && depts.includes(currVal)) deptSelect.value = currVal;
+      }
+
+      // Load quota banner
+      loadOrgQuota();
+
       renderOrgMembers(_orgMembersCache, state.isOrgAdmin || state.isAdmin);
       const treeContent = $('orgTabContent-tree');
       if (treeContent && !treeContent.classList.contains('hidden')) {
@@ -9104,11 +9963,47 @@ async function loadOrgMembers() {
   }
 }
 
-function filterOrgMembers(query) {
-  const q = query.toLowerCase().trim();
-  const filtered = q ? _orgMembersCache.filter(m =>
-    m.username.toLowerCase().includes(q) || (m.display_name || '').toLowerCase().includes(q)
-  ) : _orgMembersCache;
+async function loadOrgQuota() {
+  try {
+    const res = await apiFetch('/api/org/quota');
+    if (res && res.ok) {
+      if ($('orgQuotaPlanBadge')) $('orgQuotaPlanBadge').textContent = res.plan_display || 'Business Plan';
+      if ($('orgQuotaExpiryText')) $('orgQuotaExpiryText').textContent = 'สถานะแพ็กเกจ: ' + (res.expires_at || 'ใช้งานได้ต่อเนื่อง');
+      if ($('orgQuotaUsageText')) {
+        const limitStr = res.is_unlimited ? 'ไม่จำกัด' : res.max_users;
+        $('orgQuotaUsageText').textContent = `${res.member_count} / ${limitStr} สมาชิก (${res.usage_percent}%)`;
+      }
+      if ($('orgQuotaProgressBar')) {
+        $('orgQuotaProgressBar').style.width = Math.max(5, Math.min(100, res.usage_percent)) + '%';
+      }
+    }
+  } catch (e) {
+    console.error('loadOrgQuota error:', e);
+  }
+}
+
+function exportOrgMembersCSV() {
+  window.open('/api/org/members/export-csv', '_blank');
+  toast('กำลังดาวน์โหลดรายชื่อสมาชิก (CSV)...', 'info');
+}
+
+function filterOrgMembers() {
+  const q = ($('orgMemberSearch')?.value || '').toLowerCase().trim();
+  const dept = $('orgFilterDept')?.value || '';
+  const role = $('orgFilterRole')?.value || '';
+
+  const filtered = _orgMembersCache.filter(m => {
+    if (q) {
+      const matchText = (m.username + ' ' + (m.display_name || '') + ' ' + (m.email || '') + ' ' + (m.position || '')).toLowerCase();
+      if (!matchText.includes(q)) return false;
+    }
+    if (dept && (m.department || '').trim() !== dept) return false;
+    if (role === 'owner' && !m.is_owner) return false;
+    if (role === 'admin' && (m.role !== 'admin' || m.is_owner)) return false;
+    if (role === 'member' && m.role === 'admin') return false;
+    return true;
+  });
+
   renderOrgMembers(filtered, state.isOrgAdmin || state.isAdmin);
 }
 
@@ -9190,6 +10085,18 @@ function renderOrgMembers(members, canManage) {
     const financialBadge = m.can_view_financial
       ? `<span class="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full">รายจ่าย</span>`
       : '';
+    const leaveBadge = m.can_manage_leave
+      ? `<span class="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-full">อนุมัติลา</span>`
+      : '';
+    const kbBadge = (m.can_view_kb || m.can_edit_kb)
+      ? `<span class="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-full">คลังความรู้</span>`
+      : '';
+    const broadcastBadge = m.can_broadcast_line
+      ? `<span class="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full">LINE Broadcast</span>`
+      : '';
+    const peakBadge = m.can_manage_peak
+      ? `<span class="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full">PEAK</span>`
+      : '';
     const googleBadge = m.google_connected
       ? `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold bg-white dark:bg-surface-700 border border-surface-200 dark:border-surface-600 text-surface-600 dark:text-surface-300 rounded-full" title="เชื่อมต่อ Google: ${m.google_email || ''}"><svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>Google</span>`
       : '';
@@ -9223,8 +10130,13 @@ function renderOrgMembers(members, canManage) {
             ${meBadge}
             ${roleBadge}
             ${financialBadge}
+            ${leaveBadge}
+            ${kbBadge}
+            ${broadcastBadge}
+            ${peakBadge}
             ${googleBadge}
           </div>
+
           <div class="text-[10px] text-surface-400 font-mono truncate">${subInfo}</div>
         </div>
         ${actions}
@@ -9275,7 +10187,18 @@ function openOrgMemberEditModal(username) {
   if ($('orgEditUserCanDeleteKB')) $('orgEditUserCanDeleteKB').checked = !!m.can_delete_kb;
   if ($('orgEditMemberFinancial')) $('orgEditMemberFinancial').checked = !!m.can_view_financial;
   if ($('orgEditMemberLeave')) $('orgEditMemberLeave').checked = !!m.can_manage_leave;
+  if ($('orgEditMemberBroadcastLine')) $('orgEditMemberBroadcastLine').checked = !!m.can_broadcast_line;
+  if ($('orgEditMemberManagePeak')) $('orgEditMemberManagePeak').checked = !!m.can_manage_peak;
   if ($('orgEditUserNotes')) $('orgEditUserNotes').value = m.notes || '';
+
+  // Transfer Ownership visibility: only if logged in user is owner, and the target is an admin (not self)
+  const isMeOwner = _orgMembersCache.some(x => x.username === state.username && x.is_owner);
+  const targetIsOtherAdmin = !m.is_owner && (m.role === 'admin') && (m.username !== state.username);
+  const transferCard = $('orgTransferOwnershipCard');
+  if (transferCard) {
+    transferCard.classList.toggle('hidden', !(isMeOwner && targetIsOtherAdmin));
+  }
+
   const managerSelect = $('orgEditMemberManager');
   if (managerSelect) {
     managerSelect.innerHTML = '<option value="">ไม่มีหัวหน้างาน (ผู้บริหารสูงสุด)</option>';
@@ -9328,6 +10251,8 @@ async function submitOrgMemberEdit() {
   const canDeleteKB = $('orgEditUserCanDeleteKB')?.checked ?? false;
   const canViewFinancial = $('orgEditMemberFinancial')?.checked ?? false;
   const canManageLeave = $('orgEditMemberLeave')?.checked ?? false;
+  const canBroadcastLine = $('orgEditMemberBroadcastLine')?.checked ?? false;
+  const canManagePeak = $('orgEditMemberManagePeak')?.checked ?? false;
   const notes = $('orgEditUserNotes')?.value || '';
 
   const m = _orgMembersCache.find(x => x.username === _orgEditingUsername);
@@ -9352,6 +10277,8 @@ async function submitOrgMemberEdit() {
         can_delete_kb: canDeleteKB,
         can_view_financial: canViewFinancial,
         can_manage_leave: canManageLeave,
+        can_broadcast_line: canBroadcastLine,
+        can_manage_peak: canManagePeak,
         notes: notes
       })
     });
@@ -9370,6 +10297,36 @@ async function submitOrgMemberEdit() {
     loadOrgMembers();
   } catch (e) {
     toast('เกิดข้อผิดพลาด', 'error');
+  }
+}
+
+async function confirmTransferOrgOwnership() {
+  if (!_orgEditingUsername) return;
+  const m = _orgMembersCache.find(x => x.username === _orgEditingUsername);
+  if (!m) return;
+  
+  const confirmed = confirm(
+    `⚠️ ยืนยันการโอนสิทธิ์ความเป็นเจ้าขององค์กร (Owner)\n\n` +
+    `คุณกำลังจะโอนสิทธิ์ Owner ให้กับ "${m.display_name || m.username}" (@${m.username})\n` +
+    `หลังจากนี้ ผู้ใช้นี้จะเป็น Owner (Admin ใหญ่) สูงสุดขององค์กร และสิทธิ์ของคุณจะถูกปรับเป็น Admin ปกติ\n\n` +
+    `ต้องการดำเนินการต่อหรือไม่?`
+  );
+  if (!confirmed) return;
+
+  try {
+    const res = await apiFetch('/api/org/transfer-ownership', {
+      method: 'POST',
+      body: JSON.stringify({ new_owner: _orgEditingUsername })
+    });
+    if (res && res.ok) {
+      toast(res.message || 'โอนสิทธิ์ความเป็นเจ้าของสำเร็จแล้ว!', 'success');
+      closeOrgMemberEditModal();
+      await loadOrgMembers();
+    } else {
+      toast(res?.error || 'โอนสิทธิ์ล้มเหลว', 'error');
+    }
+  } catch (err) {
+    toast('เกิดข้อผิดพลาดในการโอนสิทธิ์', 'error');
   }
 }
 
@@ -9490,7 +10447,13 @@ function _renderMySettings(d) {
       { key: 'can_edit_kb', label: 'แก้ไขคลังข้อมูล', desc: 'อัปโหลดและแก้ไขไฟล์' },
       { key: 'can_delete_kb', label: 'ลบไฟล์คลังข้อมูล', desc: 'ลบไฟล์ออกจากระบบ' },
       { key: 'can_view_financial', label: 'แดชบอร์ดรายจ่าย', desc: 'ดูหน้าสรุปภาษีและค่าใช้จ่าย' },
+      { key: 'can_manage_leave', label: 'จัดการการลา', desc: 'อนุมัติและจัดการคำขอลาของพนักงาน' },
+      { key: 'can_broadcast_line', label: 'บรอดแคสต์ LINE', desc: 'ส่งข้อความบรอดแคสต์ไปยังกลุ่มและผู้ใช้' },
+      { key: 'can_manage_peak', label: 'จัดการ PEAK Account', desc: 'เชื่อมต่อและจัดการระบบบัญชี PEAK' },
+      { key: 'can_use_ai', label: 'สนทนากับ AI', desc: 'สิทธิ์พูดคุยและประมวลผลกับ AI' },
+      { key: 'can_claim_expense', label: 'เบิกจ่ายค่าใช้จ่าย', desc: 'ยื่นคำขอเบิกเงินและส่งสลิปค่าใช้จ่าย' },
     ];
+
     permsEl.innerHTML = perms.map(p => {
       const on = !!d[p.key];
       return `<div class="flex items-center justify-between p-3 rounded-xl border ${on ? 'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/50 dark:bg-emerald-900/10' : 'border-surface-100 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/30'}">
@@ -9556,6 +10519,54 @@ async function unbindMyLine() {
   }
 }
 
+function openUserLineBindModal() {
+  const modal = $('userLineBindModal');
+  if (!modal) return;
+  if ($('userDirectLineToken')) $('userDirectLineToken').value = '';
+  modal.classList.remove('hidden');
+  if (window.lucide) lucide.createIcons();
+}
+
+async function submitDirectLineBind() {
+  const input = $('userDirectLineToken');
+  const btn = $('btnSubmitDirectLine');
+  const val = (input?.value || '').trim();
+  if (!val) {
+    toast('กรุณาระบุรหัสเชื่อมต่อ (Token) หรือ LINE User ID ค่ะ', 'warning');
+    return;
+  }
+  
+  const payload = val.startsWith('U') && val.length === 33 ? { line_user_id: val } : { token: val };
+  btn.disabled = true;
+  btn.innerHTML = '<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> กำลังเชื่อมต่อ...';
+  if (window.lucide) lucide.createIcons();
+  
+  try {
+    const res = await fetch('/api/user/bind-line-direct', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.ok) {
+      toast(data.message || 'เชื่อมต่อบัญชี LINE สำเร็จค่ะ!', 'success');
+      $('userLineBindModal')?.classList.add('hidden');
+      if (_mySettingsCache) {
+        _mySettingsCache.line_user_id = data.line_user_id || 'linked';
+        _renderMySettings(_mySettingsCache);
+      }
+    } else {
+      toast(data.error || 'เชื่อมต่อไม่สำเร็จ กรุณาตรวจสอบรหัสอีกครั้งค่ะ', 'error');
+    }
+  } catch (e) {
+    toast('เกิดข้อผิดพลาดในการเชื่อมต่อค่ะ', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i data-lucide="check" class="w-3.5 h-3.5"></i> ยืนยันการผูกบัญชีด้วยรหัสนี้';
+    if (window.lucide) lucide.createIcons();
+  }
+}
+
 async function saveMyDisplayName() {
   const val = ($('myDisplayNameInput')?.value || '').trim();
   if (!val) { toast('กรุณากรอกชื่อก่อน', 'error'); return; }
@@ -9614,14 +10625,14 @@ function setInviteTab(tabName) {
   currentInviteTab = tabName;
   
   // Update Tab buttons visual states
-  ['existing', 'precreate', 'gmail'].forEach(t => {
+  ['existing', 'precreate', 'gmail', 'link_qr'].forEach(t => {
     const btn = $('inviteTabBtn_' + t);
     const content = $('inviteTabContent_' + t);
     if (btn) {
       if (t === tabName) {
-        btn.className = "flex-1 py-2 px-3 text-xs font-bold rounded-lg transition-all text-center flex items-center justify-center gap-1.5 bg-white dark:bg-surface-750 text-brand-600 dark:text-white shadow-sm border border-surface-200/55";
+        btn.className = "flex-1 py-2 px-2 text-xs font-bold rounded-lg transition-all text-center flex items-center justify-center gap-1.5 bg-brand-600 text-white shadow-md shadow-brand-500/20";
       } else {
-        btn.className = "flex-1 py-2 px-3 text-xs font-bold rounded-lg transition-all text-center flex items-center justify-center gap-1.5 text-surface-500 dark:text-surface-400 hover:text-surface-800 dark:hover:text-surface-200";
+        btn.className = "flex-1 py-2 px-2 text-xs font-bold rounded-lg transition-all text-center flex items-center justify-center gap-1.5 text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white hover:bg-surface-200/50 dark:hover:bg-surface-700/50";
       }
     }
     if (content) {
@@ -9633,12 +10644,28 @@ function setInviteTab(tabName) {
     }
   });
 
+  // Toggle submit button visibility (link_qr has its own action button)
+  const submitBtn = $('inviteSubmitBtn');
+  if (submitBtn) {
+    submitBtn.classList.toggle('hidden', tabName === 'link_qr');
+  }
+
   // Clear errors
   const errEl = $('inviteError');
   if (errEl) {
     errEl.classList.add('hidden');
     errEl.textContent = '';
   }
+
+  // Auto-generate QR code immediately when switching to link_qr tab
+  if (tabName === 'link_qr') {
+    const linkInput = $('inviteQrLinkInput');
+    if (!linkInput || !linkInput.value) {
+      generateOrgInviteToken(false);
+    }
+  }
+
+  initIcons();
 }
 
 function toggleInvitePwVisibility() {
@@ -9655,7 +10682,7 @@ function toggleInvitePwVisibility() {
   initIcons();
 }
 
-function showInviteMemberModal() {
+function showInviteMemberModal(defaultTab = 'existing') {
   const modal = $('inviteMemberModal');
   if (!modal) return;
   
@@ -9674,11 +10701,86 @@ function showInviteMemberModal() {
   $('inviteFormWrapper')?.classList.remove('hidden');
   $('inviteSuccessView')?.classList.add('hidden');
   
-  setInviteTab('existing');
+  setInviteTab(defaultTab);
   modal.classList.remove('hidden');
   initIcons();
   
-  setTimeout(() => $('inviteUsernameInput')?.focus(), 50);
+  if (defaultTab === 'existing') {
+    setTimeout(() => $('inviteUsernameInput')?.focus(), 50);
+  } else if (defaultTab === 'link_qr') {
+    generateOrgInviteToken(false);
+  }
+}
+
+async function generateOrgInviteToken(notify = true) {
+  const expirySelect = $('inviteTokenExpiry');
+  const deptInput = $('inviteTokenDept');
+  const roleSelect = $('inviteRoleSelect');
+  
+  const payload = {
+    role: roleSelect ? roleSelect.value : 'member',
+    department: deptInput ? deptInput.value.trim() : '',
+    expires_days: expirySelect ? parseInt(expirySelect.value) : 7
+  };
+
+  try {
+    const res = await apiFetch('/api/org/invite-token', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+    if (res && res.ok && res.invite_url) {
+      const qrResult = $('inviteQrResult');
+      const qrCanvas = $('inviteQrCanvas');
+      const qrImg = $('inviteQrImg');
+      const linkInput = $('inviteQrLinkInput');
+      
+      if (linkInput) linkInput.value = res.invite_url;
+      
+      // Render QR code: prioritize local QRCode canvas, fallback to image API
+      if (qrCanvas && typeof QRCode !== 'undefined') {
+        qrCanvas.innerHTML = '';
+        new QRCode(qrCanvas, {
+          text: res.invite_url,
+          width: 144,
+          height: 144,
+          colorDark: '#0f172a',
+          colorLight: '#ffffff',
+          correctLevel: QRCode.CorrectLevel.M
+        });
+        if (qrImg) qrImg.classList.add('hidden');
+      } else if (qrImg) {
+        qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(res.invite_url)}`;
+        qrImg.classList.remove('hidden');
+      }
+      
+      if (qrResult) qrResult.classList.remove('hidden');
+      if (notify) toast('สร้างลิงก์เชิญ & QR Code สำเร็จ!', 'success');
+      initIcons();
+    } else {
+      if (notify) toast(res?.error || 'สร้างลิงก์เชิญล้มเหลว', 'error');
+    }
+  } catch (err) {
+    if (notify) toast('เกิดข้อผิดพลาดในการสร้างลิงก์เชิญ', 'error');
+  }
+}
+
+function copyInviteQrLink() {
+  const input = $('inviteQrLinkInput');
+  if (!input) return;
+  input.select();
+  input.setSelectionRange(0, 99999);
+  navigator.clipboard.writeText(input.value);
+  const btn = $('btnCopyQrLink');
+  if (btn) {
+    btn.innerHTML = '<i data-lucide="check" class="w-3.5 h-3.5"></i> คัดลอกแล้ว!';
+    btn.className = "px-3 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition-all shrink-0 flex items-center gap-1";
+    initIcons();
+    setTimeout(() => {
+      btn.innerHTML = '<i data-lucide="copy" class="w-3.5 h-3.5"></i> คัดลอก';
+      btn.className = "px-3 py-2 text-xs font-bold bg-brand-600 hover:bg-brand-700 text-white rounded-xl transition-all shrink-0 flex items-center gap-1";
+      initIcons();
+    }, 2000);
+  }
 }
 
 function closeInviteMemberModal() {
@@ -11347,6 +12449,7 @@ function renderKanbanBoard() {
 
   initIcons();
   updateDashboardKanbanCount();
+  initKanbanSortable();
 }
 
 function buildKanbanColumn(col) {
@@ -11373,11 +12476,8 @@ function buildKanbanColumn(col) {
         </button>
       </div>
     </div>
-    <div class="kanban-cards-list flex-1 overflow-y-auto p-3 space-y-2.5 min-h-[100px] custom-scrollbar select-none" 
-         data-col-id="${col.id}"
-         ondragover="handleCardDragOver(event)"
-         ondragleave="event.currentTarget.classList.remove('drag-over')"
-         ondrop="handleCardDrop(event, ${col.id})">
+    <div class="kanban-cards-list flex-1 overflow-y-auto p-3 space-y-2.5 min-h-[120px] custom-scrollbar select-none" 
+         data-col-id="${col.id}">
       ${(col.cards || []).map(card => buildKanbanCardHTML(card)).join('')}
     </div>
     <div class="p-3 border-t border-surface-100 dark:border-surface-800">
@@ -11402,7 +12502,6 @@ function buildKanbanCardHTML(card) {
   };
   const pLabel = priorityLabel[card.priority] || 'กลาง';
   const pColor = priorityColors[card.priority] || priorityColors.medium;
-
 
   const dueHtml = card.due_date ? `
     <div class="flex items-center gap-1 text-[9px] font-bold text-surface-400 mt-1">
@@ -11446,10 +12545,8 @@ function buildKanbanCardHTML(card) {
   ` : '';
 
   return `
-    <div class="kanban-card bg-white dark:bg-surface-800 rounded-xl border border-surface-200 dark:border-surface-700 p-3 shadow-sm hover:shadow-md cursor-grab active:cursor-grabbing transition-all hover:-translate-y-0.5 group ${card.is_done ? 'opacity-80' : ''}"
-         draggable="true" data-card-id="${card.id}" data-col-id="${card.column_id}"
-         ondragstart="handleCardDragStart(event, ${card.id}, ${card.column_id})"
-         ondragend="handleCardDragEnd(event)"
+    <div class="kanban-card bg-white dark:bg-surface-800 rounded-xl border border-surface-200 dark:border-surface-700 p-3 shadow-sm hover:shadow-md cursor-grab active:cursor-grabbing group ${card.is_done ? 'opacity-80' : ''}"
+         data-card-id="${card.id}" data-col-id="${card.column_id}"
          style="${borderStyle}">
       <div class="flex items-center justify-between gap-1 mb-2">
          <div class="flex flex-wrap gap-1">${labelsHtml}</div>
@@ -11482,100 +12579,118 @@ function buildKanbanCardHTML(card) {
   `;
 }
 
-// Drag and Drop
-function handleCardDragStart(event, cardId, colId) {
-  kanbanState.dragCard = cardId;
-  kanbanState.dragSourceCol = colId;
-  event.dataTransfer.effectAllowed = 'move';
-  event.target.style.opacity = '0.5';
-}
-
-function handleCardDragEnd(event) {
-  event.target.style.opacity = '';
-  document.querySelectorAll('.drag-over').forEach(el => {
-    el.classList.remove('drag-over', 'drag-over-top', 'drag-over-bottom');
-  });
-}
-
-function handleCardDragOver(event) {
-  event.preventDefault();
-  const target = event.target.closest('.kanban-card');
-  const col = event.target.closest('.kanban-cards-list');
-
-  // Remove previous drop indicators
-  document.querySelectorAll('.drag-over-top, .drag-over-bottom').forEach(el => {
-    el.classList.remove('drag-over-top', 'drag-over-bottom');
-  });
-
-  if (target && target.dataset.cardId !== kanbanState.dragCard) {
-    const rect = target.getBoundingClientRect();
-    const midpoint = rect.top + rect.height / 2;
-    if (event.clientY < midpoint) {
-      target.classList.add('drag-over-top');
-    } else {
-      target.classList.add('drag-over-bottom');
-    }
-  } else if (col) {
-    col.classList.add('drag-over');
-  }
-}
-
-async function handleCardDrop(event, targetColId) {
-  event.preventDefault();
-  document.querySelectorAll('.drag-over, .drag-over-top, .drag-over-bottom').forEach(el => {
-    el.classList.remove('drag-over', 'drag-over-top', 'drag-over-bottom');
-  });
-
-  if (!kanbanState.dragCard) return;
-
-  const cardId = kanbanState.dragCard;
-  kanbanState.dragCard = null;
-
-  const targetCard = event.target.closest('.kanban-card');
-  let newPos = 0;
-
-  if (targetCard) {
-    targetColId = targetCard.dataset.colId;
-    const col = kanbanState.columns.find(c => c.id == targetColId);
-    if (!col || !col.cards) return;
-
-    const targetIdx = col.cards.findIndex(c => c.id == targetCard.dataset.cardId);
-    const rect = targetCard.getBoundingClientRect();
-    const midpoint = rect.top + rect.height / 2;
-
-    // If dropped on top half, place before. If bottom half, place after
-    if (event.clientY < midpoint) {
-      newPos = targetIdx;
-    } else {
-      newPos = targetIdx + 1;
-    }
-
-    // Adjust if moving within same column moving downwards
-    if (kanbanState.dragSourceCol == targetColId) {
-      const oldIdx = col.cards.findIndex(c => c.id == cardId);
-      if (oldIdx < newPos) newPos -= 1;
-    }
-  } else {
-    const col = kanbanState.columns.find(c => c.id == targetColId);
-    newPos = col && col.cards ? col.cards.length : 0;
+// 🎯 Fluid SortableJS Initialization
+function initKanbanSortable() {
+  if (typeof Sortable === 'undefined') {
+    setTimeout(initKanbanSortable, 100);
+    return;
   }
 
-  try {
-    const colObj = kanbanState.columns.find(c => c.id == targetColId);
-    const isDoneCol = colObj && (colObj.title.toLowerCase().includes('done') || colObj.title.toLowerCase().includes('สำเร็จ') || colObj.title.toLowerCase().includes('เสร็จ'));
-    
-    await apiFetch(`/api/kanban/cards/${cardId}/move`, {
-      method: 'POST',
-      body: JSON.stringify({ 
-        column_id: targetColId, 
-        position: newPos,
-        is_done: isDoneCol ? 1 : undefined 
-      }),
+  const board = document.getElementById('kanbanBoard');
+  if (!board) return;
+
+  const colLists = board.querySelectorAll('.kanban-cards-list');
+  colLists.forEach(list => {
+    if (list._sortable) {
+      try { list._sortable.destroy(); } catch (e) {}
+    }
+    list._sortable = new Sortable(list, {
+      group: 'kanban-board-cards',
+      animation: 200,
+      easing: 'cubic-bezier(0.2, 0, 0, 1)',
+      ghostClass: 'kanban-sortable-ghost',
+      chosenClass: 'kanban-sortable-chosen',
+      dragClass: 'kanban-sortable-drag',
+      filter: 'button, input, textarea, a, select',
+      preventOnFilter: false,
+      fallbackTolerance: 2,
+      emptyInsertThreshold: 35,
+      direction: 'vertical',
+      onEnd: async function(evt) {
+        const cardEl = evt.item;
+        const targetColList = evt.to;
+        const sourceColList = evt.from;
+        if (!cardEl || !targetColList || !sourceColList) return;
+
+        const targetColId = targetColList.dataset.colId;
+        const sourceColId = sourceColList.dataset.colId;
+        const cardId = cardEl.dataset.cardId;
+        const newPos = evt.newIndex;
+
+        if (!cardId || !targetColId) return;
+
+        cardEl.dataset.colId = String(targetColId);
+
+        // Check if target column represents a "Done" column
+        const targetColObj = kanbanState.columns.find(c => String(c.id) == String(targetColId));
+        const isDoneCol = targetColObj && (
+          targetColObj.title.toLowerCase().includes('done') ||
+          targetColObj.title.toLowerCase().includes('สำเร็จ') ||
+          targetColObj.title.toLowerCase().includes('เสร็จ')
+        );
+
+        // Update Done visual styling immediately
+        const titleP = cardEl.querySelector('p.font-bold');
+        if (titleP) {
+          if (isDoneCol) {
+            titleP.classList.add('line-through', 'text-surface-400');
+            titleP.classList.remove('text-surface-800', 'dark:text-surface-100');
+          } else {
+            titleP.classList.remove('line-through', 'text-surface-400');
+            titleP.classList.add('text-surface-800', 'dark:text-surface-100');
+          }
+        }
+
+        // Optimistically update column count badges
+        updateKanbanColumnCounters();
+
+        // Optimistically update in-memory state
+        const sourceCol = kanbanState.columns.find(c => String(c.id) == String(sourceColId));
+        if (sourceCol && sourceCol.cards) {
+          const cardIdx = sourceCol.cards.findIndex(c => String(c.id) == String(cardId));
+          if (cardIdx !== -1) {
+            const [movedCard] = sourceCol.cards.splice(cardIdx, 1);
+            if (movedCard && targetColObj) {
+              movedCard.column_id = targetColId;
+              movedCard.is_done = isDoneCol ? 1 : 0;
+              if (!targetColObj.cards) targetColObj.cards = [];
+              targetColObj.cards.splice(newPos, 0, movedCard);
+            }
+          }
+        }
+
+        // Background API Sync with seamless rollback if failed
+        try {
+          apiFetch(`/api/kanban/cards/${cardId}/move`, {
+            method: 'POST',
+            body: JSON.stringify({
+              column_id: targetColId,
+              position: newPos,
+              is_done: isDoneCol ? 1 : undefined
+            }),
+          }).catch(err => {
+            console.error('Failed to sync card position:', err);
+            if (typeof toast === 'function') toast('ซิงก์ตำแหน่งไม่สำเร็จ กำลังโหลดใหม่...', 'error');
+            loadKanbanBoard();
+          });
+        } catch (e) {
+          console.error('Error syncing card move:', e);
+          loadKanbanBoard();
+        }
+      }
     });
-    await loadKanbanBoard();
-  } catch (e) {
-    toast('ย้ายการ์ดไม่สำเร็จ', 'error');
-  }
+  });
+}
+
+function updateKanbanColumnCounters() {
+  document.querySelectorAll('.kanban-col').forEach(colEl => {
+    const countList = colEl.querySelector('.kanban-cards-list');
+    const countBadge = colEl.querySelector('.kanban-col-header span:nth-child(2)');
+    if (countList && countBadge) {
+      const actualCount = countList.querySelectorAll('.kanban-card').length;
+      countBadge.textContent = String(actualCount);
+    }
+  });
 }
 
 // Card Moving
@@ -12102,6 +13217,10 @@ async function loadNotifications() {
     container.innerHTML = htmlStr;
     initIcons();
   } catch (err) {
+    if (err && (err.status === 401 || (err.message && err.message.toLowerCase().includes('unauthorized')))) {
+      // User is not logged in / session expired; silently exit
+      return;
+    }
     console.error('Error load notifications:', err);
     container.innerHTML = '<p class="text-red-500 text-sm text-center py-4 font-bold">ไม่สามารถดึงข้อมูลการแจ้งเตือนได้</p>';
   }
@@ -15361,33 +16480,44 @@ async function openLineSettings() {
         console.error('Failed to load personas for LINE config:', err);
     }
     
+    // Load general settings
     try {
         const data = await apiFetch('/api/admin/line/settings');
         if (data && data.ok) {
-            $('lineSettingsToken').value = data.config.channel_access_token || '';
-            $('lineSettingsSecret').value = data.config.channel_secret || '';
             $('lineSettingsGreeting').value = data.config.greeting_message || '';
             $('lineSettingsAIEnabled').checked = data.config.ai_auto_responder_enabled || false;
-            
             if ($('lineSettingsPersona')) {
                 $('lineSettingsPersona').value = data.config.selected_persona_id || 'default';
             }
+        }
+    } catch (err) {
+        console.error('Failed to fetch general LINE settings:', err);
+    }
+
+    // Load Org-specific LINE Channel credentials
+    try {
+        const orgData = await apiFetch('/api/org/line/channel-config');
+        if (orgData && orgData.ok) {
+            $('lineSettingsBotId').value = orgData.bot_basic_id || '';
+            $('lineSettingsToken').value = orgData.channel_access_token_masked || '';
+            $('lineSettingsSecret').value = orgData.channel_secret_masked || '';
             
-            // Conditionally show/hide access token and secret based on system admin privilege
-            const tokenContainer = $('lineSettingsTokenContainer');
-            const secretContainer = $('lineSettingsSecretContainer');
-            if (tokenContainer && secretContainer) {
-                if (data.is_system_admin) {
-                    tokenContainer.classList.remove('hidden');
-                    secretContainer.classList.remove('hidden');
+            const badge = $('lineOrgBadge');
+            if (badge) {
+                if (orgData.has_custom_keys) {
+                    badge.textContent = 'บอทเฉพาะองค์กร';
+                    badge.className = 'text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300';
                 } else {
-                    tokenContainer.classList.add('hidden');
-                    secretContainer.classList.add('hidden');
+                    badge.textContent = 'บอทส่วนกลาง';
+                    badge.className = 'text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300';
                 }
+            }
+            if ($('lineTokenStatus')) {
+                $('lineTokenStatus').textContent = orgData.has_custom_keys ? '✅ ใช้ Custom Key อยู่' : 'ℹ️ ใช้บอทส่วนกลาง';
             }
         }
     } catch (err) {
-        console.error('Failed to fetch LINE settings:', err);
+        console.error('Failed to fetch org LINE channel config:', err);
     }
     
     modal.classList.remove('hidden');
@@ -15395,27 +16525,50 @@ async function openLineSettings() {
 }
 
 async function saveLineSettings() {
-    const btn = event.target;
-    const originalText = btn.textContent;
+    const btn = $('btnSaveLineSettings') || event?.target;
+    const originalHtml = btn ? btn.innerHTML : 'บันทึกการตั้งค่า';
     
-    const payload = {
-        channel_access_token: $('lineSettingsToken').value.trim(),
-        channel_secret: $('lineSettingsSecret').value.trim(),
-        greeting_message: $('lineSettingsGreeting').value.trim(),
-        ai_auto_responder_enabled: $('lineSettingsAIEnabled').checked,
-        selected_persona_id: $('lineSettingsPersona') ? $('lineSettingsPersona').value : 'default'
-    };
-    
-    btn.disabled = true;
-    btn.textContent = 'กำลังบันทึก...';
+    const token = $('lineSettingsToken').value.trim();
+    const secret = $('lineSettingsSecret').value.trim();
+    const botId = $('lineSettingsBotId').value.trim();
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> กำลังบันทึก...';
+        if (window.lucide) lucide.createIcons();
+    }
     
     try {
+        // 1. If token and secret are provided, save custom org credentials
+        if (token && secret && !token.includes('...') && !secret.includes('...')) {
+            const orgRes = await apiFetch('/api/org/line/channel-config', {
+                method: 'POST',
+                body: JSON.stringify({
+                    channel_access_token: token,
+                    channel_secret: secret,
+                    bot_basic_id: botId,
+                    is_active: 1
+                })
+            });
+            if (!orgRes || !orgRes.ok) {
+                toast(orgRes?.error || 'บันทึก Channel Key ไม่สำเร็จค่ะ', 'error');
+                return;
+            }
+        }
+        
+        // 2. Save general settings (persona, greeting, AI responder)
+        const payload = {
+            greeting_message: $('lineSettingsGreeting').value.trim(),
+            ai_auto_responder_enabled: $('lineSettingsAIEnabled').checked,
+            selected_persona_id: $('lineSettingsPersona') ? $('lineSettingsPersona').value : 'default'
+        };
+        
         const data = await apiFetch('/api/admin/line/settings', {
             method: 'POST',
             body: JSON.stringify(payload)
         });
         if (data && data.ok) {
-            toast(data.message, 'success');
+            toast('บันทึกการตั้งค่า LINE เรียบร้อยแล้วค่ะ! 🎉', 'success');
             $('lineSettingsModal').classList.add('hidden');
         } else {
             toast(data.error || 'บันทึกไม่สำเร็จค่ะ', 'error');
@@ -15423,9 +16576,76 @@ async function saveLineSettings() {
     } catch (err) {
         toast('เกิดข้อผิดพลาดในการเชื่อมต่อค่ะ', 'error');
     } finally {
-        btn.disabled = false;
-        btn.textContent = originalText;
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+            if (window.lucide) lucide.createIcons();
+        }
     }
+}
+
+async function testOrgLineConnection() {
+    const btn = $('btnTestLineChannel');
+    const token = $('lineSettingsToken').value.trim();
+    const originalHtml = btn ? btn.innerHTML : 'ทดสอบการเชื่อมต่อ';
+    
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> กำลังทดสอบ...';
+        if (window.lucide) lucide.createIcons();
+    }
+    
+    try {
+        const res = await apiFetch('/api/org/line/channel-config/test', {
+            method: 'POST',
+            body: JSON.stringify({ channel_access_token: token })
+        });
+        if (res && res.ok) {
+            toast(res.message || '✅ เชื่อมต่อ LINE Bot สำเร็จเรียบร้อย!', 'success');
+            if (res.bot_info?.basicId && !$('lineSettingsBotId').value) {
+                $('lineSettingsBotId').value = res.bot_info.basicId;
+            }
+        } else {
+            toast(res?.error || '❌ ไม่สามารถเชื่อมต่อกับ LINE API ได้ค่ะ', 'error');
+        }
+    } catch (e) {
+        toast('เกิดข้อผิดพลาดในการทดสอบค่ะ', 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+            if (window.lucide) lucide.createIcons();
+        }
+    }
+}
+
+async function resetOrgLineBot() {
+    if (!await showConfirm('คืนค่าบอทส่วนกลาง', 'คุณต้องการลบ Channel Key ประจำองค์กรและกลับไปใช้ LINE Bot ส่วนกลางของระบบหรือไม่?', { type: 'warning', confirmText: 'คืนค่าบอทระบบ' })) {
+        return;
+    }
+    try {
+        const res = await apiFetch('/api/org/line/channel-config', { method: 'DELETE' });
+        if (res && res.ok) {
+            toast('คืนค่าการใช้งานบอทส่วนกลางสำเร็จค่ะ', 'success');
+            $('lineSettingsToken').value = '';
+            $('lineSettingsSecret').value = '';
+            $('lineSettingsBotId').value = '@905gsngi';
+            openLineSettings();
+        } else {
+            toast(res?.error || 'ไม่สามารถลบการตั้งค่าได้ค่ะ', 'error');
+        }
+    } catch (e) {
+        toast('เกิดข้อผิดพลาดในการเชื่อมต่อค่ะ', 'error');
+    }
+}
+
+function copyLineWebhookUrl() {
+    const text = $('lineWebhookUrlText')?.textContent || window.location.origin + '/api/line/webhook';
+    navigator.clipboard.writeText(text).then(() => {
+        toast('คัดลอก Webhook URL เรียบร้อยแล้วค่ะ', 'success');
+    }).catch(() => {
+        toast('ไม่สามารถคัดลอกได้ กรุณาคัดลอกด้วยตนเองค่ะ', 'warning');
+    });
 }
 
 async function refreshBroadcastHistory() {
@@ -15527,7 +16747,7 @@ function renderAdminPersonaList() {
   }
 
   list.innerHTML = adminPersonas.map(p => `
-    <div onclick="selectPersona('${p.id}')" class="p-3 rounded-2xl border border-surface-100 dark:border-surface-800 hover:border-brand-500 cursor-pointer transition-all bg-white dark:bg-surface-900 group">
+    <div onclick="selectAdminPersona('${p.id}')" class="p-3 rounded-2xl border border-surface-100 dark:border-surface-800 hover:border-brand-500 cursor-pointer transition-all bg-white dark:bg-surface-900 group">
       <div class="flex items-center gap-3">
         <img src="${p.avatar_url || 'https://cdn-icons-png.flaticon.com/512/1077/1077114.png'}" class="w-8 h-8 rounded-lg object-cover">
         <div class="flex-1 min-w-0">
@@ -15541,7 +16761,7 @@ function renderAdminPersonaList() {
   lucide.createIcons();
 }
 
-function selectPersona(id) {
+function selectAdminPersona(id) {
   const p = adminPersonas.find(x => x.id == id);
   if (!p) return;
 
@@ -15709,6 +16929,7 @@ window.filterTodoTasks = filterTodoTasks;
 window.openPersonaManager = openPersonaManager;
 window.closePersonaManager = closePersonaManager;
 window.loadAdminPersonas = loadAdminPersonas;
+window.selectAdminPersona = selectAdminPersona;
 window.selectPersona = selectPersona;
 window.openCreatePersona = openCreatePersona;
 window.savePersona = savePersona;
@@ -16450,6 +17671,62 @@ function initOrgTreeCanvasEvents() {
   }, { passive: false });
 }
 
+function getDeptColorConfig(dept) {
+  const d = (dept || '').trim().toLowerCase();
+  if (Array.isArray(_orgDepartmentsCache) && _orgDepartmentsCache.length > 0) {
+    const customDept = _orgDepartmentsCache.find(item => (item.department_name || '').trim().toLowerCase() === d);
+    if (customDept && customDept.color) {
+      return {
+        stroke: customDept.color,
+        badgeBg: 'bg-surface-100 dark:bg-surface-800 text-surface-900 dark:text-white border-surface-200 dark:border-surface-700',
+        border: 'border-l-4',
+        customColor: customDept.color
+      };
+    }
+  }
+
+  if (d.includes('บริหาร') || d.includes('exec') || d.includes('manage') || d.includes('ceo') || d.includes('director')) {
+    return {
+      stroke: '#8b5cf6',
+      badgeBg: 'bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-800/40',
+      border: 'border-l-4 border-l-purple-500'
+    };
+  }
+  if (d.includes('tech') || d.includes('it') || d.includes('dev') || d.includes('ไอที') || d.includes('โปรแกรม') || d.includes('engineer')) {
+    return {
+      stroke: '#0284c7',
+      badgeBg: 'bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-800/40',
+      border: 'border-l-4 border-l-sky-500'
+    };
+  }
+  if (d.includes('sale') || d.includes('ขาย') || d.includes('market') || d.includes('การตลาด') || d.includes('design')) {
+    return {
+      stroke: '#f43f5e',
+      badgeBg: 'bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-800/40',
+      border: 'border-l-4 border-l-rose-500'
+    };
+  }
+  if (d.includes('บัญชี') || d.includes('account') || d.includes('finance') || d.includes('การเงิน')) {
+    return {
+      stroke: '#10b981',
+      badgeBg: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/40',
+      border: 'border-l-4 border-l-emerald-500'
+    };
+  }
+  if (d.includes('hr') || d.includes('บุคคล') || d.includes('admin') || d.includes('ธุรการ') || d.includes('operation')) {
+    return {
+      stroke: '#f59e0b',
+      badgeBg: 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800/40',
+      border: 'border-l-4 border-l-amber-500'
+    };
+  }
+  return {
+    stroke: '#6366f1',
+    badgeBg: 'bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 border-brand-200 dark:border-brand-800/40',
+    border: 'border-l-4 border-l-brand-500'
+  };
+}
+
 // Render dynamic org tree chart
 async function renderOrgTree() {
   const wrapper = document.getElementById("orgTreeCanvasWrapper");
@@ -16479,13 +17756,14 @@ async function renderOrgTree() {
 
   const membersMap = {};
   _orgMembersCache.forEach(m => {
+    if (!m || !m.username) return;
     membersMap[m.username.toLowerCase()] = {
       ...m,
       children: [],
       x: 0,
       y: 0,
-      width: 220,
-      height: 90
+      width: 230,
+      height: 96
     };
   });
 
@@ -16498,9 +17776,10 @@ async function renderOrgTree() {
       roots.push(node);
     }
   });
+  window._orgTreeRoots = roots;
 
-  const levelHeight = 160;
-  const siblingWidth = 260;
+  const levelHeight = 165;
+  const siblingWidth = 270;
 
   function layoutSubtree(node, depth, xOffset) {
     node.y = 50 + depth * levelHeight;
@@ -16538,12 +17817,22 @@ async function renderOrgTree() {
   }
 
   Object.values(membersMap).forEach(node => {
+    const deptConfig = getDeptColorConfig(node.department);
     const card = document.createElement("div");
-    card.className = "org-node-card absolute bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 p-3 rounded-2xl shadow-sm flex items-center gap-3 transition-all hover:shadow-md hover:border-indigo-500/50 dark:hover:border-indigo-400/50";
+    card.id = `org-node-${node.username.toLowerCase()}`;
+    card.className = `org-node-card absolute bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 ${deptConfig.border} p-3 rounded-2xl shadow-sm flex items-center gap-3 transition-all duration-200 hover:shadow-lg hover:scale-[1.02]`;
     card.style.width = `${node.width}px`;
     card.style.height = `${node.height}px`;
     card.style.left = `${node.x}px`;
     card.style.top = `${node.y}px`;
+    if (deptConfig.customColor) {
+      card.style.borderLeftColor = deptConfig.customColor;
+    }
+    
+    card.dataset.username = node.username.toLowerCase();
+    card.dataset.name = (node.display_name || '').toLowerCase();
+    card.dataset.pos = (node.position || '').toLowerCase();
+    card.dataset.dept = (node.department || '').toLowerCase();
 
     const isAdmin = node.role === "admin";
     const roleBadge = isAdmin 
@@ -16556,10 +17845,15 @@ async function renderOrgTree() {
     const deptText = node.department || 'General';
     const posText = node.position || 'พนักงาน';
 
+    const reportCount = node.children.length;
+    const reportBadge = reportCount > 0 
+      ? `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[8px] font-extrabold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/50" title="ผู้ใต้บังคับบัญชาโดยตรง ${reportCount} คน"><i data-lucide="users" class="w-2.5 h-2.5"></i> ${reportCount} คน</span>`
+      : '';
+
     const canEdit = state.isOrgAdmin || state.isAdmin;
     const editBtn = canEdit 
-      ? `<button onclick="openEditManagerModal('${node.username}')" class="p-1 hover:bg-surface-100 dark:hover:bg-surface-700 rounded-lg text-surface-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors ml-auto cursor-pointer" title="ปรับสายการรายงาน">
-           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75"/></svg>
+      ? `<button onclick="event.stopPropagation(); openEditManagerModal('${node.username}')" class="p-1 hover:bg-surface-100 dark:hover:bg-surface-700 rounded-lg text-surface-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors ml-auto cursor-pointer" title="ปรับสายการรายงาน">
+           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 0 1-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75"/></svg>
          </button>`
       : "";
 
@@ -16570,7 +17864,14 @@ async function renderOrgTree() {
           <div class="font-extrabold text-xs text-surface-900 dark:text-white truncate" title="${node.display_name}">${node.display_name}</div>
           ${roleBadge}
         </div>
-        <div class="text-[9px] font-bold text-surface-400 dark:text-surface-500 truncate" title="${posText} (${deptText})">${posText} · ${deptText}</div>
+        <div class="flex items-center gap-1 text-[9px] font-bold text-surface-400 dark:text-surface-500 truncate" title="${posText} (${deptText})">
+          <span class="truncate max-w-[90px]">${posText}</span>
+          <span>·</span>
+          <span class="px-1.5 py-0.5 rounded text-[8px] font-extrabold border ${deptConfig.badgeBg} truncate max-w-[80px]">${deptText}</span>
+        </div>
+        <div class="mt-1 flex items-center gap-1">
+          ${reportBadge}
+        </div>
       </div>
       ${editBtn}
     `;
@@ -16579,6 +17880,7 @@ async function renderOrgTree() {
   });
 
   Object.values(membersMap).forEach(node => {
+    const parentDeptConfig = getDeptColorConfig(node.department);
     node.children.forEach(child => {
       const parentBottomX = node.x + node.width / 2;
       const parentBottomY = node.y + node.height;
@@ -16594,17 +17896,17 @@ async function renderOrgTree() {
       const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
       path.setAttribute("d", pathData);
       path.setAttribute("fill", "none");
-      path.setAttribute("stroke", "#6366f1");
+      path.setAttribute("stroke", parentDeptConfig.stroke);
       path.setAttribute("stroke-width", "2.5");
       path.setAttribute("stroke-linecap", "round");
-      path.setAttribute("opacity", "0.4");
+      path.setAttribute("opacity", "0.45");
       
       path.addEventListener("mouseenter", () => {
-        path.setAttribute("opacity", "0.9");
+        path.setAttribute("opacity", "0.95");
         path.setAttribute("stroke-width", "3.5");
       });
       path.addEventListener("mouseleave", () => {
-        path.setAttribute("opacity", "0.4");
+        path.setAttribute("opacity", "0.45");
         path.setAttribute("stroke-width", "2.5");
       });
 
@@ -16616,65 +17918,78 @@ async function renderOrgTree() {
 }
 
 function openEditManagerModal(username) {
-  const member = _orgMembersCache.find(m => m.username.toLowerCase() === username.toLowerCase());
+  const member = _orgMembersCache.find(m => m && (m.username || '').toLowerCase() === (username || '').toLowerCase());
   if (!member) return;
   editingTreeMember = username;
 
-  document.getElementById("editManagerUserAvatar").src = member.avatar_url || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%2394a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/><path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662"/></svg>';
-  document.getElementById("editManagerUserDisplayName").textContent = member.display_name || member.username;
-  document.getElementById("editManagerUserPosition").textContent = `${member.position || 'พนักงาน'} · ${member.department || 'General'}`;
+  const avatarEl = document.getElementById("editManagerUserAvatar");
+  if (avatarEl) {
+    avatarEl.src = member.avatar_url || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%2394a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/><path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662"/></svg>';
+  }
+  const nameEl = document.getElementById("editManagerUserDisplayName");
+  if (nameEl) nameEl.textContent = member.display_name || member.username;
+  const posEl = document.getElementById("editManagerUserPosition");
+  if (posEl) posEl.textContent = `${member.position || 'พนักงาน'} · ${member.department || 'General'}`;
 
   const select = document.getElementById("editManagerSelect");
-  select.innerHTML = '<option value="">ไม่มีหัวหน้างาน (ผู้บริหารสูงสุด)</option>';
+  if (select) {
+    select.innerHTML = '<option value="">ไม่มีหัวหน้างาน (ผู้บริหารสูงสุด)</option>';
 
-  const reportsToMap = {};
-  _orgMembersCache.forEach(m => {
-    reportsToMap[m.username.toLowerCase()] = (m.manager_username || "").trim().toLowerCase();
-  });
-
-  _orgMembersCache.forEach(m => {
-    const candidateUsername = m.username.toLowerCase();
-    
-    if (candidateUsername === username.toLowerCase()) return;
-
-    let curr = candidateUsername;
-    let isCyclic = false;
-    while (curr) {
-      if (curr === username.toLowerCase()) {
-        isCyclic = true;
-        break;
+    const reportsToMap = {};
+    _orgMembersCache.forEach(m => {
+      if (m && m.username) {
+        reportsToMap[m.username.toLowerCase()] = (m.manager_username || "").trim().toLowerCase();
       }
-      curr = reportsToMap[curr] || "";
-    }
+    });
 
-    if (isCyclic) return;
+    _orgMembersCache.forEach(m => {
+      if (!m || !m.username) return;
+      const candidateUsername = m.username.toLowerCase();
+      
+      if (candidateUsername === (username || '').toLowerCase()) return;
 
-    const opt = document.createElement("option");
-    opt.value = m.username;
-    opt.textContent = `${m.display_name || m.username} (${m.position || 'พนักงาน'})`;
-    if ((member.manager_username || "").toLowerCase() === m.username.toLowerCase()) {
-      opt.selected = true;
-    }
-    select.appendChild(opt);
-  });
+      let curr = candidateUsername;
+      let isCyclic = false;
+      while (curr) {
+        if (curr === (username || '').toLowerCase()) {
+          isCyclic = true;
+          break;
+        }
+        curr = reportsToMap[curr] || "";
+      }
+
+      if (isCyclic) return;
+
+      const opt = document.createElement("option");
+      opt.value = m.username;
+      opt.textContent = `${m.display_name || m.username} (${m.position || 'พนักงาน'})`;
+      if ((member.manager_username || "").toLowerCase() === m.username.toLowerCase()) {
+        opt.selected = true;
+      }
+      select.appendChild(opt);
+    });
+  }
 
   if (typeof lucide !== 'undefined') lucide.createIcons();
 
-  document.getElementById("editManagerModal").classList.remove("hidden");
+  const modalEl = document.getElementById("editManagerModal");
+  if (modalEl) modalEl.classList.remove("hidden");
 }
 
 function closeEditManagerModal() {
-  document.getElementById("editManagerModal").classList.add("hidden");
+  const modalEl = document.getElementById("editManagerModal");
+  if (modalEl) modalEl.classList.add("hidden");
   editingTreeMember = null;
 }
 
 async function saveManagerChange() {
   if (!editingTreeMember) return;
+  const targetMember = editingTreeMember;
   const select = document.getElementById("editManagerSelect");
-  const managerUsername = select.value;
+  const managerUsername = (select ? select.value : "").trim();
 
   try {
-    const data = await apiFetch(`/api/org/members/${editingTreeMember}/manager`, {
+    const data = await apiFetch(`/api/org/members/${encodeURIComponent(targetMember)}/manager`, {
       method: "POST",
       body: JSON.stringify({ manager_username: managerUsername })
     });
@@ -16683,11 +17998,15 @@ async function saveManagerChange() {
       toast("ปรับปรุงสายงานสำเร็จแล้วค่ะ! ✨", "success");
       closeEditManagerModal();
       
-      const cachedMember = _orgMembersCache.find(m => m.username.toLowerCase() === editingTreeMember.toLowerCase());
+      const targetUserLower = targetMember.toLowerCase();
+      const cachedMember = _orgMembersCache.find(m => m && (m.username || '').toLowerCase() === targetUserLower);
       if (cachedMember) {
         cachedMember.manager_username = managerUsername;
       }
       
+      if (typeof loadOrgMembers === 'function') {
+        await loadOrgMembers();
+      }
       renderOrgTree();
     } else {
       toast(data.error || "เกิดข้อผิดพลาดในการบันทึก", "error");
@@ -16698,8 +18017,70 @@ async function saveManagerChange() {
   }
 }
 
+function searchOrgTreeNode(query) {
+  const q = (query || '').trim().toLowerCase();
+  const cards = document.querySelectorAll('.org-node-card');
+  if (!cards.length) return;
+
+  cards.forEach(card => {
+    card.classList.remove('ring-4', 'ring-brand-500', 'shadow-2xl', 'scale-105', 'opacity-30');
+  });
+
+  if (!q) return;
+
+  let firstMatch = null;
+  cards.forEach(card => {
+    const u = card.dataset.username || '';
+    const n = card.dataset.name || '';
+    const p = card.dataset.pos || '';
+    const d = card.dataset.dept || '';
+    if (u.includes(q) || n.includes(q) || p.includes(q) || d.includes(q)) {
+      card.classList.add('ring-4', 'ring-brand-500', 'shadow-2xl', 'scale-105');
+      if (!firstMatch) firstMatch = card;
+    } else {
+      card.classList.add('opacity-30');
+    }
+  });
+
+  if (firstMatch) {
+    const wrapper = document.getElementById("orgTreeCanvasWrapper");
+    if (wrapper) {
+      const left = parseFloat(firstMatch.style.left) || 0;
+      const top = parseFloat(firstMatch.style.top) || 0;
+      const w = parseFloat(firstMatch.style.width) || 230;
+      const h = parseFloat(firstMatch.style.height) || 96;
+      const canvasWidth = wrapper.clientWidth || 800;
+      const canvasHeight = wrapper.clientHeight || 600;
+      orgTreePanX = (canvasWidth / 2) - (left + w / 2) * orgTreeZoomScale;
+      orgTreePanY = (canvasHeight / 2) - (top + h / 2) * orgTreeZoomScale;
+      applyOrgTreeTransform();
+    }
+  }
+}
+
+function resetOrgTreeView() {
+  orgTreeZoomScale = 1.0;
+  const wrapper = document.getElementById("orgTreeCanvasWrapper");
+  if (wrapper && window._orgTreeRoots && window._orgTreeRoots.length > 0) {
+    const root = window._orgTreeRoots[0];
+    const canvasWidth = wrapper.clientWidth || 800;
+    orgTreePanX = (canvasWidth / 2) - (root.x + root.width / 2);
+    orgTreePanY = 40;
+  } else {
+    orgTreePanX = 0;
+    orgTreePanY = 40;
+  }
+  applyOrgTreeTransform();
+  
+  const searchInput = document.getElementById("orgTreeSearchInput");
+  if (searchInput) searchInput.value = "";
+  searchOrgTreeNode("");
+}
+
 window.orgTreeZoom = orgTreeZoom;
 window.orgTreeZoomReset = orgTreeZoomReset;
+window.resetOrgTreeView = resetOrgTreeView;
+window.searchOrgTreeNode = searchOrgTreeNode;
 window.renderOrgTree = renderOrgTree;
 window.openEditManagerModal = openEditManagerModal;
 window.closeEditManagerModal = closeEditManagerModal;
@@ -17790,6 +19171,18 @@ window.openQRScanner = openQRScanner;
 if (typeof closeQRScanner === 'function') window.closeQRScanner = closeQRScanner;
 window.generateGlobalSummary = generateGlobalSummary;
 window.handleBulkCompare = handleBulkCompare;
+window.loadOrgDepartments = loadOrgDepartments;
+window.openCreateDeptModal = openCreateDeptModal;
+window.openEditDeptModal = openEditDeptModal;
+window.closeDeptModal = closeDeptModal;
+window.saveDeptModal = saveDeptModal;
+window.deleteCurrentDept = deleteCurrentDept;
+window.loadCustomCategoriesAndRules = loadCustomCategoriesAndRules;
+window.addCustomCategoryBtn = addCustomCategoryBtn;
+window.deleteCustomCategoryBtn = deleteCustomCategoryBtn;
+window.addAIRuleBtn = addAIRuleBtn;
+window.deleteAIRuleBtn = deleteAIRuleBtn;
+window.switchOrgTab = switchOrgTab;
 
 document.addEventListener('DOMContentLoaded', () => {
   initChatDragAndResize();

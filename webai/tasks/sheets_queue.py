@@ -12,6 +12,12 @@ Sheets Queue — Serial Task Queue สำหรับ Google Sheets Write
 import logging
 import time
 
+try:
+    from googleapiclient.errors import HttpError
+except ImportError:
+    class HttpError(Exception):
+        pass
+
 from celery_app import celery_app
 
 logger = logging.getLogger(__name__)

@@ -27,10 +27,20 @@ const state = {
   currentChat: { type: 'room', id: 1, name: 'General' },
   chatList: { rooms: [], contacts: [] },
   isAdmin: false,
+  isSuperAdmin: false,
+  canViewKB: false,
   canEditKB: false,
+  canDeleteKB: false,
+  canViewFinancial: false,
+  canManageLeave: false,
+  canBroadcastLine: false,
+  canManagePeak: false,
+  canUseAI: true,
+  canClaimExpense: true,
   hasOrg: false,
   orgId: null,
   isOrgAdmin: false,
+
   kbCategories: [],
   allUsers: [],
   appSettings: {},
@@ -59,6 +69,7 @@ const $ = (id) => {
   // if (!el) console.warn(`Element with ID "${id}" not found.`);
   return el;
 };
+window.$ = $;
 
 // Persona Refs
 const personaBtn = $('personaBtn');
@@ -491,19 +502,35 @@ async function loadPersonas() {
 }
 
 function selectPersona(id) {
-  const p = state.personas.find(p => p.id === id);
+  const p = (state.personas || []).find(p => p.id == id);
   state.activePersona = p || null;
-  if (activePersonaName) activePersonaName.textContent = p ? p.name : 'Default';
-  if (personaDropdown) personaDropdown.classList.add('hidden');
-  renderPersonas();
-  toast(p ? `สลับเป็นตัวตน: ${p.name}` : 'กลับสู่โหมดพื้นฐาน', 'info');
+  const activeName = document.getElementById('activePersonaName');
+  if (activeName) activeName.textContent = p ? p.name : 'Default';
+  const dd = document.getElementById('personaDropdown');
+  if (dd) dd.classList.add('hidden');
+  if (typeof renderPersonas === 'function') renderPersonas();
+  if (typeof toast === 'function') {
+    toast(p ? `สลับเป็นตัวตน: ${p.name}` : 'กลับสู่โหมดพื้นฐาน (Default)', 'info');
+  }
 }
+window.selectPersona = selectPersona;
 
 if (personaBtn) {
-  personaBtn.onclick = () => {
+  personaBtn.onclick = (e) => {
+    e.stopPropagation();
     personaDropdown?.classList.toggle('hidden');
   };
 }
+
+document.addEventListener('click', (e) => {
+  const dd = document.getElementById('personaDropdown');
+  const btn = document.getElementById('personaBtn');
+  if (dd && !dd.classList.contains('hidden')) {
+    if (!dd.contains(e.target) && !btn?.contains(e.target)) {
+      dd.classList.add('hidden');
+    }
+  }
+});
 
 // ─── Seen Receipts ──────────────────────────
 async function recordPostView(pid) {
@@ -885,7 +912,10 @@ async function renderSummary() {
 function toggleSidebar(force) {
   const isOpen = force !== undefined ? force : !navSidebar.classList.contains('open');
   navSidebar.classList.toggle('open', isOpen);
-  if (sidebarOverlay) sidebarOverlay.classList.toggle('active', isOpen);
+  if (sidebarOverlay) {
+    sidebarOverlay.classList.toggle('active', isOpen);
+    sidebarOverlay.classList.toggle('hidden', !isOpen);
+  }
 }
 
 if (mobileMenuBtn) mobileMenuBtn.onclick = () => toggleSidebar(true);
@@ -1976,6 +2006,7 @@ class DigitalWatermarkManager {
 
     overlay.innerHTML = `<div class="watermark-pattern">${itemsHtml}</div>`;
   }
+}
 
 // ═══════════════════════════════════════════════════════════════
 // 🧠 Multi-Agent AI Debate Room Controller

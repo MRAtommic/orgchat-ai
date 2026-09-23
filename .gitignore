@@ -39,4 +39,25 @@ sa_for_railway.txt
 *.db.backup*
 webai/scratch/
 webai/scratch_*.py
+*.vhdx
+*.tmp
+backup_step_*.txt
+*.log
+*.rar
+*.zip
+*.docx
+*.pdf
+Katak-main*
+exports/
+figma_exports/
+scratch/
+scratch_*.py
+check_*.py
+generate_*.py
+build_*.py
+create_docx.py
+extract_pdf.py
+export_pdf.ps1
+pdf_*.txt
+page_*.png
 

@@ -462,6 +462,53 @@ def create_app():
         from routes.shared import get_or_create_csrf_token
         return jsonify({"ok": True, "csrf_token": get_or_create_csrf_token()})
 
+    # ─── Real-Time WAF Threat Patterns ──────────────────────
+    import re as _waf_re
+    _WAF_SQLI_PATTERN = _waf_re.compile(
+        r"(?i)(\bUNION\s+(?:ALL\s+)?SELECT\b|\bSELECT\s+.+\s+FROM\b|\bDROP\s+TABLE\b|\bWAITFOR\s+DELAY\b|\bBENCHMARK\s*\(|\bSLEEP\s*\(\s*\d+\s*\)|'\s*OR\s*['\"\d]\s*=\s*['\"\d]|\bINFORMATION_SCHEMA\b)",
+        _waf_re.IGNORECASE
+    )
+    _WAF_TRAVERSAL_PATTERN = _waf_re.compile(
+        r"(?:\.\.[/\\]|\.\.%2f|\.\.%5c|%2e%2e|/etc/passwd|/etc/shadow|c:\\windows|win\.ini|boot\.ini)",
+        _waf_re.IGNORECASE
+    )
+    _WAF_XSS_RCE_PATTERN = _waf_re.compile(
+        r"(?i)(<\s*script[^>]*>|javascript\s*:|data\s*:\s*text/html|<\s*iframe[^>]*>|<\s*object[^>]*>|<\s*embed[^>]*>|onload\s*=\s*|onerror\s*=\s*)",
+        _waf_re.IGNORECASE
+    )
+
+    def _inspect_waf_threats(req) -> str | None:
+        """Inspects request path, query string and request body for common cyber attack payloads."""
+        # 1. Inspect Path
+        if _WAF_TRAVERSAL_PATTERN.search(req.path):
+            return "Path Traversal / LFI Attack in URL Path"
+
+        # 2. Inspect Query Parameters
+        for k, v in req.args.items():
+            if _WAF_SQLI_PATTERN.search(v) or _WAF_SQLI_PATTERN.search(k):
+                return "SQL Injection Attack in URL Parameters"
+            if _WAF_TRAVERSAL_PATTERN.search(v):
+                return "Path Traversal Attack in URL Parameters"
+            if _WAF_XSS_RCE_PATTERN.search(v):
+                return "Cross-Site Scripting (XSS) in URL Parameters"
+
+        # 3. Inspect Body for mutating requests (exempt chat message payloads which have AI Guardrails)
+        if req.method in ("POST", "PUT", "PATCH") and not req.path.startswith("/api/chat") and not req.path.startswith("/line/"):
+            try:
+                if req.is_json:
+                    raw_body = req.get_data(as_text=True)
+                    if raw_body and len(raw_body) < 65536:
+                        if _WAF_SQLI_PATTERN.search(raw_body):
+                            return "SQL Injection Attack in Request Body"
+                        if _WAF_TRAVERSAL_PATTERN.search(raw_body):
+                            return "Path Traversal Attack in Request Body"
+                        if _WAF_XSS_RCE_PATTERN.search(raw_body):
+                            return "XSS Script Payload in Request Body"
+            except Exception:
+                pass
+
+        return None
+
     # ─── Idle Session Timeout (2 hours) & CSRF Middleware ────
     _IDLE_SECONDS = 2 * 60 * 60  # 2 ชั่วโมง
 
@@ -475,7 +522,7 @@ def create_app():
         if _req.path.startswith('/static') or _req.path.startswith('/uploads'):
             return
 
-        # 🛑 Automated IP Blacklist Enforcement
+        # 🛑 1. Automated IP Blacklist Enforcement
         client_ip = _req.remote_addr or "unknown"
         is_blocked, block_reason = database.is_ip_blacklisted(client_ip)
         if is_blocked:
@@ -483,7 +530,19 @@ def create_app():
             logger.warning(f"🛑 Blocked Request from Blacklisted IP={client_ip} path={_req.path} reason={block_reason}")
             return _json_ip({"ok": False, "error": "ip_blocked", "message": f"IP ของท่านถูกระงับการเข้าถึงชั่วคราว ({block_reason})"}), 403
 
-        # 🛡️ Anti-CSRF Token Enforcement for mutating methods
+        # 🚨 2. Real-Time WAF Threat Inspection (Auto-Jail on malicious payloads)
+        waf_threat = _inspect_waf_threats(_req)
+        if waf_threat:
+            from flask import jsonify as _json_waf
+            logger.critical(f"🚨 [WAF AUTO-JAIL] Intercepted {waf_threat} from IP={client_ip} path={_req.path}")
+            database.block_ip(client_ip, reason=f"WAF: {waf_threat}", duration_minutes=120)
+            try:
+                database.log_audit_event("System", "WAF_ATTACK_BLOCKED", f"Blocked {waf_threat} on {_req.path}", client_ip, 1)
+            except Exception:
+                pass
+            return _json_waf({"ok": False, "error": "waf_blocked", "message": f"คำขอถูกปฏิเสธเนื่องจากตรวจพบคำสั่งที่มีความเสี่ยงต่อความปลอดภัย ({waf_threat})"}), 403
+
+        # 🛡️ 3. Anti-CSRF Token Enforcement for mutating methods
         if _req.method in ("POST", "PUT", "DELETE", "PATCH"):
             csrf_exempt = (
                 _req.path.startswith('/line/webhook') or 
@@ -495,8 +554,10 @@ def create_app():
                 _req.path.startswith('/api/auth/forgot-password') or
                 _req.path.startswith('/api/auth/verify-reset-otp') or
                 _req.path.startswith('/api/org/signup') or
+                _req.path.startswith('/api/org/create-for-user') or
                 _req.path.startswith('/api/superadmin/')
             )
+
             if not csrf_exempt and 'user' in session:
                 from routes.shared import validate_csrf_token
                 csrf_header = _req.headers.get("X-CSRF-Token")
@@ -507,7 +568,7 @@ def create_app():
         if 'user' not in session:
             return
 
-        # 🛡️ Session Hijacking Prevention (User-Agent Fingerprint)
+        # 🛡️ 4. Session Hijacking Prevention (User-Agent Fingerprint)
         import hashlib
         ua_string = _req.user_agent.string or ""
         ua_hash = hashlib.sha256(ua_string.encode('utf-8')).hexdigest()[:16]
@@ -522,6 +583,25 @@ def create_app():
                 return _json_hijack({"ok": False, "error": "session_hijack_detected", "message": "ตรวจพบการใช้เซสชันจากอุปกรณ์อื่น กรุณาเข้าสู่ระบบใหม่"}), 401
             from flask import redirect as _redir_hijack
             return _redir_hijack('/?session_invalid=1')
+
+        # 🔐 5. Multi-Device Session Invalidation (Session Versioning)
+        current_username = session.get('user')
+        if current_username:
+            try:
+                db_session_ver = database.get_user_session_version(current_username)
+                sess_ver = session.get('session_version')
+                if sess_ver is not None and sess_ver != db_session_ver:
+                    logger.warning(f"🔐 [Session Revoked] User {current_username} session version mismatch (sess={sess_ver}, db={db_session_ver}) — revoking session")
+                    session.clear()
+                    if _req.path.startswith('/api/') or _req.path.startswith('/line/') or _req.is_json:
+                        from flask import jsonify as _json_revoked
+                        return _json_revoked({"ok": False, "error": "session_revoked", "message": "รหัสผ่านหรือสิทธิ์ของคุณมีการเปลี่ยนแปลง กรุณาเข้าสู่ระบบใหม่"}), 401
+                    from flask import redirect as _redir_revoked
+                    return _redir_revoked('/?session_revoked=1')
+                elif sess_ver is None:
+                    session['session_version'] = db_session_ver
+            except Exception as _sve:
+                logger.debug(f"Session version check bypass: {_sve}")
 
         now = _time.time()
         last = session.get('_last_active', now)
@@ -607,6 +687,18 @@ def create_app():
     </div>
 </body>
 </html>"""
+
+    @app.errorhandler(429)
+    def ratelimit_handler(e):
+        from flask import render_template_string
+        msg = "คุณทำรายการถี่เกินไป กรุณารอสักครู่ (ประมาณ 1 นาที) แล้วลองใหม่อีกครั้งค่ะ"
+        if request.path.startswith('/api/') or request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({
+                "ok": False,
+                "error": "rate_limit_exceeded",
+                "message": msg
+            }), 429
+        return render_template_string(ERROR_TEMPLATE, error_message=msg), 429
 
     @app.errorhandler(500)
     def internal_server_error(e):
@@ -821,7 +913,6 @@ try:
         except Exception as e:
             print(f">>> Scheduled knowledge harvest error: {e}")
 
-    _scheduler.add_job(_scheduled_executive_brief, 'cron', hour=8, minute=30, id='exec_brief')
     _scheduler.add_job(_scheduled_knowledge_harvest, 'cron', hour=22, minute=0, id='wiki_harvest')
 
     # Plan expiry reminder ทุกวัน 09:00 — แทน daemon thread ที่ timing ขึ้นกับเวลา restart
@@ -875,7 +966,7 @@ try:
                 text = item["text"]
                 database.update_line_broadcast_status(bid, "Processing")
                 try:
-                    success = broadcast_line_announcement(title="ประกาศจากแอดมิน", text=text)
+                    success = broadcast_line_announcement(title="ประกาศจากแอดมิน", text=text, org_id=item.get("org_id", 1))
                     status = "success" if success else "failed"
                     database.update_line_broadcast_status(bid, status)
                     logger.info(f"Scheduled broadcast {bid} processed: {status}")
@@ -886,6 +977,25 @@ try:
             logger.warning(f"[ScheduledBroadcasts] error: {_e}")
 
     _scheduler.add_job(_scheduled_line_broadcasts, 'interval', minutes=1, id='line_broadcasts')
+
+    # ⏰ แจ้งเตือนนัดหมายและการประชุมล่วงหน้า (รันตรวจเช็คทุก 1 นาที)
+    def _scheduled_meeting_reminders():
+        try:
+            from routes.chat import send_meeting_reminder_line
+            # ดึงนัดหมายที่กำลังจะเริ่มในอีก 30 นาที
+            upcoming = database.get_upcoming_schedules(window_minutes=30)
+            for sch in upcoming:
+                sid = sch.get("id")
+                try:
+                    send_meeting_reminder_line(sch, minutes_before=30)
+                    database.mark_schedule_reminder_sent(sid)
+                    logger.info(f"⏰ [Meeting Reminder] Sent reminder for schedule #{sid}: {sch.get('title')}")
+                except Exception as ex:
+                    logger.error(f"Error sending meeting reminder for schedule #{sid}: {ex}")
+        except Exception as _e:
+            logger.warning(f"[ScheduledMeetingReminders] error: {_e}")
+
+    _scheduler.add_job(_scheduled_meeting_reminders, 'interval', minutes=1, id='meeting_reminders')
 
     # 🧹 ทำความสะอาดและ Optimize ฐานข้อมูล SQLite ทุกสัปดาห์ (วันอาทิตย์ เวลา 03:00)
     def _scheduled_db_optimize():

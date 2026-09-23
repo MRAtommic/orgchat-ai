@@ -228,10 +228,45 @@
 </div>
 
 <script>
+    /* 🛡️ CSRF Token Auto-Injector & Global Fetch Interceptor */
+    window._csrfToken = null;
+    async function fetchCsrfToken() {
+        try {
+            const res = await fetch('/api/csrf-token');
+            const data = await res.json();
+            if (data && data.csrf_token) window._csrfToken = data.csrf_token;
+        } catch (e) {
+            console.warn("Failed to fetch CSRF token:", e);
+        }
+    }
+    fetchCsrfToken();
+
+    const _originalFetch = window.fetch;
+    window.fetch = async function (resource, options = {}) {
+        options = options || {};
+        const method = (options.method || 'GET').toUpperCase();
+        if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+            if (!window._csrfToken && resource !== '/api/csrf-token') {
+                await fetchCsrfToken();
+            }
+            if (window._csrfToken && resource !== '/api/csrf-token') {
+                if (options.headers instanceof Headers) {
+                    options.headers.set('X-CSRF-Token', window._csrfToken);
+                } else if (typeof options.headers === 'object') {
+                    options.headers['X-CSRF-Token'] = window._csrfToken;
+                } else {
+                    options.headers = { 'X-CSRF-Token': window._csrfToken };
+                }
+            }
+        }
+        return _originalFetch.call(this, resource, options);
+    };
+
     // Check if user has paid plan (from URL param or backend template variable)
     const params = new URLSearchParams(window.location.search);
     let plan = params.get('plan') || '{{ active_plan }}';
     const hasOrg = '{{ has_org | tojson }}' === 'true';
+
 
     let _errorTimer = null;
     function showOnboardingError(msg) {
@@ -451,13 +486,14 @@
     // Auto-check if current user already has an org and redirect to /
     document.addEventListener('DOMContentLoaded', async () => {
         try {
-            const res = await fetch('/api/current_user');
+            const res = await fetch('/api/status');
             const data = await res.json();
-            if (data.ok && data.user && data.user.has_org) {
+            if (data && data.has_org) {
                 window.location.href = '/';
             }
         } catch (_) {}
     });
+
 </script>
 </body>
 </html>

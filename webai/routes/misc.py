@@ -32,6 +32,7 @@ from routes.shared import (
     get_weather_context, THAI_HOLIDAYS_2026, get_current_time,
     VAPID_PUBLIC_KEY,
     get_current_org_id, _get_gemini_api_key, is_superadmin_user,
+    get_or_create_csrf_token,
 )
 
 logger = logging.getLogger("OrgChatAI.Misc")
@@ -108,6 +109,7 @@ def serve_group_profile_uploads(filename):
 
 
 @misc_bp.route("/")
+@misc_bp.route("/login")
 def index():
     from flask import make_response
     google_client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
@@ -138,10 +140,11 @@ def index():
     org_info = database.get_org(org_id) if org_id else None
 
     org_plan = billing.get_effective_plan(org_id) if org_id else "free"
+    csrf_token = get_or_create_csrf_token()
     resp = make_response(render_template("index.html", google_client_id=google_client_id,
                            vapid_public_key=VAPID_PUBLIC_KEY, is_admin=is_admin, is_superadmin=is_superadmin,
                            is_org_admin=is_org_admin, line_bot_id=line_bot_id, biz_profile=biz_profile,
-                           org_info=org_info, org_plan=org_plan))
+                           org_info=org_info, org_plan=org_plan, csrf_token=csrf_token))
     # Prevent browser caching so sidebar renders correctly after login
     resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     resp.headers["Pragma"] = "no-cache"
@@ -225,6 +228,12 @@ def status():
         "can_view_kb": bool(user_settings.get("can_view_kb")),
         "can_edit_kb": bool(user_settings.get("can_edit_kb")),
         "can_delete_kb": bool(user_settings.get("can_delete_kb")),
+        "can_view_financial": bool(user_settings.get("can_view_financial")),
+        "can_manage_leave": bool(user_settings.get("can_manage_leave")),
+        "can_broadcast_line": bool(user_settings.get("can_broadcast_line")),
+        "can_manage_peak": bool(user_settings.get("can_manage_peak")),
+        "can_use_ai": bool(user_settings.get("can_use_ai", True)),
+        "can_claim_expense": bool(user_settings.get("can_claim_expense", True)),
         "user": session.get("user"),
         "app_settings": database.get_all_app_settings(),
         "server_time": get_current_time(),
@@ -235,6 +244,7 @@ def status():
         "org_features": billing.get_plan_config(billing.get_effective_plan(org_id)).get("features", {}) if org_id else {},
         **stats
     })
+
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
@@ -357,7 +367,7 @@ def export_security_report():
     health_data = database.get_security_health_status(org_id=org_id)
     audit_logs = database.get_audit_logs(org_id=org_id, limit=50)
 
-    export_folder = Path("exports")
+    export_folder = Path("exports").resolve()
     pdf_path = export_service.export_security_audit_report_pdf(
         health_data=health_data,
         audit_logs=audit_logs,
@@ -366,7 +376,7 @@ def export_security_report():
     )
 
     return send_file(
-        str(pdf_path),
+        str(pdf_path.resolve()),
         as_attachment=True,
         download_name=f"Security_Audit_Report_{datetime.now().strftime('%Y%m%d')}.pdf",
         mimetype="application/pdf"
@@ -471,20 +481,23 @@ def analyze_user_behavior_endpoint():
 @misc_bp.route("/health")
 def health_check():
     """Used by uptime monitors (UptimeRobot, etc.) — returns 200 if server is alive."""
-    import sqlite3 as _sq
     db_ok = False
     try:
-        _c = _sq.connect(os.environ.get("DB_PATH", "chat_history.db"), timeout=2)
-        _c.execute("SELECT 1")
-        _c.close()
+        conn = database._get_conn(timeout=3)
+        cur = conn.cursor()
+        cur.execute("SELECT 1")
+        cur.close()
+        conn.close()
         db_ok = True
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error(f"[HealthCheck] DB check failed ({database.DB_TYPE}): {e}")
+
     status = "ok" if db_ok else "degraded"
     return jsonify({
         "status": status,
         "db": db_ok,
-        "version": "1.0",
+        "db_type": database.DB_TYPE,
+        "version": VERSION,
         "timestamp": datetime.now().isoformat(),
     }), 200 if db_ok else 503
 

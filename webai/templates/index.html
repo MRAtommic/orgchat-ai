@@ -7,10 +7,11 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="csrf-token" content="" />
+  <meta name="csrf-token" content="{{ csrf_token or '' }}" />
   <title>OrgChat — Corporate AI Assistant</title>
   <script src="https://cdn.tailwindcss.com/3.4.16"></script>
   <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" defer></script>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" defer></script>
@@ -29,21 +30,21 @@
           extend: {
             colors: {
               brand: {
-                50: '#eff6ff', 100: '#e0ebff', 200: '#bfdbfe', 300: '#93c5fd', 400: '#60a5fa', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8', 800: '#1e40af', 900: '#1e3a8a',
+                50: '#eff6ff', 100: '#e0ebff', 200: '#bfdbfe', 300: '#93c5fd', 400: '#60a5fa', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8', 800: '#1e40af', 900: '#1e3a8a', 950: '#0b132b',
               },
               surface: {
                 50: '#f8fafc', 100: '#f1f5f9', 200: '#e2e8f0', 300: '#cbd5e1', 400: '#94a3b8', 500: '#64748b', 600: '#475569', 700: '#334155', 800: '#1e293b', 900: '#0f172a', 950: '#020617',
               }
             },
             fontFamily: {
-              sans: ['Sarabun', 'Inter', 'sans-serif'],
+              sans: ['Prompt', 'Anuphan', 'IBM Plex Sans Thai', 'Inter', 'sans-serif'],
             },
           }
         }
       };
     }
   </script>
-  <link rel="stylesheet" href="/static/style.css?v=3.6" />
+  <link rel="stylesheet" href="/static/style.css?v=4.0" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@300;400;500;600;700&family=Athiti:wght@300;400;500;600;700&family=Bai+Jamjuree:wght@300;400;500;600;700&family=Chakra+Petch:wght@400;600;700&family=Fahkwang:wght@300;400;500;600;700&family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700;800;900&family=K2D:wght@300;400;500;600;700&family=Kanit:wght@300;400;500;600;700&family=Krub:wght@300;400;500;600;700&family=Mali:wght@400;600;700&family=Mitr:wght@400;500;600&family=Niramit:wght@300;400;500;600;700&family=Noto+Sans+Thai:wght@300;400;500;600;700&family=Pridi:wght@300;400;500;600&family=Prompt:wght@300;400;500;600;700&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
@@ -163,13 +164,13 @@
 <body class="h-full h-[100dvh] overflow-hidden dark:bg-surface-950 dark:text-surface-100">
   <!-- Login Overlay -->
   <div id="loginOverlay"
-    class="fixed inset-0 w-full h-full z-[200] bg-slate-950 overflow-y-auto flex justify-center p-4 py-8 transition-all duration-500{% if session.get('user') %} hidden{% endif %}">
-    <!-- 3D Futuristic AI Canvas Background -->
-    <canvas id="login3DCanvas" class="absolute inset-0 w-full h-full pointer-events-none z-0 opacity-80"></canvas>
+    class="fixed inset-0 w-full h-full z-[200] bg-slate-950 bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 overflow-y-auto flex justify-center p-4 py-8 transition-all duration-500{% if session.get('user') %} hidden{% endif %}">
+    <!-- Ambient Glow / Canvas Background -->
+    <canvas id="login3DCanvas" class="absolute inset-0 w-full h-full pointer-events-none z-0 opacity-40"></canvas>
 
     <div id="loginCardContainer" class="max-w-md w-full my-auto transition-all duration-300 animate-in zoom-in relative z-10">
       <div
-        class="bg-white dark:bg-surface-900 rounded-3xl shadow-2xl border border-surface-200 dark:border-surface-800 overflow-hidden flex flex-col md:flex-row min-h-0">
+        class="bg-white/95 dark:bg-surface-900/95 backdrop-blur-xl rounded-[2rem] shadow-2xl border border-white/20 dark:border-surface-800 overflow-hidden flex flex-col md:flex-row min-h-0">
         
         <!-- Left Column: Login Form -->
         <div id="loginLeftCol" class="w-full flex flex-col justify-between bg-white dark:bg-surface-900 border-b md:border-b-0 border-surface-200 dark:border-surface-800 transition-all duration-300">
@@ -180,22 +181,21 @@
                 <i data-lucide="building-2" class="w-10 h-10"></i>
               </div>
               <h1 class="text-3xl font-black tracking-tight text-surface-900 dark:text-white mb-2">OrgChat</h1>
-              <p class="text-surface-500 text-sm">เข้าสู่ระบบเพื่อใช้งานสมอง AI ขององค์กร</p>
+              <p class="text-surface-500 text-sm">เข้าสู่ระบบเพื่อเข้าใช้งานระบบภายในองค์กร</p>
             </div>
             <div class="p-8 space-y-4">
               <div class="space-y-1.5">
-                <label class="text-[10px] font-black uppercase tracking-widest text-surface-400 px-1">ชื่อผู้ใช้งาน</label>
+                <label class="text-[11px] font-bold text-surface-600 dark:text-surface-300 px-1">ชื่อผู้ใช้งาน</label>
                 <div class="relative">
                   <i data-lucide="user" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400"></i>
-                  <input id="loginUsername" type="text" placeholder="Username" class="input-field w-full pl-11 py-3" />
+                  <input id="loginUsername" type="text" placeholder="ระบุชื่อผู้ใช้ของคุณ" class="input-field w-full pl-11 py-3 text-sm" />
                 </div>
               </div>
               <div class="space-y-1.5">
-                <label
-                  class="text-[10px] font-black uppercase tracking-widest text-surface-400 px-1">รหัสผ่านพื้นฐาน</label>
+                <label class="text-[11px] font-bold text-surface-600 dark:text-surface-300 px-1">รหัสผ่าน</label>
                 <div class="relative">
-                  <i data-lucide="lock" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400"></i>
-                  <input id="loginPassword" type="password" placeholder="••••••••" class="input-field w-full pl-11 py-3" />
+                  <i data-lucide="key" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400"></i>
+                  <input id="loginPassword" type="password" placeholder="ระบุรหัสผ่านของคุณ" class="input-field w-full pl-11 py-3 text-sm" />
                 </div>
               </div>
               <div id="loginError"
@@ -205,7 +205,7 @@
               </div>
               <button id="loginBtn"
                 class="btn-primary w-full py-3.5 rounded-2xl font-bold text-base shadow-lg shadow-brand-500/20 group">
-                เข้าสู่ระบบองค์กร
+                เข้าสู่ระบบ ไปทำงานกันเลย!
                 <i data-lucide="arrow-right"
                   class="w-4 h-4 inline-block ml-1 group-hover:translate-x-1 transition-transform"></i>
               </button>
@@ -358,8 +358,8 @@
 
           <!-- Bottom Branding -->
           <div class="relative z-10 border-t border-white/10 pt-4 flex items-center justify-between text-[11px] text-white/50">
-            <span>© 2026 OrgChat AI. All rights reserved.</span>
-            <span class="flex items-center gap-1"><i data-lucide="shield-check" class="w-3.5 h-3.5 text-emerald-400"></i> Secure Enterprise Gateway</span>
+            <span>© 2026 OrgChat AI — สร้างขึ้นด้วยใจโดยคนไทย 🇹🇭</span>
+            <span class="flex items-center gap-1"><i data-lucide="shield-check" class="w-3.5 h-3.5 text-emerald-400"></i> ข้อมูลของคุณปลอดภัย 100%</span>
           </div>
         </div>
       </div>
@@ -527,6 +527,172 @@
     </div>
   </div>
 
+  <!-- Department Modal (Create / Edit) -->
+  <div id="departmentModal" class="fixed inset-0 z-[160] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+    <div class="bg-white dark:bg-surface-900 rounded-3xl shadow-2xl w-full max-w-md p-6 space-y-5 border border-surface-150 dark:border-surface-800/80">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shadow-sm">
+            <i data-lucide="layers" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 id="deptModalTitle" class="font-black text-base text-surface-900 dark:text-white">เพิ่มแผนกใหม่</h3>
+            <p class="text-[11px] text-surface-400">กำหนดชื่อ สี และหัวหน้าแผนก</p>
+          </div>
+        </div>
+        <button onclick="closeDeptModal()" class="p-1.5 hover:bg-surface-100 dark:hover:bg-surface-800 rounded-xl transition-colors text-surface-400">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <input type="hidden" id="deptModalId" value="">
+
+      <div class="space-y-4">
+        <div>
+          <label class="text-[10px] font-black uppercase tracking-wider text-surface-400 mb-1.5 block">ชื่อแผนก / ฝ่าย *</label>
+          <input id="deptModalName" type="text" placeholder="เช่น วิศวกรรมซอฟต์แวร์, การตลาด, ฝ่ายบุคคล"
+            class="input-field w-full text-xs font-semibold py-2.5 px-3 rounded-xl border border-surface-200 dark:border-surface-700 bg-surface-50/50 dark:bg-surface-800/50 dark:text-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500">
+        </div>
+
+        <div>
+          <label class="text-[10px] font-black uppercase tracking-wider text-surface-400 mb-1.5 block">คำอธิบายงาน / หน้าที่รับผิดชอบ</label>
+          <input id="deptModalDesc" type="text" placeholder="เช่น ดูแลระบบซอฟต์แวร์และโครงสร้างพื้นฐาน"
+            class="input-field w-full text-xs font-medium py-2.5 px-3 rounded-xl border border-surface-200 dark:border-surface-700 bg-surface-50/50 dark:bg-surface-800/50 dark:text-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500">
+        </div>
+
+        <div>
+          <label class="text-[10px] font-black uppercase tracking-wider text-surface-400 mb-1.5 block">หัวหน้าแผนก (Department Head)</label>
+          <div class="relative">
+            <select id="deptModalHead" class="w-full pl-3 pr-8 py-2.5 bg-surface-50/50 dark:bg-surface-800/50 border border-surface-200 dark:border-surface-700 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all dark:text-white appearance-none">
+              <!-- Dynamically populated -->
+            </select>
+            <i data-lucide="chevron-down" class="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-surface-400 pointer-events-none"></i>
+          </div>
+        </div>
+
+        <div>
+          <label class="text-[10px] font-black uppercase tracking-wider text-surface-400 mb-2 block">สีประจำแผนก (Department Theme Color)</label>
+          <div class="flex items-center gap-2.5 flex-wrap" id="deptColorPickerContainer">
+            <button type="button" onclick="selectDeptColor('#6366f1')" class="dept-color-swatch w-7 h-7 rounded-xl transition-transform hover:scale-110 ring-2 ring-offset-2 ring-indigo-500" data-color="#6366f1" style="background:#6366f1;"></button>
+            <button type="button" onclick="selectDeptColor('#06b6d4')" class="dept-color-swatch w-7 h-7 rounded-xl transition-transform hover:scale-110" data-color="#06b6d4" style="background:#06b6d4;"></button>
+            <button type="button" onclick="selectDeptColor('#10b981')" class="dept-color-swatch w-7 h-7 rounded-xl transition-transform hover:scale-110" data-color="#10b981" style="background:#10b981;"></button>
+            <button type="button" onclick="selectDeptColor('#f59e0b')" class="dept-color-swatch w-7 h-7 rounded-xl transition-transform hover:scale-110" data-color="#f59e0b" style="background:#f59e0b;"></button>
+            <button type="button" onclick="selectDeptColor('#ef4444')" class="dept-color-swatch w-7 h-7 rounded-xl transition-transform hover:scale-110" data-color="#ef4444" style="background:#ef4444;"></button>
+            <button type="button" onclick="selectDeptColor('#ec4899')" class="dept-color-swatch w-7 h-7 rounded-xl transition-transform hover:scale-110" data-color="#ec4899" style="background:#ec4899;"></button>
+            <button type="button" onclick="selectDeptColor('#8b5cf6')" class="dept-color-swatch w-7 h-7 rounded-xl transition-transform hover:scale-110" data-color="#8b5cf6" style="background:#8b5cf6;"></button>
+            <button type="button" onclick="selectDeptColor('#64748b')" class="dept-color-swatch w-7 h-7 rounded-xl transition-transform hover:scale-110" data-color="#64748b" style="background:#64748b;"></button>
+          </div>
+          <input type="hidden" id="deptModalColor" value="#6366f1">
+        </div>
+
+        <div class="flex gap-2.5 pt-2">
+          <button type="button" id="deptModalDeleteBtn" onclick="deleteCurrentDept()" class="hidden py-2.5 px-3 text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/40 rounded-xl transition-all">
+            <i data-lucide="trash-2" class="w-4 h-4"></i>
+          </button>
+          <button type="button" onclick="closeDeptModal()" class="flex-1 py-2.5 text-xs font-bold text-surface-500 bg-surface-100 hover:bg-surface-200 dark:bg-surface-800 dark:hover:bg-surface-700 rounded-xl transition-all">ยกเลิก</button>
+          <button type="button" onclick="saveDeptModal()" class="flex-1 py-2.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all shadow-md shadow-indigo-600/20">บันทึกแผนก</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 🎙️ REAL-TIME VOICE CALL MODAL (PHONE CALL WITH NONG PUNCH) -->
+  <div id="realTimeVoiceModal" class="fixed inset-0 z-[200] bg-black/70 backdrop-blur-md flex items-center justify-center p-4 hidden">
+    <div class="bg-gradient-to-b from-slate-900 via-indigo-950 to-slate-950 text-white rounded-3xl shadow-2xl w-full max-w-sm p-6 space-y-6 border border-indigo-500/30 relative overflow-hidden flex flex-col items-center text-center">
+      <!-- Glow ambient light -->
+      <div class="absolute -top-24 -left-24 w-48 h-48 bg-indigo-600/30 rounded-full blur-3xl pointer-events-none"></div>
+      <div class="absolute -bottom-24 -right-24 w-48 h-48 bg-violet-600/30 rounded-full blur-3xl pointer-events-none"></div>
+
+      <!-- Header Status -->
+      <div class="w-full flex items-center justify-between text-xs font-semibold text-indigo-300">
+        <span class="flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          HD Audio Voice Stream
+        </span>
+        <span id="callDurationTimer" class="font-mono text-indigo-200">00:00</span>
+      </div>
+
+      <!-- Avatar & Audio Pulse Orb -->
+      <div class="relative my-4 flex items-center justify-center">
+        <div id="voicePulseRing" class="absolute w-36 h-36 rounded-full border-2 border-indigo-400/40 animate-ping pointer-events-none"></div>
+        <div id="voiceWaveOrb" class="w-28 h-28 rounded-full bg-gradient-to-tr from-indigo-600 to-violet-400 p-1 shadow-xl shadow-indigo-500/40 flex items-center justify-center transition-transform duration-300">
+          <div class="w-full h-full rounded-full bg-slate-900/90 flex flex-col items-center justify-center p-2">
+            <span class="text-3xl">🤖</span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h3 class="text-xl font-black tracking-tight text-white">น้องพั้น AI</h3>
+        <p id="voiceCallStatusText" class="text-xs text-indigo-300 font-medium mt-1">กำลังเชื่อมต่อสัญญาณเสียง...</p>
+      </div>
+
+      <!-- Live Voice Subtitles -->
+      <div class="w-full bg-white/5 border border-white/10 rounded-2xl p-3 min-h-[70px] flex items-center justify-center text-xs text-indigo-100 italic">
+        <span id="voiceTranscriptText">"สวัสดีค่ะน้องพั้นพร้อมคุยแล้วค่ะ มีเรื่องอะไรให้ช่วยเหลือบอกได้เลยนะคะ"</span>
+      </div>
+
+      <!-- Call Action Controls -->
+      <div class="flex items-center gap-6 pt-2">
+        <button id="toggleMuteCallBtn" onclick="toggleMuteCall()" class="w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 flex items-center justify-center text-white transition-all" title="เปิด/ปิดไมค์">
+          <i data-lucide="mic" id="muteIcon" class="w-5 h-5"></i>
+        </button>
+        <button onclick="endRealTimeCall()" class="w-16 h-16 rounded-full bg-rose-600 hover:bg-rose-700 shadow-lg shadow-rose-600/40 flex items-center justify-center text-white transition-all transform hover:scale-105 active:scale-95" title="วางสาย">
+          <i data-lucide="phone-off" class="w-7 h-7"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 🌐 AUTONOMOUS BROWSER AGENT MODAL -->
+  <div id="browserAgentModal" class="fixed inset-0 z-[190] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+    <div class="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-2xl p-6 space-y-5 border border-surface-200 dark:border-surface-800 animate-in fade-in zoom-in-95 duration-200">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+            <i data-lucide="globe" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="font-black text-base text-surface-900 dark:text-white">Autonomous Browser Agent</h3>
+            <p class="text-[11px] text-surface-400 font-medium">สั่งให้น้องพั้นเปิดเบราว์เซอร์ไปท่องเว็บจริง ค้นหาข้อมูล หรือสแกนหน้าเว็บเป้าหมาย</p>
+          </div>
+        </div>
+        <button onclick="closeBrowserAgentModal()" class="p-1.5 hover:bg-surface-100 dark:hover:bg-surface-800 rounded-lg transition-colors text-surface-400">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3">
+        <label class="text-[11px] font-bold text-surface-500 uppercase tracking-wider block">งานหรือเว็บไซต์ที่ต้องการให้ AI เข้าไปสำรวจ:</label>
+        <div class="relative">
+          <textarea id="browserTaskInput" rows="3" placeholder="เช่น: ไปเช็คราคาน้ำมันวันนี้ หรือ สรุปเนื้อหาและแคปภาพจาก https://example.com" class="w-full text-xs p-3 rounded-xl border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800 dark:text-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none resize-none"></textarea>
+        </div>
+        <div class="flex items-center gap-2 text-[11px] text-surface-400 flex-wrap">
+          <span>ตัวอย่างคำสั่งด่วน:</span>
+          <button type="button" onclick="setBrowserPrompt('ช่วยค้นหาข่าวเทคโนโลยี AI ล่าสุดประจำวันนี้จากเว็บข่าว')" class="px-2 py-1 bg-surface-100 dark:bg-surface-800 rounded-lg hover:text-emerald-600">ข่าว AI วันนี้</button>
+          <button type="button" onclick="setBrowserPrompt('ไปเปิดอ่านและสรุปข้อมูลจาก https://news.google.com')" class="px-2 py-1 bg-surface-100 dark:bg-surface-800 rounded-lg hover:text-emerald-600">Google News</button>
+        </div>
+      </div>
+
+      <!-- Result Container -->
+      <div id="browserTaskProgress" class="hidden p-4 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/50 dark:border-emerald-800/40 flex items-center gap-3">
+        <div class="animate-spin w-5 h-5 border-2 border-emerald-600 border-t-transparent rounded-full"></div>
+        <span class="text-xs font-semibold text-emerald-700 dark:text-emerald-300">น้องพั้นกำลังเปิด Headless Chrome ท่องเว็บจริงและสกัดข้อมูล...</span>
+      </div>
+
+      <div id="browserTaskResult" class="hidden space-y-3 max-h-80 overflow-y-auto custom-scrollbar p-3 bg-surface-50 dark:bg-surface-800/50 rounded-xl">
+        <!-- Injected result -->
+      </div>
+
+      <div class="flex justify-end gap-2.5 pt-2 border-t border-surface-100 dark:border-surface-800">
+        <button type="button" onclick="closeBrowserAgentModal()" class="px-4 py-2 text-xs font-bold text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-800 rounded-xl transition-all">ปิด</button>
+        <button type="button" id="startBrowserTaskBtn" onclick="runBrowserTask()" class="px-5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-md shadow-emerald-600/20 flex items-center gap-1.5 transition-all">
+          <i data-lucide="play" class="w-4 h-4"></i> เริ่มท่องเว็บ
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Edit Manager Modal -->
   <div id="editManagerModal" class="fixed inset-0 z-[160] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 hidden">
     <div class="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-5 border border-surface-150 dark:border-surface-800/80">
@@ -589,18 +755,22 @@
       <!-- Form Wrapper (Hidden on Success) -->
       <div id="inviteFormWrapper" class="space-y-5">
         <!-- Tabs Switcher -->
-        <div class="flex p-1 bg-surface-100 dark:bg-surface-800/80 rounded-xl gap-1">
+        <div class="flex p-1 bg-surface-100 dark:bg-surface-800 rounded-xl gap-1 border border-surface-200/50 dark:border-surface-700/50">
           <button type="button" onclick="setInviteTab('existing')" id="inviteTabBtn_existing"
-            class="flex-1 py-2 px-3 text-xs font-bold rounded-lg transition-all text-center flex items-center justify-center gap-1.5 bg-white dark:bg-surface-700 text-brand-600 dark:text-white shadow-sm">
+            class="flex-1 py-2 px-2 text-xs font-bold rounded-lg transition-all text-center flex items-center justify-center gap-1.5 bg-brand-600 text-white shadow-sm">
             <i data-lucide="user" class="w-3.5 h-3.5"></i> ผู้ใช้เดิม
           </button>
           <button type="button" onclick="setInviteTab('precreate')" id="inviteTabBtn_precreate"
-            class="flex-1 py-2 px-3 text-xs font-bold rounded-lg transition-all text-center flex items-center justify-center gap-1.5 text-surface-500 dark:text-surface-400 hover:text-surface-800 dark:hover:text-surface-200">
-            <i data-lucide="key-round" class="w-3.5 h-3.5"></i> สร้างบัญชีรอ
+            class="flex-1 py-2 px-2 text-xs font-bold rounded-lg transition-all text-center flex items-center justify-center gap-1.5 text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white hover:bg-surface-200/50 dark:hover:bg-surface-700/50">
+            <i data-lucide="key-round" class="w-3.5 h-3.5"></i> สร้างบัญชี
           </button>
           <button type="button" onclick="setInviteTab('gmail')" id="inviteTabBtn_gmail"
-            class="flex-1 py-2 px-3 text-xs font-bold rounded-lg transition-all text-center flex items-center justify-center gap-1.5 text-surface-500 dark:text-surface-400 hover:text-surface-800 dark:hover:text-surface-200">
-            <i data-lucide="mail" class="w-3.5 h-3.5"></i> เชิญด้วย Gmail
+            class="flex-1 py-2 px-2 text-xs font-bold rounded-lg transition-all text-center flex items-center justify-center gap-1.5 text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white hover:bg-surface-200/50 dark:hover:bg-surface-700/50">
+            <i data-lucide="mail" class="w-3.5 h-3.5"></i> Gmail
+          </button>
+          <button type="button" onclick="setInviteTab('link_qr')" id="inviteTabBtn_link_qr"
+            class="flex-1 py-2 px-2 text-xs font-bold rounded-lg transition-all text-center flex items-center justify-center gap-1.5 text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white hover:bg-surface-200/50 dark:hover:bg-surface-700/50">
+            <i data-lucide="qr-code" class="w-3.5 h-3.5"></i> ลิงก์ & QR
           </button>
         </div>
 
@@ -647,6 +817,40 @@
               <p class="text-[10px] text-surface-400 mt-1.5 leading-relaxed bg-brand-50/50 dark:bg-brand-950/20 p-2.5 rounded-lg border border-brand-100/30">
                 💡 เมื่อเชิญสำเร็จ ระบบจะอนุญาต Gmail นี้ผ่านทาง Whitelist ทันที ผู้ใช้สามารถคลิก <strong>Sign in with Google</strong> เพื่อแอดเข้าทีมโดยไม่ต้องสมัครสมาชิกเพิ่ม
               </p>
+            </div>
+          </div>
+
+          <!-- Tab Content: Link & QR Code -->
+          <div id="inviteTabContent_link_qr" class="space-y-3 hidden">
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="text-[10px] font-black uppercase tracking-widest text-surface-400 mb-1 block">อายุการใช้งานลิงก์</label>
+                <select id="inviteTokenExpiry" onchange="generateOrgInviteToken(true)" class="input-field w-full text-xs py-2">
+                  <option value="1">1 วัน</option>
+                  <option value="7" selected>7 วัน (แนะนำ)</option>
+                  <option value="30">30 วัน</option>
+                </select>
+              </div>
+              <div>
+                <label class="text-[10px] font-black uppercase tracking-widest text-surface-400 mb-1 block">แผนกเริ่มต้น (ถ้ามี)</label>
+                <input id="inviteTokenDept" onchange="generateOrgInviteToken(true)" type="text" placeholder="เช่น IT, บัญชี" class="input-field w-full text-xs py-2" />
+              </div>
+            </div>
+            <button type="button" onclick="generateOrgInviteToken(true)" class="w-full py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-black transition-all shadow-md flex items-center justify-center gap-2">
+              <i data-lucide="sparkles" class="w-4 h-4"></i> สร้างลิงก์เชิญ & QR Code ใหม่
+            </button>
+            <div id="inviteQrResult" class="p-4 bg-surface-50 dark:bg-surface-800/60 rounded-2xl border border-surface-200 dark:border-surface-700 text-center space-y-3">
+              <div class="inline-block p-3 bg-white rounded-2xl shadow-inner border border-surface-100 mx-auto">
+                <div id="inviteQrCanvas" class="w-36 h-36 mx-auto flex items-center justify-center"></div>
+                <img id="inviteQrImg" src="" alt="QR Code" class="w-36 h-36 mx-auto object-contain hidden" />
+              </div>
+              <p class="text-[11px] text-surface-500 dark:text-surface-400 font-bold">สแกนด้วยกล้องมือถือ หรือคัดลอกลิงก์ด้านล่างส่งให้ทีม</p>
+              <div class="flex gap-2">
+                <input id="inviteQrLinkInput" type="text" readonly class="input-field flex-1 text-xs py-2 px-3 bg-white dark:bg-surface-900 cursor-default select-all" />
+                <button type="button" onclick="copyInviteQrLink()" id="btnCopyQrLink" class="px-3 py-2 text-xs font-bold bg-brand-600 hover:bg-brand-700 text-white rounded-xl transition-all shrink-0 flex items-center gap-1">
+                  <i data-lucide="copy" class="w-3.5 h-3.5"></i> คัดลอก
+                </button>
+              </div>
             </div>
           </div>
 
@@ -699,7 +903,7 @@
 
   <div class="flex h-full relative overflow-hidden">
     <!-- Mobile Sidebar Overlay -->
-    <div id="sidebarOverlay" class="sidebar-overlay"></div>
+    <div id="sidebarOverlay" class="sidebar-overlay hidden"></div>
     <aside id="navSidebar"
       class="bg-white dark:bg-surface-900 border-r border-surface-200 dark:border-surface-800 flex flex-col h-full z-50">
       <div class="p-6 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between logo-container">
@@ -764,6 +968,9 @@
 
         <!-- งาน & ทีม -->
         <div class="nav-section-label pt-4 pb-1 text-[10px] font-bold text-surface-400 uppercase tracking-widest px-3">งาน & ทีม</div>
+        <button class="nav-item w-full" data-view="attendance" id="nav-attendance" onclick="showView('attendance')">
+          <i data-lucide="clock" class="w-4 h-4 text-emerald-500"></i> <span>ลงเวลาเข้างาน</span>
+        </button>
         <button class="nav-item w-full" data-view="calendar" id="nav-calendar">
           <i data-lucide="calendar" class="w-4 h-4"></i> <span>ปฏิทิน</span>
         </button>
@@ -837,6 +1044,10 @@
           data-view="line-groups" id="nav-line-groups" onclick="showView('line-groups'); loadLineGroups(); loadGoogleFoldersForGroupRegister();">
           <i data-lucide="message-square" class="w-4 h-4"></i> <span>จัดการกลุ่ม LINE</span>
         </button>
+        <button class="nav-item w-full {{ '' if (is_org_admin or is_admin or is_superadmin) else 'hidden' }}"
+          id="nav-security-center" onclick="openSecurityDashboard()">
+          <i data-lucide="shield-check" class="w-4 h-4 text-emerald-500"></i> <span>ศูนย์ความปลอดภัย (Security)</span>
+        </button>
         <button class="nav-item w-full {{ '' if is_superadmin else 'hidden' }}"
           data-view="super-admin" id="nav-super-admin" onclick="showView('super-admin')">
           <i data-lucide="crown" class="w-4 h-4"></i> <span>Super Admin</span>
@@ -848,7 +1059,6 @@
           data-view="reconciliation" id="nav-reconciliation">
           <i data-lucide="scale" class="w-4 h-4"></i> <span>ระบบกระทบยอด</span>
         </button>
-
       </nav>
       <div class="p-4 border-t border-surface-100 dark:border-surface-800">
         <button id="themeToggle" class="nav-item w-full text-sm">
@@ -977,6 +1187,20 @@
                   <button id="chatAttachBtn"
                     class="mb-1 p-2 mr-1 text-surface-400 hover:text-brand-600 rounded-lg transition-all"
                     title="แนบรูปภาพภาพ"><i data-lucide="camera" class="w-4 h-4"></i></button>
+                  <button id="browserAgentBtn"
+                    class="mb-1 p-2 mr-1 text-surface-400 hover:text-emerald-600 rounded-lg transition-all"
+                    title="🌐 Autonomous Browser Agent (สั่งท่องเว็บสด & ค้นหา)">
+                    <i data-lucide="globe" class="w-4 h-4 text-emerald-500"></i>
+                  </button>
+                  <button id="realTimeCallBtn"
+                    class="mb-1 p-2 mr-1 text-surface-400 hover:text-indigo-600 rounded-lg transition-all relative group"
+                    title="🎙️ โทรคุยเสียงสดกับน้องพั้น (Real-Time Voice Call)">
+                    <span class="absolute -top-1 -right-1 flex h-2 w-2">
+                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                      <span class="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+                    </span>
+                    <i data-lucide="phone-call" class="w-4 h-4 text-indigo-500 animate-pulse"></i>
+                  </button>
                   <button id="autoSpeakBtn"
                     class="mb-1 p-2 mr-1 text-surface-400 hover:text-brand-600 rounded-lg transition-all"
                     title="อ่านข้อความอัตโนมัติ (Auto-Speak)">
@@ -1001,8 +1225,8 @@
             <!-- Dashboard Header -->
             <header class="w-full flex items-center justify-between mb-1 animate-in fade-in slide-in-from-top-4 duration-700">
               <div>
-                <h2 class="text-2xl sm:text-3xl font-black text-surface-900 dark:text-white tracking-tight">Smart Dashboard</h2>
-                <p class="text-xs text-surface-400 font-bold uppercase tracking-widest mt-1">Real-time Intelligence & Operations</p>
+                <h2 class="text-2xl sm:text-3xl font-black text-surface-900 dark:text-white tracking-tight">ภาพรวมวันนี้</h2>
+                <p class="text-xs text-surface-400 font-bold tracking-widest mt-1">ทุกอย่างที่คุณต้องรู้ พร้อมอยู่ตรงนี้แล้ว ✨</p>
               </div>
               <div class="flex items-center gap-3">
                 <button onclick="loadDashboard()" class="p-2.5 bg-white dark:bg-surface-900 text-surface-600 dark:text-surface-400 rounded-2xl border border-surface-100 dark:border-surface-800 hover:bg-brand-50 dark:hover:bg-brand-900/20 hover:text-brand-600 transition-all shadow-sm group">
@@ -1010,7 +1234,7 @@
                 </button>
                 <div id="dashSystemStatus" class="hidden md:flex items-center gap-2 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 rounded-full border border-emerald-100 dark:border-emerald-800">
                   <div class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-                  <span id="dashSystemStatusText" class="text-[10px] font-black uppercase tracking-widest">System Live</span>
+                  <span id="dashSystemStatusText" class="text-[10px] font-black tracking-widest">ออนไลน์อยู่</span>
                 </div>
               </div>
             </header>
@@ -1043,22 +1267,22 @@
                     <div class="p-2 bg-white/20 backdrop-blur-md rounded-2xl">
                       <i data-lucide="zap" class="w-4 h-4 text-yellow-300"></i>
                     </div>
-                    <span class="text-[10px] font-black uppercase tracking-widest text-brand-100">สรุปข่าวสารโดยน้องพั้นซ์</span>
+                    <span class="text-[10px] font-black tracking-widest text-brand-100">สรุปข่าวสารประจำวัน 🌅</span>
                   </div>
                   <div class="max-w-3xl space-y-3">
                     <h1 class="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black tracking-tight leading-tight" id="dashGreeting">
-                      Good Morning, User
+                      สวัสดีครับ ยินดีต้อนรับ ✨
                     </h1>
-                    <p class="text-sm sm:text-base md:text-lg text-brand-50/90 font-medium leading-relaxed italic" id="dashAISummary">
-                      คุณมีกำหนดการสำคัญ 3 อย่างในวันนี้ และมีความเคลื่อนไหวใหม่ในแผนกของคุณ...
+                    <p class="text-sm sm:text-base md:text-lg text-brand-50/90 font-medium leading-relaxed" id="dashAISummary">
+                      กำลังรวบรวมข้อมูลและเตรียมสรุปสิ่งที่น่าสนใจสำหรับวันนี้ให้คุณ...
                     </p>
                   </div>
                   <div class="flex flex-wrap gap-3 pt-2">
-                    <button onclick="showView('chat')" class="px-6 py-2.5 bg-white text-brand-700 rounded-2xl text-xs sm:text-sm font-black hover:bg-brand-50 transition-all shadow-xl flex items-center gap-2">
-                      <i data-lucide="message-square" class="w-4 h-4"></i> ถาม AI
+                    <button onclick="showView('chat')" class="px-6 py-2.5 bg-white text-brand-700 rounded-2xl text-xs sm:text-sm font-black hover:bg-brand-50 transition-all shadow-xl flex items-center gap-2 active:scale-95">
+                      <i data-lucide="message-square" class="w-4 h-4"></i> พูดคุยกับ AI
                     </button>
-                    <button onclick="loadDashboard()" class="px-6 py-2.5 bg-white/10 backdrop-blur-md border border-white/20 text-white rounded-2xl text-xs sm:text-sm font-black hover:bg-white/20 transition-all flex items-center gap-2">
-                      <i data-lucide="refresh-cw" class="w-4 h-4"></i> รีเฟรช
+                    <button onclick="loadDashboard()" class="px-6 py-2.5 bg-white/10 backdrop-blur-md border border-white/20 text-white rounded-2xl text-xs sm:text-sm font-black hover:bg-white/20 transition-all flex items-center gap-2 active:scale-95">
+                      <i data-lucide="refresh-cw" class="w-4 h-4"></i> อัปเดตข้อมูล
                     </button>
                   </div>
                 </div>
@@ -1088,6 +1312,34 @@
               </button>
             </div>
 
+            <!-- ⏰ Quick Attendance & GPS Clock-in Widget (Home Dashboard) -->
+            <div id="homeAttendanceWidget" class="w-full glass p-5 sm:p-6 rounded-[2.5rem] border border-emerald-500/20 bg-gradient-to-r from-emerald-500/10 via-teal-500/5 to-surface-50 dark:to-surface-900 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div class="flex items-center gap-4 w-full sm:w-auto">
+                <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center shadow-lg shadow-emerald-500/20 shrink-0">
+                  <i data-lucide="clock" class="w-7 h-7"></i>
+                </div>
+                <div class="space-y-1 min-w-0">
+                  <div class="flex items-center gap-2">
+                    <span class="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">ระบบลงเวลาทำงาน GPS</span>
+                    <span id="homeAttStatusBadge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-800">ยังไม่ Check-in</span>
+                  </div>
+                  <h3 id="homeAttStatusTitle" class="text-base sm:text-lg font-black text-surface-900 dark:text-white truncate">
+                    ยังไม่ได้ลงเวลาเข้างานวันนี้
+                  </h3>
+                  <p id="homeAttStatusSub" class="text-xs text-surface-500 dark:text-surface-400 flex items-center gap-1.5 truncate">
+                    <i data-lucide="map-pin" class="w-3.5 h-3.5 text-emerald-500 flex-shrink-0"></i> บันทึกเวลาเข้า-ออกงานด้วยพิกัด GPS อัตโนมัติ
+                  </p>
+                </div>
+              </div>
+              <div class="flex items-center gap-2 w-full sm:w-auto shrink-0 justify-end">
+                <button id="homeAttActionBtn" onclick="showView('attendance')"
+                  class="flex-1 sm:flex-initial px-5 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white text-xs font-black rounded-2xl shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2">
+                  <i data-lucide="log-in" class="w-4 h-4"></i>
+                  <span id="homeAttActionBtnText">📍 เช็คอินเข้างาน (GPS)</span>
+                </button>
+              </div>
+            </div>
+
             <!-- 🌦️ Weather Widget -->
             <div id="weatherCard" class="glass p-5 sm:p-6 lg:p-8 rounded-[2.5rem] border border-surface-100 dark:border-surface-100/10 bg-white/70 dark:bg-surface-900/70 shadow-xl shadow-brand-500/5 hover:shadow-brand-500/10 hover:-translate-y-1 transition-all cursor-pointer group flex flex-col lg:flex-row items-center justify-between gap-6" onclick="showWeatherDetail()">
               <div class="flex items-center gap-4 sm:gap-6 w-full lg:w-auto">
@@ -1115,11 +1367,11 @@
               
               <div class="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end border-t md:border-t-0 border-surface-100 dark:border-surface-800 pt-4 md:pt-0">
                 <div class="flex flex-col items-end px-4 border-r border-surface-100 dark:border-surface-800">
-                  <span class="text-[9px] font-black text-surface-400 uppercase tracking-widest mb-0.5">Feels Like</span>
+                  <span class="text-[9px] font-black text-surface-400 tracking-widest mb-0.5">รู้สึกเหมือน</span>
                   <span id="dashFeelsLike" class="text-sm font-black text-surface-700 dark:text-surface-200">--°C</span>
                 </div>
                 <div class="flex flex-col items-center px-4 border-r border-surface-100 dark:border-surface-800">
-                  <span class="text-[9px] font-black text-surface-400 uppercase tracking-widest mb-0.5">UV Index</span>
+                  <span class="text-[9px] font-black text-surface-400 tracking-widest mb-0.5">แสง UV</span>
                   <span id="dashUV" class="text-sm font-black text-emerald-500">--</span>
                 </div>
                 <div class="flex flex-col items-center px-4 border-r border-surface-100 dark:border-surface-800">
@@ -1127,7 +1379,7 @@
                   <span id="dashPM25" class="text-sm font-black text-emerald-500">--</span>
                 </div>
                 <div class="flex flex-col items-end px-4">
-                  <span class="text-[9px] font-black text-surface-400 uppercase tracking-widest mb-0.5">Humidity</span>
+                  <span class="text-[9px] font-black text-surface-400 tracking-widest mb-0.5">ความชื้น</span>
                   <span id="dashHumidity" class="text-sm font-black text-surface-700 dark:text-surface-200">--%</span>
                 </div>
                 <button onclick="event.stopPropagation(); fetchWeather();" class="w-10 h-10 rounded-2xl bg-surface-50 dark:bg-surface-800 text-surface-400 flex items-center justify-center hover:bg-brand-50 dark:hover:bg-brand-900/30 hover:text-brand-600 transition-all ml-2" title="Refresh Weather">
@@ -1149,28 +1401,28 @@
                       <i data-lucide="dice-5" class="w-6 h-6"></i>
                     </div>
                     <div>
-                      <h3 class="text-lg font-black text-surface-900 dark:text-white">Lunch Randomizer</h3>
-                      <p class="text-[10px] text-surface-400 font-bold uppercase tracking-widest">เที่ยงนี้กินอะไรดี?</p>
+                      <h3 class="text-lg font-black text-surface-900 dark:text-white">🍜 เที่ยงนี้กินอะไรดี?</h3>
+                      <p class="text-[10px] text-surface-400 font-bold tracking-wide">สุ่มร้านอร่อยใกล้คุณ ไม่ต้องคิดให้ปวดหัว</p>
                     </div>
                   </div>
-                  <button onclick="openLunchModal()" class="p-2 text-surface-400 hover:text-rose-600 transition-colors">
+                  <button onclick="openLunchModal()" class="p-2 text-surface-400 hover:text-rose-600 transition-colors" title="ตั้งค่าร้านโปรด">
                     <i data-lucide="settings" class="w-4 h-4"></i>
                   </button>
                 </div>
                 
                 <div id="dashLunchResultArea" class="bg-surface-50 dark:bg-surface-800/50 rounded-3xl p-6 border border-dashed border-surface-200 dark:border-surface-700 text-center relative min-h-[120px] flex flex-col justify-center transition-all">
                   <div id="dashLunchQuickPreview" class="flex items-center justify-center gap-2 mb-2">
-                    <span class="w-2 h-2 rounded-full bg-surface-300"></span>
-                    <span class="text-[10px] font-black text-surface-400 uppercase">Ready to Roll</span>
+                    <span class="w-2 h-2 rounded-full bg-rose-400"></span>
+                    <span class="text-[10px] font-black text-surface-500">พร้อมสุ่มของอร่อยแล้ว!</span>
                   </div>
                   <div id="dashLunchPlaceName" class="text-2xl font-black text-surface-900 dark:text-white">...</div>
-                  <div id="dashLunchPlaceType" class="text-xs text-surface-400 font-bold mt-1">กดปุ่มเพื่อเริ่มสุ่มร้านเด็ด</div>
+                  <div id="dashLunchPlaceType" class="text-xs text-surface-400 font-bold mt-1">กดปุ่มด้านล่างเพื่อเริ่มสุ่มร้านเด็ด</div>
                   <div id="dashLunchPlaceLocation" class="text-[10px] text-brand-600 mt-2 font-black flex items-center justify-center gap-1"></div>
                   
                   <!-- Rolling Overlay -->
                   <div id="dashLunchRollingOverlay" class="absolute inset-0 bg-white/80 dark:bg-surface-900/80 backdrop-blur-sm hidden flex flex-col items-center justify-center animate-in fade-in">
                     <div class="w-12 h-12 border-4 border-rose-500/20 border-t-rose-500 rounded-full animate-spin"></div>
-                    <span class="text-[10px] font-black text-rose-500 uppercase tracking-widest mt-3">Rolling...</span>
+                    <span class="text-[11px] font-black text-rose-500 tracking-wide mt-3">กำลังหมุนหาร้านเด็ดให้อยู่น้า...</span>
                   </div>
                 </div>
                 
@@ -1186,19 +1438,19 @@
                     <i data-lucide="lightbulb" class="w-6 h-6"></i>
                   </div>
                   <div>
-                    <h3 class="text-lg font-black text-surface-900 dark:text-white">Daily Productivity</h3>
-                    <p class="text-[10px] text-surface-400 font-bold uppercase tracking-widest">เคล็ดลับความโปรวันนี้</p>
+                    <h3 class="text-lg font-black text-surface-900 dark:text-white">💡 เคล็ดลับการทำงานวันนี้</h3>
+                    <p class="text-[10px] text-surface-400 font-bold tracking-wide">เพิ่มพลังและประสิทธิภาพในการทำงาน</p>
                   </div>
                 </div>
                 <div class="space-y-4">
                   <div class="p-4 bg-amber-50/50 dark:bg-amber-900/10 rounded-2xl border border-amber-100/50 dark:border-amber-800/30">
                     <p class="text-sm font-bold text-surface-700 dark:text-surface-200 leading-relaxed">
-                      "ลองใช้เทคนิค Pomodoro: ทำงาน 25 นาที พัก 5 นาที เพื่อรักษาโฟกัสให้คมชัดตลอดทั้งวัน!"
+                      "ลองใช้เทคนิค Pomodoro: ทำงานโฟกัส 25 นาที พักเบรก 5 นาที เพื่อรักษาความสดชื่นและความคิดสร้างสรรค์ตลอดวัน!"
                     </p>
                   </div>
-                  <div class="flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-surface-400">
-                    <span>Focus Score: 85%</span>
-                    <span class="text-emerald-500">Keep it up!</span>
+                  <div class="flex items-center justify-between text-[10px] font-black tracking-wide text-surface-400">
+                    <span>ระดับความพร้อมของทีม: 85%</span>
+                    <span class="text-emerald-500 font-bold">ยอดเยี่ยม ลุยกันต่อ! ✨</span>
                   </div>
                   <div class="w-full bg-surface-100 dark:bg-surface-800 h-1.5 rounded-full overflow-hidden">
                     <div class="bg-amber-500 h-full w-[85%] rounded-full"></div>
@@ -1253,7 +1505,7 @@
                   <div class="p-2 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 rounded-xl group-hover:scale-110 transition-transform">
                     <i data-lucide="cloud-upload" class="w-5 h-5"></i>
                   </div>
-                  <span class="text-[10px] font-black uppercase text-emerald-500 tracking-widest">Nong Pan Logged</span>
+                  <span class="text-[10px] font-black text-emerald-500 tracking-widest">ไฟล์ที่จัดเก็บแล้ว</span>
                 </div>
                 <div class="text-3xl font-black text-surface-900 dark:text-white" id="dashStatDriveFiles">0</div>
                 <div class="text-[11px] font-bold tracking-wide text-surface-400 mt-1">ไฟล์ที่พั้นช่วยพี่จัดเก็บ</div>
@@ -1265,7 +1517,7 @@
                   <div class="p-2 bg-rose-100 dark:bg-rose-900/30 text-rose-600 rounded-xl group-hover:scale-110 transition-transform">
                     <i data-lucide="banknote" class="w-5 h-5"></i>
                   </div>
-                  <span class="text-[10px] font-black uppercase text-rose-500 tracking-widest">Financial Total</span>
+                  <span class="text-[10px] font-black text-rose-500 tracking-widest">ยอดรวมการเงิน</span>
                 </div>
                 <div class="text-2xl font-black text-surface-900 dark:text-white truncate" id="dashStatTotalAmount">฿0.00</div>
                 <div class="text-[11px] font-bold tracking-wide text-surface-400 mt-1">ยอดรวมจากเอกสารการเงิน</div>
@@ -1277,7 +1529,7 @@
                   <div class="p-2 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 rounded-xl">
                     <i data-lucide="pie-chart" class="w-5 h-5"></i>
                   </div>
-                  <span class="text-[10px] font-black uppercase text-indigo-500 tracking-widest">Categories</span>
+                  <span class="text-[10px] font-black text-indigo-500 tracking-widest">หมวดหมู่เอกสาร</span>
                 </div>
                 <div id="dashDriveCategoryStats" class="flex flex-wrap gap-2">
                    <span class="text-[10px] text-surface-400 italic">ไม่มีข้อมูลหมวดหมู่</span>
@@ -1366,110 +1618,6 @@
           </div>
         </section>
 
-        <!-- AI Summary View -->
-        <section id="view-summary"
-          class="view hidden flex-1 flex flex-col items-center overflow-hidden animate-in fade-in duration-500 w-full">
-          <header
-            class="h-auto border-b border-surface-100 dark:border-surface-800 flex items-center justify-between px-6 py-3 bg-white dark:bg-surface-900 sticky top-0 z-10 w-full gap-4 flex-wrap">
-            <div class="flex items-center gap-3">
-              <div class="flex items-center gap-1.5 p-1 bg-surface-100 dark:bg-surface-800 rounded-xl">
-                <button onclick="showView('kb')" class="kb-main-tab px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest text-surface-400 hover:text-brand-600 transition-all">ไฟล์ KB</button>
-                <button onclick="showView('search')" class="kb-main-tab px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest text-surface-400 hover:text-brand-600 transition-all">ค้นหา AI</button>
-                <button class="kb-main-tab px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest bg-white dark:bg-surface-700 shadow-sm text-brand-600 transition-all">สรุป AI</button>
-              </div>
-            </div>
-
-            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1 md:justify-end max-w-2xl">
-              <select id="summaryCategorySelect"
-                class="bg-surface-50 dark:bg-surface-800 border-2 border-surface-100 dark:border-surface-700 rounded-xl px-3 py-1.5 text-[10px] font-bold outline-none focus:border-brand-600 transition-all">
-                <option value="all">📚 ทุกหมวดหมู่</option>
-              </select>
-
-              <div class="relative flex-1">
-                <i data-lucide="target" class="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-surface-400"></i>
-                <input type="text" id="summaryFocusInput" placeholder="เน้นหัวข้อพิเศษ (เช่น สวัสดิการ, วันลา)..."
-                  class="w-full pl-8 pr-4 py-1.5 bg-surface-50 dark:bg-surface-800 border-2 border-surface-100 dark:border-surface-700 rounded-xl text-[10px] font-bold outline-none focus:border-brand-600 transition-all">
-              </div>
-
-              <button id="generateGlobalSummaryBtn"
-                class="bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg flex items-center justify-center gap-2 whitespace-nowrap">
-                <i data-lucide="sparkles" class="w-3.5 h-3.5"></i> สรุปข้อมูล
-              </button>
-            </div>
-          </header>
-
-          <div
-            class="flex-1 overflow-y-auto custom-scrollbar p-6 bg-surface-50/30 dark:bg-surface-950 w-full max-w-7xl space-y-8">
-            <!-- Empty State -->
-            <div id="summaryEmpty" class="flex flex-col items-center justify-center py-24 text-center space-y-6">
-              <div
-                class="w-24 h-24 rounded-3xl bg-surface-100 dark:bg-surface-900 border border-surface-200 dark:border-surface-800 flex items-center justify-center text-surface-300">
-                <i data-lucide="scroll-text" class="w-12 h-12"></i>
-              </div>
-              <div>
-                <h3 class="text-xl font-black mb-2 leading-tight">ยังไม่มีการสร้างสรุป</h3>
-                <p class="text-surface-400 text-xs font-medium max-w-sm">คลิกปุ่ม "สรุปข้อมูลทั้งหมด" เพื่อให้ AI
-                  ประมวลผลและสร้างบทสรุปของเอกสารทั้งหมดในคลังความรู้ให้คุณ</p>
-              </div>
-            </div>
-
-            <!-- Loading State -->
-            <div id="summaryLoading"
-              class="hidden flex flex-col items-center justify-center py-24 text-center space-y-6">
-              <div class="relative">
-                <div
-                  class="w-20 h-20 rounded-full border-4 border-brand-100 dark:border-brand-900/30 border-t-brand-600 animate-spin">
-                </div>
-                <div class="absolute inset-0 flex items-center justify-center">
-                  <i data-lucide="sparkles" class="w-6 h-6 text-brand-600 animate-pulse"></i>
-                </div>
-              </div>
-              <div class="space-y-2">
-                <h3 class="text-lg font-black leading-tight">AI กำลังสรุปข้อมูล...</h3>
-                <p class="text-surface-400 text-[10px] uppercase font-bold tracking-widest">ใช้เวลาประมาณ 15-30 วินาที
-                  ขึ้นอยู่กับจำนวนไฟล์</p>
-              </div>
-            </div>
-
-            <!-- Result Content -->
-            <div id="summaryContentArea"
-              class="hidden space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-              <div
-                class="glass p-8 rounded-[40px] border border-surface-100 dark:border-surface-800 shadow-xl relative overflow-hidden bg-white dark:bg-surface-900">
-                <div class="absolute top-4 right-4 z-20 flex gap-2">
-                  <button id="copySummaryBtn"
-                    class="px-3 py-1.5 bg-surface-100 dark:bg-surface-800 hover:bg-surface-200 dark:hover:bg-surface-700 rounded-xl text-[10px] font-bold transition-all flex items-center gap-2">
-                    <i data-lucide="copy" class="w-3 h-3"></i> คัดลอก
-                  </button>
-                </div>
-                <div class="absolute top-0 right-0 p-12 opacity-[0.03] pointer-events-none">
-                  <i data-lucide="brain-circuit" class="w-64 h-64"></i>
-                </div>
-                <div class="relative z-10 prose dark:prose-invert prose-brand max-w-none prose-sm leading-relaxed"
-                  id="summaryOutput">
-                  <!-- AI Content Here -->
-                </div>
-              </div>
-
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <!-- Found Keywords -->
-                <div class="glass p-6 rounded-3xl border border-surface-100 dark:border-surface-800">
-                  <h4 class="text-[10px] font-black uppercase tracking-widest text-surface-400 mb-4">
-                    คีย์เวิร์ดสำคัญที่พบ</h4>
-                  <ul class="flex flex-wrap gap-2" id="summaryKeywords"></ul>
-                </div>
-
-                <!-- Source References -->
-                <div class="glass p-6 rounded-3xl border border-surface-100 dark:border-surface-800">
-                  <h4 class="text-[10px] font-black uppercase tracking-widest text-surface-400 mb-4">อ้างอิงจากเอกสาร
-                  </h4>
-                  <div id="summaryRefs" class="space-y-2"></div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
         <!-- Knowledge Base View -->
         <section id="view-kb"
           class="view hidden flex-1 flex flex-col overflow-hidden animate-in fade-in duration-300 w-full">
@@ -1479,12 +1627,22 @@
               <div class="flex items-center gap-3">
                 <h2 class="font-semibold text-sm">คลังความรู้ส่วนตัว</h2>
                 <div class="flex items-center gap-1.5 p-1 bg-surface-100 dark:bg-surface-800 rounded-xl">
-                  <button id="kb-tab-files" onclick="showView('kb')"
-                    class="kb-main-tab px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest bg-white dark:bg-surface-700 shadow-sm text-brand-600 transition-all">ไฟล์ KB</button>
-                  <button id="kb-tab-search" onclick="showView('search')"
-                    class="kb-main-tab px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest text-surface-400 hover:text-brand-600 transition-all">ค้นหา AI</button>
-                  <button id="kb-tab-summary" onclick="showView('summary')"
-                    class="kb-main-tab px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest text-surface-400 hover:text-brand-600 transition-all">สรุป AI</button>
+                  <button id="kb-tab-files" onclick="switchKBSubTab('files')"
+                    class="kb-main-tab px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest bg-white dark:bg-surface-700 shadow-sm text-brand-600 transition-all flex items-center gap-1.5">
+                    <i data-lucide="file-text" class="w-3 h-3"></i> ไฟล์ KB
+                  </button>
+                  <button id="kb-tab-crawler" onclick="switchKBSubTab('crawler')"
+                    class="kb-main-tab px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest text-surface-400 hover:text-brand-600 transition-all flex items-center gap-1.5">
+                    <i data-lucide="globe" class="w-3 h-3"></i> เว็บไซต์ AI
+                  </button>
+                  <button id="kb-tab-search" onclick="switchKBSubTab('search')"
+                    class="kb-main-tab px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest text-surface-400 hover:text-brand-600 transition-all flex items-center gap-1.5">
+                    <i data-lucide="search" class="w-3 h-3"></i> ค้นหา AI
+                  </button>
+                  <button id="kb-tab-summary" onclick="switchKBSubTab('summary')"
+                    class="kb-main-tab px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest text-surface-400 hover:text-brand-600 transition-all flex items-center gap-1.5">
+                    <i data-lucide="sparkles" class="w-3 h-3"></i> สรุป AI
+                  </button>
                 </div>
               </div>
               <div class="flex items-center gap-4">
@@ -1515,79 +1673,396 @@
 
             <!-- KB Content Area -->
             <div class="flex-1 flex flex-col bg-surface-50/30 dark:bg-surface-950 overflow-hidden">
-              <!-- Search & Control Header -->
-              <div class="p-4 flex flex-col sm:flex-row gap-4 items-center justify-between">
-                <div class="relative w-full sm:w-96 group">
-                  <i data-lucide="search"
-                    class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400 group-focus-within:text-brand-600 transition-colors"></i>
-                  <input type="text" id="kbSearchInput" placeholder="ค้นหาเนื้อหาภายในไฟล์ทั้งหมด..."
-                    class="w-full pl-10 pr-4 py-2 bg-white dark:bg-surface-800 border-2 border-surface-100 dark:border-surface-700 rounded-xl text-xs focus:ring-4 focus:ring-brand-600/10 focus:border-brand-600 transition-all outline-none">
-                </div>
-
-                <div class="flex items-center gap-2">
-                  <button id="addFileBtn" onclick="fileInput.click()"
-                    class="bg-brand-600 hover:bg-brand-700 text-white p-2 rounded-xl transition-all shadow-sm flex items-center gap-2 px-4 text-xs font-bold">
-                    <i data-lucide="plus" class="w-4 h-4"></i> เพิ่มข้อมูล
-                  </button>
-                </div>
-              </div>
-
-              <!-- Main Upload & Status Section (Nested inside scrollable area) -->
-              <div class="p-4 space-y-6 overflow-y-auto custom-scrollbar flex-1">
-                <div id="uploadZone"
-                  class="group border-2 border-dashed border-surface-200 dark:border-surface-800 hover:border-brand-600 rounded-2xl p-8 text-center cursor-pointer transition-all bg-white dark:bg-surface-900/30 hover:bg-brand-50/30">
-                  <input type="file" id="fileInput" multiple class="hidden" />
-                  <div
-                    class="w-12 h-12 bg-white dark:bg-surface-800 border border-surface-100 dark:border-surface-700 text-surface-400 group-hover:text-brand-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                    <i data-lucide="upload-cloud" class="w-6 h-6"></i>
+              
+              <!-- 1. FILE UPLOAD & MANAGEMENT SECTION -->
+              <div id="kbFilesSection" class="flex-1 flex flex-col overflow-hidden">
+                <!-- Search & Control Header -->
+                <div class="p-4 flex flex-col sm:flex-row gap-4 items-center justify-between">
+                  <div class="relative w-full sm:w-96 group">
+                    <i data-lucide="search"
+                      class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400 group-focus-within:text-brand-600 transition-colors"></i>
+                    <input type="text" id="kbSearchInput" placeholder="ค้นหาเนื้อหาภายในไฟล์ทั้งหมด..."
+                      class="w-full pl-10 pr-4 py-2 bg-white dark:bg-surface-800 border-2 border-surface-100 dark:border-surface-700 rounded-xl text-xs focus:ring-4 focus:ring-brand-600/10 focus:border-brand-600 transition-all outline-none">
                   </div>
-                  <h3 class="font-bold text-sm mb-1">ลากไฟล์มาวาง หรือคลิกเพื่ออัปโหลด</h3>
-                  <p class="text-[10px] text-surface-400 uppercase font-black tracking-widest">PDF, CSV, TXT, Excel,
-                    Word, Images</p>
-                </div>
 
-                <div id="uploadProgress"
-                  class="hidden p-4 bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-2xl shadow-sm">
-                  <div class="flex justify-between text-[11px] font-bold mb-2">
-                    <span id="progressLabel" class="text-surface-600">กำลังอัปโหลด...</span>
-                    <span id="progressPercent" class="text-brand-600">0%</span>
-                  </div>
-                  <div class="w-full bg-surface-100 dark:bg-surface-800 h-1.5 rounded-full overflow-hidden">
-                    <div id="progressBar" class="bg-brand-600 h-full w-0 transition-all"></div>
-                  </div>
-                </div>
-
-                <div id="bulkActionBar"
-                  class="hidden items-center justify-between p-4 bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/50 rounded-2xl">
-                  <div class="flex items-center gap-4">
-                    <div class="flex items-center gap-2 text-brand-600 font-bold text-xs uppercase tracking-wider">
-                      <i data-lucide="check-square" class="w-4 h-4"></i>
-                      เลือกแล้ว <span id="selectedCount">0</span> รายการ
-                    </div>
-                    <button id="selectAllFiles"
-                      class="text-[11px] font-bold text-surface-400 hover:text-brand-600 tracking-wide transition-colors">เลือกทั้งหมด</button>
-                  </div>
                   <div class="flex items-center gap-2">
-                    <select id="bulkDeptMove"
-                      class="text-[10px] font-bold bg-white dark:bg-surface-800 border-surface-200 dark:border-surface-700 rounded-lg focus:ring-brand-600">
-                      <option value="">ย้ายแผนก...</option>
-                      <option value="General">General</option>
-                      <option value="HR">HR</option>
-                      <option value="IT">IT</option>
-                      <option value="Sales">Sales</option>
-                    </select>
-                    <button id="bulkCompareBtn" class="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white py-1.5 px-3 text-[10px] uppercase font-bold rounded-xl shadow-lg shadow-purple-500/20 transition-all active:scale-95">
-                      <i data-lucide="split" class="w-3.5 h-3.5"></i> เปรียบเทียบไฟล์
+                    <button id="addFileBtn" onclick="fileInput.click()"
+                      class="bg-brand-600 hover:bg-brand-700 text-white p-2 rounded-xl transition-all shadow-sm flex items-center gap-2 px-4 text-xs font-bold">
+                      <i data-lucide="plus" class="w-4 h-4"></i> เพิ่มข้อมูล
                     </button>
-                    <button id="bulkDeleteBtn" class="btn-danger py-1.5 px-3 text-[11px] font-bold">ลบที่เลือก</button>
                   </div>
                 </div>
 
-                <!-- File List Grid -->
-                <div id="fileList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-3 3xl:grid-cols-4 gap-6 auto-rows-min pb-10">
-                  <!-- Files injected here -->
+                <!-- Main Upload & Status Section (Nested inside scrollable area) -->
+                <div class="p-4 space-y-6 overflow-y-auto custom-scrollbar flex-1">
+                  <div id="uploadZone"
+                    class="group border-2 border-dashed border-surface-200 dark:border-surface-800 hover:border-brand-600 rounded-2xl p-8 text-center cursor-pointer transition-all bg-white dark:bg-surface-900/30 hover:bg-brand-50/30">
+                    <input type="file" id="fileInput" multiple class="hidden" />
+                    <div
+                      class="w-12 h-12 bg-white dark:bg-surface-800 border border-surface-100 dark:border-surface-700 text-surface-400 group-hover:text-brand-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                      <i data-lucide="upload-cloud" class="w-6 h-6"></i>
+                    </div>
+                    <h3 class="font-bold text-sm mb-1">ลากไฟล์มาวาง หรือคลิกเพื่ออัปโหลด</h3>
+                    <p class="text-[10px] text-surface-400 uppercase font-black tracking-widest">PDF, CSV, TXT, Excel,
+                      Word, Images</p>
+                  </div>
+
+                  <div id="uploadProgress"
+                    class="hidden p-4 bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-2xl shadow-sm">
+                    <div class="flex justify-between text-[11px] font-bold mb-2">
+                      <span id="progressLabel" class="text-surface-600">กำลังอัปโหลด...</span>
+                      <span id="progressPercent" class="text-brand-600">0%</span>
+                    </div>
+                    <div class="w-full bg-surface-100 dark:bg-surface-800 h-1.5 rounded-full overflow-hidden">
+                      <div id="progressBar" class="bg-brand-600 h-full w-0 transition-all"></div>
+                    </div>
+                  </div>
+
+                  <div id="bulkActionBar"
+                    class="hidden items-center justify-between p-4 bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/50 rounded-2xl">
+                    <div class="flex items-center gap-4">
+                      <div class="flex items-center gap-2 text-brand-600 font-bold text-xs uppercase tracking-wider">
+                        <i data-lucide="check-square" class="w-4 h-4"></i>
+                        เลือกแล้ว <span id="selectedCount">0</span> รายการ
+                      </div>
+                      <button id="selectAllFiles"
+                        class="text-[11px] font-bold text-surface-400 hover:text-brand-600 tracking-wide transition-colors">เลือกทั้งหมด</button>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <select id="bulkDeptMove"
+                        class="text-[10px] font-bold bg-white dark:bg-surface-800 border-surface-200 dark:border-surface-700 rounded-lg focus:ring-brand-600">
+                        <option value="">ย้ายแผนก...</option>
+                        <option value="General">General</option>
+                        <option value="HR">HR</option>
+                        <option value="IT">IT</option>
+                        <option value="Sales">Sales</option>
+                      </select>
+                      <button id="bulkCompareBtn" class="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white py-1.5 px-3 text-[10px] uppercase font-bold rounded-xl shadow-lg shadow-purple-500/20 transition-all active:scale-95">
+                        <i data-lucide="split" class="w-3.5 h-3.5"></i> เปรียบเทียบไฟล์
+                      </button>
+                      <button id="bulkDeleteBtn" class="btn-danger py-1.5 px-3 text-[11px] font-bold">ลบที่เลือก</button>
+                    </div>
+                  </div>
+
+                  <!-- File List Grid -->
+                  <div id="fileList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-3 3xl:grid-cols-4 gap-6 auto-rows-min pb-10">
+                    <!-- Files injected here -->
+                  </div>
                 </div>
               </div>
+
+              <!-- 2. 🌐 SMART WEB CRAWLER & URL INGESTION SECTION -->
+              <div id="kbCrawlerSection" class="hidden flex-1 flex flex-col p-6 overflow-y-auto custom-scrollbar space-y-6">
+                <!-- Header Banner -->
+                <div class="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white rounded-3xl p-6 shadow-xl relative overflow-hidden">
+                  <div class="absolute -right-8 -bottom-8 w-40 h-40 bg-white/10 rounded-full blur-2xl pointer-events-none"></div>
+                  <div class="relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div class="space-y-1.5">
+                      <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-[10px] font-black uppercase tracking-widest text-white">
+                        <i data-lucide="globe" class="w-3 h-3"></i> Smart Web Crawler Engine
+                      </div>
+                      <h3 class="text-lg font-black tracking-tight">ดูดเนื้อหาจากเว็บไซต์เข้าสู่คลัง AI อัตโนมัติ</h3>
+                      <p class="text-xs text-white/80 max-w-xl">
+                        เพียงใส่ URL เว็บไซต์สินค้า หรือหน้าเพจของคุณ ระบบจะทำการดึงข้อความ สกัดเนื้อหาสำคัญ และสร้าง Semantic Chunks เพื่อให้ AI ตอบคำถามได้ทันที
+                      </p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <button onclick="switchKBSubTab('files')" class="px-4 py-2 rounded-2xl bg-white/20 hover:bg-white/30 text-white text-xs font-bold transition flex items-center gap-1.5">
+                        <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> กลับไปหน้าไฟล์
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Web Crawler Form Card -->
+                <div class="bg-white dark:bg-surface-900 rounded-3xl p-6 border border-surface-200 dark:border-surface-800 shadow-sm space-y-5">
+                  <h4 class="text-xs font-black uppercase tracking-wider text-surface-400 flex items-center gap-2">
+                    <i data-lucide="link" class="w-4 h-4 text-brand-600"></i> ระบุลิงก์เว็บไซต์ที่ต้องการเรียนรู้
+                  </h4>
+
+                  <!-- URL Input Bar -->
+                  <div class="relative flex items-center">
+                    <div class="absolute left-4 top-1/2 -translate-y-1/2 text-surface-400">
+                      <i data-lucide="globe" class="w-4 h-4"></i>
+                    </div>
+                    <input type="url" id="crawlerUrlInput" placeholder="https://example.com/products หรือ https://yourshop.com/about"
+                      class="w-full pl-11 pr-24 py-3.5 bg-surface-50 dark:bg-surface-800 border-2 border-surface-100 dark:border-surface-700 rounded-2xl text-xs font-medium focus:ring-4 focus:ring-brand-600/10 focus:border-brand-600 transition-all outline-none">
+                    <button onclick="pasteToCrawlerUrl()" class="absolute right-3 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-white dark:bg-surface-700 text-surface-600 dark:text-surface-300 hover:text-brand-600 text-[11px] font-bold rounded-xl border border-surface-200 dark:border-surface-600 shadow-sm transition">
+                      วางลิงก์
+                    </button>
+                  </div>
+
+                  <!-- Controls Grid: Category, Dept, Subpages Toggle -->
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+                    <div>
+                      <label class="text-[10px] font-black uppercase tracking-wider text-surface-400 block mb-1.5">หมวดหมู่ (Category)</label>
+                      <select id="crawlerCategorySelect" class="w-full py-2.5 px-3 bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl text-xs font-semibold text-surface-700 dark:text-surface-200 outline-none focus:border-brand-600">
+                        <option value="">หมวดหมู่ทั่วไป (Default)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label class="text-[10px] font-black uppercase tracking-wider text-surface-400 block mb-1.5">แผนก (Department)</label>
+                      <select id="crawlerDeptSelect" class="w-full py-2.5 px-3 bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl text-xs font-semibold text-surface-700 dark:text-surface-200 outline-none focus:border-brand-600">
+                        <option value="General">General</option>
+                        <option value="Sales">Sales</option>
+                        <option value="IT">IT</option>
+                        <option value="HR">HR</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label class="text-[10px] font-black uppercase tracking-wider text-surface-400 block mb-1.5">ความลึกในการดูดข้อมูล</label>
+                      <div class="flex items-center gap-2 pt-1">
+                        <label class="flex items-center gap-2 cursor-pointer text-xs font-bold text-surface-700 dark:text-surface-300">
+                          <input type="checkbox" id="crawlerSubpagesCheck" onchange="toggleCrawlerMaxPages(this.checked)" class="rounded text-brand-600 focus:ring-brand-500 w-4 h-4">
+                          <span>ดูดหน้าย่อย (Sub-pages)</span>
+                        </label>
+                        <select id="crawlerMaxPagesSelect" class="hidden text-[11px] font-bold py-1 px-2 bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg">
+                          <option value="3">สูงสุด 3 หน้า</option>
+                          <option value="5" selected>สูงสุด 5 หน้า</option>
+                          <option value="10">สูงสุด 10 หน้า</option>
+                          <option value="20">สูงสุด 20 หน้า</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Action Buttons -->
+                  <div class="flex flex-wrap items-center gap-3 pt-2">
+                    <button id="btnCrawlerPreview" onclick="handleCrawlerPreview()"
+                      class="px-5 py-2.5 rounded-2xl bg-surface-100 dark:bg-surface-800 hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-200 text-xs font-bold transition flex items-center gap-2 shadow-sm">
+                      <i data-lucide="eye" class="w-4 h-4 text-brand-600"></i> ตรวจสอบตัวอย่าง (Preview)
+                    </button>
+                    <button id="btnCrawlerIngest" onclick="handleCrawlerIngest()"
+                      class="px-6 py-2.5 rounded-2xl bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-700 hover:to-indigo-700 text-white text-xs font-bold transition flex items-center gap-2 shadow-lg shadow-brand-500/20 active:scale-95">
+                      <i data-lucide="zap" class="w-4 h-4"></i> เริ่มเรียนรู้และบันทึกลงคลัง AI ทันที
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Live Crawl Progress Indicator -->
+                <div id="crawlerProgressCard" class="hidden bg-white dark:bg-surface-900 rounded-3xl p-5 border border-brand-200 dark:border-brand-900 shadow-md animate-in fade-in space-y-3">
+                  <div class="flex items-center justify-between text-xs font-bold text-surface-700 dark:text-surface-200">
+                    <div class="flex items-center gap-2.5 text-brand-600">
+                      <div class="w-4 h-4 border-2 border-brand-600 border-t-transparent rounded-full animate-spin"></div>
+                      <span id="crawlerProgressText">กำลังประมวลผลดูดข้อมูลจากหน้าเว็บ...</span>
+                    </div>
+                    <span id="crawlerStatusBadge" class="px-2.5 py-0.5 rounded-full bg-brand-50 dark:bg-brand-900/30 text-brand-600 text-[10px] uppercase font-black tracking-wider">
+                      Crawling in progress
+                    </span>
+                  </div>
+                  <div class="w-full bg-surface-100 dark:bg-surface-800 h-2 rounded-full overflow-hidden">
+                    <div id="crawlerProgressBar" class="bg-gradient-to-r from-brand-500 to-indigo-600 h-full w-1/3 animate-pulse"></div>
+                  </div>
+                </div>
+
+                <!-- Preview Content Drawer -->
+                <div id="crawlerPreviewCard" class="hidden bg-white dark:bg-surface-900 rounded-3xl p-6 border border-surface-200 dark:border-surface-800 shadow-sm space-y-4 animate-in slide-in-from-top-4">
+                  <div class="flex items-center justify-between pb-3 border-b border-surface-100 dark:border-surface-800">
+                    <div class="flex items-center gap-2">
+                      <div class="p-1.5 rounded-xl bg-emerald-50 text-emerald-600">
+                        <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+                      </div>
+                      <div>
+                        <h4 class="text-xs font-bold text-surface-900 dark:text-white" id="previewUrlTitle">ตัวอย่างเนื้อหาที่สกัดได้</h4>
+                        <p class="text-[10px] text-surface-400 truncate max-w-md" id="previewUrlSubtitle"></p>
+                      </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <span class="px-2.5 py-1 rounded-xl bg-surface-100 text-surface-600 text-[10px] font-bold" id="previewWordCountBadge">0 คำ</span>
+                      <span class="px-2.5 py-1 rounded-xl bg-brand-50 text-brand-600 text-[10px] font-bold" id="previewLinksCountBadge">0 ลิงก์ภายใน</span>
+                    </div>
+                  </div>
+
+                  <div class="bg-surface-50 dark:bg-surface-950 p-4 rounded-2xl border border-surface-100 dark:border-surface-800 text-xs text-surface-700 dark:text-surface-300 font-mono whitespace-pre-wrap max-h-64 overflow-y-auto custom-scrollbar" id="previewExtractedText">
+                  </div>
+                </div>
+
+                <!-- Indexed Web Sources Table -->
+                <div class="bg-white dark:bg-surface-900 rounded-3xl p-6 border border-surface-200 dark:border-surface-800 shadow-sm space-y-4">
+                  <div class="flex items-center justify-between">
+                    <h4 class="text-xs font-black uppercase tracking-wider text-surface-400 flex items-center gap-2">
+                      <i data-lucide="database" class="w-4 h-4 text-brand-600"></i> เว็บไซต์ที่ AI เรียนรู้แล้วในคลังข้อมูล
+                    </h4>
+                    <button onclick="loadCrawledWebsitesList()" class="text-xs font-bold text-brand-600 hover:text-brand-700 flex items-center gap-1">
+                      <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> รีเฟรชรายการ
+                    </button>
+                  </div>
+
+                  <div id="crawledWebsitesList" class="divide-y divide-surface-100 dark:divide-surface-800">
+                    <div class="py-12 text-center text-xs text-surface-400">
+                      กำลังโหลดข้อมูลเว็บไซต์...
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 3. 🔍 SMART SEARCH SECTION -->
+              <div id="kbSearchSection" class="hidden flex-1 flex flex-col p-6 overflow-y-auto custom-scrollbar space-y-6">
+                <!-- Search Hero Banner -->
+                <div class="bg-gradient-to-r from-brand-600 via-indigo-600 to-purple-600 text-white rounded-3xl p-6 shadow-xl relative overflow-hidden">
+                  <div class="absolute -right-8 -bottom-8 w-40 h-40 bg-white/10 rounded-full blur-2xl pointer-events-none"></div>
+                  <div class="relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div class="space-y-1.5">
+                      <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-[10px] font-black uppercase tracking-widest text-white">
+                        <i data-lucide="search" class="w-3 h-3"></i> AI Semantic Search Engine
+                      </div>
+                      <h3 class="text-lg font-black tracking-tight">ค้นหาข้อมูลอัจฉริยะจากคลังเอกสาร</h3>
+                      <p class="text-xs text-white/80 max-w-xl">
+                        ค้นหาความหมายเชิงลึก (Semantic Search) จากทุกเอกสารในระบบ พร้อมแสดงแหล่งอ้างอิงและไฮไลต์เนื้อหาสำคัญทันที
+                      </p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <button onclick="switchKBSubTab('files')" class="px-4 py-2 rounded-2xl bg-white/20 hover:bg-white/30 text-white text-xs font-bold transition flex items-center gap-1.5">
+                        <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> กลับไปหน้าไฟล์
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Search Input Card -->
+                <div class="bg-white dark:bg-surface-900 rounded-3xl p-6 border border-surface-200 dark:border-surface-800 shadow-sm space-y-5">
+                  <div class="relative flex items-center bg-surface-50 dark:bg-surface-800 border-2 border-surface-200 dark:border-surface-700 rounded-2xl shadow-sm focus-within:border-brand-500 focus-within:ring-4 focus-within:ring-brand-500/10 transition-all duration-300 overflow-hidden">
+                    <i data-lucide="search" class="w-5 h-5 text-surface-400 focus-within:text-brand-500 transition-colors ml-5 flex-shrink-0"></i>
+                    <input id="searchInput" type="text" placeholder="พิมพ์คำถามหรือหัวข้อที่ต้องการค้นหาจากเอกสาร..."
+                      class="flex-1 bg-transparent border-none focus:ring-0 text-sm py-4 px-4 outline-none placeholder-surface-400 font-medium text-surface-900 dark:text-surface-100"
+                      autocomplete="off" spellcheck="false" />
+                    <div id="searchSpinner" class="hidden mr-5">
+                      <div class="w-4 h-4 border-2 border-brand-500/20 border-t-brand-500 rounded-full animate-spin"></div>
+                    </div>
+                  </div>
+                  
+                  <!-- Quick search keyword pills -->
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="text-[10px] font-black uppercase tracking-wider text-surface-400 mr-1">คำค้นหายอดนิยม:</span>
+                    <button class="px-3 py-1 text-[11px] font-bold text-surface-600 dark:text-surface-400 bg-surface-100 dark:bg-surface-800 rounded-xl hover:bg-brand-50 hover:text-brand-600 dark:hover:bg-brand-900/20 dark:hover:text-brand-400 transition-all shadow-sm"
+                      onclick="document.getElementById('searchInput').value='นโยบายการลา'; document.getElementById('searchInput').dispatchEvent(new Event('input'))">นโยบายการลา</button>
+                    <button class="px-3 py-1 text-[11px] font-bold text-surface-600 dark:text-surface-400 bg-surface-100 dark:bg-surface-800 rounded-xl hover:bg-brand-50 hover:text-brand-600 dark:hover:bg-brand-900/20 dark:hover:text-brand-400 transition-all shadow-sm"
+                      onclick="document.getElementById('searchInput').value='ข้อมูลพนักงาน'; document.getElementById('searchInput').dispatchEvent(new Event('input'))">ข้อมูลพนักงาน</button>
+                    <button class="px-3 py-1 text-[11px] font-bold text-surface-600 dark:text-surface-400 bg-surface-100 dark:bg-surface-800 rounded-xl hover:bg-brand-50 hover:text-brand-600 dark:hover:bg-brand-900/20 dark:hover:text-brand-400 transition-all shadow-sm"
+                      onclick="document.getElementById('searchInput').value='สวัสดิการ'; document.getElementById('searchInput').dispatchEvent(new Event('input'))">สวัสดิการ</button>
+                    <button class="px-3 py-1 text-[11px] font-bold text-surface-600 dark:text-surface-400 bg-surface-100 dark:bg-surface-800 rounded-xl hover:bg-brand-50 hover:text-brand-600 dark:hover:bg-brand-900/20 dark:hover:text-brand-400 transition-all shadow-sm"
+                      onclick="document.getElementById('searchInput').value='ระเบียบปฏิบัติงาน'; document.getElementById('searchInput').dispatchEvent(new Event('input'))">ระเบียบปฏิบัติงาน</button>
+                  </div>
+                </div>
+
+                <!-- Results Container -->
+                <div id="searchResults" class="space-y-4">
+                  <!-- Empty State -->
+                  <div id="searchEmptyState" class="flex flex-col items-center justify-center py-16 text-center animate-in fade-in duration-500">
+                    <div class="w-16 h-16 bg-surface-100 dark:bg-surface-800 rounded-2xl flex items-center justify-center mb-4 text-surface-400">
+                      <i data-lucide="sparkles" class="w-8 h-8 text-brand-600"></i>
+                    </div>
+                    <h3 class="text-base font-bold tracking-tight mb-1 text-surface-900 dark:text-surface-100">ค้นหาข้อมูลอัจฉริยะ</h3>
+                    <p class="text-surface-400 text-xs max-w-sm">
+                      พิมพ์คำค้นหาเพื่อดึงข้อมูลเชิงลึกจากเอกสารทั้งหมดในคลังความรู้ได้ทันที
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 4. 📝 AI SUMMARY SECTION -->
+              <div id="kbSummarySection" class="hidden flex-1 flex flex-col p-6 overflow-y-auto custom-scrollbar space-y-6">
+                <!-- Header Banner -->
+                <div class="bg-gradient-to-r from-purple-600 via-indigo-600 to-brand-600 text-white rounded-3xl p-6 shadow-xl relative overflow-hidden">
+                  <div class="absolute -right-8 -bottom-8 w-40 h-40 bg-white/10 rounded-full blur-2xl pointer-events-none"></div>
+                  <div class="relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div class="space-y-1.5">
+                      <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-[10px] font-black uppercase tracking-widest text-white">
+                        <i data-lucide="sparkles" class="w-3 h-3"></i> AI Knowledge Synthesizer
+                      </div>
+                      <h3 class="text-lg font-black tracking-tight">สรุปเนื้อหาคลังความรู้ด้วย AI</h3>
+                      <p class="text-xs text-white/80 max-w-xl">
+                        AI จะประมวลผลและสรุปภาพรวมของเอกสารทั้งหมดหรือตามหมวดหมู่ที่คุณเลือก พร้อมคัดเลือกคีย์เวิร์ดสำคัญ
+                      </p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <button onclick="switchKBSubTab('files')" class="px-4 py-2 rounded-2xl bg-white/20 hover:bg-white/30 text-white text-xs font-bold transition flex items-center gap-1.5">
+                        <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> กลับไปหน้าไฟล์
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Controls Card -->
+                <div class="bg-white dark:bg-surface-900 rounded-3xl p-6 border border-surface-200 dark:border-surface-800 shadow-sm space-y-4">
+                  <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                    <select id="summaryCategorySelect"
+                      class="bg-surface-50 dark:bg-surface-800 border-2 border-surface-200 dark:border-surface-700 rounded-2xl px-4 py-3 text-xs font-bold outline-none focus:border-brand-600 transition-all sm:w-60">
+                      <option value="all">📚 ทุกหมวดหมู่</option>
+                    </select>
+
+                    <div class="relative flex-1">
+                      <i data-lucide="target" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400"></i>
+                      <input type="text" id="summaryFocusInput" placeholder="เน้นหัวข้อพิเศษ (เช่น สวัสดิการ, วันลา, กฎระเบียบบริษัท)..."
+                        class="w-full pl-11 pr-4 py-3 bg-surface-50 dark:bg-surface-800 border-2 border-surface-200 dark:border-surface-700 rounded-2xl text-xs font-bold outline-none focus:border-brand-600 transition-all">
+                    </div>
+
+                    <button id="generateGlobalSummaryBtn"
+                      class="bg-brand-600 hover:bg-brand-700 text-white px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-lg flex items-center justify-center gap-2 whitespace-nowrap active:scale-95">
+                      <i data-lucide="sparkles" class="w-4 h-4"></i> สรุปข้อมูล
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Empty State -->
+                <div id="summaryEmpty" class="flex flex-col items-center justify-center py-20 text-center space-y-4">
+                  <div class="w-20 h-20 rounded-3xl bg-surface-100 dark:bg-surface-900 border border-surface-200 dark:border-surface-800 flex items-center justify-center text-surface-400">
+                    <i data-lucide="scroll-text" class="w-10 h-10"></i>
+                  </div>
+                  <div>
+                    <h3 class="text-base font-black mb-1">ยังไม่มีการสร้างสรุป</h3>
+                    <p class="text-surface-400 text-xs max-w-sm">คลิกปุ่ม "สรุปข้อมูล" เพื่อให้ AI ประมวลผลและสร้างบทสรุปของเอกสารให้คุณ</p>
+                  </div>
+                </div>
+
+                <!-- Loading State -->
+                <div id="summaryLoading" class="hidden flex flex-col items-center justify-center py-20 text-center space-y-4">
+                  <div class="relative">
+                    <div class="w-16 h-16 rounded-full border-4 border-brand-100 dark:border-brand-900/30 border-t-brand-600 animate-spin"></div>
+                    <div class="absolute inset-0 flex items-center justify-center">
+                      <i data-lucide="sparkles" class="w-5 h-5 text-brand-600 animate-pulse"></i>
+                    </div>
+                  </div>
+                  <div class="space-y-1">
+                    <h3 class="text-sm font-black">AI กำลังสรุปข้อมูล...</h3>
+                    <p class="text-surface-400 text-[10px] uppercase font-bold tracking-widest">ใช้เวลาประมาณ 10-25 วินาที</p>
+                  </div>
+                </div>
+
+                <!-- Result Content -->
+                <div id="summaryContentArea" class="hidden space-y-6 animate-in fade-in duration-500">
+                  <div class="bg-white dark:bg-surface-900 p-6 md:p-8 rounded-3xl border border-surface-200 dark:border-surface-800 shadow-sm relative overflow-hidden">
+                    <div class="flex items-center justify-between pb-4 border-b border-surface-100 dark:border-surface-800 mb-6">
+                      <div class="flex items-center gap-2">
+                        <div class="p-2 rounded-xl bg-purple-50 text-purple-600">
+                          <i data-lucide="file-text" class="w-4 h-4"></i>
+                        </div>
+                        <h4 class="text-sm font-black text-surface-900 dark:text-white">บทสรุปผู้บริหาร (Executive Summary)</h4>
+                      </div>
+                      <button id="copySummaryBtn" class="px-3 py-1.5 bg-surface-100 dark:bg-surface-800 hover:bg-surface-200 dark:hover:bg-surface-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
+                        <i data-lucide="copy" class="w-3.5 h-3.5"></i> คัดลอก
+                      </button>
+                    </div>
+                    <div class="prose dark:prose-invert prose-brand max-w-none text-xs leading-relaxed" id="summaryOutput"></div>
+                  </div>
+
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="bg-white dark:bg-surface-900 p-5 rounded-2xl border border-surface-200 dark:border-surface-800 shadow-sm">
+                      <h5 class="text-[10px] font-black uppercase tracking-widest text-surface-400 mb-3 flex items-center gap-1.5">
+                        <i data-lucide="tag" class="w-3.5 h-3.5 text-brand-600"></i> คีย์เวิร์ดสำคัญที่พบ
+                      </h5>
+                      <ul class="flex flex-wrap gap-1.5" id="summaryKeywords"></ul>
+                    </div>
+                    <div class="bg-white dark:bg-surface-900 p-5 rounded-2xl border border-surface-200 dark:border-surface-800 shadow-sm">
+                      <h5 class="text-[10px] font-black uppercase tracking-widest text-surface-400 mb-3 flex items-center gap-1.5">
+                        <i data-lucide="book-open" class="w-3.5 h-3.5 text-brand-600"></i> อ้างอิงจากเอกสาร
+                      </h5>
+                      <div id="summaryRefs" class="space-y-1.5"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
             </div>
           </div>
         </section>
@@ -1631,85 +2106,6 @@
             <!-- Drive Grid -->
             <div id="driveGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
               <!-- Content injected here -->
-            </div>
-          </div>
-        </section>
-
-        <!-- Smart Search View -->
-        <section id="view-search"
-          class="view hidden flex-1 flex flex-col items-center overflow-hidden animate-in fade-in duration-500 w-full bg-surface-50/20 dark:bg-surface-950">
-
-          <!-- Header -->
-          <header
-            class="h-14 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between px-6 bg-white/80 dark:bg-surface-900/80 backdrop-blur-md w-full flex-shrink-0">
-            <div class="flex items-center gap-3">
-              <div class="flex items-center gap-1.5 p-1 bg-surface-100 dark:bg-surface-800 rounded-xl">
-                <button onclick="showView('kb')" class="kb-main-tab px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest text-surface-400 hover:text-brand-600 transition-all">ไฟล์ KB</button>
-                <button class="kb-main-tab px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest bg-white dark:bg-surface-700 shadow-sm text-brand-600 transition-all">ค้นหา AI</button>
-                <button onclick="showView('summary')" class="kb-main-tab px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest text-surface-400 hover:text-brand-600 transition-all">สรุป AI</button>
-              </div>
-            </div>
-          </header>
-
-          <!-- Content Area -->
-          <div class="flex-1 w-full flex flex-col items-center overflow-y-auto custom-scrollbar px-6 py-12">
-            <div class="w-full max-w-2xl">
-
-              <!-- Hero Search Box -->
-              <div class="mb-16">
-                <div class="relative group">
-                  <div
-                    class="absolute -inset-2 bg-gradient-to-r from-brand-600/10 to-indigo-600/10 rounded-[2rem] blur-2xl opacity-0 group-focus-within:opacity-100 transition-opacity duration-700">
-                  </div>
-                  <div
-                    class="relative flex items-center bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-2xl shadow-sm group-focus-within:border-brand-500/50 group-focus-within:ring-4 group-focus-within:ring-brand-500/5 transition-all duration-500 overflow-hidden">
-                    <i data-lucide="search"
-                      class="w-5 h-5 text-surface-300 group-focus-within:text-brand-500 transition-colors ml-6 flex-shrink-0"></i>
-                    <input id="searchInput" type="text" placeholder="พิมพ์สิ่งที่คุณต้องการค้นหาจากเอกสาร..."
-                      class="flex-1 bg-transparent border-none focus:ring-0 text-base py-6 px-4 outline-none placeholder-surface-300 dark:placeholder-surface-600 font-medium text-surface-800 dark:text-surface-100"
-                      autocomplete="off" spellcheck="false" />
-                    <div id="searchSpinner" class="hidden mr-6">
-                      <div class="w-4 h-4 border-2 border-brand-500/20 border-t-brand-500 rounded-full animate-spin">
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <p class="mt-4 text-center text-[10px] text-surface-400 font-bold uppercase tracking-widest opacity-60">
-                  ระบบจะเริ่มค้นหาทันทีที่คุณเริ่มพิมพ์</p>
-              </div>
-
-              <!-- Results Container -->
-              <div id="searchResults">
-                <!-- Empty State -->
-                <div id="searchEmptyState"
-                  class="flex flex-col items-center justify-center py-10 text-center animate-in fade-in slide-in-from-bottom-4 duration-700">
-                  <div
-                    class="w-20 h-20 bg-surface-100 dark:bg-surface-900 rounded-[2rem] flex items-center justify-center mb-8 border border-white dark:border-surface-800 shadow-xl shadow-surface-200/50 dark:shadow-none">
-                    <div class="relative">
-                      <i data-lucide="sparkles"
-                        class="w-4 h-4 text-amber-500 absolute -top-1 -right-1 animate-pulse"></i>
-                      <i data-lucide="database" class="w-8 h-8 text-surface-400"></i>
-                    </div>
-                  </div>
-                  <h3 class="text-xl font-bold tracking-tight mb-3 text-surface-900 dark:text-surface-100">
-                    ค้นหาข้อมูลอัจฉริยะ</h3>
-                  <p class="text-surface-500 dark:text-surface-400 text-sm leading-relaxed max-w-sm mx-auto">
-                    ค้นหาข้อมูลเชิงลึกจากนโยบาย ระเบียบ และเอกสารทั้งหมดในคลังความรู้ของคุณได้ในพริบตา
-                  </p>
-
-                  <div class="mt-10 flex flex-wrap gap-2 justify-center">
-                    <button
-                      class="px-4 py-2 text-[11px] font-bold text-surface-600 dark:text-surface-400 bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl hover:border-brand-500 hover:text-brand-600 transition-all shadow-sm"
-                      onclick="document.getElementById('searchInput').value='นโยบายการลา'; document.getElementById('searchInput').dispatchEvent(new Event('input'))">นโยบายการลา</button>
-                    <button
-                      class="px-4 py-2 text-[11px] font-bold text-surface-600 dark:text-surface-400 bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl hover:border-brand-500 hover:text-brand-600 transition-all shadow-sm"
-                      onclick="document.getElementById('searchInput').value='ข้อมูลพนักงาน'; document.getElementById('searchInput').dispatchEvent(new Event('input'))">ข้อมูลพนักงาน</button>
-                    <button
-                      class="px-4 py-2 text-[11px] font-bold text-surface-600 dark:text-surface-400 bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl hover:border-brand-500 hover:text-brand-600 transition-all shadow-sm"
-                      onclick="document.getElementById('searchInput').value='สวัสดิการ'; document.getElementById('searchInput').dispatchEvent(new Event('input'))">สวัสดิการ</button>
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         </section>
@@ -2014,7 +2410,7 @@
               </div>
               <div class="w-full overflow-x-auto custom-scrollbar pb-2">
                 <div
-                  class="grid grid-cols-7 gap-px bg-surface-200 dark:bg-surface-800 rounded-2xl overflow-hidden border border-surface-200 dark:border-surface-800 flex-1">
+                  class="grid grid-cols-7 min-w-[560px] md:min-w-0 gap-px bg-surface-200 dark:bg-surface-800 rounded-2xl overflow-hidden border border-surface-200 dark:border-surface-800 flex-1">
                   <!-- Weekdays Header -->
                   <div
                     class="bg-surface-50 dark:bg-surface-900 py-3 text-center text-[10px] font-black uppercase tracking-widest text-rose-600">
@@ -2572,6 +2968,23 @@
                     </button>
                   </div>
                 </div>
+
+                {% if is_org_admin or is_admin or is_superadmin %}
+                <!-- ทางลัดศูนย์ความปลอดภัยสำหรับ Admin -->
+                <div class="border-t border-surface-100 dark:border-surface-800 pt-5">
+                  <div class="text-[10px] font-black uppercase tracking-widest text-surface-400 mb-2 flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                      <i data-lucide="shield-alert" class="w-3.5 h-3.5 text-indigo-500"></i> ศูนย์ความมั่นคงปลอดภัยองค์กร (Security Center)
+                    </div>
+                    <span class="text-[9px] text-emerald-600 font-bold bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full">Zero-Trust Protected</span>
+                  </div>
+                  <p class="text-xs text-surface-500 mb-3">ตรวจสอบ Health Score, ตรวจสอบไฟล์ FIM, ตรวจจับข้อมูลรั่วไหล (PDPA), และจัดการ IP ที่ถูกระบบแบน</p>
+                  <button onclick="openSecurityDashboard()"
+                    class="w-full py-2.5 bg-gradient-to-r from-indigo-600 to-brand-600 hover:from-indigo-700 hover:to-brand-700 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-indigo-500/20 flex items-center justify-center gap-2">
+                    <i data-lucide="shield-check" class="w-4 h-4"></i> เปิดแดชบอร์ดความมั่นคงปลอดภัย (Security Health)
+                  </button>
+                </div>
+                {% endif %}
               </div>
             </div>
             <!-- /บัญชีของฉัน -->
@@ -2601,9 +3014,9 @@
                       <i data-lucide="sunrise" class="w-3.5 h-3.5"></i> ทดสอบ Morning Brief
                     </button>
                     <!-- ปุ่มเชื่อมต่อ LINE -->
-                    <a href="/api/line/login-init" id="btnMyBindLine" class="flex items-center gap-2 px-4 py-2 bg-[#06C755] hover:bg-[#05a847] text-white text-xs font-bold rounded-xl transition shadow-sm whitespace-nowrap">
+                    <button onclick="openUserLineBindModal()" id="btnMyBindLine" class="flex items-center gap-2 px-4 py-2 bg-[#06C755] hover:bg-[#05a847] text-white text-xs font-bold rounded-xl transition shadow-sm whitespace-nowrap">
                       <i data-lucide="link" class="w-3.5 h-3.5"></i> เชื่อมต่อ LINE
-                    </a>
+                    </button>
                     <!-- ปุ่มยกเลิกการเชื่อมต่อ -->
                     <button onclick="unbindMyLine()" id="btnMyUnbindLine" class="flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition shadow-sm hidden whitespace-nowrap">
                       <i data-lucide="unlink" class="w-3.5 h-3.5"></i> ยกเลิกการผูกบัญชี
@@ -2933,6 +3346,292 @@
                 <div class="text-center py-12 bg-white dark:bg-surface-900 rounded-[32px] border border-surface-100 dark:border-surface-800 shadow-sm animate-pulse">
                   <p class="text-surface-400 text-sm font-bold">กำลังโหลดประวัติการลา...</p>
                 </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Time Attendance & GPS Clock-in View -->
+        <section id="view-attendance"
+          class="view hidden flex-1 flex flex-col items-center overflow-hidden animate-in fade-in duration-300">
+          <header
+            class="h-16 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between px-6 bg-white dark:bg-surface-900 w-full flex-shrink-0">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                <i data-lucide="clock" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <h2 class="font-black text-base text-surface-900 dark:text-white flex items-center gap-2">
+                  ลงเวลาเข้า-ออกงาน
+                  <span class="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">GPS Live</span>
+                </h2>
+                <p class="text-xs text-surface-400 font-medium">บันทึกเวลาทำงานและตรวจสอบพิกัดรัศมีสำนักงานแบบ Real-time</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="loadAttendanceToday(); loadAttendanceHistory(); if (typeof showToast === 'function') showToast('รีเฟรชข้อมูลสำเร็จ', 'info');"
+                class="px-3.5 py-2 rounded-xl text-xs font-bold bg-surface-100 dark:bg-surface-800 hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-600 dark:text-surface-300 transition-all flex items-center gap-1.5 border border-surface-200/60 dark:border-surface-700/60">
+                <i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i> <span>รีเฟรช</span>
+              </button>
+            </div>
+          </header>
+
+          <div class="p-6 md:p-8 flex-1 min-h-0 overflow-y-auto w-full max-w-5xl space-y-6 custom-scrollbar">
+            
+            <!-- Hero Clock & Action Banner -->
+            <div class="relative overflow-hidden rounded-[32px] bg-gradient-to-br from-slate-900 via-surface-900 to-indigo-950 text-white p-8 md:p-10 shadow-2xl border border-white/10">
+              <div class="absolute -top-24 -right-24 w-80 h-80 rounded-full bg-emerald-500/15 blur-3xl pointer-events-none"></div>
+              <div class="absolute -bottom-24 -left-24 w-80 h-80 rounded-full bg-brand-500/15 blur-3xl pointer-events-none"></div>
+
+              <div class="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
+                <!-- Clock Display -->
+                <div class="text-center md:text-left space-y-2">
+                  <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-emerald-300 text-xs font-bold tracking-wider uppercase border border-white/10">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span id="attLiveDate">กำลังโหลดวันที่...</span>
+                  </div>
+                  <div class="text-5xl md:text-6xl font-black tracking-tight font-mono text-white drop-shadow-md" id="attLiveClock">
+                    00:00:00
+                  </div>
+                  <div class="text-xs font-semibold text-surface-300 flex items-center gap-2 justify-center md:justify-start">
+                    <span>ชั่วโมงทำงานวันนี้:</span>
+                    <span id="attLiveDuration" class="text-emerald-400 font-bold font-mono">0 ชม. 00 นาที</span>
+                  </div>
+                </div>
+
+                <!-- Clock Action Button -->
+                <div class="w-full md:w-auto flex-1 max-w-md">
+                  <button id="attClockBtn" onclick="handleClockAction()"
+                    class="w-full py-5 px-6 rounded-3xl font-black text-white shadow-xl transition-all duration-300 flex items-center justify-center gap-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 hover:shadow-emerald-500/25 active:scale-[0.98] group">
+                    <i data-lucide="log-in" id="attClockBtnIcon" class="w-6 h-6 group-hover:scale-110 transition-transform"></i>
+                    <div class="text-left">
+                      <div id="attClockBtnText" class="text-base font-black leading-tight">📍 บันทึกเวลาเข้างาน (Check-In)</div>
+                      <div id="attClockBtnSub" class="text-[11px] font-medium text-white/80 leading-normal">แตะเพื่อแชร์พิกัด GPS และลงเวลา</div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              <!-- GPS & Geofence Status Sub-bar -->
+              <div class="mt-8 pt-6 border-t border-white/10 flex flex-wrap items-center justify-between gap-4 text-xs">
+                <div class="flex items-center gap-3">
+                  <span class="text-surface-300 flex items-center gap-1.5 font-medium">
+                    <i data-lucide="map-pin" class="w-4 h-4 text-emerald-400"></i> พิกัดปัจจุบัน:
+                  </span>
+                  <span id="attGpsCoords" class="font-mono font-bold text-white bg-white/10 px-2.5 py-1 rounded-lg">กำลังค้นหา...</span>
+                  <span id="attGpsStatusBadge" class="px-2 py-0.5 rounded text-[11px] font-bold bg-surface-700 text-surface-300">รอการตรวจสอบ</span>
+                </div>
+                <div class="flex items-center gap-3">
+                  <span class="text-surface-300">ระยะห่าง: <strong id="attGpsDistance" class="text-white font-mono">-</strong></span>
+                  <button onclick="requestLocationPermissionPrompt()" title="ค้นหา/อัปเดตพิกัด GPS"
+                    class="text-surface-300 hover:text-white p-1.5 rounded-lg bg-white/5 hover:bg-white/15 transition-all flex items-center gap-1">
+                    <i data-lucide="locate-fixed" class="w-3.5 h-3.5"></i>
+                  </button>
+                  <button onclick="showLocationPermissionGuideModal()" title="วิธีเปิดสิทธิ์ตำแหน่ง"
+                    class="text-[11px] text-white/70 hover:text-white px-2 py-1 rounded-lg bg-white/5 hover:bg-white/15 transition-all flex items-center gap-1">
+                    <i data-lucide="help-circle" class="w-3.5 h-3.5"></i> <span>วิธีเปิดสิทธิ์</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Stats Trio Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <!-- Check-In Card -->
+              <div class="p-6 bg-white dark:bg-surface-900 border border-emerald-500/20 rounded-3xl shadow-sm relative overflow-hidden group">
+                <div class="flex items-center justify-between mb-3">
+                  <span class="text-xs font-black text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> เวลาเข้างาน (Check-In)
+                  </span>
+                  <span id="attCheckInBadge" class="hidden px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-50 text-emerald-700">ตรงเวลา ✅</span>
+                </div>
+                <div class="text-3xl font-black text-surface-900 dark:text-white font-mono tracking-tight" id="attCheckInTime">--:--</div>
+                <div class="text-xs text-surface-400 mt-2 font-medium">เกณฑ์เข้างาน: <span id="attOfficeStartTime">09:15 น.</span></div>
+              </div>
+
+              <!-- Check-Out Card -->
+              <div class="p-6 bg-white dark:bg-surface-900 border border-blue-500/20 rounded-3xl shadow-sm relative overflow-hidden group">
+                <div class="flex items-center justify-between mb-3">
+                  <span class="text-xs font-black text-blue-600 dark:text-blue-400 flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span> เวลาเลิกงาน (Check-Out)
+                  </span>
+                  <span id="attCheckOutBadge" class="hidden px-2 py-0.5 rounded text-[11px] font-bold bg-blue-50 text-blue-700">เลิกงาน ✅</span>
+                </div>
+                <div class="text-3xl font-black text-surface-900 dark:text-white font-mono tracking-tight" id="attCheckOutTime">--:--</div>
+                <div class="text-xs text-surface-400 mt-2 font-medium">บันทึกล่าสุดเมื่อแตะปุ่มเลิกงาน</div>
+              </div>
+
+              <!-- Geofence Office Card -->
+              <div class="p-6 bg-white dark:bg-surface-900 border border-purple-500/20 rounded-3xl shadow-sm relative overflow-hidden group">
+                <div class="flex items-center justify-between mb-3">
+                  <span class="text-xs font-black text-purple-600 dark:text-purple-400 flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-purple-500"></span> รัศมี Geofence
+                  </span>
+                  <span class="px-2 py-0.5 rounded text-[11px] font-bold bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300">GPS Radius</span>
+                </div>
+                <div class="text-3xl font-black text-surface-900 dark:text-white font-mono tracking-tight" id="attOfficeRadius">1,000 เมตร</div>
+                <div class="text-xs text-surface-400 mt-2 font-medium">ลงเวลาในเขตสำนักงาน</div>
+              </div>
+            </div>
+
+            <!-- Admin Org Summary Card (Hidden for regular members unless loaded) -->
+            <div id="attOrgSummaryCard" class="hidden p-6 bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-3xl shadow-sm space-y-4">
+              <div class="flex items-center justify-between pb-3 border-b border-surface-100 dark:border-surface-800">
+                <div class="flex items-center gap-2.5">
+                  <div class="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 flex items-center justify-center">
+                    <i data-lucide="users" class="w-4 h-4"></i>
+                  </div>
+                  <div>
+                    <h3 class="font-black text-sm text-surface-900 dark:text-white">ภาพรวมการลงเวลาวันนี้ (ทั้งองค์กร)</h3>
+                    <p class="text-[11px] text-surface-400">สำหรับผู้ดูแลระบบและฝ่ายบุคคล</p>
+                  </div>
+                </div>
+                <span class="text-[11px] font-bold text-surface-500 bg-surface-100 dark:bg-surface-800 px-2.5 py-1 rounded-lg">Admin View</span>
+              </div>
+
+              <!-- Quick Counters -->
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div class="p-4 rounded-2xl bg-surface-50 dark:bg-surface-800/40 text-center">
+                  <div class="text-2xl font-black text-surface-900 dark:text-white" id="attOrgTotalMembers">0</div>
+                  <div class="text-[10px] font-bold text-surface-400 uppercase tracking-wider mt-0.5">สมาชิกทั้งหมด</div>
+                </div>
+                <div class="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 text-center">
+                  <div class="text-2xl font-black text-emerald-600 dark:text-emerald-400" id="attOrgClockedIn">0</div>
+                  <div class="text-[10px] font-bold text-emerald-600/80 uppercase tracking-wider mt-0.5">ลงเวลาแล้ว</div>
+                </div>
+                <div class="p-4 rounded-2xl bg-surface-50 dark:bg-surface-800/40 text-center">
+                  <div class="text-2xl font-black text-surface-500" id="attOrgNotClockedIn">0</div>
+                  <div class="text-[10px] font-bold text-surface-400 uppercase tracking-wider mt-0.5">ยังไม่ลงเวลา</div>
+                </div>
+                <div class="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/30 text-center">
+                  <div class="text-2xl font-black text-rose-600 dark:text-rose-400" id="attOrgLate">0</div>
+                  <div class="text-[10px] font-bold text-rose-600/80 uppercase tracking-wider mt-0.5">เข้างานสาย</div>
+                </div>
+              </div>
+
+              <!-- Members List -->
+              <div id="attOrgMembersList" class="space-y-2 max-h-60 overflow-y-auto custom-scrollbar pt-2"></div>
+            </div>
+
+            <!-- History Section -->
+            <div class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-3xl shadow-sm overflow-hidden p-6 md:p-8 space-y-6">
+              <div class="flex items-center justify-between pb-4 border-b border-surface-100 dark:border-surface-800">
+                <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 rounded-2xl bg-brand-50 dark:bg-brand-950/50 flex items-center justify-center text-brand-600">
+                    <i data-lucide="history" class="w-5 h-5"></i>
+                  </div>
+                  <div>
+                    <h3 class="font-black text-base text-surface-900 dark:text-white">ประวัติการลงเวลาย้อนหลัง</h3>
+                    <p class="text-xs text-surface-400 font-medium">บันทึกเวลาเข้า-ออกงานและการคำนวณชั่วโมงทำงาน</p>
+                  </div>
+                </div>
+                <span id="attHistoryCount" class="text-xs font-bold text-brand-600 bg-brand-50 dark:bg-brand-950/60 px-3 py-1 rounded-xl">0 วัน</span>
+              </div>
+
+              <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                  <thead>
+                    <tr class="border-b border-surface-100 dark:border-surface-800 text-[11px] font-black uppercase tracking-wider text-surface-400">
+                      <th class="py-3 px-4">วันที่</th>
+                      <th class="py-3 px-4">เวลาเข้า (Check-In)</th>
+                      <th class="py-3 px-4">เวลาออก (Check-Out)</th>
+                      <th class="py-3 px-4">รวมเวลาทำงาน</th>
+                      <th class="py-3 px-4">ระยะห่าง</th>
+                    </tr>
+                  </thead>
+                  <tbody id="attHistoryTableBody">
+                    <tr>
+                      <td colspan="5" class="py-8 text-center text-surface-400 text-xs animate-pulse">กำลังโหลดประวัติการลงเวลา...</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Success Modal -->
+          <div id="attSuccessModal" class="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm hidden items-center justify-center p-4 animate-in fade-in duration-200">
+            <div class="bg-white dark:bg-surface-900 rounded-[32px] max-w-sm w-full p-6 shadow-2xl border border-surface-100 dark:border-surface-800 text-center space-y-4">
+              <div class="w-16 h-16 rounded-3xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto text-2xl shadow-inner">
+                <i data-lucide="check" class="w-8 h-8"></i>
+              </div>
+              <div>
+                <h3 id="attModalTitle" class="text-lg font-black text-surface-900 dark:text-white">บันทึกเวลาสำเร็จ!</h3>
+                <p id="attModalTime" class="text-2xl font-black font-mono text-emerald-600 dark:text-emerald-400 mt-1">--:-- น.</p>
+              </div>
+              <div class="flex justify-center">
+                <span id="attModalBadge" class="px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">ตรงเวลา ✅</span>
+              </div>
+              <p id="attModalDist" class="text-xs text-surface-400">ระยะห่างจากออฟฟิศ: - เมตร</p>
+              <button onclick="closeAttendanceSuccessModal()"
+                class="w-full py-3.5 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white font-black text-sm shadow-lg shadow-brand-500/25 transition-all">
+                ตกลง
+              </button>
+            </div>
+          </div>
+
+          <!-- Location Permission Guide Modal -->
+          <div id="attPermissionGuideModal" class="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm hidden items-center justify-center p-4 animate-in fade-in duration-200">
+            <div class="bg-white dark:bg-surface-900 rounded-[32px] max-w-md w-full p-6 md:p-8 shadow-2xl border border-surface-100 dark:border-surface-800 space-y-5 text-left">
+              <div class="flex items-center justify-between">
+                <div class="w-12 h-12 rounded-2xl bg-rose-500/10 text-rose-500 flex items-center justify-center text-xl shadow-inner">
+                  <i data-lucide="map-pin-off" class="w-6 h-6"></i>
+                </div>
+                <button onclick="closeLocationPermissionGuideModal()" class="w-8 h-8 rounded-full bg-surface-100 dark:bg-surface-800 text-surface-400 hover:text-surface-700 dark:hover:text-white flex items-center justify-center transition-all">
+                  <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+              </div>
+
+              <div>
+                <h3 class="text-lg font-black text-surface-900 dark:text-white flex items-center gap-2">
+                  วิธีเปิดสิทธิ์ระบุตำแหน่ง (GPS)
+                </h3>
+                <p class="text-xs text-surface-400 mt-1">
+                  ระบบต้องการพิกัดตำแหน่งเพื่อคำนวณระยะห่างจากสำนักงานและบันทึกเวลาเข้างานค่ะ
+                </p>
+              </div>
+
+              <!-- Steps List -->
+              <div class="space-y-3 bg-surface-50 dark:bg-surface-800/50 p-4 rounded-2xl border border-surface-100 dark:border-surface-700/50 text-xs">
+                <div class="flex items-start gap-3">
+                  <span class="w-5 h-5 rounded-full bg-brand-500 text-white font-bold text-[11px] flex items-center justify-center flex-shrink-0 mt-0.5">1</span>
+                  <div class="text-surface-600 dark:text-surface-300">
+                    คลิกที่ไอคอน <b>การตั้งค่าไซต์ / แม่กุญแจ 🔒</b> หรือรูปหมุดแผนที่ 📍 ที่อยู่ <b>หน้าแถบที่อยู่เว็บ (URL)</b> ด้านบนสุด
+                  </div>
+                </div>
+                <div class="flex items-start gap-3">
+                  <span class="w-5 h-5 rounded-full bg-brand-500 text-white font-bold text-[11px] flex items-center justify-center flex-shrink-0 mt-0.5">2</span>
+                  <div class="text-surface-600 dark:text-surface-300">
+                    มองหาหัวข้อ <b>"ตำแหน่ง" (Location)</b> แล้วเปลี่ยนจาก "บล็อก" เป็น <b>"อนุญาต" (Allow)</b>
+                  </div>
+                </div>
+                <div class="flex items-start gap-3">
+                  <span class="w-5 h-5 rounded-full bg-brand-500 text-white font-bold text-[11px] flex items-center justify-center flex-shrink-0 mt-0.5">3</span>
+                  <div class="text-surface-600 dark:text-surface-300">
+                    กดปุ่ม <b>"รีเฟรชหน้าเว็บ"</b> ด้านล่างนี้ หรือกดปุ่ม <b>F5</b> เพื่อเริ่มบันทึกเวลาทำงาน
+                  </div>
+                </div>
+              </div>
+
+              <div class="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400 text-[11px] flex items-center gap-2">
+                <i data-lucide="info" class="w-4 h-4 flex-shrink-0"></i>
+                <span>หากใช้งานผ่านมือถือ กรุณาเปิด <b>GPS (บริการระบุตำแหน่ง)</b> ในการตั้งค่าของเครื่องด้วยนะคะ</span>
+              </div>
+
+              <div class="flex items-center gap-3 pt-2">
+                <button onclick="requestLocationPermissionPrompt();"
+                  class="flex-1 py-3 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center gap-2">
+                  <i data-lucide="locate-fixed" class="w-4 h-4"></i> <span>ลองอนุญาตพิกัดอีกครั้ง</span>
+                </button>
+                <button onclick="window.location.reload()"
+                  class="flex-1 py-3 px-4 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white font-black text-xs shadow-lg shadow-brand-500/25 transition-all flex items-center justify-center gap-2">
+                  <i data-lucide="rotate-cw" class="w-4 h-4"></i> <span>รีเฟรชหน้าเว็บ (Reload)</span>
+                </button>
+                <button onclick="closeLocationPermissionGuideModal()"
+                  class="px-4 py-3 rounded-2xl bg-surface-100 dark:bg-surface-800 hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-600 dark:text-surface-300 font-bold text-xs transition-all">
+                  ปิด
+                </button>
               </div>
             </div>
           </div>
@@ -3602,6 +4301,34 @@
                 </div>
               </div>
 
+              <!-- Org Quota Usage Bar -->
+              <div id="orgQuotaCard" class="p-5 bg-gradient-to-br from-white via-surface-50/50 to-brand-50/30 dark:from-surface-900 dark:via-surface-900/90 dark:to-brand-950/20 border border-surface-200/80 dark:border-surface-800 rounded-3xl shadow-sm space-y-3">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-xl bg-brand-500/10 dark:bg-brand-500/20 text-brand-600 dark:text-brand-400 flex items-center justify-center font-bold">
+                      <i data-lucide="pie-chart" class="w-4 h-4"></i>
+                    </div>
+                    <div>
+                      <h4 class="text-xs font-black text-surface-900 dark:text-white flex items-center gap-2">
+                        โควต้าสมาชิกองค์กร
+                        <span id="orgQuotaPlanBadge" class="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-brand-100 dark:bg-brand-900/40 text-brand-700 dark:text-brand-300 rounded-full">Business Plan</span>
+                      </h4>
+                      <p id="orgQuotaExpiryText" class="text-[10px] text-surface-400 font-medium">สถานะแพ็กเกจ: ใช้งานได้ต่อเนื่อง</p>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <span id="orgQuotaUsageText" class="text-xs font-black text-surface-700 dark:text-surface-300">4 / 20 สมาชิก (20%)</span>
+                    <button type="button" onclick="showView('billing')" class="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1">
+                      <i data-lucide="zap" class="w-3.5 h-3.5"></i> อัปเกรดแผน
+                    </button>
+                  </div>
+                </div>
+                <!-- Progress Bar -->
+                <div class="w-full h-2.5 bg-surface-200/70 dark:bg-surface-800 rounded-full overflow-hidden p-0.5">
+                  <div id="orgQuotaProgressBar" class="h-full bg-gradient-to-r from-brand-500 via-indigo-500 to-emerald-500 rounded-full transition-all duration-500" style="width: 20%;"></div>
+                </div>
+              </div>
+
               <!-- Tabs -->
               <div class="flex gap-1 bg-surface-100 dark:bg-surface-800 p-1 rounded-2xl w-fit">
                 <button id="orgTab-members" onclick="switchOrgTab('members')"
@@ -3611,6 +4338,10 @@
                 <button id="orgTab-tree" onclick="switchOrgTab('tree')"
                   class="org-tab px-4 py-2 rounded-xl text-xs font-black transition-all text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-200">
                   <i data-lucide="git-branch" class="w-3.5 h-3.5 inline-block mr-1.5 rotate-90"></i>ผังองค์กร
+                </button>
+                <button id="orgTab-departments" onclick="switchOrgTab('departments')"
+                  class="org-tab px-4 py-2 rounded-xl text-xs font-black transition-all text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-200">
+                  <i data-lucide="layers" class="w-3.5 h-3.5 inline-block mr-1.5 text-indigo-500"></i>แผนก & ตำแหน่ง
                 </button>
                 <button id="orgTab-leave" onclick="switchOrgTab('leave')"
                   class="org-tab px-4 py-2 rounded-xl text-xs font-black transition-all text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-200">
@@ -3644,13 +4375,34 @@
 
               <!-- Tab: Members -->
               <div id="orgTabContent-members">
-                <!-- Search + filter -->
-                <div class="flex items-center gap-3 mb-4">
+                <!-- Search + filter + actions -->
+                <div class="flex flex-col md:flex-row items-stretch md:items-center gap-2.5 mb-4">
                   <div class="relative flex-1">
                     <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-surface-400"></i>
-                    <input id="orgMemberSearch" type="text" placeholder="ค้นหาสมาชิก..."
-                      oninput="filterOrgMembers(this.value)"
+                    <input id="orgMemberSearch" type="text" placeholder="ค้นหาสมาชิก (ชื่อ, username, อีเมล)..."
+                      oninput="filterOrgMembers()"
                       class="w-full pl-9 pr-4 py-2.5 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl text-xs font-bold focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all dark:text-white">
+                  </div>
+                  <select id="orgFilterDept" onchange="filterOrgMembers()"
+                    class="px-3 py-2.5 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl text-xs font-bold text-surface-700 dark:text-surface-200 outline-none cursor-pointer">
+                    <option value="">🏢 ทุกแผนก</option>
+                  </select>
+                  <select id="orgFilterRole" onchange="filterOrgMembers()"
+                    class="px-3 py-2.5 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl text-xs font-bold text-surface-700 dark:text-surface-200 outline-none cursor-pointer">
+                    <option value="">👥 ทุกบทบาท</option>
+                    <option value="owner">👑 Owner</option>
+                    <option value="admin">🛡️ Admin</option>
+                    <option value="member">👤 Member</option>
+                  </select>
+                  <div class="flex items-center gap-2">
+                    <button onclick="exportOrgMembersCSV()" title="ดาวน์โหลดรายชื่อสมาชิกเป็นไฟล์ CSV"
+                      class="flex-1 md:flex-none flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-surface-100 hover:bg-surface-200 dark:bg-surface-800 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300 rounded-xl text-xs font-bold border border-surface-200 dark:border-surface-700 transition-all shadow-sm">
+                      <i data-lucide="download" class="w-3.5 h-3.5"></i> ส่งออก CSV
+                    </button>
+                    <button onclick="showInviteMemberModal('link_qr')" title="สร้างลิงก์เชิญ & QR Code"
+                      class="flex-1 md:flex-none flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-brand-50 hover:bg-brand-100 dark:bg-brand-950/40 dark:hover:bg-brand-900/40 text-brand-600 dark:text-brand-400 rounded-xl text-xs font-bold border border-brand-200 dark:border-brand-800/40 transition-all shadow-sm">
+                      <i data-lucide="qr-code" class="w-3.5 h-3.5"></i> ลิงก์ & QR
+                    </button>
                   </div>
                 </div>
                 <div id="orgMemberList" class="space-y-2">
@@ -3660,11 +4412,19 @@
 
               <!-- Tab: Tree Chart -->
               <div id="orgTabContent-tree" class="hidden">
-                <div class="flex items-center justify-between mb-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                   <div class="text-xs text-surface-500 font-bold">
                     แดชบอร์ดผังองค์กร: เลื่อนผ้าใบเพื่อสำรวจสายงาน หรือกดปุ่มบนการ์ดพนักงานเพื่อปรับสายรายงานตรง
                   </div>
-                  <div class="flex gap-2">
+                  <div class="flex items-center gap-2">
+                    <div class="relative w-48 sm:w-64">
+                      <i data-lucide="search" class="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-surface-400"></i>
+                      <input id="orgTreeSearchInput" type="text" placeholder="ค้นหาชื่อหรือตำแหน่งในผัง..." oninput="searchOrgTreeNode(this.value)"
+                        class="w-full pl-9 pr-3 py-1.5 bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl text-xs text-surface-900 dark:text-white placeholder-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all shadow-inner">
+                    </div>
+                    <button onclick="resetOrgTreeView()" class="flex items-center gap-1.5 px-3 py-1.5 bg-surface-100 hover:bg-surface-200 dark:bg-surface-800 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300 text-xs font-bold rounded-xl border border-surface-200 dark:border-surface-700 transition-all shadow-sm" title="จัดผังให้อยู่ตรงกลางหน้าจอ">
+                      <i data-lucide="focus" class="w-3.5 h-3.5"></i> จัดกึ่งกลาง
+                    </button>
                     <button onclick="renderOrgTree()" class="flex items-center gap-1.5 px-3 py-1.5 bg-surface-100 hover:bg-surface-200 dark:bg-surface-800 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300 text-xs font-bold rounded-xl border border-surface-200 dark:border-surface-700 transition-all shadow-sm">
                       <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> โหลดผังใหม่
                     </button>
@@ -3681,7 +4441,7 @@
                     <button onclick="orgTreeZoom(0.8)" class="w-8 h-8 rounded-xl flex items-center justify-center bg-white hover:bg-gray-100 dark:bg-surface-800 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300 transition-all active:scale-95 border border-surface-100 dark:border-surface-700" title="ซูมออก">
                       <i data-lucide="zoom-out" class="w-4 h-4"></i>
                     </button>
-                    <button onclick="orgTreeZoomReset()" class="w-8 h-8 rounded-xl flex items-center justify-center bg-white hover:bg-gray-100 dark:bg-surface-800 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300 transition-all active:scale-95 border border-surface-100 dark:border-surface-700" title="รีเซ็ตตำแหน่ง">
+                    <button onclick="resetOrgTreeView()" class="w-8 h-8 rounded-xl flex items-center justify-center bg-white hover:bg-gray-100 dark:bg-surface-800 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300 transition-all active:scale-95 border border-surface-100 dark:border-surface-700" title="รีเซ็ตตำแหน่ง">
                       <i data-lucide="maximize" class="w-4 h-4"></i>
                     </button>
                   </div>
@@ -3697,6 +4457,48 @@
                   </div>
                 </div>
               </div>
+
+              <!-- Tab: Departments & Structure -->
+              <div id="orgTabContent-departments" class="hidden space-y-6">
+                <!-- Header Stats & Actions -->
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-3xl p-6 shadow-sm">
+                  <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/20">
+                      <i data-lucide="layers" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                      <h3 class="font-black text-lg text-surface-900 dark:text-white">โครงสร้างแผนก & ฝ่ายในองค์กร</h3>
+                      <p class="text-xs text-surface-500">กำหนดแผนก สีประจำฝ่าย และจัดพนักงานเข้าสังกัดเพื่อเชื่อมโยงกับผังองค์กร</p>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-2.5">
+                    <button onclick="loadOrgDepartments()" class="flex items-center gap-1.5 px-4 py-2 bg-surface-100 hover:bg-surface-200 dark:bg-surface-800 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300 text-xs font-bold rounded-2xl border border-surface-200 dark:border-surface-700 transition-all shadow-sm">
+                      <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> รีเฟรช
+                    </button>
+                    <button onclick="openCreateDeptModal()" class="flex items-center gap-1.5 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-black rounded-2xl shadow-lg shadow-brand-600/20 transition-all">
+                      <i data-lucide="plus" class="w-4 h-4"></i> เพิ่มแผนกใหม่
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Departments Grid -->
+                <div id="orgDepartmentsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <!-- Dynamic Department Cards -->
+                </div>
+
+                <!-- Empty State -->
+                <div id="orgDepartmentsEmpty" class="hidden text-center py-16 bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-3xl p-8">
+                  <div class="w-16 h-16 rounded-3xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-500 mx-auto flex items-center justify-center mb-4">
+                    <i data-lucide="layers" class="w-8 h-8"></i>
+                  </div>
+                  <h4 class="text-base font-black text-surface-900 dark:text-white mb-1">ยังไม่มีแผนกในองค์กร</h4>
+                  <p class="text-xs text-surface-400 max-w-sm mx-auto mb-5">เริ่มต้นสร้างแผนก เช่น ฝ่ายบริหาร, วิศวกรรม, การตลาด หรือการเงิน เพื่อแยกสีและจัดกลุ่มในผังองค์กร</p>
+                  <button onclick="openCreateDeptModal()" class="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-black rounded-2xl shadow-md transition-all inline-flex items-center gap-2">
+                    <i data-lucide="plus" class="w-4 h-4"></i> สร้างแผนกแรก
+                  </button>
+                </div>
+              </div>
+
               <!-- Tab: Leave Requests (Admin) -->
               <div id="orgTabContent-leave" class="hidden">
                 <div class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-2xl overflow-hidden shadow-sm mb-6">
@@ -4287,9 +5089,32 @@
                   class="w-full px-4 py-3 bg-surface-50 dark:bg-surface-950 border border-surface-200 dark:border-surface-800 rounded-2xl text-xs font-bold focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all dark:text-white">
               </div>
 
+              <!-- Department & Position Group -->
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-[10px] font-black uppercase tracking-widest text-surface-400 mb-1.5 ml-1 flex items-center gap-1.5">
+                    <i data-lucide="layers" class="w-3 h-3 text-indigo-500"></i> แผนก (Department)
+                  </label>
+                  <div class="relative">
+                    <input id="orgEditMemberDepartment" list="orgDeptDatalist" type="text" placeholder="เลือกหรือระบุแผนก..."
+                      class="w-full px-4 py-3 bg-surface-50 dark:bg-surface-950 border border-surface-200 dark:border-surface-800 rounded-2xl text-xs font-bold focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all dark:text-white">
+                    <datalist id="orgDeptDatalist">
+                      <!-- Dynamically populated -->
+                    </datalist>
+                  </div>
+                </div>
+                <div>
+                  <label class="block text-[10px] font-black uppercase tracking-widest text-surface-400 mb-1.5 ml-1 flex items-center gap-1.5">
+                    <i data-lucide="briefcase" class="w-3 h-3 text-brand-500"></i> ตำแหน่งงาน (Position)
+                  </label>
+                  <input id="orgEditMemberPosition" type="text" placeholder="เช่น ผู้จัดการ, วิศวกร..."
+                    class="w-full px-4 py-3 bg-surface-50 dark:bg-surface-950 border border-surface-200 dark:border-surface-800 rounded-2xl text-xs font-bold focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all dark:text-white">
+                </div>
+              </div>
+
               <!-- Org Role -->
               <div>
-                <label class="block text-[10px] font-black uppercase tracking-widest text-surface-400 mb-1.5 ml-1">ตำแหน่งในองค์กร</label>
+                <label class="block text-[10px] font-black uppercase tracking-widest text-surface-400 mb-1.5 ml-1">สิทธิ์การดูแลในระบบ (Org Role)</label>
                 <select id="orgEditMemberRole"
                   class="w-full px-4 py-3 bg-surface-50 dark:bg-surface-950 border border-surface-200 dark:border-surface-800 rounded-2xl text-xs font-bold focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all dark:text-white">
                   <option value="member">👤 Member — สมาชิกทั่วไป</option>
@@ -4375,6 +5200,28 @@
                       <div class="w-10 h-5 bg-surface-200 peer-focus:outline-none rounded-full peer dark:bg-surface-800 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500 shadow-inner"></div>
                     </label>
                   </div>
+                  <!-- LINE Broadcast -->
+                  <div class="flex items-center justify-between p-4 bg-surface-50 dark:bg-surface-950 border border-surface-100 dark:border-surface-800 rounded-2xl">
+                    <label for="orgEditMemberBroadcastLine" class="cursor-pointer flex-1">
+                      <div class="text-xs font-bold dark:text-white">บรอดแคสต์ประกาศ LINE</div>
+                      <div class="text-[10px] font-bold text-surface-400 uppercase tracking-tighter">ส่งข้อความประกาศแจ้งเตือนผ่าน LINE Official Account</div>
+                    </label>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                      <input type="checkbox" id="orgEditMemberBroadcastLine" class="sr-only peer">
+                      <div class="w-10 h-5 bg-surface-200 peer-focus:outline-none rounded-full peer dark:bg-surface-800 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500 shadow-inner"></div>
+                    </label>
+                  </div>
+                  <!-- PEAK Management -->
+                  <div class="flex items-center justify-between p-4 bg-surface-50 dark:bg-surface-950 border border-surface-100 dark:border-surface-800 rounded-2xl">
+                    <label for="orgEditMemberManagePeak" class="cursor-pointer flex-1">
+                      <div class="text-xs font-bold dark:text-white">จัดการระบบบัญชี PEAK</div>
+                      <div class="text-[10px] font-bold text-surface-400 uppercase tracking-tighter">ดูและตั้งค่าเชื่อมต่อระบบบัญชี PEAK</div>
+                    </label>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                      <input type="checkbox" id="orgEditMemberManagePeak" class="sr-only peer">
+                      <div class="w-10 h-5 bg-surface-200 peer-focus:outline-none rounded-full peer dark:bg-surface-800 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-500 shadow-inner"></div>
+                    </label>
+                  </div>
                 </div>
               </div>
 
@@ -4396,6 +5243,20 @@
                   <button onclick="submitOrgMemberResetPassword()"
                     class="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-black shadow-lg shadow-amber-600/20 transition-all">รีเซ็ต</button>
                 </div>
+              </div>
+
+              <!-- Transfer Ownership (Visible only to Owner for Admin members) -->
+              <div id="orgTransferOwnershipCard" class="hidden p-4 bg-rose-50/50 dark:bg-rose-950/20 border border-rose-200/80 dark:border-rose-900/50 rounded-2xl space-y-2">
+                <div class="flex items-center gap-2 text-rose-700 dark:text-rose-400 text-xs font-black uppercase tracking-wider">
+                  <i data-lucide="crown" class="w-4 h-4 text-amber-500"></i> โอนสิทธิ์ความเป็นเจ้าของ (Transfer Ownership)
+                </div>
+                <p class="text-[10px] text-surface-500 dark:text-surface-400 leading-relaxed">
+                  เมื่อโอนสิทธิ์แล้ว สมาชิกท่านนี้จะกลายเป็น <strong>Owner (Admin ใหญ่)</strong> แทนคุณ และสถานะของคุณจะเปลี่ยนเป็น Admin ปกติ
+                </p>
+                <button type="button" onclick="confirmTransferOrgOwnership()"
+                  class="w-full py-2.5 px-4 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black shadow-md shadow-rose-600/20 transition-all flex items-center justify-center gap-1.5">
+                  <i data-lucide="shield-alert" class="w-3.5 h-3.5"></i> โอนสิทธิ์ Owner ให้ผู้ใช้นี้
+                </button>
               </div>
             </div>
 
@@ -8184,23 +9045,18 @@
               </div>
             </div>
 
-            <!-- Visibility Mode 3-Tab Selector -->
+            <!-- Visibility Mode 2-Tab Selector -->
             <div
-              class="flex gap-1 p-1 bg-white/60 dark:bg-surface-800/60 rounded-xl border border-surface-100 dark:border-surface-700">
-              <button type="button" id="visTabOnlyMe" onclick="setVisibilityTab('me')"
-                class="vis-tab-btn active flex-1 py-2 px-1 rounded-lg text-[9px] font-black uppercase tracking-wide transition-all bg-white dark:bg-surface-700 shadow-sm text-brand-600 dark:text-brand-400 flex flex-col items-center gap-1">
-                <i data-lucide="lock" class="w-4 h-4"></i>
-                <span>เฉพาะฉััน</span>
-              </button>
+              class="flex gap-1.5 p-1 bg-white/60 dark:bg-surface-800/60 rounded-xl border border-surface-100 dark:border-surface-700">
               <button type="button" id="visTabDept" onclick="setVisibilityTab('dept')"
-                class="vis-tab-btn flex-1 py-2 px-1 rounded-lg text-[9px] font-black uppercase tracking-wide transition-all text-surface-400 hover:bg-white/60 hover:text-surface-600 flex flex-col items-center gap-1">
+                class="vis-tab-btn flex-1 py-2 px-2 rounded-lg text-[10px] font-black uppercase tracking-wide transition-all bg-white dark:bg-surface-700 shadow-sm text-brand-600 dark:text-brand-400 flex items-center justify-center gap-1.5">
                 <i data-lucide="building-2" class="w-4 h-4"></i>
                 <span>ทั้งแผนก</span>
               </button>
               <button type="button" id="visTabUsers" onclick="setVisibilityTab('users')"
-                class="vis-tab-btn flex-1 py-2 px-1 rounded-lg text-[9px] font-black uppercase tracking-wide transition-all text-surface-400 hover:bg-white/60 hover:text-surface-600 flex flex-col items-center gap-1">
+                class="vis-tab-btn flex-1 py-2 px-2 rounded-lg text-[10px] font-black uppercase tracking-wide transition-all text-surface-400 hover:bg-white/60 hover:text-surface-600 flex items-center justify-center gap-1.5">
                 <i data-lucide="user-plus" class="w-4 h-4"></i>
-                <span>ระบุคน</span>
+                <span>ระบุบุคคล</span>
               </button>
             </div>
 
@@ -8940,25 +9796,40 @@
     }
 
     /* Kanban Drag & Drop Visuals */
+    .kanban-card {
+      transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.15s ease, opacity 0.15s ease;
+      will-change: transform;
+    }
+    .kanban-card.is-dragging {
+      opacity: 0.35 !important;
+      transform: scale(0.96);
+      cursor: grabbing !important;
+    }
+    .kanban-cards-list {
+      transition: background-color 0.2s ease, outline 0.2s ease;
+    }
     .kanban-cards-list.drag-over {
-      background-color: var(--surface-100);
-      border-radius: 0.5rem;
+      background-color: rgba(99, 102, 241, 0.05);
+      outline: 2px dashed rgba(99, 102, 241, 0.4);
+      outline-offset: -4px;
+      border-radius: 1rem;
     }
-
     .dark .kanban-cards-list.drag-over {
-      background-color: var(--surface-800);
+      background-color: rgba(99, 102, 241, 0.1);
+      outline: 2px dashed rgba(129, 140, 248, 0.5);
     }
-
-    .kanban-card.drag-over-top {
-      border-top: 3px solid var(--brand-600) !important;
-      margin-top: 10px;
-      transition: margin 0.2s ease-in-out;
+    .kanban-drag-placeholder {
+      min-height: 4.5rem;
+      border-radius: 0.75rem;
+      border: 2px dashed #6366f1;
+      background: rgba(99, 102, 241, 0.08);
+      margin: 0.5rem 0;
+      transition: all 0.15s ease;
+      animation: placeholderPulse 1.2s infinite ease-in-out;
     }
-
-    .kanban-card.drag-over-bottom {
-      border-bottom: 3px solid var(--brand-600) !important;
-      margin-bottom: 10px;
-      transition: margin 0.2s ease-in-out;
+    @keyframes placeholderPulse {
+      0%, 100% { opacity: 0.6; transform: scale(0.99); }
+      50% { opacity: 1; transform: scale(1); }
     }
 
     .admin-status-dot {
@@ -9297,7 +10168,7 @@
   <div id="pdfViewerModal"
     class="fixed inset-0 z-[100000] flex items-center justify-center p-0 sm:p-4 bg-surface-950/80 backdrop-blur-md hidden animate-in fade-in duration-300">
     <div
-      class="bg-white dark:bg-surface-900 w-full h-full sm:max-w-6xl sm:h-[90vh] sm:rounded-3xl shadow-2xl border-0 sm:border border-surface-200 dark:border-surface-800 overflow-hidden flex flex-col animate-in zoom-in-95 duration-300">
+      class="bg-white dark:bg-surface-900 w-full h-full sm:w-[95%] sm:max-w-6xl sm:h-[90vh] sm:rounded-3xl shadow-2xl border-0 sm:border border-surface-200 dark:border-surface-800 overflow-hidden flex flex-col animate-in zoom-in-95 duration-300 mx-auto my-auto">
       <div
         class="p-4 border-b border-surface-100 dark:border-surface-800 flex justify-between items-center bg-surface-50/50 dark:bg-surface-800/50">
         <div class="flex items-center gap-3">
@@ -9578,6 +10449,10 @@
 
       <!-- งาน & ทีม -->
       <p class="text-[10px] font-black uppercase tracking-widest text-surface-400 px-2 pb-1 pt-3">งาน & ทีม</p>
+      <button onclick="showView('attendance'); document.getElementById('mobileMenuModal').classList.add('hidden')"
+        class="mobile-menu-row">
+        <div class="mobile-menu-icon bg-emerald-50 dark:bg-emerald-900/30"><i data-lucide="clock" class="w-5 h-5 text-emerald-600"></i></div><span>ลงเวลาเข้างาน (GPS)</span>
+      </button>
       <button onclick="showView('leave'); document.getElementById('mobileMenuModal').classList.add('hidden')"
         class="mobile-menu-row">
         <div class="mobile-menu-icon bg-rose-50 dark:bg-rose-900/30"><i data-lucide="umbrella" class="w-5 h-5 text-rose-500"></i></div><span>ลางาน</span>
@@ -10259,11 +11134,12 @@
     </div>
   </div>
 
-  <script src="/static/js/core.js?v=2.4"></script>
-  <script src="/static/js/chat.js?v=2.4"></script>
-  <script src="/static/js/billing.js?v=2.4"></script>
-  <script src="/static/js/kb.js?v=2.4"></script>
-  <script src="/static/js/admin.js?v=2.4"></script>
+  <script src="/static/js/core.js?v=4.1"></script>
+  <script src="/static/js/chat.js?v=4.1"></script>
+  <script src="/static/js/billing.js?v=4.0"></script>
+  <script src="/static/js/kb.js?v=4.1"></script>
+  <script src="/static/js/admin.js?v=4.0"></script>
+  <script src="/static/js/attendance.js?v=1.0"></script>
   <!-- 🌩️ Weather Detail Modal -->
   <div id="weatherDetailModal" class="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-xl hidden flex items-center justify-center animate-in fade-in duration-500 p-0 sm:p-4">
     <div class="bg-white dark:bg-surface-900 w-full h-full sm:w-[95%] sm:max-w-xl sm:h-auto flex flex-col sm:rounded-[3rem] shadow-[0_0_100px_rgba(0,0,0,0.5)] overflow-hidden border border-white/20">
@@ -10351,17 +11227,20 @@
     </div>
   </div>
   <!-- 🛠️ LINE OA Settings Modal -->
-  <div id="lineSettingsModal" class="fixed inset-0 z-[10000] bg-black/60 backdrop-blur-md hidden flex items-center justify-center animate-in fade-in duration-300">
-    <div class="bg-white dark:bg-surface-900 w-full max-w-lg mx-4 rounded-[2.5rem] shadow-2xl overflow-hidden border border-white/20">
-      <div class="p-8">
-        <div class="flex items-center justify-between mb-8">
+  <div id="lineSettingsModal" class="fixed inset-0 z-[10000] bg-black/60 backdrop-blur-md hidden flex items-center justify-center animate-in fade-in duration-300 p-4">
+    <div class="bg-white dark:bg-surface-900 w-full max-w-xl mx-auto rounded-[2.5rem] shadow-2xl overflow-hidden border border-surface-200 dark:border-surface-800 max-h-[90vh] flex flex-col">
+      <div class="p-6 md:p-8 overflow-y-auto custom-scrollbar">
+        <div class="flex items-center justify-between mb-6">
           <div class="flex items-center gap-4">
-            <div class="w-12 h-12 rounded-2xl bg-[#00B900]/10 flex items-center justify-center text-[#00B900]">
-              <i data-lucide="settings-2" class="w-6 h-6"></i>
+            <div class="w-12 h-12 rounded-2xl bg-[#00B900]/10 flex items-center justify-center text-[#00B900] shrink-0">
+              <i data-lucide="bot" class="w-6 h-6"></i>
             </div>
             <div>
-              <h2 class="text-xl font-black text-surface-900 dark:text-white">ตั้งค่า LINE OA</h2>
-              <p class="text-xs text-surface-500 dark:text-surface-400">จัดการ API Keys และข้อความต้อนรับ</p>
+              <h2 class="text-xl font-black text-surface-900 dark:text-white flex items-center gap-2">
+                ตั้งค่า LINE Bot องค์กร
+                <span id="lineOrgBadge" class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">บอทส่วนกลาง</span>
+              </h2>
+              <p class="text-xs text-surface-500 dark:text-surface-400">เชื่อมต่อ LINE Channel Key ขององค์กร หรือใช้บอทส่วนกลางของระบบ</p>
             </div>
           </div>
           <button onclick="document.getElementById('lineSettingsModal').classList.add('hidden')" class="p-2 hover:bg-surface-100 dark:hover:bg-surface-800 rounded-full transition-colors text-surface-400">
@@ -10369,26 +11248,56 @@
           </button>
         </div>
 
-        <div class="space-y-6">
-          <div id="lineSettingsTokenContainer" class="space-y-2 hidden">
-            <label class="text-[10px] font-black uppercase tracking-widest text-surface-400 ml-1">Channel Access Token</label>
-            <input id="lineSettingsToken" type="password" placeholder="ใส่ Access Token ยาวๆ ตรงนี้ค่ะ" 
-                   class="w-full px-5 py-4 bg-surface-50 dark:bg-surface-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-[#00B900] transition-all">
-          </div>
-          <div id="lineSettingsSecretContainer" class="space-y-2 hidden">
-            <label class="text-[10px] font-black uppercase tracking-widest text-surface-400 ml-1">Channel Secret</label>
-            <input id="lineSettingsSecret" type="password" placeholder="ใส่ Channel Secret ค่ะ" 
-                   class="w-full px-5 py-4 bg-surface-50 dark:bg-surface-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-[#00B900] transition-all">
-          </div>
-          <div class="space-y-2">
-            <label class="text-[10px] font-black uppercase tracking-widest text-surface-400 ml-1">ข้อความต้อนรับ (Greeting)</label>
-            <textarea id="lineSettingsGreeting" rows="3" placeholder="สวัสดีค่ะ! มีอะไรให้พั้นช่วยไหมคะ?" 
-                      class="w-full px-5 py-4 bg-surface-50 dark:bg-surface-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-[#00B900] transition-all resize-none"></textarea>
+        <div class="space-y-5">
+          <!-- 🔑 Custom LINE Channel Keys Section -->
+          <div class="p-5 rounded-2xl bg-surface-50 dark:bg-surface-800/50 border border-surface-200 dark:border-surface-700 space-y-4">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-black uppercase tracking-wider text-surface-700 dark:text-surface-300 flex items-center gap-2">
+                <i data-lucide="key-round" class="w-4 h-4 text-[#00B900]"></i> LINE Messaging API Credentials
+              </span>
+              <button onclick="testOrgLineConnection()" id="btnTestLineChannel" class="px-3 py-1.5 bg-[#00B900]/10 hover:bg-[#00B900]/20 text-[#00B900] text-xs font-bold rounded-xl transition flex items-center gap-1.5">
+                <i data-lucide="activity" class="w-3.5 h-3.5"></i> ทดสอบการเชื่อมต่อ
+              </button>
+            </div>
+
+            <div class="space-y-2">
+              <label class="text-[11px] font-bold text-surface-600 dark:text-surface-400">LINE Bot Basic ID / Official Account ID</label>
+              <input id="lineSettingsBotId" type="text" placeholder="เช่น @myorgbot หรือ @905gsngi" 
+                     class="w-full px-4 py-3 bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded-xl text-sm focus:ring-2 focus:ring-[#00B900] transition-all">
+            </div>
+
+            <div id="lineSettingsTokenContainer" class="space-y-2">
+              <div class="flex items-center justify-between">
+                <label class="text-[11px] font-bold text-surface-600 dark:text-surface-400">Channel Access Token (Long-lived)</label>
+                <span id="lineTokenStatus" class="text-[10px] text-surface-400"></span>
+              </div>
+              <input id="lineSettingsToken" type="password" placeholder="ใส่ Channel Access Token (ค่าว่าง = ใช้บอทระบบ)" 
+                     class="w-full px-4 py-3 bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded-xl text-sm focus:ring-2 focus:ring-[#00B900] transition-all font-mono">
+            </div>
+
+            <div id="lineSettingsSecretContainer" class="space-y-2">
+              <label class="text-[11px] font-bold text-surface-600 dark:text-surface-400">Channel Secret</label>
+              <input id="lineSettingsSecret" type="password" placeholder="ใส่ Channel Secret" 
+                     class="w-full px-4 py-3 bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded-xl text-sm focus:ring-2 focus:ring-[#00B900] transition-all font-mono">
+            </div>
+            
+            <div id="lineWebhookUrlBox" class="p-3 bg-emerald-50 dark:bg-emerald-950/30 rounded-xl border border-emerald-200 dark:border-emerald-800/50 text-xs text-emerald-800 dark:text-emerald-300 flex items-center justify-between gap-2">
+              <div class="truncate">
+                <span class="font-bold">Webhook URL:</span> <code id="lineWebhookUrlText" class="font-mono text-[11px]">https://openchat.sbs/api/line/webhook</code>
+              </div>
+              <button onclick="copyLineWebhookUrl()" class="px-2.5 py-1 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 transition shrink-0 text-[11px]">คัดลอก</button>
+            </div>
           </div>
 
           <div class="space-y-2">
-            <label class="text-[10px] font-black uppercase tracking-widest text-surface-400 ml-1">บุคลิกภาพบอท (Persona)</label>
-            <select id="lineSettingsPersona" class="w-full px-5 py-4 bg-surface-50 dark:bg-surface-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-[#00B900] transition-all text-surface-900 dark:text-white outline-none">
+            <label class="text-[11px] font-bold text-surface-600 dark:text-surface-400">ข้อความต้อนรับ (Greeting Message)</label>
+            <textarea id="lineSettingsGreeting" rows="2" placeholder="สวัสดีค่ะ! มีอะไรให้น้องพั้นช่วยไหมคะ?" 
+                      class="w-full px-4 py-3 bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl text-sm focus:ring-2 focus:ring-[#00B900] transition-all resize-none"></textarea>
+          </div>
+
+          <div class="space-y-2">
+            <label class="text-[11px] font-bold text-surface-600 dark:text-surface-400">บุคลิกภาพบอท (Persona)</label>
+            <select id="lineSettingsPersona" class="w-full px-4 py-3 bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl text-sm focus:ring-2 focus:ring-[#00B900] transition-all text-surface-900 dark:text-white outline-none">
               <option value="default">ค่าเริ่มต้น (น้องพั้นซ์)</option>
             </select>
           </div>
@@ -10401,7 +11310,7 @@
               </div>
               <div>
                 <p class="text-sm font-bold text-surface-900 dark:text-white">AI Auto-Responder</p>
-                <p class="text-[10px] text-surface-500">ให้น้องพั้นช่วยตอบแชทอัตโนมัติ</p>
+                <p class="text-[11px] text-surface-500">ตอบกลับคำถามและเอกสารอัตโนมัติใน LINE</p>
               </div>
             </div>
             <label class="relative inline-flex items-center cursor-pointer">
@@ -10411,12 +11320,89 @@
           </div>
         </div>
 
-        <div class="mt-10 flex gap-3">
-          <button onclick="saveLineSettings()" class="flex-1 py-4 bg-[#00B900] hover:bg-[#009900] text-white rounded-2xl font-black text-sm transition-all shadow-lg shadow-[#00B900]/20 active:scale-95">
-            บันทึกการตั้งค่า
+        <div class="mt-8 flex flex-col sm:flex-row gap-3">
+          <button onclick="saveLineSettings()" id="btnSaveLineSettings" class="flex-1 py-3.5 bg-[#00B900] hover:bg-[#009900] text-white rounded-xl font-bold text-sm transition-all shadow-lg shadow-[#00B900]/20 active:scale-95 flex items-center justify-center gap-2">
+            <i data-lucide="save" class="w-4 h-4"></i> บันทึกการตั้งค่า
           </button>
-          <button onclick="document.getElementById('lineSettingsModal').classList.add('hidden')" class="flex-1 py-4 bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 rounded-2xl font-black text-sm hover:bg-surface-200 transition-all">
-            ยกเลิก
+          <button onclick="resetOrgLineBot()" id="btnResetLineBot" class="px-4 py-3.5 bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 rounded-xl font-bold text-xs hover:bg-surface-200 transition-all" title="ล้างค่า Custom Keys เพื่อกลับไปใช้บอทระบบ">
+            คืนค่าบอทระบบ
+          </button>
+          <button onclick="document.getElementById('lineSettingsModal').classList.add('hidden')" class="px-4 py-3.5 bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 rounded-xl font-bold text-xs hover:bg-surface-200 transition-all">
+            ปิด
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 🔗 Personal LINE Account Binding Modal -->
+  <div id="userLineBindModal" class="fixed inset-0 z-[10000] bg-black/60 backdrop-blur-md hidden flex items-center justify-center animate-in fade-in duration-300 p-4">
+    <div class="bg-white dark:bg-surface-900 w-full max-w-lg mx-auto rounded-[2.5rem] shadow-2xl overflow-hidden border border-surface-200 dark:border-surface-800 max-h-[90vh] flex flex-col">
+      <div class="p-6 md:p-8 overflow-y-auto custom-scrollbar space-y-6">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-4">
+            <div class="w-12 h-12 rounded-2xl bg-[#06C755]/10 flex items-center justify-center text-[#06C755] shrink-0">
+              <i data-lucide="message-square" class="w-6 h-6"></i>
+            </div>
+            <div>
+              <h2 class="text-xl font-black text-surface-900 dark:text-white">เชื่อมต่อ LINE ส่วนตัว</h2>
+              <p class="text-xs text-surface-500 dark:text-surface-400">เลือกวิธีผูกบัญชี LINE เพื่อรับแจ้งเตือนและแชทกับบอท</p>
+            </div>
+          </div>
+          <button onclick="document.getElementById('userLineBindModal').classList.add('hidden')" class="p-2 hover:bg-surface-100 dark:hover:bg-surface-800 rounded-full transition-colors text-surface-400">
+            <i data-lucide="x" class="w-6 h-6"></i>
+          </button>
+        </div>
+
+        <!-- 📱 วิธีที่ 1: แชทกับบอท (แนะนำ) -->
+        <div class="p-5 rounded-2xl bg-surface-50 dark:bg-surface-800/50 border border-surface-200 dark:border-surface-700 space-y-3">
+          <div class="flex items-center gap-2">
+            <span class="w-6 h-6 rounded-full bg-[#06C755] text-white text-xs font-black flex items-center justify-center">1</span>
+            <h3 class="text-sm font-bold text-surface-800 dark:text-white">พิมพ์คำสั่งใน LINE Bot (ง่ายและแนะนำที่สุด)</h3>
+          </div>
+          <ol class="text-xs text-surface-600 dark:text-surface-400 space-y-1.5 ml-8 list-decimal">
+            <li>เพิ่มเพื่อน LINE Bot: <span id="userLineBotIdDisplay" class="font-bold text-[#06C755]">@905gsngi</span></li>
+            <li>ส่งข้อความคำว่า <span class="font-bold bg-surface-200 dark:bg-surface-700 px-2 py-0.5 rounded text-surface-900 dark:text-white">ผูกบัญชี</span> หรือ <span class="font-bold bg-surface-200 dark:bg-surface-700 px-2 py-0.5 rounded text-surface-900 dark:text-white">/link</span></li>
+            <li>แตะปุ่ม <strong>"เชื่อมต่อบัญชี"</strong> ในการ์ดที่บอทตอบกลับมาค่ะ</li>
+          </ol>
+          <div class="pt-2 flex items-center gap-2 ml-8">
+            <a id="lineAddFriendLink" href="https://line.me/R/ti/p/@905gsngi" target="_blank" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#06C755] hover:bg-[#05a847] text-white text-xs font-bold rounded-xl transition shadow-sm">
+              <i data-lucide="user-plus" class="w-3.5 h-3.5"></i> เพิ่มเพื่อน LINE Bot ทันที
+            </a>
+          </div>
+        </div>
+
+        <!-- 🔑 วิธีที่ 2: กรอก Token หรือ LINE User ID -->
+        <div class="p-5 rounded-2xl bg-surface-50 dark:bg-surface-800/50 border border-surface-200 dark:border-surface-700 space-y-3">
+          <div class="flex items-center gap-2">
+            <span class="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-black flex items-center justify-center">2</span>
+            <h3 class="text-sm font-bold text-surface-800 dark:text-white">กรอกรหัสเชื่อมต่อ (Token) หรือ LINE User ID</h3>
+          </div>
+          <div class="space-y-2 ml-8">
+            <input id="userDirectLineToken" type="text" placeholder="ใส่ Token (จากลิงก์) หรือ LINE User ID (U...)" 
+                   class="w-full px-4 py-3 bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded-xl text-xs font-mono focus:ring-2 focus:ring-indigo-500 transition-all">
+            <button onclick="submitDirectLineBind()" id="btnSubmitDirectLine" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition shadow-sm flex items-center justify-center gap-1.5">
+              <i data-lucide="check" class="w-3.5 h-3.5"></i> ยืนยันการผูกบัญชีด้วยรหัสนี้
+            </button>
+          </div>
+        </div>
+
+        <!-- 🌐 วิธีที่ 3: LINE Login OAuth -->
+        <div class="p-5 rounded-2xl bg-surface-50 dark:bg-surface-800/50 border border-surface-200 dark:border-surface-700 space-y-3">
+          <div class="flex items-center gap-2">
+            <span class="w-6 h-6 rounded-full bg-surface-400 text-white text-xs font-black flex items-center justify-center">3</span>
+            <h3 class="text-sm font-bold text-surface-800 dark:text-white">เข้าสู่ระบบด้วย LINE Login (OAuth)</h3>
+          </div>
+          <div class="ml-8">
+            <a href="/api/line/login-init" class="inline-flex items-center gap-2 px-4 py-2.5 bg-[#06C755] hover:bg-[#05a847] text-white text-xs font-bold rounded-xl transition shadow-sm">
+              <i data-lucide="external-link" class="w-3.5 h-3.5"></i> เชื่อมต่อผ่าน LINE Login
+            </a>
+          </div>
+        </div>
+
+        <div class="flex justify-end pt-2">
+          <button onclick="document.getElementById('userLineBindModal').classList.add('hidden')" class="px-5 py-2.5 bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 rounded-xl font-bold text-xs hover:bg-surface-200 transition-all">
+            ปิด
           </button>
         </div>
       </div>
@@ -10768,11 +11754,18 @@ document.addEventListener('DOMContentLoaded', () => {
         // ─── Init ────────────────────────────────────────────
         window.addEventListener('load', function () {
             lucide.createIcons();
-            loadDashboardData();
+            const hash = window.location.hash || '';
+            if (hash.includes('tax') || hash.includes('expense') || hash.includes('finance')) {
+                loadDashboardData();
+            }
         });
 
         // ─── DATA LOADING ────────────────────────────────────
         function loadDashboardData() {
+            // Check if user has permission to view financial dashboard
+            if (typeof state !== 'undefined' && state.userRole && state.userRole !== 'admin' && !state.canViewFinancial) {
+                return;
+            }
             // ── Feature gate: skip API calls if plan doesn't include financial_dashboard ──
             if (typeof state !== 'undefined' && state.orgFeatures && !state.orgFeatures.financial_dashboard) {
                 const catList = document.getElementById('catList');

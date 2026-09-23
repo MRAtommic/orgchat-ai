@@ -182,3 +182,48 @@ async function loadAuditLogsUI() {
 function exportAuditLogsCSV() {
   window.open('/api/admin/audit-logs/export', '_blank');
 }
+
+// ─── System Health Alerts Banner (Google Key, API warnings) ───
+async function checkSystemAlerts() {
+  try {
+    const res = await apiFetch('/api/admin/system-alerts');
+    if (res && res.ok && res.alerts && res.alerts.length > 0) {
+      renderSystemAlertsBanner(res.alerts);
+    } else {
+      const banner = $('systemAlertBanner');
+      if (banner) banner.classList.add('hidden');
+    }
+  } catch (e) {
+    console.debug('System alerts check skipped:', e);
+  }
+}
+
+function renderSystemAlertsBanner(alerts) {
+  let banner = $('systemAlertBanner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'systemAlertBanner';
+    banner.className = 'w-full bg-amber-500/10 border-b border-amber-500/30 text-amber-900 dark:text-amber-200 px-4 py-2.5 text-xs flex items-center justify-between z-50';
+    document.body.prepend(banner);
+  }
+  banner.classList.remove('hidden');
+  const alert = alerts[0];
+  banner.innerHTML = `
+    <div class="flex items-center gap-2">
+      <span class="inline-block p-1 bg-amber-500 text-white rounded-md">⚠️</span>
+      <div>
+        <span class="font-bold">${alert.title}:</span>
+        <span class="opacity-90 ml-1">${alert.message}</span>
+        ${alert.hint ? `<span class="block text-[11px] opacity-75 mt-0.5">${alert.hint}</span>` : ''}
+      </div>
+    </div>
+    <button onclick="document.getElementById('systemAlertBanner').classList.add('hidden')" class="text-amber-700 dark:text-amber-300 hover:opacity-100 opacity-60 p-1">✕</button>
+  `;
+}
+
+// Auto-check on load if user is logged in
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', checkSystemAlerts);
+} else {
+  setTimeout(checkSystemAlerts, 1000);
+}

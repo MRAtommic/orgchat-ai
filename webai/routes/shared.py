@@ -34,7 +34,7 @@ _APP_START_TIME = time.time()
 # ─── Allowed File Extensions ─────────────────────────────────
 ALLOWED_EXTENSIONS = {
     # Documents
-    ".pdf", ".csv", ".txt", ".md", ".docx", ".xlsx",
+    ".pdf", ".csv", ".txt", ".md", ".docx", ".xlsx", ".pptx", ".ppt",
     # Images
     ".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".webp", ".gif",
     # Audio (Voice Messages)
@@ -323,15 +323,10 @@ def _set_session_org(username: str):
             session["org_id"] = orgs[0]["id"]
             session["org_role"] = orgs[0]["role"]
     else:
-        # Fallback to default organization (org_id = 1) if available
-        default_org = database.get_org(1)
-        if default_org:
-            database.add_org_member(1, username, role="member")
-            session["org_id"] = 1
-            session["org_role"] = "member"
-        else:
-            session["org_id"] = None
-            session["org_role"] = None
+        # User ไม่มี org — ไม่ auto-join ที่ไหน (ต้องรอถูกเชิญหรือสร้าง org ใหม่)
+        # เดิม fallback เข้า org_id=1 อัตโนมัติ ซึ่งข้ามตรวจ quota/whitelist (security issue)
+        session["org_id"] = None
+        session["org_role"] = None
 
 def get_current_org_id():
     """Return the org_id for the current request session, with optimized membership checking."""
@@ -593,19 +588,29 @@ def update_weather_background():
         w_url = "https://api.open-meteo.com/v1/forecast?latitude=13.75&longitude=100.51&current=temperature_2m,weather_code&timezone=Asia%2FBangkok"
         aq_url = "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=13.75&longitude=100.51&current=pm2_5&timezone=Asia%2FBangkok"
         
-        w_res = requests.get(w_url, timeout=10).json()
-        aq_res = requests.get(aq_url, timeout=10).json()
+        temp = 32
+        cond = "แจ่มใส"
+        pm25 = 15
         
-        cur = w_res.get("current", {})
-        temp = round(cur.get("temperature_2m", 0))
-        cond = WMO_CODES.get(cur.get("weather_code", 0), "แจ่มใส")
-        pm25 = aq_res.get("current", {}).get("pm2_5", 0)
+        try:
+            w_res = requests.get(w_url, timeout=5).json()
+            cur = w_res.get("current", {})
+            temp = round(cur.get("temperature_2m", 32))
+            cond = WMO_CODES.get(cur.get("weather_code", 0), "แจ่มใส")
+        except Exception:
+            pass
+            
+        try:
+            aq_res = requests.get(aq_url, timeout=5).json()
+            pm25 = aq_res.get("current", {}).get("pm2_5", 15)
+        except Exception:
+            pass
         
         _weather_cache["data"] = f"ขณะนี้ในกรุงเทพฯ: {cond}, อุณหภูมิ {temp}°C, PM2.5: {pm25} µg/m³"
         _weather_cache["timestamp"] = time.time()
         print("🌤️ Background Weather Synced", flush=True)
     except Exception as e:
-        print(f"⚠️ Background Weather Error: {e}", flush=True)
+        print(f"⚠️ Background Weather Notice: {e}", flush=True)
 
 def get_weather_context():
     return _weather_cache["data"]

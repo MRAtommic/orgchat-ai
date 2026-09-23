@@ -18,7 +18,145 @@ try:
 except Exception:
     pass
 
+import re
+
 logger = logging.getLogger(__name__)
+
+CJ_STRAY_THAI_MAP = {
+    '出席': 'เข้าร่วม',
+    '参加': 'เข้าร่วม',
+    '簽到': 'ลงชื่อเข้างาน',
+    '签到': 'ลงชื่อเข้างาน',
+    '打卡': 'ลงเวลา',
+    '會議': 'การประชุม',
+    '会议': 'การประชุม',
+    '請假': 'การลา',
+    '请假': 'การลา',
+    '日程': 'กำหนดการ',
+    '通知': 'แจ้งเตือน',
+    '文件': 'เอกสาร',
+    '任務': 'งานที่ต้องทำ',
+    '任务': 'งานที่ต้องทำ',
+    '總結': 'สรุป',
+    '总结': 'สรุป',
+    '今天': 'วันนี้',
+    '明天': 'พรุ่งนี้',
+    '昨天': 'เมื่อวาน',
+    '工作': 'การทำงาน',
+    '時間': 'เวลา',
+    '时间': 'เวลา',
+    '遲到': 'มาสาย',
+    '迟到': 'มาสาย',
+    '缺席': 'ขาดงาน',
+    '準時': 'ตรงเวลา',
+    '准时': 'ตรงเวลา',
+}
+_CJ_REGEX = re.compile('|'.join(re.escape(k) for k in sorted(CJ_STRAY_THAI_MAP.keys(), key=len, reverse=True)))
+
+def clean_stray_cjk(text: str) -> str:
+    """Replaces stray Chinese characters/words accidentally leaked by Chinese-based models (Qwen, DeepSeek) into Thai text."""
+    if not text or not isinstance(text, str):
+        return "" if text is None else text
+    if re.search(r'[\u0e00-\u0e7f]', text):
+        text = _CJ_REGEX.sub(lambda m: CJ_STRAY_THAI_MAP[m.group(0)], text)
+    return text
+
+def strip_think_tags(text: str) -> str:
+    """Removes <think>...</think> tags and raw reasoning text from model outputs, and cleans stray Chinese characters."""
+    if not text or not isinstance(text, str):
+        return ""
+    cleaned = re.sub(r'<think>[\s\S]*?</think>', '', text, flags=re.DOTALL)
+    cleaned = re.sub(r'<think>[\s\S]*', '', cleaned, flags=re.DOTALL)
+    cleaned = re.sub(r'[\s\S]*?</think>', '', cleaned, flags=re.DOTALL)
+    cleaned = re.sub(r'^(?:Here\'?s a thinking process:?|Thinking [Pp]rocess:?|Analysis:?)[\s\S]*?\n\n', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'^(?:Here\'?s a thinking process:?|Thinking [Pp]rocess:?|Analysis:?)\s*', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'</?think>', '', cleaned)
+    cleaned = clean_stray_cjk(cleaned)
+    return cleaned.strip()
+
+def filter_think_stream(chunk_iter):
+    """Filters out <think>...</think> blocks in real-time as chunks stream in."""
+    inside_think = False
+    buffer = ""
+    tag_start = "<think>"
+    tag_end = "</think>"
+    first_clean_chunk = True
+    just_finished_think = False
+
+    for chunk in chunk_iter:
+        if not chunk:
+            continue
+        buffer += chunk
+
+        while buffer:
+            if not inside_think:
+                idx = buffer.find(tag_start)
+                if idx != -1:
+                    before = buffer[:idx]
+                    buffer = buffer[idx + len(tag_start):]
+                    inside_think = True
+                    if before:
+                        if first_clean_chunk:
+                            before = re.sub(r'^(?:Here\'?s a thinking process:?|Thinking [Pp]rocess:?|Analysis:?)[\s\S]*?\n\n', '', before, flags=re.IGNORECASE)
+                            before = re.sub(r'^(?:Here\'?s a thinking process:?|Thinking [Pp]rocess:?|Analysis:?)\s*', '', before, flags=re.IGNORECASE)
+                            if not before.strip():
+                                continue
+                            first_clean_chunk = False
+                        yield clean_stray_cjk(before)
+                else:
+                    if just_finished_think:
+                        buffer = buffer.lstrip('\r\n ')
+                        if not buffer:
+                            break
+                        just_finished_think = False
+
+                    partial_len = 0
+                    for i in range(1, len(tag_start)):
+                        if buffer.endswith(tag_start[:i]):
+                            partial_len = i
+                            break
+                    if partial_len > 0:
+                        emit = buffer[:-partial_len]
+                        buffer = buffer[-partial_len:]
+                    else:
+                        emit = buffer
+                        buffer = ""
+                    if emit:
+                        if first_clean_chunk:
+                            emit = re.sub(r'^(?:Here\'?s a thinking process:?|Thinking [Pp]rocess:?|Analysis:?)[\s\S]*?\n\n', '', emit, flags=re.IGNORECASE)
+                            emit = re.sub(r'^(?:Here\'?s a thinking process:?|Thinking [Pp]rocess:?|Analysis:?)\s*', '', emit, flags=re.IGNORECASE)
+                            if not emit.strip():
+                                continue
+                            first_clean_chunk = False
+                        yield clean_stray_cjk(emit)
+                    break
+            else:
+                idx = buffer.find(tag_end)
+                if idx != -1:
+                    buffer = buffer[idx + len(tag_end):].lstrip('\r\n ')
+                    inside_think = False
+                    just_finished_think = True
+                else:
+                    partial_len = 0
+                    for i in range(1, len(tag_end)):
+                        if buffer.endswith(tag_end[:i]):
+                            partial_len = i
+                            break
+                    if partial_len > 0:
+                        buffer = buffer[-partial_len:]
+                    else:
+                        buffer = ""
+                    break
+
+    if buffer and not inside_think:
+        if just_finished_think:
+            buffer = buffer.lstrip('\r\n ')
+        if first_clean_chunk:
+            buffer = re.sub(r'^(?:Here\'?s a thinking process:?|Thinking [Pp]rocess:?|Analysis:?)[\s\S]*?\n\n', '', buffer, flags=re.IGNORECASE)
+            buffer = re.sub(r'^(?:Here\'?s a thinking process:?|Thinking [Pp]rocess:?|Analysis:?)\s*', '', buffer, flags=re.IGNORECASE)
+            buffer = buffer.strip()
+        if buffer:
+            yield clean_stray_cjk(buffer)
 
 try:
     from google import genai
@@ -81,126 +219,130 @@ class GeminiProvider(AIProvider):
 
     def chat_stream(self, question: str, history: list, system_prompt: str, 
                     image_data: bytes = None, mime_type: str = "image/jpeg"):
-        
-        # 🟢 New SDK Implementation (2026 Models)
-        if HAS_NEW_SDK:
-            try:
-                parts = [types.Part.from_text(text=question)]
-                if image_data:
-                    parts.append(types.Part.from_bytes(data=image_data, mime_type=mime_type))
-                
-                contents = []
-                for msg in history[-5:]:
-                    r = "user" if msg.get("role") == "user" else "model"
-                    contents.append(types.Content(role=r, parts=[types.Part.from_text(text=msg.get("text", ""))]))
-                contents.append(types.Content(role="user", parts=parts))
-                config = types.GenerateContentConfig(
-                    system_instruction=system_prompt, 
-                    temperature=0.7,
-                    safety_settings=[
-                        types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE"),
-                        types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_NONE"),
-                        types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"),
-                        types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
-                    ]
-                )
-                
-                active_ids = self._get_active_models()
-                if active_ids:
-                    dynamic_models = []
-                    # Ranking of preferred Gemini models in 2026
-                    patterns = [
-                        "gemini-3.1-flash-lite",
-                        "gemini-3.1-flash",
-                        "gemini-3.1-pro",
-                        "gemini-3-flash",
-                        "gemini-2.5-flash-lite",
-                        "gemini-2.5-flash",
-                        "gemini-2.5-pro",
-                        "gemini-2.0-flash-lite",
-                        "gemini-2.0-flash",
-                        "gemini-1.5-flash"
-                    ]
-                    for pattern in patterns:
+        def _stream():
+            # 🟢 New SDK Implementation (2026 Models)
+            if HAS_NEW_SDK:
+                try:
+                    parts = []
+                    if question:
+                        parts.append(types.Part.from_text(text=question))
+                    else:
+                        parts.append(types.Part.from_text(text="ช่วยวิเคราะห์และอธิบายรูปภาพหรือเอกสารนี้อย่างละเอียดและกระชับค่ะ"))
+                    if image_data:
+                        parts.append(types.Part.from_bytes(data=image_data, mime_type=mime_type))
+                    
+                    contents = []
+                    for msg in history[-5:]:
+                        r = "user" if msg.get("role") == "user" else "model"
+                        contents.append(types.Content(role=r, parts=[types.Part.from_text(text=msg.get("text", ""))]))
+                    contents.append(types.Content(role="user", parts=parts))
+                    config = types.GenerateContentConfig(
+                        system_instruction=system_prompt, 
+                        temperature=0.7,
+                        safety_settings=[
+                            types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE"),
+                            types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_NONE"),
+                            types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"),
+                            types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
+                        ]
+                    )
+                    
+                    active_ids = self._get_active_models()
+                    if active_ids:
+                        dynamic_models = []
+                        # Ranking of preferred Gemini models in 2026
+                        patterns = [
+                            "gemini-3.1-flash-lite",
+                            "gemini-3.1-flash",
+                            "gemini-3.1-pro",
+                            "gemini-3-flash",
+                            "gemini-2.5-flash-lite",
+                            "gemini-2.5-flash",
+                            "gemini-2.5-pro",
+                            "gemini-2.0-flash-lite",
+                            "gemini-2.0-flash",
+                            "gemini-1.5-flash"
+                        ]
+                        for pattern in patterns:
+                            for m in active_ids:
+                                m_lower = m.lower()
+                                # Filter out non-text/specialized models
+                                if any(x in m_lower for x in ["embedding", "imagen", "veo", "lyria", "aqa", "audio", "tts", "image", "live"]):
+                                    continue
+                                if pattern in m_lower and m not in dynamic_models:
+                                    dynamic_models.append(m)
+                        
                         for m in active_ids:
                             m_lower = m.lower()
-                            # Filter out non-text/specialized models
-                            if any(x in m_lower for x in ["embedding", "imagen", "veo", "lyria", "aqa", "audio", "tts", "image"]):
+                            if any(x in m_lower for x in ["embedding", "imagen", "veo", "lyria", "aqa", "audio", "tts", "image", "live"]):
                                 continue
-                            if pattern in m_lower and m not in dynamic_models:
+                            if m not in dynamic_models:
                                 dynamic_models.append(m)
+                        
+                        if not dynamic_models:
+                            dynamic_models = ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-1.5-flash"]
+                        models = dynamic_models
+                    else:
+                        models = [
+                            "gemini-2.5-flash-lite",
+                            "gemini-2.5-flash",
+                            "gemini-1.5-flash"
+                        ]
+                    # Limit the models we try to avoid infinite 429 rate limit retries
+                    models = models[:3]
                     
-                    for m in active_ids:
-                        m_lower = m.lower()
-                        if any(x in m_lower for x in ["embedding", "imagen", "veo", "lyria", "aqa", "audio", "tts", "image"]):
+                    # Build rotation chain from all available API keys
+                    clients_to_try = []
+                    for idx, key in enumerate(self._all_keys):
+                        label = "Primary" if idx == 0 else f"Key-{idx+1}"
+                        clients_to_try.append((label, genai.Client(api_key=key)))
+
+                    for client_name, client_obj in clients_to_try:
+                        key_had_error = False
+                        for model in models:
+                            try:
+                                for chunk in client_obj.models.generate_content_stream(model=model, contents=contents, config=config):
+                                    if chunk.text: yield chunk.text
+                                return  # Success — exit immediately
+                            except Exception as e:
+                                print(f"⚠️ Gemini ({client_name}) ({model}) Error: {e}")
+                                e_str = str(e).lower()
+                                if any(code in e_str for code in ["429", "503", "500", "502", "504", "resource_exhausted", "quota", "unavailable", "high demand", "overloaded", "spikes in demand"]):
+                                    print(f"🔄 {client_name} hit temporary error/rate-limit. Trying next key...")
+                                    key_had_error = True
+                                    break  # Break model loop, try next key
+                                continue
+                        if key_had_error:
                             continue
-                        if m not in dynamic_models:
-                            dynamic_models.append(m)
-                    
-                    if not dynamic_models:
-                        dynamic_models = ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-1.5-flash"]
-                    models = dynamic_models
-                else:
-                    models = [
-                        "gemini-2.5-flash-lite",
-                        "gemini-2.5-flash",
-                        "gemini-1.5-flash"
-                    ]
-                # Limit the models we try to avoid infinite 429 rate limit retries
-                models = models[:3]
-                
-                # Build rotation chain from all available API keys
-                clients_to_try = []
-                for idx, key in enumerate(self._all_keys):
-                    label = "Primary" if idx == 0 else f"Key-{idx+1}"
-                    clients_to_try.append((label, genai.Client(api_key=key)))
+                    print("⚠️ All Gemini keys attempted without success, proceeding to fallback...")
+                except Exception as e:
+                    print(f"⚠️ New SDK Setup Error: {e}")
 
-                for client_name, client_obj in clients_to_try:
-                    hit_rate_limit = False
-                    for model in models:
-                        try:
-                            for chunk in client_obj.models.generate_content_stream(model=model, contents=contents, config=config):
-                                if chunk.text: yield chunk.text
-                            return  # Success — exit immediately
-                        except Exception as e:
-                            print(f"⚠️ Gemini ({client_name}) ({model}) Error: {e}")
-                            e_str = str(e).lower()
-                            if "429" in e_str or "resource_exhausted" in e_str or "quota" in e_str:
-                                print(f"🔄 {client_name} rate limited. Trying next key...")
-                                hit_rate_limit = True
-                                break  # Break model loop, try next key
-                            continue
-                    if not hit_rate_limit:
-                        break  # Non-rate-limit error, stop trying
-                # If we exhausted all keys without success, raise
-                if hit_rate_limit:
-                    raise Exception("🛑 All Gemini API keys exhausted (rate limited). Please wait or add more keys.")
-            except Exception as e:
-                print(f"⚠️ New SDK Setup Error: {e}")
+            # 🟡 Old SDK Fallback — ใช้ได้เฉพาะเมื่อ New SDK ไม่ได้ติดตั้ง
+            if not HAS_NEW_SDK:
+                try:
+                    model_name = "gemini-3.1-flash-lite"
+                    model = old_genai.GenerativeModel(model_name=model_name, system_instruction=system_prompt)
+                    if image_data:
+                        content = [{"mime_type": mime_type, "data": image_data}, question]
+                    else:
+                        content = [question]
+                    response = model.generate_content(content, stream=True)
+                    for chunk in response:
+                        if chunk.text: yield chunk.text
+                    return
+                except Exception as e:
+                    print(f"❌ Gemini (Old SDK) Error: {e}")
 
-        # 🟡 Old SDK Fallback — ใช้ได้เฉพาะเมื่อ New SDK ไม่ได้ติดตั้ง
-        if not HAS_NEW_SDK:
-            try:
-                model_name = "gemini-3.1-flash-lite"
-                model = old_genai.GenerativeModel(model_name=model_name, system_instruction=system_prompt)
-                if image_data:
-                    content = [{"mime_type": mime_type, "data": image_data}, question]
-                else:
-                    content = [question]
-                response = model.generate_content(content, stream=True)
-                for chunk in response:
-                    if chunk.text: yield chunk.text
-                return
-            except Exception as e:
-                print(f"❌ Gemini (Old SDK) Error: {e}")
+            # Final fallback to Groq
+            groq_key = os.environ.get("GROQ_API_KEY", "")
+            if groq_key:
+                groq = GroqProvider(groq_key)
+                yield from groq.chat_stream(question, history, system_prompt, image_data, mime_type)
+            else:
+                yield "⚠️ Gemini ไม่สามารถเชื่อมต่อได้ และไม่มี GROQ_API_KEY สำรอง"
 
-        # Final fallback to Groq
-        groq_key = os.environ.get("GROQ_API_KEY", "")
-        if groq_key:
-            groq = GroqProvider(groq_key)
-            yield from groq.chat_stream(question, history, system_prompt, image_data, mime_type)
-        else:
-            yield "⚠️ Gemini ไม่สามารถเชื่อมต่อได้ และไม่มี GROQ_API_KEY สำรอง"
+        yield from filter_think_stream(_stream())
 
 class GroqProvider(AIProvider):
     _cached_models = []
@@ -234,67 +376,62 @@ class GroqProvider(AIProvider):
 
     def chat_stream(self, question: str, history: list, system_prompt: str, 
                     image_data: bytes = None, mime_type: str = "image/jpeg"):
-        messages = [{"role": "system", "content": system_prompt}]
-        for msg in history[-5:]:
-            role = "user" if msg.get("role") == "user" else "assistant"
-            messages.append({"role": role, "content": msg.get("text", "")})
-        
-        if image_data:
-            import base64
-            base64_image = base64.b64encode(image_data).decode('utf-8')
-            messages.append({
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": question},
-                    {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{base64_image}"}}
-                ]
-            })
+        def _stream():
+            # 📸 Multimodal Vision Check: Groq API does not serve vision models.
+            # Seamlessly delegate multimodal attachments to GeminiProvider (which has native vision & 3-key pool).
+            if image_data:
+                gemini_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY_2") or os.environ.get("GEMINI_API_KEY_3")
+                if gemini_key:
+                    print("📸 Multimodal/image attachment detected: Groq delegating to Gemini Vision...", flush=True)
+                    gemini = GeminiProvider(gemini_key)
+                    yield from gemini.chat_stream(question, history, system_prompt, image_data=image_data, mime_type=mime_type)
+                    return
 
-        else:
+            messages = [{"role": "system", "content": system_prompt}]
+            for msg in history[-5:]:
+                role = "user" if msg.get("role") == "user" else "assistant"
+                messages.append({"role": role, "content": msg.get("text", "")})
+            
             messages.append({"role": "user", "content": question})
 
-        # Determine keys to try (support dynamic key fallback)
-        keys_to_try = []
-        if self.api_key:
-            keys_to_try.append(self.api_key)
-        backup_key = os.environ.get("GROQ_API_KEY_BACKUP")
-        if backup_key and backup_key not in keys_to_try:
-            keys_to_try.append(backup_key)
+            # Determine keys to try (support dynamic key fallback)
+            keys_to_try = []
+            if self.api_key:
+                keys_to_try.append(self.api_key)
+            backup_key = os.environ.get("GROQ_API_KEY_BACKUP")
+            if backup_key and backup_key not in keys_to_try:
+                keys_to_try.append(backup_key)
 
-        if not keys_to_try:
-            yield "❌ GROQ_API_KEY is missing."
-            return
+            if not keys_to_try:
+                gemini_key = os.environ.get("GEMINI_API_KEY")
+                if gemini_key:
+                    gemini = GeminiProvider(gemini_key)
+                    yield from gemini.chat_stream(question, history, system_prompt, image_data=image_data, mime_type=mime_type)
+                    return
+                yield "❌ GROQ_API_KEY is missing."
+                return
 
-        for active_key in keys_to_try:
-            # Try to get active models dynamically from the Groq API for this key
-            active_ids = self._get_active_models(active_key)
-            
-            if active_ids:
-                if image_data:
-                    dynamic_models = []
-                    for pattern in ["llama-4-scout", "llama-3.2", "vision"]:
-                        for m in active_ids:
-                            if pattern in m.lower() and m not in dynamic_models:
-                                dynamic_models.append(m)
-                    for m in active_ids:
-                        if "vision" in m.lower() and m not in dynamic_models:
-                            dynamic_models.append(m)
-                    if not dynamic_models:
-                        dynamic_models = ["meta-llama/llama-4-scout-17b-16e-instruct"]
-                else:
+            for active_key in keys_to_try:
+                # Try to get active models dynamically from the Groq API for this key
+                active_ids = self._get_active_models(active_key)
+                
+                if active_ids:
                     dynamic_models = []
                     patterns = [
-                        "llama-3.3-70b", 
-                        "llama-4-70b", 
-                        "gpt-oss-120b", 
-                        "llama-3.1-70b",
-                        "llama-3.1-8b", 
-                        "llama-3.3", 
-                        "gpt-oss",
-                        "qwen3", 
-                        "qwen", 
-                        "llama", 
-                        "mixtral"
+                        "llama-3.3-70b-versatile",
+                        "llama-3.3-70b",
+                        "llama-3.1-8b-instant",
+                        "llama-3.1-8b",
+                        "openai/gpt-oss-120b",
+                        "gpt-oss-120b",
+                        "openai/gpt-oss-20b",
+                        "gpt-oss-20b",
+                        "qwen/qwen3.8-27b",
+                        "qwen/qwen3.6-27b",
+                        "qwen3.6",
+                        "qwen",
+                        "mixtral",
+                        "llama"
                     ]
                     for pattern in patterns:
                         for m in active_ids:
@@ -310,50 +447,65 @@ class GroqProvider(AIProvider):
                         if m not in dynamic_models:
                             dynamic_models.append(m)
                     if not dynamic_models:
-                        dynamic_models = ["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "llama-3.1-8b-instant"]
-                
-                models_to_try = dynamic_models
-            else:
-                if image_data:
-                    models_to_try = ["meta-llama/llama-4-scout-17b-16e-instruct"]
-                else:
-                    models_to_try = ["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "llama-3.1-8b-instant"]
-
-            headers = {"Authorization": f"Bearer {active_key}", "Content-Type": "application/json"}
-            key_worked = False
-            
-            for model in models_to_try:
-                try:
-                    print(f"🌀 Attempting Groq ({model}) with key {active_key[:10]}...", flush=True)
-                    payload = {"model": model, "messages": messages, "stream": True}
-                    response = requests.post(self.url, headers=headers, json=payload, stream=True, timeout=30)
+                        dynamic_models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "qwen/qwen3.8-27b", "openai/gpt-oss-120b"]
                     
-                    if response.status_code == 200:
-                        key_worked = True
-                        for line in response.iter_lines():
-                            if line:
-                                line_str = line.decode('utf-8').replace('data: ', '')
-                                if line_str == '[DONE]': break
-                                try:
-                                    data = json.loads(line_str)
-                                    content = data['choices'][0]['delta'].get('content', '')
-                                    if content: yield content
-                                except: continue
-                        return # Success
-                    elif response.status_code == 401:
-                        print(f"❌ Groq key {active_key[:10]} is invalid (401). Trying next key...", flush=True)
-                        break # Break inner model loop to try the next key immediately!
-                    else:
-                        print(f"❌ Groq {model} Error: {response.status_code} {response.text}", flush=True)
-                        continue
-                except Exception as e:
-                    print(f"⚠️ Groq {model} Exception: {e}", flush=True)
-                    continue
-            
-            if key_worked:
-                return
+                    models_to_try = dynamic_models
+                else:
+                    models_to_try = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "qwen/qwen3.8-27b", "openai/gpt-oss-120b"]
 
-        yield "⚠️ ระบบ AI สำรอง (Groq) ขัดข้อง (ทุกโมเดลถูกปิดใช้งาน)"
+                headers = {"Authorization": f"Bearer {active_key}", "Content-Type": "application/json"}
+                key_worked = False
+                
+                for model in models_to_try:
+                    try:
+                        print(f"🌀 Attempting Groq ({model}) with key {active_key[:10]}...", flush=True)
+                        payload = {"model": model, "messages": messages, "stream": True, "reasoning_format": "hidden"}
+                        response = requests.post(self.url, headers=headers, json=payload, stream=True, timeout=10)
+
+                        # If model doesn't support reasoning_format parameter (400 Bad Request), retry without it
+                        if response.status_code == 400 and ("reasoning_format" in response.text or "extra_forbidden" in response.text):
+                            payload = {"model": model, "messages": messages, "stream": True}
+                            response = requests.post(self.url, headers=headers, json=payload, stream=True, timeout=10)
+                        
+                        if response.status_code == 200:
+                            key_worked = True
+                            for line in response.iter_lines():
+                                if line:
+                                    line_str = line.decode('utf-8').replace('data: ', '')
+                                    if line_str == '[DONE]': break
+                                    try:
+                                        data = json.loads(line_str)
+                                        content = data['choices'][0]['delta'].get('content', '')
+                                        if content: yield content
+                                    except: continue
+                            return # Success
+                        elif response.status_code == 401:
+                            print(f"❌ Groq key {active_key[:10]} is invalid (401). Trying next key...", flush=True)
+                            break # Break inner model loop to try the next key immediately!
+                        else:
+                            print(f"❌ Groq {model} Error: {response.status_code} {response.text}", flush=True)
+                            continue
+                    except Exception as e:
+                        print(f"⚠️ Groq {model} Exception: {e}", flush=True)
+                        continue
+                
+                if key_worked:
+                    return
+
+            # Fallback to Gemini if all Groq keys/models failed
+            gemini_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY_2") or os.environ.get("GEMINI_API_KEY_3")
+            if gemini_key:
+                print("🔄 All Groq keys/models failed. Falling back to GeminiProvider...", flush=True)
+                try:
+                    gemini = GeminiProvider(gemini_key)
+                    yield from gemini.chat_stream(question, history, system_prompt, image_data=image_data, mime_type=mime_type)
+                    return
+                except Exception as e_fb:
+                    print(f"⚠️ Gemini fallback after Groq error: {e_fb}", flush=True)
+
+            yield "⚠️ ระบบ AI ขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้งค่ะ"
+
+        yield from filter_think_stream(_stream())
 
 
 def analyze_media_contents(content_data: bytes, mime_type: str = "image/jpeg"):
@@ -609,4 +761,5 @@ def generate_response(question: str, history: list = None, system_prompt: str = 
     full_response = ""
     for chunk in provider.chat_stream(question, history, system_prompt):
         full_response += chunk
-    return full_response
+    return strip_think_tags(full_response)
+

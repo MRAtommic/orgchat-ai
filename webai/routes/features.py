@@ -540,7 +540,7 @@ def meeting_upload():
     from pathlib import Path
     import rag_engine
     save_dir = rag_engine.UPLOAD_DIR / "meetings"
-    save_dir.mkdir(exist_ok=True)
+    save_dir.mkdir(parents=True, exist_ok=True)
     fname = f"meeting_{uuid.uuid4().hex[:8]}{ext}"
     fpath = save_dir / fname
     audio_file.save(str(fpath))
@@ -919,3 +919,71 @@ def reply_assistant_generate():
             })
         except Exception as fallback_e:
             return jsonify({"ok": False, "error": f"เกิดข้อผิดพลาดในการประมวลผลของ AI: {str(fallback_e)}"}), 500
+
+
+# ══════════════════════════════════════════════════════════════
+# 🌐 AUTONOMOUS BROWSER AGENT
+# ══════════════════════════════════════════════════════════════
+
+@features_bp.route("/api/browser-agent/execute", methods=["POST"])
+@login_required
+@_limiter.limit("20 per minute")
+def browser_agent_execute():
+    """
+    Executes an autonomous browser research task.
+    Browses live web pages, extracts data, and synthesizes answers with screenshots.
+    """
+    from browser_agent import browser_agent
+    import ai_providers
+
+    data = request.get_json(force=True) or {}
+    task_prompt = (data.get("task") or "").strip()
+    if not task_prompt:
+        return jsonify({"ok": False, "error": "กรุณาระบุคำสั่งหรือ URL สำหรับท่องเว็บค่ะ"}), 400
+
+    # Rate/billing check
+    org_id = _org() or 1
+    allowed, used, limit = billing.check_and_increment(org_id, "ai_query_count")
+    if not allowed:
+        return jsonify({"ok": False, "error": f"โควตา AI ประจำเดือนขององค์กรเต็มแล้ว ({used}/{limit}) กรุณาอัปเกรดแพ็กเกจค่ะ"}), 403
+
+    try:
+        # Run browser navigation & extraction
+        result = browser_agent.execute_task(task_prompt)
+        pages = result.get("pages", [])
+
+        if not pages:
+            return jsonify({
+                "ok": True,
+                "summary": "น้องพั้นได้ลองท่องเว็บเพื่อค้นหาข้อมูลแล้ว แต่ไม่พบหน้าเว็บที่เกี่ยวข้องหรือเว็บไซต์ปฏิเสธการเข้าถึงค่ะ กรุณาระบุ URL หรือคำค้นหาที่เจาะจงมากขึ้นนะคะ",
+                "pages": []
+            })
+
+        # Synthesize with AI
+        pages_context = ""
+        for idx, p in enumerate(pages):
+            pages_context += f"\n--- เว็บไซต์ {idx+1}: {p.get('title')} ({p.get('url')}) ---\n"
+            pages_context += p.get("text_summary", "")[:2500] + "\n"
+
+        system_prompt = (
+            "คุณคือน้องพั้น ผู้ช่วย AI อัจฉริยะ (Autonomous Browser Agent) ประจำองค์กร "
+            "คุณได้ท่องเว็บและดึงข้อมูลสดจากหน้าเว็บมาเรียบร้อยแล้ว "
+            "จงสรุปคำตอบให้ชัดเจน กระชับ ตรงประเด็น เป็นภาษาไทยที่สุภาพและเป็นมืออาชีพ "
+            "พร้อมระบุแหล่งที่มา (URL) และจัดรูปแบบ Markdown ให้อ่านง่าย มีหัวข้อและ Bullet Points"
+        )
+        user_query = f"คำสั่งของผู้ใช้: {task_prompt}\n\nข้อมูลสดที่ท่องเว็บได้:\n{pages_context}"
+
+        ai_response = ai_providers.generate_response(user_query, system_prompt=system_prompt)
+
+        return jsonify({
+            "ok": True,
+            "summary": ai_response,
+            "pages": [{
+                "title": p.get("title"),
+                "url": p.get("url"),
+                "screenshot": p.get("screenshot")
+            } for p in pages]
+        })
+    except Exception as e:
+        logger.error(f"[BrowserAgent Execute Error] {e}", exc_info=True)
+        return jsonify({"ok": False, "error": f"เกิดข้อผิดพลาดในการท่องเว็บ: {str(e)}"}), 500

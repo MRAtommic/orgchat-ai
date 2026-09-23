@@ -3,7 +3,7 @@
 Chat Blueprint — AI Chat, LINE Webhook, Messaging, Groups, SocketIO Events,
 Knowledge Base, Drive Integration, Search, File Upload
 """
-from flask import Blueprint, request, jsonify, render_template, render_template_string, send_from_directory, send_file, abort, redirect, session, current_app
+from flask import Blueprint, request, jsonify, render_template, render_template_string, send_from_directory, send_file, abort, redirect, session, current_app, Response
 from flask_socketio import emit, join_room, leave_room
 from werkzeug.utils import secure_filename
 import os
@@ -43,6 +43,8 @@ from task_tracker import db_task_tracker
 from reconciliation_service import ReconciliationService
 import settings_manager
 from redis_manager import RedisManager
+import web_crawler
+import tts_engine
 
 _line_batch_timer = {}
 _typing_status = {}
@@ -69,6 +71,15 @@ from routes.shared import (
 
 logger = logging.getLogger("OrgChatAI.Chat")
 
+def strip_think_tags(text: str) -> str:
+    """Removes reasoning <think>...</think> tags and unclosed thinking blocks from AI responses."""
+    if not text:
+        return ""
+    cleaned = re.sub(r'<think>[\s\S]*?</think>', '', text, flags=re.DOTALL)
+    cleaned = re.sub(r'<think>[\s\S]*', '', cleaned, flags=re.DOTALL)
+    cleaned = re.sub(r'</think>', '', cleaned)
+    return cleaned.strip()
+
 chat_bp = Blueprint('chat', __name__)
 
 
@@ -84,46 +95,21 @@ def handle_connect():
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    if request.sid in online_users_registry:
-        user = online_users_registry.pop(request.sid)
-        print(f"User disconnected: {user}")
-        # Broadcast updated list of unique online usernames
-        active_users = list(set(online_users_registry.values()))
-        socketio.emit('user_status_updated', {'online_users': active_users}, broadcast=True)
-
-
-@socketio.on('join')
-def on_join(data):
-    room = data.get('room')
-    if room:
-        join_room(room)
-
-
-@socketio.on('leave')
-def on_leave(data):
-    room = data.get('room')
-    if room:
-        leave_room(room)
-
-
-@socketio.on('user_online')
-def on_user_online(data):
-    # Validate against server-side session — don't trust client-provided username
-    username = session.get('user')
+    username = online_users_registry.pop(request.sid, None)
     if not username:
-        return
-    online_users_registry[request.sid] = username
-    join_room(f"user_{username}")
-    active_users = list(set(online_users_registry.values()))
-    socketio.emit('user_status_updated', {'online_users': active_users}, broadcast=True)
+        username = session.get('user')
+    if username:
+        # Only set user offline in DB if they do not have another tab/socket active
+        if username not in online_users_registry.values():
+            database.set_user_offline(username)
+        online_users = database.get_online_users()
+        active_users = list(set(online_users_registry.values()))
+        socketio.emit('user_status_updated', {
+            'username': username,
+            'status': 'offline' if username not in online_users_registry.values() else 'online',
+            'online_users': online_users
+        }, broadcast=True)
 
-
-@socketio.on('user_typing')
-def on_user_typing(data):
-    room_id = data.get('roomName')
-    if room_id:
-        # Assuming we just broadcast it, the UI handles filtering 
-        emit('user_typing', data, broadcast=True)
 
 
 from routes.shared import validate_uploaded_file
@@ -240,8 +226,61 @@ def create_magic_link_flex_bubble(magic_link_url):
         }
     }
 
-def create_leave_approval_flex_bubble(leave_id, applicant_name, leave_type, start_date, end_date, reason):
+def create_leave_approval_flex_bubble(leave_id, applicant_name, leave_type, start_date, end_date, reason, department=None, position=None):
     """Creates a high-end 1-Click approval Flex Message for Managers/Admins in LINE."""
+    info_items = [
+        {
+            "type": "box",
+            "layout": "baseline",
+            "contents": [
+                {"type": "text", "text": "ผู้ขอลา", "color": "#64748B", "size": "xs", "flex": 3},
+                {"type": "text", "text": str(applicant_name), "color": "#0F172A", "size": "xs", "weight": "bold", "flex": 7}
+            ]
+        }
+    ]
+
+    dept_pos_parts = []
+    if position:
+        dept_pos_parts.append(str(position))
+    if department:
+        dept_pos_parts.append(str(department))
+    if dept_pos_parts:
+        info_items.append({
+            "type": "box",
+            "layout": "baseline",
+            "contents": [
+                {"type": "text", "text": "ตำแหน่ง/แผนก", "color": "#64748B", "size": "xs", "flex": 3},
+                {"type": "text", "text": " · ".join(dept_pos_parts), "color": "#6366F1", "size": "xs", "weight": "bold", "flex": 7}
+            ]
+        })
+
+    info_items.extend([
+        {
+            "type": "box",
+            "layout": "baseline",
+            "contents": [
+                {"type": "text", "text": "ประเภทการลา", "color": "#64748B", "size": "xs", "flex": 3},
+                {"type": "text", "text": str(leave_type), "color": "#2563EB", "size": "xs", "weight": "bold", "flex": 7}
+            ]
+        },
+        {
+            "type": "box",
+            "layout": "baseline",
+            "contents": [
+                {"type": "text", "text": "ช่วงวันลา", "color": "#64748B", "size": "xs", "flex": 3},
+                {"type": "text", "text": f"{start_date} ถึง {end_date}", "color": "#0F172A", "size": "xs", "weight": "bold", "flex": 7}
+            ]
+        },
+        {
+            "type": "box",
+            "layout": "baseline",
+            "contents": [
+                {"type": "text", "text": "เหตุผล", "color": "#64748B", "size": "xs", "flex": 3},
+                {"type": "text", "text": str(reason or "-"), "color": "#334155", "size": "xs", "wrap": True, "flex": 7}
+            ]
+        }
+    ])
+
     bubble = {
         "type": "bubble",
         "size": "mega",
@@ -279,40 +318,7 @@ def create_leave_approval_flex_bubble(leave_id, applicant_name, leave_type, star
                     "type": "box",
                     "layout": "vertical",
                     "spacing": "sm",
-                    "contents": [
-                        {
-                            "type": "box",
-                            "layout": "baseline",
-                            "contents": [
-                                {"type": "text", "text": "ผู้ขอลา", "color": "#64748B", "size": "xs", "flex": 3},
-                                {"type": "text", "text": str(applicant_name), "color": "#0F172A", "size": "xs", "weight": "bold", "flex": 7}
-                            ]
-                        },
-                        {
-                            "type": "box",
-                            "layout": "baseline",
-                            "contents": [
-                                {"type": "text", "text": "ประเภทการลา", "color": "#64748B", "size": "xs", "flex": 3},
-                                {"type": "text", "text": str(leave_type), "color": "#2563EB", "size": "xs", "weight": "bold", "flex": 7}
-                            ]
-                        },
-                        {
-                            "type": "box",
-                            "layout": "baseline",
-                            "contents": [
-                                {"type": "text", "text": "ช่วงวันลา", "color": "#64748B", "size": "xs", "flex": 3},
-                                {"type": "text", "text": f"{start_date} ถึง {end_date}", "color": "#0F172A", "size": "xs", "weight": "bold", "flex": 7}
-                            ]
-                        },
-                        {
-                            "type": "box",
-                            "layout": "baseline",
-                            "contents": [
-                                {"type": "text", "text": "เหตุผล", "color": "#64748B", "size": "xs", "flex": 3},
-                                {"type": "text", "text": str(reason or "-"), "color": "#334155", "size": "xs", "wrap": True, "flex": 7}
-                            ]
-                        }
-                    ]
+                    "contents": info_items
                 }
             ]
         },
@@ -703,6 +709,14 @@ def create_onboarding_guide_flex_bubble(base_url, link_magic_url=None):
                             "contents": [
                                 {"type": "text", "text": "📊", "size": "xs", "flex": 1},
                                 {"type": "text", "text": "พิมพ์ 'สรุปรายจ่ายวันนี้' → ดูยอดเงินและหมวดหมู่การเบิกจ่าย", "color": "#1E293B", "size": "xs", "wrap": True, "flex": 9}
+                            ]
+                        },
+                        {
+                            "type": "box",
+                            "layout": "baseline",
+                            "contents": [
+                                {"type": "text", "text": "📍", "size": "xs", "flex": 1},
+                                {"type": "text", "text": "แชร์ตำแหน่ง (Location) → บันทึกเวลาเข้า-ออกงาน GPS พร้อมคำนวณระยะห่างออฟฟิศ", "color": "#1E293B", "size": "xs", "wrap": True, "flex": 9}
                             ]
                         },
                         {
@@ -2423,24 +2437,44 @@ def send_line_push_notification(target_username, title, text, fields=None, flex_
         logger.error(f"❌ [LINE Push Error]: {e}")
 
 
-def get_line_config():
+def get_line_config(org_id: int = None):
+    # Check org-specific credentials first if org_id is provided
+    if org_id:
+        try:
+            org_cfg = database.get_org_line_config(org_id)
+            if org_cfg and org_cfg.get("channel_access_token") and org_cfg.get("is_active"):
+                return {
+                    "channel_access_token": (org_cfg.get("channel_access_token") or "").strip(),
+                    "channel_secret": (org_cfg.get("channel_secret") or "").strip(),
+                    "bot_basic_id": (org_cfg.get("bot_basic_id") or "").strip(),
+                    "greeting_message": "สวัสดีค่ะ! ยินดีต้อนรับสู่บริการของเรา มีอะไรให้น้องพั้นช่วยไหมคะ?",
+                    "ai_auto_responder_enabled": False,
+                    "is_custom_org": True
+                }
+        except Exception:
+            pass
+
     if os.path.exists(LINE_CONFIG_FILE):
         try:
             with open(LINE_CONFIG_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                cfg = json.load(f)
+                if cfg.get("channel_access_token"):
+                    return cfg
         except Exception:
             pass
+    db_cfg = database.get_line_config(org_id)
     return {
-        "channel_access_token": os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", ""),
-        "channel_secret": os.environ.get("LINE_CHANNEL_SECRET", ""),
+        "channel_access_token": db_cfg.get("channel_access_token") or os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", ""),
+        "channel_secret": db_cfg.get("channel_secret") or os.environ.get("LINE_CHANNEL_SECRET", ""),
+        "bot_basic_id": db_cfg.get("bot_basic_id") or os.environ.get("LINE_BOT_BASIC_ID", "@905gsngi"),
         "greeting_message": "สวัสดีค่ะ! ยินดีต้อนรับสู่บริการของเรา มีอะไรให้น้องพั้นช่วยไหมคะ?",
         "ai_auto_responder_enabled": False
     }
 
 
-def get_channel_access_token():
+def get_channel_access_token(org_id: int = None):
     """Helper to resolve the LINE Channel Access Token, prioritizing DB/UI settings over env."""
-    token = (get_line_config().get("channel_access_token") or "").strip()
+    token = (get_line_config(org_id).get("channel_access_token") or "").strip()
     if not token:
         token = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "").strip()
     return token
@@ -2563,27 +2597,40 @@ def broadcast_line_announcement(title, text, fields=None, org_id=None):
             }
         }
         
-    # 1. Send via LINE Broadcast endpoint (all OA subscribers)
+    # 1. Send ONLY to users who have linked their LINE account to the system
     try:
-        res = requests.post("https://api.line.me/v2/bot/message/broadcast", headers=headers, json={"messages": [msg_payload]}, timeout=20)
-        if res.status_code == 200:
-            logger.info("✅ [LINE Broadcast] Sent successfully!")
+        linked_uids = database.get_linked_line_users_for_org(org_id)
+        if linked_uids:
+            # LINE Multicast supports up to 500 user IDs per request
+            multicast_url = "https://api.line.me/v2/bot/message/multicast"
+            batch_size = 500
+            for i in range(0, len(linked_uids), batch_size):
+                batch = linked_uids[i:i + batch_size]
+                try:
+                    res = requests.post(multicast_url, headers=headers, json={"to": batch, "messages": [msg_payload]}, timeout=20)
+                    if res.status_code == 200:
+                        logger.info(f"✅ [LINE Targeted Multicast] Sent successfully to {len(batch)} linked users.")
+                    else:
+                        logger.warning(f"⚠️ [LINE Targeted Multicast] Failed (HTTP {res.status_code}): {res.text}")
+                except Exception as me:
+                    logger.error(f"❌ [LINE Targeted Multicast] Exception: {me}")
         else:
-            logger.error(f"❌ [LINE Broadcast] Failed: {res.text}")
+            logger.info("ℹ️ [LINE Announcement] No linked LINE users found to notify for this organization.")
     except Exception as e:
-        logger.error(f"❌ [LINE Broadcast] Exception: {e}")
+        logger.error(f"❌ [LINE Linked Users Notification] Exception: {e}")
 
     # 2. Push to linked LINE Groups for the organization
     try:
-        target_org = org_id or 1
-        groups = database.get_line_groups_for_org(target_org) or []
-        for g in groups:
-            gid = g.get("group_id") if isinstance(g, dict) else g
-            if gid:
-                try:
-                    requests.post("https://api.line.me/v2/bot/message/push", headers=headers, json={"to": gid, "messages": [msg_payload]}, timeout=10)
-                except Exception as ge:
-                    logger.error(f"❌ [LINE Group Push] Exception for {gid}: {ge}")
+        target_org = org_id
+        if target_org:
+            groups = database.get_line_groups_for_org(target_org, only_enabled=True) or []
+            for g in groups:
+                gid = g.get("group_id") if isinstance(g, dict) else g
+                if gid:
+                    try:
+                        requests.post("https://api.line.me/v2/bot/message/push", headers=headers, json={"to": gid, "messages": [msg_payload]}, timeout=10)
+                    except Exception as ge:
+                        logger.error(f"❌ [LINE Group Push] Exception for {gid}: {ge}")
     except Exception as e:
         logger.error(f"❌ [LINE Group Push] Error fetching groups: {e}")
 
@@ -2642,6 +2689,171 @@ def push_to_org_line_groups(org_id, title, subtitle="", fields=None, color="#256
     except Exception as e:
         logger.error(f"❌ [LINE Org Group Push] Error fetching groups for org {org_id}: {e}")
         return False
+
+
+def create_meeting_reminder_flex_bubble(schedule, minutes_before=30):
+    """Creates a beautiful LINE Flex Message for upcoming meeting reminders."""
+    title = schedule.get("title", "การประชุม / นัดหมาย")
+    start_date = schedule.get("start_date", "-")
+    start_time = schedule.get("start_time", "09:00")
+    category = schedule.get("category", "Meeting")
+    desc = schedule.get("description") or "-"
+    owner = schedule.get("display_name") or schedule.get("username") or "ทีมงาน"
+
+    return {
+        "type": "bubble",
+        "size": "mega",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#FFFBEB",
+            "paddingAll": "20px",
+            "paddingBottom": "16px",
+            "contents": [
+                {
+                    "type": "box",
+                    "layout": "horizontal",
+                    "contents": [
+                        {
+                            "type": "box",
+                            "layout": "vertical",
+                            "backgroundColor": "#F59E0B",
+                            "cornerRadius": "20px",
+                            "paddingAll": "4px",
+                            "paddingStart": "10px",
+                            "paddingEnd": "10px",
+                            "contents": [
+                                {"type": "text", "text": "UPCOMING", "size": "xxs", "color": "#FFFFFF", "weight": "bold"}
+                            ]
+                        },
+                        {"type": "filler"}
+                    ]
+                },
+                {
+                    "type": "text",
+                    "text": f"⏰ แจ้งเตือน: อีก {minutes_before} นาทีจะถึงเวลานัด",
+                    "weight": "bold",
+                    "size": "md",
+                    "color": "#B45309",
+                    "margin": "md"
+                },
+                {
+                    "type": "text",
+                    "text": title,
+                    "weight": "bold",
+                    "size": "xl",
+                    "color": "#0F172A",
+                    "margin": "xs",
+                    "wrap": True
+                }
+            ]
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#FFFFFF",
+            "paddingAll": "20px",
+            "paddingTop": "12px",
+            "contents": [
+                {"type": "separator", "color": "#F1F5F9"},
+                {
+                    "type": "box",
+                    "layout": "vertical",
+                    "spacing": "sm",
+                    "margin": "lg",
+                    "contents": [
+                        {
+                            "type": "box",
+                            "layout": "horizontal",
+                            "contents": [
+                                {"type": "text", "text": "📅 วันที่", "size": "xs", "color": "#64748B", "flex": 2},
+                                {"type": "text", "text": str(start_date), "size": "xs", "color": "#0F172A", "weight": "bold", "flex": 5}
+                            ]
+                        },
+                        {
+                            "type": "box",
+                            "layout": "horizontal",
+                            "contents": [
+                                {"type": "text", "text": "⏰ เวลา", "size": "xs", "color": "#64748B", "flex": 2},
+                                {"type": "text", "text": f"{start_time} น.", "size": "xs", "color": "#2563EB", "weight": "bold", "flex": 5}
+                            ]
+                        },
+                        {
+                            "type": "box",
+                            "layout": "horizontal",
+                            "contents": [
+                                {"type": "text", "text": "🏷️ ประเภท", "size": "xs", "color": "#64748B", "flex": 2},
+                                {"type": "text", "text": str(category), "size": "xs", "color": "#0F172A", "flex": 5}
+                            ]
+                        },
+                        {
+                            "type": "box",
+                            "layout": "horizontal",
+                            "contents": [
+                                {"type": "text", "text": "👤 ผู้จัด", "size": "xs", "color": "#64748B", "flex": 2},
+                                {"type": "text", "text": str(owner), "size": "xs", "color": "#0F172A", "flex": 5}
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        "footer": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": "📌 OrgChat — ปฏิทินและระบบแจ้งเตือนองค์กร",
+                    "size": "xxs",
+                    "color": "#94A3B8",
+                    "align": "center"
+                }
+            ]
+        }
+    }
+
+
+def send_meeting_reminder_line(schedule, minutes_before=30):
+    """Sends meeting reminder to linked LINE groups and/or specific user."""
+    token = get_channel_access_token()
+    if not token:
+        return False
+
+    bubble = create_meeting_reminder_flex_bubble(schedule, minutes_before=minutes_before)
+    msg = {
+        "type": "flex",
+        "altText": f"⏰ แจ้งเตือนนัดหมาย: {schedule.get('title')}",
+        "contents": bubble
+    }
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
+    sent = False
+
+    org_id = schedule.get("organization_id") or 1
+
+    # 1. Send to linked LINE groups for this organization
+    groups = database.get_line_groups_for_org(org_id) or []
+    for g in groups:
+        gid = g.get("group_id") if isinstance(g, dict) else g
+        if gid:
+            try:
+                r = requests.post("https://api.line.me/v2/bot/message/push", headers=headers, json={"to": gid, "messages": [msg]}, timeout=10)
+                if r.status_code == 200:
+                    sent = True
+            except Exception as e:
+                logger.error(f"[send_meeting_reminder_line] group push error: {e}")
+
+    # 2. If target user has LINE user ID
+    line_uid = schedule.get("line_user_id")
+    if line_uid:
+        try:
+            r = requests.post("https://api.line.me/v2/bot/message/push", headers=headers, json={"to": line_uid, "messages": [msg]}, timeout=10)
+            if r.status_code == 200:
+                sent = True
+        except Exception as e:
+            logger.error(f"[send_meeting_reminder_line] user push error: {e}")
+
+    return sent
 
 
 def get_folder_flex_message(user_id=None, uploader_id=None, pending_id=None):
@@ -2817,6 +3029,33 @@ def check_line_user_permission(user_id, permission_required, reply_token, group_
     return True, username
 
 
+_PROCESSED_WEBHOOK_EVENTS = {}
+_PROCESSED_WEBHOOK_LOCK = threading.Lock()
+
+
+def _is_duplicate_webhook_event(event_data: dict) -> bool:
+    """Checks and records webhook event IDs to prevent duplicate execution on LINE retries."""
+    if not isinstance(event_data, dict):
+        return False
+    event_id = event_data.get("webhookEventId")
+    if not event_id and event_data.get("type") == "message":
+        event_id = event_data.get("message", {}).get("id")
+    if not event_id:
+        return False
+
+    now = time.time()
+    with _PROCESSED_WEBHOOK_LOCK:
+        # Prune entries older than 120 seconds
+        stale_keys = [k for k, ts in _PROCESSED_WEBHOOK_EVENTS.items() if now - ts > 120]
+        for k in stale_keys:
+            _PROCESSED_WEBHOOK_EVENTS.pop(k, None)
+
+        if event_id in _PROCESSED_WEBHOOK_EVENTS:
+            return True
+        _PROCESSED_WEBHOOK_EVENTS[event_id] = now
+        return False
+
+
 def process_line_event(event_data):
     """Main event dispatcher for LINE Webhook"""
     try:
@@ -2881,6 +3120,210 @@ def process_line_event(event_data):
 
             process_line_command(user_text, user_id, reply_token, group_id=group_id)
             return
+
+        # 1.5 Handler for LOCATION (Time Attendance & GPS Clock-in)
+        if event_data.get('type') == 'message' and event_data.get('message', {}).get('type') == 'location':
+            loc_msg = event_data['message']
+            try:
+                lat = float(loc_msg.get('latitude', 0.0))
+                lng = float(loc_msg.get('longitude', 0.0))
+            except (ValueError, TypeError):
+                lat, lng = 0.0, 0.0
+            address = loc_msg.get('address') or loc_msg.get('title') or "พิกัด GPS"
+
+            sender_username = database.get_username_by_line_id(user_id)
+            if not sender_username:
+                reply_to_line(reply_token, "⚠️ บัญชี LINE นี้ยังไม่ได้ผูกกับระบบ OrgChat AI ค่ะ กรุณากดลิงก์ผูกบัญชีก่อนลงเวลานะคะ")
+                return "OK", 200
+
+            # Compute office distance (Haversine formula)
+            import math
+            office_lat = float(os.getenv("OFFICE_LATITUDE", "13.7563"))
+            office_lng = float(os.getenv("OFFICE_LONGITUDE", "100.5018"))
+            office_radius = float(os.getenv("OFFICE_RADIUS_METERS", "1000"))  # 1 km geofence radius
+
+            R = 6371000.0  # Earth radius in meters
+            dlat = math.radians(lat - office_lat)
+            dlng = math.radians(lng - office_lng)
+            a = math.sin(dlat / 2)**2 + math.cos(math.radians(office_lat)) * math.cos(math.radians(lat)) * math.sin(dlng / 2)**2
+            c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+            distance = round(R * c, 1)
+
+            # Check today's records
+            today_records = database.get_today_attendance(sender_username, org_id=_org_id)
+            now_dt = datetime.now()
+            time_str = now_dt.strftime("%H:%M")
+
+            check_in_rec = next((r for r in today_records if r.get("check_type") == "check_in"), None)
+            check_out_rec = next((r for r in reversed(today_records) if r.get("check_type") == "check_out"), None)
+
+            if not check_in_rec:
+                check_type = "check_in"
+                check_type_th = "เข้างาน (Check-in)"
+                work_start_h = int(os.getenv("WORK_START_HOUR", "9"))
+                work_start_m = int(os.getenv("WORK_START_MINUTE", "15"))
+                is_late = (now_dt.hour > work_start_h) or (now_dt.hour == work_start_h and now_dt.minute > work_start_m)
+                if distance > office_radius:
+                    status = "outside_geofence"
+                    status_badge = "นอกพื้นที่ ⚠️"
+                    status_color = "#EA580C"
+                elif is_late:
+                    status = "late"
+                    status_badge = "เข้างานสาย ⚠️"
+                    status_color = "#E11D48"
+                else:
+                    status = "on_time"
+                    status_badge = "เข้างานตรงเวลา ✅"
+                    status_color = "#16A34A"
+
+                database.record_attendance(
+                    username=sender_username,
+                    org_id=_org_id,
+                    check_type=check_type,
+                    latitude=lat,
+                    longitude=lng,
+                    address=address,
+                    distance_meters=distance,
+                    status=status
+                )
+            else:
+                # User already checked in today
+                in_time_str = check_in_rec.get("check_time", "00:00:00")
+                try:
+                    in_time_parts = [int(p) for p in in_time_str.split(":")[:3]]
+                    in_dt = now_dt.replace(hour=in_time_parts[0], minute=in_time_parts[1], second=in_time_parts[2] if len(in_time_parts) > 2 else 0)
+                    elapsed_from_in = (now_dt - in_dt).total_seconds()
+                except Exception:
+                    elapsed_from_in = 9999
+
+                # Guard against rapid double-tap / retry within 2 minutes (120 seconds) of check-in
+                if not check_out_rec and elapsed_from_in < 120:
+                    reply_to_line(reply_token, f"📍 คุณได้บันทึกเวลาเข้างานไปแล้วเมื่อ {in_time_str[:5]} น. ค่ะ\n(ระบบป้องกันการบันทึกเวลาเลิกงานซ้ำซ้อนภายใน 2 นาทีหลังเข้างาน)")
+                    return "OK", 200
+
+                check_type = "check_out"
+                check_type_th = "เลิกงาน (Check-out)"
+                if distance > office_radius:
+                    status = "outside_geofence"
+                    status_badge = "นอกพื้นที่ (เลิกงาน) ⚠️"
+                    status_color = "#EA580C"
+                else:
+                    status = "on_time"
+                    status_badge = "บันทึกเวลาเลิกงานเรียบร้อย ✅"
+                    status_color = "#2563EB"
+
+                if check_out_rec:
+                    out_time_str = check_out_rec.get("check_time", "00:00:00")
+                    try:
+                        out_time_parts = [int(p) for p in out_time_str.split(":")[:3]]
+                        out_dt = now_dt.replace(hour=out_time_parts[0], minute=out_time_parts[1], second=out_time_parts[2] if len(out_time_parts) > 2 else 0)
+                        elapsed_from_out = (now_dt - out_dt).total_seconds()
+                    except Exception:
+                        elapsed_from_out = 9999
+
+                    if elapsed_from_out < 120:
+                        reply_to_line(reply_token, f"📍 คุณได้บันทึกเวลาเลิกงานไปแล้วเมื่อ {out_time_str[:5]} น. ค่ะ\n(หากต้องการอัปเดตเวลาเลิกงานใหม่ กรุณารอ 2 นาที)")
+                        return "OK", 200
+
+                    database.update_attendance_checkout(
+                        attendance_id=check_out_rec["id"],
+                        check_time=now_dt.strftime("%H:%M:%S"),
+                        latitude=lat,
+                        longitude=lng,
+                        address=address,
+                        distance_meters=distance,
+                        status=status
+                    )
+                    status_badge = "อัปเดตเวลาเลิกงานล่าสุด ✅"
+                else:
+                    database.record_attendance(
+                        username=sender_username,
+                        org_id=_org_id,
+                        check_type=check_type,
+                        latitude=lat,
+                        longitude=lng,
+                        address=address,
+                        distance_meters=distance,
+                        status=status
+                    )
+
+
+            flex_card = {
+                "type": "bubble",
+                "size": "mega",
+                "header": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "backgroundColor": "#0F172A",
+                    "paddingAll": "20px",
+                    "contents": [
+                        {"type": "text", "text": "TIME ATTENDANCE", "color": "#94A3B8", "weight": "bold", "size": "xs", "letterSpacing": "1px"},
+                        {"type": "text", "text": f"บันทึกเวลา{check_type_th}", "color": "#FFFFFF", "weight": "bold", "size": "lg", "margin": "xs"}
+                    ]
+                },
+                "body": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "backgroundColor": "#FFFFFF",
+                    "paddingAll": "20px",
+                    "contents": [
+                        {
+                            "type": "box",
+                            "layout": "vertical",
+                            "spacing": "sm",
+                            "contents": [
+                                {
+                                    "type": "box",
+                                    "layout": "baseline",
+                                    "contents": [
+                                        {"type": "text", "text": "พนักงาน", "color": "#64748B", "size": "xs", "flex": 3},
+                                        {"type": "text", "text": str(sender_username), "color": "#0F172A", "size": "xs", "weight": "bold", "flex": 7}
+                                    ]
+                                },
+                                {
+                                    "type": "box",
+                                    "layout": "baseline",
+                                    "contents": [
+                                        {"type": "text", "text": "เวลาบันทึก", "color": "#64748B", "size": "xs", "flex": 3},
+                                        {"type": "text", "text": f"{now_dt.strftime('%d/%m/%Y')} เวลา {time_str} น.", "color": "#0F172A", "size": "xs", "weight": "bold", "flex": 7}
+                                    ]
+                                },
+                                {
+                                    "type": "box",
+                                    "layout": "baseline",
+                                    "contents": [
+                                        {"type": "text", "text": "สถานะ", "color": "#64748B", "size": "xs", "flex": 3},
+                                        {"type": "text", "text": status_badge, "color": status_color, "size": "xs", "weight": "bold", "flex": 7}
+                                    ]
+                                },
+                                {
+                                    "type": "box",
+                                    "layout": "baseline",
+                                    "contents": [
+                                        {"type": "text", "text": "ระยะห่างออฟฟิศ", "color": "#64748B", "size": "xs", "flex": 3},
+                                        {"type": "text", "text": f"{distance:,.1f} เมตร", "color": "#334155", "size": "xs", "flex": 7}
+                                    ]
+                                },
+                                {
+                                    "type": "box",
+                                    "layout": "baseline",
+                                    "contents": [
+                                        {"type": "text", "text": "สถานที่", "color": "#64748B", "size": "xs", "flex": 3},
+                                        {"type": "text", "text": str(address)[:40], "color": "#64748B", "size": "xxs", "wrap": True, "flex": 7}
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+
+            reply_to_line(reply_token, {
+                "type": "flex",
+                "altText": f"⏰ บันทึกเวลา{check_type_th}: {status_badge}",
+                "contents": flex_card
+            })
+            return "OK", 200
 
         # 2. Handler for IMAGE/FILE/VIDEO/AUDIO (Google Drive)
         msg_type = event_data.get('message', {}).get('type')
@@ -3280,28 +3723,49 @@ def process_line_event(event_data):
                 leave_id = parsed.get('id')
                 status = "approved" if parsed.get('action') == 'approve_leave' else "rejected"
                 
-                # Verify approver permission (must be admin or manager)
-                approver_username = database.get_username_by_line_id(user_id)
-                is_admin_user = False
-                if approver_username:
-                    u_setting = database.get_user_setting(approver_username)
-                    if u_setting and u_setting.get("role") in ["admin", "superadmin", "manager"]:
-                        is_admin_user = True
-                    elif database.is_org_admin(_org_id, approver_username):
-                        is_admin_user = True
-
-                if not is_admin_user:
-                    reply_to_line(reply_token, "⚠️ ขออภัยค่ะ เฉพาะผู้ดูแลระบบหรือหัวหน้างานเท่านั้นที่มีสิทธิ์กดอนุมัติ/ปฏิเสธการลานี้ค่ะ")
-                    return "OK", 200
-
                 leave = database.get_leave_request(leave_id)
                 if not leave:
                     reply_to_line(reply_token, f"⚠️ ไม่พบข้อมูลคำขอลา #{leave_id} ในระบบค่ะ")
                     return "OK", 200
 
+                approver_username = database.get_username_by_line_id(user_id)
+                applicant_user = leave.get("username", "")
+
                 # 🛡️ Safety Rule: Approver cannot approve their own leave request
-                if approver_username and leave.get("username", "").lower() == approver_username.lower():
-                    reply_to_line(reply_token, "🚫 คุณไม่สามารถอนุมัติใบลาของตัวเองได้ค่ะ ต้องให้ Admin ท่านอื่นหรือ Admin ใหญ่เป็นผู้อนุมัติ")
+                if approver_username and applicant_user and applicant_user.lower() == approver_username.lower():
+                    reply_to_line(reply_token, "🚫 คุณไม่สามารถอนุมัติใบลาของตัวเองได้ค่ะ ต้องให้หัวหน้างานหรือ Admin ท่านอื่นเป็นผู้อนุมัติ")
+                    return "OK", 200
+
+                # Verify approver permission (system admin, org admin, can_manage_leave, or direct manager)
+                is_authorized = False
+                leave_org_id = leave.get("org_id") or leave.get("organization_id") or _org_id
+                if not leave_org_id and applicant_user:
+                    applicant_orgs = database.get_user_orgs(applicant_user) or []
+                    if applicant_orgs:
+                        leave_org_id = applicant_orgs[0]["id"]
+
+                if approver_username:
+                    u_setting = database.get_user_setting(approver_username)
+                    if u_setting and (u_setting.get("role") in ["admin", "superadmin", "manager"] or u_setting.get("can_manage_leave")):
+                        is_authorized = True
+                    elif leave_org_id and database.is_org_admin(leave_org_id, approver_username):
+                        is_authorized = True
+                    elif leave_org_id:
+                        members = database.get_org_members(leave_org_id)
+                        applicant_member = next((m for m in members if m["username"].lower() == applicant_user.lower()), None)
+                        if applicant_member and (applicant_member.get("manager_username") or "").strip().lower() == approver_username.lower():
+                            is_authorized = True
+
+                    if not is_authorized and applicant_user:
+                        for uo in (database.get_user_orgs(applicant_user) or []):
+                            m_list = database.get_org_members(uo["id"])
+                            app_m = next((m for m in m_list if m["username"].lower() == applicant_user.lower()), None)
+                            if app_m and (app_m.get("manager_username") or "").strip().lower() == approver_username.lower():
+                                is_authorized = True
+                                break
+
+                if not is_authorized:
+                    reply_to_line(reply_token, "⚠️ ขออภัยค่ะ เฉพาะหัวหน้างานโดยตรง, ผู้มีสิทธิ์จัดการวันลา หรือ Admin เท่านั้นที่มีสิทธิ์กดอนุมัติ/ปฏิเสธการลานี้ค่ะ")
                     return "OK", 200
 
                 approver_display = approver_username or "ผู้ดูแลระบบ"
@@ -3337,11 +3801,19 @@ def process_line_event(event_data):
             import secrets
             import time
             token = secrets.token_urlsafe(32)
+            # 🛡️ Persist token in DB for multi-worker and restart safety
+            database.line_link_create(token, user_id)
             PENDING_LINE_LINKS[token] = {
                 "line_user_id": user_id,
                 "timestamp": time.time()
             }
-            _base_url = os.environ.get("BASE_URL", "https://openchat.sbs").rstrip('/')
+            webhook_url = os.environ.get("ACTIVE_PUBLIC_URL")
+            _base_url = ""
+            if webhook_url:
+                _base_url = webhook_url.split("/api/line/webhook")[0].rstrip('/')
+            if not _base_url:
+                _base_url = (os.environ.get("BASE_URL") or os.environ.get("PUBLIC_URL") or "https://openchat.sbs").rstrip('/')
+            
             magic_url = f"{_base_url}/line/link_magic?token={token}"
             onboarding_bubble = create_onboarding_guide_flex_bubble(_base_url, link_magic_url=magic_url)
             reply_to_line(reply_token, {
@@ -3952,6 +4424,9 @@ def line_webhook():
     events = data.get('events', []) if data else []
     
     for event in events:
+        if _is_duplicate_webhook_event(event):
+            logger.info(f"⏭️ [LINE Webhook] Skipping duplicate event delivery: {event.get('webhookEventId')}")
+            continue
         threading.Thread(target=process_line_event, args=(event,), daemon=True).start()
     return 'OK'
 
@@ -4002,22 +4477,19 @@ def process_line_command(text, user_id, reply_token, group_id=None):
             import secrets
             import time
             token = secrets.token_urlsafe(32)
+            # 🛡️ Persist token in DB for multi-worker and restart safety
+            database.line_link_create(token, user_id)
             PENDING_LINE_LINKS[token] = {
                 "line_user_id": user_id,
                 "timestamp": time.time()
             }
             
-            base_url = "http://localhost:5005"
             webhook_url = os.environ.get("ACTIVE_PUBLIC_URL")
+            base_url = ""
             if webhook_url:
-                if "/api/line/webhook" in webhook_url:
-                    base_url = webhook_url.split("/api/line/webhook")[0]
-                else:
-                    base_url = webhook_url.rstrip('/')
-            else:
-                env_url = os.environ.get("BASE_URL") or os.environ.get("PUBLIC_URL")
-                if env_url:
-                    base_url = env_url.rstrip('/')
+                base_url = webhook_url.split("/api/line/webhook")[0].rstrip('/')
+            if not base_url:
+                base_url = (os.environ.get("BASE_URL") or os.environ.get("PUBLIC_URL") or "https://openchat.sbs").rstrip('/')
             
             magic_url = f"{base_url}/line/link_magic?token={token}"
             magic_bubble = create_magic_link_flex_bubble(magic_url)
@@ -4145,6 +4617,8 @@ def process_line_command(text, user_id, reply_token, group_id=None):
 
     # Dynamic Quick Replies based on linked status
     quick_reply_items = [
+        {"type": "action", "action": {"type": "location", "label": "📍 ลงเวลาทำงาน"}},
+        {"type": "action", "action": {"type": "message", "label": "📅 ดูนัดหมาย", "text": "ดูนัดหมาย"}},
         {"type": "action", "action": {"type": "message", "label": "สรุปรายจ่ายวันนี้", "text": "สรุปรายจ่ายวันนี้"}},
         {"type": "action", "action": {"type": "message", "label": "สรุปยอดวันนี้", "text": "สรุปยอดวันนี้"}},
         {"type": "action", "action": {"type": "message", "label": "เริ่มกระทบยอด", "text": "กระทบยอด"}},
@@ -4229,6 +4703,227 @@ def process_line_command(text, user_id, reply_token, group_id=None):
                 "altText": "🔗 ลิงก์ระบบบัญชีและเอกสารของพี่ค่ะ",
                 "contents": links_bubble
             }, quick_reply=quick_reply)
+            return
+
+        # 📍 Time Attendance Prompt Command
+        if any(k in text_lower for k in ["ลงเวลา", "เช็กอิน", "เช็คอิน", "เข้างาน", "เลิกงาน", "checkin", "checkout", "clockin", "clockout"]):
+            att_qr = {
+                "items": [
+                    {"type": "action", "action": {"type": "location", "label": "📍 แตะเพื่อแชร์พิกัดลงเวลา"}},
+                    {"type": "action", "action": {"type": "message", "label": "ดูประวัติลงเวลา", "text": "ประวัติลงเวลา"}},
+                ]
+            }
+            reply_to_line(reply_token, 
+                "📍 สวัสดีค่ะพี่! พี่สามารถแตะปุ่ม **'📍 แตะเพื่อแชร์พิกัดลงเวลา'** ด้านล่างนี้ได้เลยนะคะ\n\n"
+                "ระบบจะตรวจสอบรัศมีระยะห่าง Geofence จากสำนักงาน และบันทึกเวลาเข้างาน / ออกงานให้อัตโนมัติทันทีค่ะ 🏢✨",
+                quick_reply=att_qr)
+            return
+
+        # 📋 View Attendance History
+        if any(k in text_lower for k in ["ประวัติลงเวลา", "เวลาเข้างาน"]):
+            from datetime import date
+            today_str = date.today().isoformat()
+            recs = database.get_attendance_records(start_date=today_str, end_date=today_str, org_id=_line_org_id)
+            user_recs = [r for r in recs if r.get("username") == username] if username else []
+            if not user_recs:
+                reply_to_line(reply_token, f"ℹ️ วันนี้ ({today_str}) ยังไม่พบบันทึกการลงเวลาทำงานของพี่นะคะ\n\nพี่สามารถแตะปุ่ม '📍 ลงเวลาทำงาน' เพื่อบันทึกเวลาได้เลยค่ะ", quick_reply=quick_reply)
+            else:
+                r = user_recs[0]
+                cin = r.get("clock_in_time") or "-"
+                cout = r.get("clock_out_time") or "ยังไม่ได้ลงเวลาออก"
+                stat = r.get("status") or "-"
+                loc = r.get("location_name") or "ออฟฟิศ"
+                dist = r.get("distance_meters") or 0
+                msg = (
+                    f"🏢 **ประวัติการลงเวลาทำงานวันนี้ ({today_str})**\n\n"
+                    f"👤 ผู้ใช้งาน: {username}\n"
+                    f"🟢 เวลาเข้างาน: {cin}\n"
+                    f"🔴 เวลาเลิกงาน: {cout}\n"
+                    f"📍 สถานะ/จุด: {loc} ({stat})\n"
+                    f"📏 ระยะห่างจากจุดหลัก: {dist:.1f} เมตร\n\n"
+                    "ขอบคุณสำหรับความตั้งใจทำงานในวันนี้นะคะ! 💖"
+                )
+                reply_to_line(reply_token, msg, quick_reply=quick_reply)
+            return
+
+        # 📅 Schedules / Calendar Commands
+        is_schedule_add = any(k in text_lower for k in ["เพิ่มกำหนดการ", "เพิ่มนัด", "ลงตาราง", "นัดหมายใหม่", "/schedule"]) or (
+            any(k in text_lower for k in ["นัดหมาย", "นัดประชุม", "กำหนดการ"]) and any(k in text_lower for k in ["วันที่", "พรุ่งนี้", "มะรืนนี้", "เวลา", "โมง", "am", "pm"])
+        )
+        if is_schedule_add:
+            # Smart parsing of schedule details using regex & datetime
+            from datetime import datetime, timedelta
+            now = datetime.now()
+            today_str = now.strftime("%Y-%m-%d")
+            tomorrow_str = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+
+            extracted_date = today_str
+            extracted_time = "09:00"
+
+            # Extract date if mentioned
+            if "พรุ่งนี้" in text:
+                extracted_date = tomorrow_str
+            elif "มะรืนนี้" in text:
+                extracted_date = (now + timedelta(days=2)).strftime("%Y-%m-%d")
+            else:
+                # Match YYYY-MM-DD or DD/MM/YYYY or วันที่ DD
+                d_match = re.search(r'(\d{4}[-/]\d{1,2}[-/]\d{1,2})', text)
+                if d_match:
+                    extracted_date = d_match.group(1).replace('/', '-')
+                else:
+                    d_day = re.search(r'วันที่\s*(\d{1,2})', text)
+                    if d_day:
+                        day_num = int(d_day.group(1))
+                        target_month = now.month
+                        target_year = now.year
+                        if day_num < now.day:
+                            target_month = (target_month % 12) + 1
+                            if target_month == 1:
+                                target_year += 1
+                        extracted_date = f"{target_year}-{target_month:02d}-{day_num:02d}"
+
+            # Extract time
+            t_match = re.search(r'(\d{1,2})[.:](\d{2})', text)
+            if t_match:
+                extracted_time = f"{int(t_match.group(1)):02d}:{t_match.group(2)}"
+            else:
+                # E.g. "9.00 am" or "9 am"
+                am_pm = re.search(r'(\d{1,2})(?:[.:](\d{2}))?\s*(am|pm)', text, re.IGNORECASE)
+                if am_pm:
+                    hr = int(am_pm.group(1))
+                    mn = am_pm.group(2) or "00"
+                    if am_pm.group(3).lower() == 'pm' and hr < 12:
+                        hr += 12
+                    elif am_pm.group(3).lower() == 'am' and hr == 12:
+                        hr = 0
+                    extracted_time = f"{hr:02d}:{mn}"
+                else:
+                    m_hour = re.search(r'(\d{1,2})\s*โมง', text)
+                    if m_hour:
+                        extracted_time = f"{int(m_hour.group(1)):02d}:00"
+
+            # Clean title
+            clean_title = text
+            for remove_word in ["เพิ่มกำหนดการ", "เพิ่มนัด", "ลงตาราง", "นัดหมาย", "นัดประชุม", "กำหนดการ", "/schedule"]:
+                clean_title = clean_title.replace(remove_word, "")
+            clean_title = re.sub(r'วันที่\s*\S+', '', clean_title)
+            clean_title = re.sub(r'เวลา\s*\S+', '', clean_title)
+            clean_title = re.sub(r'ชื่อกำหนดการ\s*', '', clean_title)
+            clean_title = clean_title.strip(": \t\r\n")
+            if not clean_title or len(clean_title) < 2:
+                clean_title = f"นัดหมาย ({extracted_date} {extracted_time})"
+
+            # Add to database
+            creator = username or "LINE User"
+            new_id = database.add_schedule(
+                username=creator,
+                title=clean_title,
+                start_date=extracted_date,
+                description=f"สร้างผ่าน LINE Bot โดย {creator}",
+                category="Meeting",
+                start_time=extracted_time,
+                is_public=1,
+                org_id=_line_org_id
+            )
+
+            confirm_flex = {
+                "type": "bubble",
+                "size": "mega",
+                "header": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "backgroundColor": "#ECFDF5",
+                    "paddingAll": "20px",
+                    "contents": [
+                        {
+                            "type": "text",
+                            "text": "✅ บันทึกนัดหมายสำเร็จ!",
+                            "weight": "bold",
+                            "size": "lg",
+                            "color": "#047857"
+                        },
+                        {
+                            "type": "text",
+                            "text": clean_title,
+                            "weight": "bold",
+                            "size": "xl",
+                            "color": "#0F172A",
+                            "margin": "sm",
+                            "wrap": True
+                        }
+                    ]
+                },
+                "body": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "contents": [
+                        {
+                            "type": "box",
+                            "layout": "horizontal",
+                            "margin": "md",
+                            "contents": [
+                                {"type": "text", "text": "📅 วันที่", "size": "sm", "color": "#64748B", "flex": 2},
+                                {"type": "text", "text": extracted_date, "size": "sm", "color": "#0F172A", "weight": "bold", "flex": 5}
+                            ]
+                        },
+                        {
+                            "type": "box",
+                            "layout": "horizontal",
+                            "margin": "sm",
+                            "contents": [
+                                {"type": "text", "text": "⏰ เวลา", "size": "sm", "color": "#64748B", "flex": 2},
+                                {"type": "text", "text": f"{extracted_time} น.", "size": "sm", "color": "#2563EB", "weight": "bold", "flex": 5}
+                            ]
+                        },
+                        {
+                            "type": "box",
+                            "layout": "horizontal",
+                            "margin": "sm",
+                            "contents": [
+                                {"type": "text", "text": "👤 ผู้บันทึก", "size": "sm", "color": "#64748B", "flex": 2},
+                                {"type": "text", "text": str(creator), "size": "sm", "color": "#0F172A", "flex": 5}
+                            ]
+                        }
+                    ]
+                },
+                "footer": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "contents": [
+                        {
+                            "type": "text",
+                            "text": "⏰ ระบบจะแจ้งเตือนล่วงหน้า 30 นาทีทาง LINE ให้อัตโนมัติค่ะ",
+                            "size": "xxs",
+                            "color": "#059669",
+                            "align": "center"
+                        }
+                    ]
+                }
+            }
+
+            reply_to_line(reply_token, {
+                "type": "flex",
+                "altText": f"📅 บันทึกนัดหมาย: {clean_title}",
+                "contents": confirm_flex
+            }, quick_reply=quick_reply)
+            return
+
+        # 📅 View upcoming schedules
+        if any(k in text_lower for k in ["ดูนัดหมาย", "ตารางงาน", "ปฏิทิน", "กำหนดการวันนี้", "นัดหมายวันนี้"]):
+            from datetime import date
+            today_str = date.today().isoformat()
+            s_list = database.get_schedules(username=username, org_id=_line_org_id)
+            upcoming = [s for s in s_list if s.get("date", "") >= today_str][:5]
+            if not upcoming:
+                reply_to_line(reply_token, "📅 ไม่พบนัดหมายที่กำลังจะมาถึงในเร็วๆ นี้ค่ะพี่ 😊\n\nพี่สามารถพิมพ์ 'เพิ่มกำหนดการ วันที่... เวลา...' เพื่อให้น้องพั้นบันทึกให้ได้เลยนะคะ", quick_reply=quick_reply)
+            else:
+                msg = f"📅 **กำหนดการและนัดหมายที่กำลังจะมาถึง ({len(upcoming)} รายการ):**\n\n"
+                for idx, s in enumerate(upcoming, 1):
+                    msg += f"{idx}. **{s.get('title')}**\n"
+                    msg += f"   📅 วันที่: {s.get('date')} เวลา: {s.get('time')} น.\n"
+                    msg += f"   🏷️ หมวดหมู่: {s.get('category')} (โดย {s.get('display_name')})\n\n"
+                msg += "⏰ ระบบจะแจ้งเตือนล่วงหน้า 30 นาทีก่อนเริ่มทุกนัดหมายค่ะ 💖"
+                reply_to_line(reply_token, msg, quick_reply=quick_reply)
             return
 
         # 2. Expense Reporting
@@ -4764,6 +5459,63 @@ def delete_file_route(file_id):
     return jsonify({"ok": False, "error": "File not found or could not be deleted"}), 404
 
 
+@chat_bp.route("/api/files/<file_id>/category", methods=["PUT"])
+@login_required
+def update_file_category_route(file_id):
+    """Updates category for a specific file in Knowledge Base."""
+    data = request.json or {}
+    category_id = data.get("category_id")
+    if category_id is not None and str(category_id).isdigit():
+        category_id = int(category_id)
+    elif category_id == "unassigned" or not category_id:
+        category_id = None
+    
+    ok = rag_engine.update_file_category(file_id, category_id)
+    if ok:
+        database.update_file_category(file_id, category_id)
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "error": "ไม่พบไฟล์ที่ระบุ"}), 404
+
+
+@chat_bp.route("/api/files/<file_id>/rename", methods=["PUT", "POST"])
+@login_required
+def rename_file_route(file_id):
+    """Renames a file in Knowledge Base."""
+    if not can_edit_knowledge_base():
+        return jsonify({"ok": False, "error": "คุณไม่มีสิทธิ์ในการแก้ไขไฟล์ในคลังข้อมูล (ติดต่อผู้ดูแลระบบเพื่อขอสิทธิ์)"}), 403
+
+    data = request.json or {}
+    new_name = (data.get("name") or data.get("new_name") or "").strip()
+    if not new_name:
+        return jsonify({"ok": False, "error": "กรุณาระบุชื่อไฟล์ใหม่"}), 400
+
+    org_id = get_current_org_id()
+    res = rag_engine.rename_file(file_id, new_name, org_id=org_id)
+    if res.get("ok"):
+        user = session.get("user", "Admin")
+        database.log_event(f"Renamed file ID {file_id} to '{res.get('name')}'", user=user, org_id=org_id)
+        return jsonify(res)
+    return jsonify(res), 400
+
+
+
+@chat_bp.route("/api/reconcile/save", methods=["POST"])
+@login_required
+def save_reconcile_entry():
+    """Saves AI extracted receipt/slip data to Google Sheets."""
+    try:
+        from google_drive_service import google_manager
+        data = request.json or {}
+        username = session.get("user", "Admin")
+        org_id = get_current_org_id()
+        google_manager.set_context(username, org_id)
+        res = google_manager.log_expense(data, org_id=org_id, username=username)
+        return jsonify({"ok": True, "result": res})
+    except Exception as e:
+        logger.error(f"Error in /api/reconcile/save: {e}", exc_info=True)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @chat_bp.route("/api/kb/cleanup-stale", methods=["POST"])
 @login_required
 def cleanup_stale_kb():
@@ -4771,6 +5523,137 @@ def cleanup_stale_kb():
     cleaned = rag_engine.cleanup_stale_processing(max_age_minutes=30)
     return jsonify({"ok": True, "cleaned": cleaned,
                     "message": f"ล้างไฟล์ค้าง {cleaned} ไฟล์"})
+
+
+# ═══════════════════════════════════════════════════════════════
+# 🌐 Smart Web Crawler & URL Ingestion Endpoints
+# ═══════════════════════════════════════════════════════════════
+
+@chat_bp.route("/api/kb/crawl-preview", methods=["POST"])
+@login_required
+def kb_crawl_preview():
+    """Extract and preview content from a web URL before ingesting."""
+    data = request.json or {}
+    url = (data.get("url") or "").strip()
+    if not url:
+        return jsonify({"ok": False, "error": "กรุณาระบุ URL เว็บไซต์ที่ต้องการตรวจสอบ"}), 400
+
+    crawler = web_crawler.WebCrawler(timeout=12, max_pages=1)
+    page_data = crawler.extract_page_content(url)
+
+    if not page_data.get("success"):
+        return jsonify({"ok": False, "error": f"ไม่สามารถดึงข้อมูลได้: {page_data.get('error', 'Unknown error')}"}), 400
+
+    return jsonify({
+        "ok": True,
+        "data": {
+            "url": page_data["url"],
+            "title": page_data["title"],
+            "description": page_data.get("description", ""),
+            "word_count": page_data["word_count"],
+            "char_count": page_data["char_count"],
+            "preview_text": page_data["text"][:1200] + ("..." if len(page_data["text"]) > 1200 else ""),
+            "internal_links_count": len(page_data.get("internal_links", [])),
+            "internal_links": page_data.get("internal_links", [])[:10]
+        }
+    })
+
+
+@chat_bp.route("/api/kb/crawl-ingest", methods=["POST"])
+@login_required
+def kb_crawl_ingest():
+    """Crawl web page(s), chunk text, and index into ChromaDB Knowledge Base."""
+    if not can_edit_knowledge_base():
+        return jsonify({"ok": False, "error": "คุณไม่มีสิทธิ์ในการเพิ่มข้อมูลลงคลังความรู้"}), 403
+
+    data = request.json or {}
+    url = (data.get("url") or "").strip()
+    crawl_subpages = bool(data.get("crawl_subpages", False))
+    max_pages = min(int(data.get("max_pages", 5)), 20)
+    dept = data.get("department", "General")
+    category_id = data.get("category_id")
+    if category_id is not None:
+        try: category_id = int(category_id)
+        except: category_id = None
+        
+    org_id = get_current_org_id()
+
+    if not url:
+        return jsonify({"ok": False, "error": "กรุณาระบุ URL เว็บไซต์ที่ต้องการเรียนรู้"}), 400
+
+    try:
+        result = web_crawler.ingest_website_url(
+            url=url,
+            crawl_subpages=crawl_subpages,
+            max_pages=max_pages,
+            department=dept,
+            category_id=category_id,
+            org_id=org_id
+        )
+
+        if not result.get("success"):
+            return jsonify({"ok": False, "error": result.get("error", "การดึงข้อมูลล้มเหลว")}), 400
+
+        user = session.get("user", "Admin")
+        database.log_event(
+            f"Crawled website: {url} ({result.get('pages_crawled', 1)} pages, {result.get('total_chunks', 0)} chunks)",
+            user=user,
+            org_id=org_id
+        )
+
+        return jsonify({
+            "ok": True,
+            "message": f"เรียนรู้ข้อมูลจากเว็บไซต์สำเร็จ! ({result.get('pages_crawled', 1)} หน้า, {result.get('total_chunks', 0)} ชิ้นส่วน)",
+            "result": result
+        })
+    except Exception as e:
+        logger.error(f"Crawl ingestion error: {e}", exc_info=True)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@chat_bp.route("/api/kb/crawl-refresh", methods=["POST"])
+@login_required
+def kb_crawl_refresh():
+    """Re-crawl an existing indexed web URL to update its Knowledge Base chunks."""
+    if not can_edit_knowledge_base():
+        return jsonify({"ok": False, "error": "คุณไม่มีสิทธิ์ในการอัปเดตข้อมูล"}), 403
+
+    data = request.json or {}
+    file_id = data.get("file_id")
+    url = data.get("url")
+
+    meta = rag_engine._load_meta()
+    if file_id and file_id in meta:
+        url = meta[file_id].get("url") or meta[file_id].get("path")
+        dept = meta[file_id].get("department", "General")
+        cat_id = meta[file_id].get("category_id")
+    elif not url:
+        return jsonify({"ok": False, "error": "ไม่พบข้อมูล URL ที่ต้องการรีเฟรช"}), 400
+    else:
+        dept = data.get("department", "General")
+        cat_id = data.get("category_id")
+
+    org_id = get_current_org_id()
+
+    try:
+        result = web_crawler.ingest_website_url(
+            url=url,
+            crawl_subpages=False,
+            max_pages=1,
+            department=dept,
+            category_id=cat_id,
+            org_id=org_id
+        )
+        if not result.get("success"):
+            return jsonify({"ok": False, "error": result.get("error", "การรีเฟรชข้อมูลล้มเหลว")}), 400
+
+        return jsonify({
+            "ok": True,
+            "message": f"อัปเดตข้อมูลจากเว็บไซต์เรียบร้อยแล้ว ({result.get('total_chunks', 0)} ชิ้นส่วน)",
+            "result": result
+        })
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @chat_bp.route("/api/departments")
@@ -5040,7 +5923,106 @@ def view_kb_file(file_id):
         print(f"❌ File not found on disk: {path}")
         return f"File not found on disk: {path}", 404
         
-    return send_file(path, mimetype='application/pdf' if file_info['type'] == 'pdf' else 'text/plain')
+    import mimetypes
+    guessed_mime, _ = mimetypes.guess_type(path.name)
+    mime = guessed_mime or ('application/pdf' if file_info.get('type') == 'pdf' else 'application/octet-stream')
+    return send_file(path, mimetype=mime, download_name=path.name)
+
+
+@chat_bp.route("/api/kb/page-preview", methods=["GET"])
+@login_required
+def get_kb_page_preview():
+    """
+    Renders a specific page of a PDF file as PNG or returns page text with highlight snippet.
+    Query params: file_id or filename, page (1-based), render_image (1 or 0)
+    """
+    if not can_view_knowledge_base():
+        return jsonify({"ok": False, "error": "ไม่มีสิทธิ์เข้าถึง"}), 403
+    org_id = get_current_org_id()
+    file_id = request.args.get("file_id")
+    filename = request.args.get("filename")
+    try:
+        page_num = int(request.args.get("page", 1))
+    except (ValueError, TypeError):
+        page_num = 1
+    render_img = request.args.get("render_image", "0") == "1"
+
+    files = rag_engine.list_files(org_id=org_id)
+    file_info = None
+    if file_id:
+        file_info = next((f for f in files if f["file_id"] == file_id), None)
+    elif filename:
+        file_info = next((f for f in files if f.get("filename") == filename or f.get("name") == filename), None)
+
+    if not file_info:
+        return jsonify({"ok": False, "error": "ไม่พบไฟล์เอกสารในคลังความรู้"}), 404
+
+    path = Path(file_info["path"])
+    if not path.exists():
+        return jsonify({"ok": False, "error": "ไม่พบไฟล์เอกสารบนดิสก์"}), 404
+
+    # If it's a PDF:
+    if path.suffix.lower() == ".pdf":
+        try:
+            import fitz  # PyMuPDF
+            doc = fitz.open(str(path))
+            total_pages = len(doc)
+            target_idx = max(0, min(page_num - 1, total_pages - 1))
+            page = doc[target_idx]
+            page_text = page.get_text()
+
+            if render_img:
+                pix = page.get_pixmap(dpi=150)
+                img_bytes = pix.tobytes("png")
+                doc.close()
+                return send_file(io.BytesIO(img_bytes), mimetype="image/png")
+
+            doc.close()
+            return jsonify({
+                "ok": True,
+                "filename": file_info.get("filename") or file_info.get("name") or path.name,
+                "file_id": file_info["file_id"],
+                "total_pages": total_pages,
+                "current_page": target_idx + 1,
+                "page_text": page_text,
+                "is_pdf": True,
+                "image_preview_url": f"/api/kb/page-preview?file_id={file_info['file_id']}&page={target_idx + 1}&render_image=1"
+            })
+        except Exception as e:
+            logger.error(f"Error rendering PDF page: {e}")
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    # If it's another file type (.pptx, .docx, .txt, .csv)
+    return jsonify({
+        "ok": True,
+        "filename": file_info.get("filename") or file_info.get("name") or path.name,
+        "file_id": file_info["file_id"],
+        "is_pdf": False,
+        "total_pages": 1,
+        "current_page": 1,
+        "view_url": f"/api/kb/files/view/{file_info['file_id']}"
+    })
+
+
+@chat_bp.route("/api/tts", methods=["POST"])
+@login_required
+@_limiter.limit("30 per minute")
+def text_to_speech_api():
+    """Generates natural neural Thai speech audio from text using Edge-TTS."""
+    data = request.get_json(force=True)
+    text = (data.get("text") or "").strip()
+    if not text:
+        return jsonify({"ok": False, "error": "No text provided"}), 400
+    voice = data.get("voice", tts_engine.DEFAULT_VOICE)
+    audio_bytes = tts_engine.synthesize_speech(text, voice=voice)
+    if not audio_bytes:
+        return jsonify({"ok": False, "error": "TTS synthesis failed"}), 500
+    return send_file(
+        io.BytesIO(audio_bytes),
+        mimetype="audio/mpeg",
+        as_attachment=False,
+        download_name="speech.mp3"
+    )
 
 
 @chat_bp.route("/api/export/pdf", methods=["POST"])
@@ -5416,12 +6398,17 @@ def dashboard_briefing():
     for s in activities["schedules"][:5]:
         context += f"- [SCHEDULE] มีนัดหมายถึง: {s['title']} วันที่ {s['date']} เวลา {s['time']}\n"
         
-    prompt = f"""คุณเป็น AI ผู้ช่วยอัจฉริยะ (OrgChat) สรุป "Daily Briefing" สั้นๆ ให้กับผู้ใช้ชื่อ {user} 
-จากข้อมูลกิจกรรมล่าสุดต่อไปนี้ โดยใช้ภาษาที่เป็นกันเอง ทันสมัย และกระตือรือร้น (ไม่เกิน 3-4 ประโยค):
+    prompt = f"""คุณเป็นผู้ช่วยส่วนบุคคลและผู้ช่วยฝ่ายปฏิบัติการสำหรับองค์กร สรุปสถานะภาพรวมประจำวัน (Daily Briefing) ให้กับผู้ใช้ชื่อ {user} 
+จากข้อมูลกิจกรรมล่าสุดต่อไปนี้:
 
 {context}
 
-สรุปให้น่าสนใจและเน้นสิ่งที่ควรทราบที่สุดประจำวันนี้:"""
+ข้อกำหนดในการตอบ:
+- ต้องตอบเป็นภาษาไทยล้วนเท่านั้น ห้ามมีตัวอักษรจีน (เช่น คำว่า 出席 ให้ใช้คำว่า "เข้าเรียน" หรือ "เข้าร่วม") หรือภาษาอื่นปะปนในประโยคภาษาไทยเด็ดขาด
+- ใช้ภาษาไทยที่เป็นทางการ สุภาพ กระชับ ชัดเจน สไตล์ Executive Summary
+- เน้นข้อเท็จจริง กำหนดการสำคัญ และเรื่องที่ต้องดำเนินการเป็นลำดับแรก
+- ไม่ใช้อีโมจิพร่ำเพรื่อ (ห้ามใส่อีโมจิเกิน 1 ตัว หรือไม่ต้องใส่เลย)
+- ความยาวไม่เกิน 1-2 ประโยคสั้นๆ เพื่อให้สแกนอ่านได้ทันที:"""
 
     _org_id = get_current_org_id()
     _allowed, _used, _limit = billing.check_and_increment(_org_id, "ai_query_count")
@@ -5440,7 +6427,8 @@ def dashboard_briefing():
         briefing = ""
         for chunk in provider.chat_stream(prompt, [], "คุณคือ AI ผู้ช่วยสรุปข่าวสารองค์กร"):
             if chunk: briefing += chunk
-        briefing = briefing.strip()
+        briefing = ai_providers.strip_think_tags(briefing)
+        briefing = ai_providers.clean_stray_cjk(briefing).strip()
         return jsonify({"ok": True, "briefing": briefing})
     except Exception as e:
         print(f"Briefing Error: {e}")
@@ -5744,10 +6732,11 @@ def get_chat_users():
     
     # 1. Collect all potential usernames from hardcoded USERS and database
     all_usernames = set()
-    
-    # Add hardcoded users
-    for u in USERS.keys():
-        all_usernames.add(u.capitalize())
+    current_org = get_current_org_id()
+    # Add hardcoded users ONLY for organization 1 (default org)
+    if current_org == 1:
+        for u in USERS.keys():
+            all_usernames.add(u.capitalize())
         
     all_usernames.add("AI-Assistant")
     
@@ -6315,8 +7304,14 @@ def handle_bot_response(cid, user_text, ctype, original_sender=None, image_data=
                 history.append({"role": role, "text": m["text"]})
 
         # 3. Call AI
-        log_bot(f"📡 Calling AI provider ({os.environ.get('AI_PROVIDER', 'groq')}) (Vision: {image_data is not None})...")
-        provider = ai_providers.get_provider()
+        has_vision = image_data is not None
+        gemini_avail = bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY_2") or os.environ.get("GEMINI_API_KEY_3"))
+        if has_vision and gemini_avail:
+            provider = ai_providers.GeminiProvider(os.environ.get("GEMINI_API_KEY"))
+            log_bot("📸 Multimodal image attached: Using Gemini Vision Provider")
+        else:
+            provider = ai_providers.get_provider()
+            log_bot(f"📡 Calling AI provider ({os.environ.get('AI_PROVIDER', 'groq')}) (Vision: {has_vision})...")
         
         # If image is present, adjust prompt for Vision Expert mode
         if image_data:
@@ -6332,14 +7327,13 @@ def handle_bot_response(cid, user_text, ctype, original_sender=None, image_data=
         # Mark as typing
         socketio.emit('bot_typing', {'room_id': cid, 'type': ctype}, room=f"room_{cid}" if ctype == "room" else f"dm_{cid}")
         
-        # Use simple generator if image is present (Vision calls are usually atomic, but our provider supports streaming)
-        # We pass image_data down to the provider
+        # Use generator with image_data
         stream = provider.chat_stream(user_text, history, system_prompt, image_data=image_data, mime_type=mime_type)
         bot_key = (cid, ctype)
         if bot_key not in _typing_status: _typing_status[bot_key] = {}
         _typing_status[bot_key]["AI-Assistant"] = time.time()
         
-        for chunk in provider.chat_stream(user_text, history, system_prompt):
+        for chunk in stream:
             response_text += chunk
             # Emit chunk to client for real-time streaming
             socket_room = f"room_{cid}" if ctype == "room" else f"dm_{original_sender}"
@@ -6746,11 +7740,16 @@ def chat():
         system_prompt += "\n(ขณะนี้ยังไม่มีเอกสารอ้างอิงที่เกี่ยวข้องกับคำถามนี้)\n"
 
     try:
-        provider_obj = ai_providers.get_provider()
+        gemini_avail = bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY_2") or os.environ.get("GEMINI_API_KEY_3"))
+        if image_bytes and gemini_avail:
+            print(f"📸 Image attached ({len(image_bytes)} bytes): selecting GeminiProvider for vision analysis.", flush=True)
+            provider_obj = ai_providers.GeminiProvider(os.environ.get("GEMINI_API_KEY"))
+        else:
+            provider_obj = ai_providers.get_provider()
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 400
 
-    print(f"Chat session started for {current_user} with provider: {os.environ.get('AI_PROVIDER', 'groq')} (Vision: {image_bytes is not None})")
+    print(f"Chat session started for {current_user} with provider: {'gemini (vision)' if (image_bytes and gemini_avail) else os.environ.get('AI_PROVIDER', 'groq')} (Vision: {image_bytes is not None})")
     _chat_org_id = get_current_org_id()
 
     def generate():
@@ -7198,6 +8197,7 @@ def handle_user_online(data):
         if not username:
             return emit('error', {'msg': 'Not logged in'})
         
+        online_users_registry[request.sid] = username
         room = data.get('room', 'General')
         database.set_user_online(username, room)
         
@@ -7226,7 +8226,9 @@ def handle_user_offline():
         if not username:
             return
         
-        database.set_user_offline(username)
+        online_users_registry.pop(request.sid, None)
+        if username not in online_users_registry.values():
+            database.set_user_offline(username)
         online_users = database.get_online_users()
         
         # Notify all connected clients about offline status
@@ -7600,18 +8602,21 @@ def update_line_group_settings_route(group_id):
 
 @chat_bp.route('/api/google/folders', methods=['GET'])
 @login_required
-@billing.require_feature("google_sheets")
 def get_google_folders():
-    username = session.get("user")
-    org_id = get_current_org_id()
-    if not oauth2_service.is_org_connected(org_id):
-        return jsonify({"ok": False, "error": "google_drive_not_connected"}), 400
-        
-    mgr = google_manager
-    mgr.set_context(username, org_id)
-    # Note: GoogleWorkspaceManager is a Singleton. Individual user manager is not supported in this version.
-    folders = mgr.list_subfolders()
-    return jsonify({"ok": True, "folders": folders})
+    try:
+        username = session.get("user")
+        org_id = get_current_org_id()
+        if not oauth2_service.is_org_connected(org_id):
+            return jsonify({"ok": False, "error": "google_drive_not_connected", "folders": []}), 200
+            
+        mgr = google_manager
+        mgr.set_context(username, org_id)
+        folders = mgr.list_subfolders() or []
+        return jsonify({"ok": True, "folders": folders})
+    except Exception as e:
+        logger.warning(f"Failed to fetch Google Drive folders: {e}")
+        return jsonify({"ok": False, "error": str(e), "folders": []}), 200
+
 
 
 @chat_bp.route('/api/drive/upload', methods=['POST'])

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'orgchat-offline-v1';
+const CACHE_NAME = 'orgchat-offline-v2';
 const OFFLINE_URL = '/static/offline.html';
 
 const ASSETS_TO_CACHE = [
@@ -48,7 +48,25 @@ self.addEventListener('fetch', function (event) {
         return;
     }
 
-    // Cache-first for static CSS/Icons, Network-fallback
+    // Network-first for JavaScript files to always serve fresh code
+    if (event.request.url.includes('/static/js/')) {
+        event.respondWith(
+            fetch(event.request).then(function (networkResponse) {
+                if (networkResponse && networkResponse.status === 200) {
+                    const responseClone = networkResponse.clone();
+                    caches.open(CACHE_NAME).then(function (cache) {
+                        cache.put(event.request, responseClone);
+                    });
+                }
+                return networkResponse;
+            }).catch(function () {
+                return caches.match(event.request);
+            })
+        );
+        return;
+    }
+
+    // Cache-first for other static assets (CSS/Icons/Images), Network-fallback
     if (event.request.url.includes('/static/')) {
         event.respondWith(
             caches.match(event.request).then(function (cachedResponse) {

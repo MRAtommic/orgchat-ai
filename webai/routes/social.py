@@ -52,9 +52,8 @@ logger = logging.getLogger("OrgChatAI.Social")
 
 social_bp = Blueprint('social', __name__)
 def check_post_access(pid, org_id):
-    """Verify if a post belongs to the current user's organization."""
-    posts = database.get_posts(org_id=org_id)
-    return any(p["id"] == pid for p in posts)
+    """Verify if a post belongs to the current user's organization with fast indexed lookup."""
+    return database.check_post_access(pid, org_id=org_id)
 
 def check_card_access(card_id, org_id):
     """Verify if a Kanban card belongs to the current organization."""
@@ -632,6 +631,7 @@ def pin_post_route(pid):
 
 
 @social_bp.route("/api/posts/<int:pid>/comments", methods=["GET", "POST"])
+@login_required
 def manage_comments(pid):
     org_id = get_current_org_id()
     if not check_post_access(pid, org_id):
@@ -1046,9 +1046,10 @@ def kanban_delete_column(col_id):
 @social_bp.route("/api/kanban/columns/reorder", methods=["POST"])
 @login_required
 def kanban_reorder_columns():
+    org_id = get_current_org_id()
     data = request.json or {}
     order = data.get("order", [])
-    database.kanban_reorder_columns(order)
+    database.kanban_reorder_columns(order, org_id=org_id)
     return jsonify({"ok": True})
 
 

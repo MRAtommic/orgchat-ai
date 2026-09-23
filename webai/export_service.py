@@ -232,7 +232,7 @@ def export_security_audit_report_pdf(health_data: dict, audit_logs: list[dict], 
         pdf.ln(3)
 
     filename = f"security_audit_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-    file_path = folder / filename
+    file_path = (folder / filename).resolve()
     pdf.output(str(file_path))
     return file_path
 

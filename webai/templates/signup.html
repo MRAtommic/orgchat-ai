@@ -63,6 +63,15 @@
                 <p class="text-xs text-indigo-500 mt-1">สร้างบัญชีด้านล่างเพื่อเข้าร่วมได้ทันที</p>
             </div>
 
+            <!-- LINE Linking Badge -->
+            <div id="line-link-badge" class="hidden mb-6 bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center gap-3">
+                <div class="w-8 h-8 rounded-full bg-[#06C755] flex items-center justify-center flex-shrink-0 text-white font-bold text-xs">LINE</div>
+                <div>
+                    <p class="text-xs font-bold text-emerald-900">เชื่อมต่อกับบัญชี LINE โดยอัตโนมัติ</p>
+                    <p class="text-[11px] text-emerald-700">หลังจากสร้างบัญชีเสร็จ ระบบจะผูกบัญชีเข้ากับ LINE Bot ทันทีค่ะ</p>
+                </div>
+            </div>
+
             <!-- Plan badge (normal signup) -->
             <div id="plan-info" class="text-center mb-6 hidden">
                 <p class="text-sm text-slate-500 mb-1">คุณกำลังสมัคร</p>
@@ -142,8 +151,14 @@
         const inviteToken = params.get('invite') || '';
         const inviteEmail = params.get('email') || '';
         const inviteOrgId = params.get('org_id') || '';
+        const lineToken = params.get('line_token') || '';
         const isInviteMode = !!(inviteToken && inviteEmail && inviteOrgId);
         let _submitting = false;
+
+        if (lineToken) {
+            const lb = document.getElementById('line-link-badge');
+            if (lb) lb.classList.remove('hidden');
+        }
 
         function validateUsername(input) {
             const hint = document.getElementById('username-hint');
@@ -253,6 +268,7 @@
                             email: inviteEmail,
                             org_id: inviteOrgId,
                             username, display_name, password, confirm_password,
+                            line_token: lineToken,
                         }),
                     });
                     const data = await res.json();
@@ -278,7 +294,7 @@
                     const res = await fetch('/api/org/signup', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ org_name, username, display_name, password, confirm_password }),
+                        body: JSON.stringify({ org_name, username, display_name, password, confirm_password, line_token: lineToken }),
                     });
                     const data = await res.json();
                     if (!data.ok) {
@@ -309,7 +325,8 @@
                             window.location.href = '/onboarding';
                         }
                     } else {
-                        window.location.href = '/onboarding';
+                        const redirectUrl = new URLSearchParams(window.location.search).get('redirect');
+                        window.location.href = redirectUrl || '/onboarding';
                     }
                 } catch (err) {
                     showError('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้');

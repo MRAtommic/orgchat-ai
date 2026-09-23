@@ -5,7 +5,8 @@ import sqlite3
 import billing
 
 def main():
-    conn = sqlite3.connect("chat_history.db")
+    import database
+    conn = database._get_conn()
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     cursor.execute("SELECT id, name, plan, plan_expires_at FROM organizations")

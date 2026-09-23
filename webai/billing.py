@@ -13,6 +13,8 @@ logger = logging.getLogger("OrgChatAI.Billing")
 
 from pathlib import Path
 DB_PATH = Path(os.environ.get("DB_PATH", "chat_history.db"))
+if not DB_PATH.is_absolute():
+    DB_PATH = Path(__file__).parent.absolute() / DB_PATH
 
 
 def _get_line_token() -> str:
@@ -95,10 +97,8 @@ PLANS = {
 # ─── DB helpers ──────────────────────────────────────────────────────────────
 
 def _get_conn():
-    conn = sqlite3.connect(DB_PATH, timeout=30)
-    conn.execute("PRAGMA busy_timeout=30000")
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
+    import database
+    conn = database._get_conn(timeout=30)
     conn.row_factory = sqlite3.Row
     return conn
 

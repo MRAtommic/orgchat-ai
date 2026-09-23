@@ -106,6 +106,425 @@ def admin_line_settings():
     return jsonify({"ok": True, "config": config, "is_system_admin": is_sys_admin})
 
 
+@admin_bp.route("/api/admin/system-alerts", methods=["GET"])
+@login_required
+def get_system_alerts():
+    """Retrieve active system health alerts (e.g. Google Drive/Sheets auth issues)."""
+    org_id = get_current_org_id()
+    alerts = []
+
+    # Check Google Workspace auth error
+    google_err = google_manager.get_auth_error(org_id)
+    if google_err:
+        alerts.append({
+            "id": "google_credential_error",
+            "level": "critical",
+            "title": "การเชื่อมต่อ Google Workspace ขัดข้อง",
+            "message": "ตรวจพบข้อผิดพลาดของ Google Service Account หรือ OAuth Key: " + str(google_err.get("message", "")),
+            "hint": "กรุณาตรวจสอบ Service Account Key ใน Google Cloud Console หรือเชื่อมต่อ Google OAuth ใหม่ในหน้าการตั้งค่า",
+            "timestamp": google_err.get("timestamp")
+        })
+
+    return jsonify({"ok": True, "alerts": alerts})
+
+
+@admin_bp.route("/api/admin/dismiss-alert", methods=["POST"])
+@login_required
+def dismiss_system_alert():
+    """Manually dismisses an active system health alert (e.g. Google auth error)."""
+    org_id = get_current_org_id()
+    data = request.get_json() or {}
+    alert_id = data.get("alert_id")
+    if alert_id == "google_credential_error" or not alert_id:
+        google_manager.clear_auth_error(org_id)
+        google_manager.clear_auth_error('global')
+    return jsonify({"ok": True, "message": "ล้างการแจ้งเตือนเรียบร้อยแล้วค่ะ"})
+
+
+
+@admin_bp.route("/api/admin/attendance", methods=["GET"])
+@login_required
+def get_admin_attendance():
+    """Returns attendance records for the current organization."""
+    org_id = get_current_org_id()
+    date_from = request.args.get("date_from")
+    date_to = request.args.get("date_to")
+    username = request.args.get("username")
+    try:
+        limit = int(request.args.get("limit", 100))
+    except (ValueError, TypeError):
+        limit = 100
+
+    records = database.get_org_attendance(
+        org_id=org_id or 1,
+        date_from=date_from,
+        date_to=date_to,
+        username=username,
+        limit=limit
+    )
+    return jsonify({"ok": True, "records": records, "count": len(records)})
+
+
+def _calculate_haversine_distance(lat1, lon1, lat2, lon2):
+    """Calculates distance between two GPS points in meters."""
+    import math
+    R = 6371000.0
+    dlat = math.radians(lat2 - lat1)
+    dlng = math.radians(lon2 - lon1)
+    a = math.sin(dlat / 2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlng / 2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return round(R * c, 1)
+
+
+@admin_bp.route("/api/attendance/today", methods=["GET"])
+@login_required
+def get_attendance_today():
+    """Returns today's attendance status and office settings for the current user."""
+    user = session.get("user")
+    org_id = get_current_org_id() or 1
+    
+    office_lat = float(os.getenv("OFFICE_LATITUDE", "13.7563"))
+    office_lng = float(os.getenv("OFFICE_LONGITUDE", "100.5018"))
+    office_radius = float(os.getenv("OFFICE_RADIUS_METERS", "1000"))
+    work_start_h = int(os.getenv("WORK_START_HOUR", "9"))
+    work_start_m = int(os.getenv("WORK_START_MINUTE", "15"))
+
+    today_records = database.get_today_attendance(user, org_id=org_id)
+    check_in_rec = next((r for r in today_records if r.get("check_type") == "check_in"), None)
+    check_out_rec = next((r for r in reversed(today_records) if r.get("check_type") == "check_out"), None)
+
+    return jsonify({
+        "ok": True,
+        "username": user,
+        "today": datetime.now().strftime("%Y-%m-%d"),
+        "records": today_records,
+        "check_in": check_in_rec,
+        "check_out": check_out_rec,
+        "can_clock_in": check_in_rec is None,
+        "can_clock_out": check_in_rec is not None,
+        "office": {
+            "latitude": office_lat,
+            "longitude": office_lng,
+            "radius_meters": office_radius,
+            "work_start_time": f"{work_start_h:02d}:{work_start_m:02d}"
+        }
+    })
+
+
+@admin_bp.route("/api/attendance/clock", methods=["POST"])
+@login_required
+def clock_attendance_web():
+    """Handles clock-in and clock-out via web browser with GPS coordinates."""
+    user = session.get("user")
+    org_id = get_current_org_id() or 1
+
+    data = request.get_json(silent=True) or {}
+    try:
+        lat = float(data.get("latitude", 0.0))
+        lng = float(data.get("longitude", 0.0))
+    except (ValueError, TypeError):
+        return jsonify({"ok": False, "error": "พิกัด GPS ไม่ถูกต้อง"}), 400
+
+    address = data.get("address") or "เว็บเบราว์เซอร์ (GPS Web)"
+    
+    office_lat = float(os.getenv("OFFICE_LATITUDE", "13.7563"))
+    office_lng = float(os.getenv("OFFICE_LONGITUDE", "100.5018"))
+    office_radius = float(os.getenv("OFFICE_RADIUS_METERS", "1000"))
+    work_start_h = int(os.getenv("WORK_START_HOUR", "9"))
+    work_start_m = int(os.getenv("WORK_START_MINUTE", "15"))
+
+    distance = _calculate_haversine_distance(lat, lng, office_lat, office_lng)
+    is_outside = distance > office_radius
+    now_dt = datetime.now()
+    time_str = now_dt.strftime("%H:%M")
+
+    today_records = database.get_today_attendance(user, org_id=org_id)
+    check_in_rec = next((r for r in today_records if r.get("check_type") == "check_in"), None)
+    check_out_rec = next((r for r in reversed(today_records) if r.get("check_type") == "check_out"), None)
+
+    if not check_in_rec:
+        # Check-in
+        check_type = "check_in"
+        is_late = (now_dt.hour > work_start_h) or (now_dt.hour == work_start_h and now_dt.minute > work_start_m)
+        if is_outside:
+            status = "outside_geofence"
+            status_text = "นอกพื้นที่"
+        elif is_late:
+            status = "late"
+            status_text = "เข้างานสาย"
+        else:
+            status = "on_time"
+            status_text = "ตรงเวลา"
+
+        rec = database.record_attendance(
+            username=user,
+            org_id=org_id,
+            check_type=check_type,
+            latitude=lat,
+            longitude=lng,
+            address=address,
+            distance_meters=distance,
+            status=status
+        )
+        msg = f"บันทึกเวลาเข้างานเรียบร้อยแล้วค่ะ ({time_str} น. - {status_text})"
+    else:
+        # Check-out
+        check_type = "check_out"
+        status = "outside_geofence" if is_outside else "on_time"
+        status_text = "นอกพื้นที่ (เลิกงาน)" if is_outside else "เลิกงานเรียบร้อย"
+
+        if check_out_rec:
+            database.update_attendance_checkout(
+                attendance_id=check_out_rec["id"],
+                check_time=now_dt.strftime("%H:%M:%S"),
+                latitude=lat,
+                longitude=lng,
+                address=address,
+                distance_meters=distance,
+                status=status
+            )
+            msg = f"อัปเดตเวลาเลิกงานล่าสุดเรียบร้อยแล้วค่ะ ({time_str} น.)"
+            rec = {
+                "id": check_out_rec["id"],
+                "username": user,
+                "org_id": org_id,
+                "check_date": now_dt.strftime("%Y-%m-%d"),
+                "check_time": now_dt.strftime("%H:%M:%S"),
+                "check_type": check_type,
+                "distance_meters": distance,
+                "status": status
+            }
+        else:
+            rec = database.record_attendance(
+                username=user,
+                org_id=org_id,
+                check_type=check_type,
+                latitude=lat,
+                longitude=lng,
+                address=address,
+                distance_meters=distance,
+                status=status
+            )
+            msg = f"บันทึกเวลาเลิกงานเรียบร้อยแล้วค่ะ ({time_str} น. - {status_text})"
+
+    return jsonify({
+        "ok": True,
+        "message": msg,
+        "check_type": check_type,
+        "status": status,
+        "status_text": status_text,
+        "distance_meters": distance,
+        "is_outside": is_outside,
+        "record": rec
+    })
+
+
+@admin_bp.route("/api/attendance/my-history", methods=["GET"])
+@login_required
+def get_my_attendance_history():
+    """Returns the attendance history for the logged-in user."""
+    user = session.get("user")
+    org_id = get_current_org_id() or 1
+    limit = int(request.args.get("limit", 50))
+    date_from = request.args.get("date_from")
+    date_to = request.args.get("date_to")
+
+    records = database.get_org_attendance(
+        org_id=org_id,
+        username=user,
+        date_from=date_from,
+        date_to=date_to,
+        limit=limit
+    )
+
+    grouped = {}
+    for r in records:
+        d = r.get("check_date")
+        if not d:
+            continue
+        if d not in grouped:
+            grouped[d] = {"date": d, "check_in": None, "check_out": None, "total_hours": 0.0}
+        if r.get("check_type") == "check_in" and not grouped[d]["check_in"]:
+            grouped[d]["check_in"] = r
+        elif r.get("check_type") == "check_out":
+            grouped[d]["check_out"] = r
+
+    summary_list = []
+    for d, item in sorted(grouped.items(), key=lambda x: x[0], reverse=True):
+        cin = item["check_in"]
+        cout = item["check_out"]
+        hours = 0.0
+        if cin and cout and cin.get("check_time") and cout.get("check_time"):
+            try:
+                t1 = datetime.strptime(f"{d} {cin['check_time'][:8]}", "%Y-%m-%d %H:%M:%S")
+                t2 = datetime.strptime(f"{d} {cout['check_time'][:8]}", "%Y-%m-%d %H:%M:%S")
+                diff = (t2 - t1).total_seconds() / 3600.0
+                hours = max(0.0, round(diff, 2))
+            except Exception:
+                pass
+        item["total_hours"] = hours
+        summary_list.append(item)
+
+    return jsonify({
+        "ok": True,
+        "records": records,
+        "daily_summary": summary_list,
+        "count": len(summary_list)
+    })
+
+
+@admin_bp.route("/api/attendance/org-summary", methods=["GET"])
+@login_required
+def get_attendance_org_summary():
+    """Returns today's organization-wide attendance summary."""
+    org_id = get_current_org_id() or 1
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    records = database.get_org_attendance(
+        org_id=org_id,
+        date_from=today,
+        date_to=today,
+        limit=500
+    )
+
+    members = database.get_org_members(org_id)
+    clocked_in_users = set(r["username"] for r in records if r.get("check_type") == "check_in")
+    late_users = set(r["username"] for r in records if r.get("status") == "late")
+    outside_users = set(r["username"] for r in records if r.get("status") == "outside_geofence")
+
+    return jsonify({
+        "ok": True,
+        "today": today,
+        "total_members": len(members),
+        "clocked_in_count": len(clocked_in_users),
+        "not_clocked_in_count": max(0, len(members) - len(clocked_in_users)),
+        "late_count": len(late_users),
+        "outside_count": len(outside_users),
+        "records": records
+    })
+
+
+@admin_bp.route("/api/org/line/channel-config", methods=["GET"])
+@org_admin_required
+def get_org_line_channel_config():
+    """Retrieve custom LINE Bot Channel credentials for the current organization."""
+    org_id = get_current_org_id()
+    if not org_id:
+        return jsonify({"ok": False, "error": "ไม่พบข้อมูลองค์กร"}), 400
+        
+    cfg = database.get_org_line_config(org_id)
+    system_cfg = database.get_line_config()
+    
+    if cfg:
+        # Mask secrets for security
+        token = cfg.get("channel_access_token") or ""
+        masked_token = f"{token[:8]}...{token[-6:]}" if len(token) > 14 else ("******" if token else "")
+        secret = cfg.get("channel_secret") or ""
+        masked_secret = f"{secret[:4]}...{secret[-4:]}" if len(secret) > 8 else ("******" if secret else "")
+        
+        return jsonify({
+            "ok": True,
+            "has_custom_keys": True,
+            "channel_access_token_masked": masked_token,
+            "channel_secret_masked": masked_secret,
+            "bot_basic_id": cfg.get("bot_basic_id") or "",
+            "is_active": bool(cfg.get("is_active", 1)),
+            "updated_at": cfg.get("updated_at"),
+            "system_bot_basic_id": system_cfg.get("bot_basic_id") or "@905gsngi"
+        })
+    else:
+        return jsonify({
+            "ok": True,
+            "has_custom_keys": False,
+            "channel_access_token_masked": "",
+            "channel_secret_masked": "",
+            "bot_basic_id": system_cfg.get("bot_basic_id") or "@905gsngi",
+            "is_active": False,
+            "system_bot_basic_id": system_cfg.get("bot_basic_id") or "@905gsngi"
+        })
+
+
+@admin_bp.route("/api/org/line/channel-config", methods=["POST"])
+@org_admin_required
+def save_org_line_channel_config():
+    """Save or update custom LINE Bot Channel credentials for the current organization."""
+    me = session.get("user")
+    org_id = get_current_org_id()
+    if not org_id:
+        return jsonify({"ok": False, "error": "ไม่พบข้อมูลองค์กร"}), 400
+        
+    data = request.get_json(force=True) or {}
+    token = (data.get("channel_access_token") or "").strip()
+    secret = (data.get("channel_secret") or "").strip()
+    bot_basic_id = (data.get("bot_basic_id") or "").strip()
+    is_active = data.get("is_active", 1)
+    
+    # If token or secret contains mask dots '...', keep the existing one from DB
+    existing = database.get_org_line_config(org_id)
+    if existing:
+        if "..." in token or not token:
+            token = existing.get("channel_access_token") or ""
+        if "..." in secret or not secret:
+            secret = existing.get("channel_secret") or ""
+            
+    if not token or not secret:
+        return jsonify({"ok": False, "error": "กรุณากรอกทั้ง Channel Access Token และ Channel Secret ให้ครบถ้วนค่ะ"}), 400
+        
+    if database.save_org_line_config(org_id, token, secret, bot_basic_id, is_active=is_active):
+        database.log_event("Updated custom LINE Bot Channel credentials", user=me, org_id=org_id)
+        return jsonify({"ok": True, "message": "บันทึกการตั้งค่า LINE Bot Channel ประจำองค์กรเรียบร้อยแล้วค่ะ"})
+    return jsonify({"ok": False, "error": "ไม่สามารถบันทึกข้อมูลลงฐานข้อมูลได้"}), 500
+
+
+@admin_bp.route("/api/org/line/channel-config/test", methods=["POST"])
+@org_admin_required
+def test_org_line_channel_config():
+    """Test LINE Bot Channel Access Token against LINE API."""
+    data = request.get_json(force=True) or {}
+    token = (data.get("channel_access_token") or "").strip()
+    org_id = get_current_org_id()
+    
+    if (not token or "..." in token) and org_id:
+        cfg = database.get_org_line_config(org_id)
+        if cfg:
+            token = cfg.get("channel_access_token") or ""
+    if not token:
+        token = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
+        
+    if not token:
+        return jsonify({"ok": False, "error": "กรุณาระบุ Channel Access Token เพื่อทดสอบ"}), 400
+        
+    import requests
+    try:
+        res = requests.get("https://api.line.me/v2/bot/info", headers={"Authorization": f"Bearer {token}"}, timeout=10)
+        if res.status_code == 200:
+            bot_info = res.json()
+            return jsonify({
+                "ok": True,
+                "message": f"✅ เชื่อมต่อ LINE Bot สำเร็จ: {bot_info.get('displayName')} (ID: {bot_info.get('basicId')})",
+                "bot_info": bot_info
+            })
+        else:
+            return jsonify({"ok": False, "error": f"❌ LINE API ตอบกลับสถานะ {res.status_code}: {res.text}"}), 400
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"ไม่สามารถเชื่อมต่อไปยัง LINE API ได้: {e}"}), 500
+
+
+@admin_bp.route("/api/org/line/channel-config", methods=["DELETE"])
+@org_admin_required
+def delete_org_line_channel_config():
+    """Reset to system default LINE Bot by removing custom org credentials."""
+    me = session.get("user")
+    org_id = get_current_org_id()
+    if not org_id:
+        return jsonify({"ok": False, "error": "ไม่พบข้อมูลองค์กร"}), 400
+        
+    if database.delete_org_line_config(org_id):
+        database.log_event("Reverted LINE Bot Channel to system default", user=me, org_id=org_id)
+        return jsonify({"ok": True, "message": "คืนค่าการใช้งาน LINE Bot เป็นบอทส่วนกลางของระบบเรียบร้อยแล้วค่ะ"})
+    return jsonify({"ok": False, "error": "ไม่สามารถลบการตั้งค่าได้"}), 500
+
+
 @admin_bp.route("/api/org/line/register-group", methods=["POST"])
 @org_admin_required
 def register_line_group_api():
@@ -287,7 +706,7 @@ def api_line_broadcast():
             return jsonify({"success": False, "error": f"รูปแบบเวลาไม่ถูกต้อง: {str(e)}"}), 400
     
     def run_broadcast():
-        success = broadcast_line_announcement(title="ประกาศจากแอดมิน", text=text)
+        success = broadcast_line_announcement(title="ประกาศจากแอดมิน", text=text, org_id=org_id)
         status = "success" if success else "failed"
         database.save_line_broadcast(user, org_id, text, status)
         logger.info(f"Broadcast from {user} (Org: {org_id}): {text} - {status}")
@@ -422,8 +841,8 @@ def admin_list_orgs():
 @login_required
 @superadmin_required
 def admin_set_plan():
-    data = request.get_json()
-    org_id   = int(data.get("org_id", get_current_org_id()))
+    data = request.get_json() or {}
+    org_id   = int(data.get("org_id", get_current_org_id() or 1))
     plan     = data.get("plan", "free")
     expires  = data.get("expires_at")   # ISO string or null
     try:
@@ -441,7 +860,7 @@ def billing_checkout():
     if not payment.is_configured():
         return jsonify({"ok": False, "error": "ระบบชำระเงินยังไม่พร้อม กรุณาติดต่อทีมงาน"}), 503
 
-    data = request.get_json()
+    data = request.get_json() or {}
     plan = data.get("plan", "pro")
     if plan not in ("pro", "business"):
         return jsonify({"ok": False, "error": "ไม่รู้จัก plan นี้"}), 400
@@ -1365,7 +1784,7 @@ def wht_export_excel():
 @admin_bp.route("/api/set_key", methods=["POST"])
 @admin_required
 def set_key():
-    data = request.get_json(force=True)
+    data = request.get_json(silent=True) or {}
     key = data.get("api_key", "").strip()
     if not key:
         return jsonify({"ok": False, "error": "กรุณาใส่ API Key"}), 400
@@ -1473,7 +1892,7 @@ def download_recon_report(report_id):
 def download_filtered_recon():
     """Generate Excel from filtered data sent by client."""
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         rows = data.get('rows', [])
         if not rows:
             return jsonify({"ok": False, "error": "ไม่มีข้อมูลสำหรับดาวน์โหลด"}), 400
@@ -1501,7 +1920,7 @@ def download_filtered_recon():
 def move_row_between_sheets_api():
     """Move a row from one sheet to another in Google Sheets."""
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         from_sheet = data.get("from_sheet", "").strip()
         row_index = int(data.get("row_index", 0))
         to_sheet = data.get("to_sheet", "").strip()
@@ -1525,7 +1944,7 @@ def move_row_between_sheets_api():
 def manage_schedules():
     user = session.get("user")
     if request.method == "POST":
-        data = request.get_json(force=True)
+        data = request.get_json(silent=True) or {}
         title = data.get("title")
         start_date = data.get("date") # Expected YYYY-MM-DD
         desc = data.get("desc", "")
@@ -1666,7 +2085,7 @@ def manage_schedule_item(sid):
         return jsonify({"ok": False, "error": "คุณไม่มีสิทธิ์ลบกำหนดการนี้"}), 403
 
     if request.method == "PUT":
-        data = request.get_json(force=True)
+        data = request.get_json(silent=True) or {}
         title = data.get("title")
         date = data.get("date")
         desc = data.get("desc", "")
@@ -2037,7 +2456,27 @@ def admin_create_user_route():
         return jsonify({"ok": False, "error": "กรุณากรอกชื่อผู้ใช้และรหัสผ่าน"}), 400
 
     if database.admin_create_user(username, password, role, display_name=display_name, can_view_kb=can_view_kb, can_edit_kb=can_edit_kb, can_delete_kb=can_delete_kb, department=department, email=email or None):
-        database.log_event(f"Created user: {username} (Role: {role})", user=session.get("user"), org_id=get_current_org_id())
+        # Auto-assign new user to admin's current org + default room
+        org_id = get_current_org_id()
+        if org_id:
+            database.add_org_member(org_id, username, role="member", invited_by=session.get("user"))
+            # Add to the org's default chat room (instead of hardcoded Room 1)
+            try:
+                conn = database._get_conn()
+                room_row = conn.execute(
+                    "SELECT id FROM chat_rooms WHERE organization_id = ? ORDER BY id ASC LIMIT 1",
+                    (org_id,)
+                ).fetchone()
+                if room_row:
+                    conn.execute(
+                        "INSERT OR IGNORE INTO room_members (room_id, username) VALUES (?, ?)",
+                        (room_row[0], username)
+                    )
+                    conn.commit()
+                conn.close()
+            except Exception as e:
+                logger.warning(f"[admin_create_user] Failed to add {username} to default room: {e}")
+        database.log_event(f"Created user: {username} (Role: {role})", user=session.get("user"), org_id=org_id)
         return jsonify({"ok": True})
     return jsonify({"ok": False, "error": "ชื่อผู้ใช้นี้มีอยู่ในระบบแล้ว"}), 400
 
@@ -2140,7 +2579,7 @@ def invite_org_member():
     org_id = get_current_org_id()
     if not org_id or not database.is_org_admin(org_id, me):
         return jsonify({"ok": False, "error": "เฉพาะผู้ดูแลองค์กรเท่านั้นที่สามารถเชิญสมาชิกได้"}), 403
-    data = request.get_json(force=True)
+    data = request.get_json(silent=True) or {}
     username = data.get("username", "").strip()
     password = data.get("password", "").strip()   # ถ้าส่งมาด้วย = สร้าง user ใหม่
     role = data.get("role", "member")
@@ -2259,7 +2698,7 @@ def check_reminders():
 @login_required
 def api_leave_request():
     user = session.get("user")
-    data = request.get_json()
+    data = request.get_json() or {}
     l_type = data.get("type", "Sick")
     s_date = data.get("start_date")
     e_date = data.get("end_date")
@@ -2268,8 +2707,15 @@ def api_leave_request():
     if not s_date or not e_date:
         return jsonify({"ok": False, "error": "กรุณากรอกวันที่เริ่มต้นและวันที่สิ้นสุดการลาให้ครบถ้วนค่ะ"}), 400
 
-    # ตรวจ date logic
-    if s_date > e_date:
+    # ตรวจ date logic & format
+    try:
+        from datetime import datetime as _dt
+        s_dt = _dt.strptime(str(s_date).strip(), "%Y-%m-%d")
+        e_dt = _dt.strptime(str(e_date).strip(), "%Y-%m-%d")
+    except (ValueError, TypeError):
+        return jsonify({"ok": False, "error": "รูปแบบวันที่ไม่ถูกต้อง (กรุณาใช้รูปแบบ YYYY-MM-DD)"}), 400
+
+    if s_dt > e_dt:
         return jsonify({"ok": False, "error": "วันที่เริ่มต้นต้องไม่เกินวันที่สิ้นสุดค่ะ"}), 400
 
     # ตรวจ overlap กับใบลาที่มีอยู่
@@ -2283,32 +2729,61 @@ def api_leave_request():
     org_id = get_current_org_id()
     leave_id = database.create_leave_request(user, l_type, s_date, e_date, reason, org_id=org_id)
     if leave_id:
-        # แจ้ง org admins
+        profile = database.get_user_profile(user) or {}
+        user_display = profile.get("display_name", user)
+        user_dept = profile.get("department", "")
+        user_pos = profile.get("position", "")
+
+        # Find direct manager and org admins
+        direct_manager = None
+        notify_targets = []
         if org_id:
             org_members = database.get_org_members(org_id)
-            notify_targets = [m["username"] for m in org_members
-                              if m.get("role") == "admin" and m["username"].lower() != user.lower()]
-            # ถ้าไม่มี admin คนอื่นใน org (เช่น ทดสอบคนเดียว) ให้ส่งหาตัวเองเพื่อทดสอบ
+            applicant_member = next((m for m in org_members if m["username"].lower() == user.lower()), None)
+            if applicant_member:
+                direct_manager = (applicant_member.get("manager_username") or "").strip()
+                if applicant_member.get("department"):
+                    user_dept = applicant_member["department"]
+                if applicant_member.get("position"):
+                    user_pos = applicant_member["position"]
+
+            # Priority 1: Direct Manager (if not user themselves)
+            if direct_manager and direct_manager.lower() != user.lower():
+                notify_targets.append(direct_manager)
+
+            # Priority 2: Org Admins & Leave Managers
+            for m in org_members:
+                m_user = m["username"]
+                if m_user.lower() == user.lower():
+                    continue
+                if (m.get("role") == "admin" or m.get("can_manage_leave")) and m_user not in notify_targets:
+                    notify_targets.append(m_user)
+
+            # Fallback if nobody found in org
             if not notify_targets:
                 notify_targets = [m["username"] for m in org_members if m.get("role") == "admin"]
         else:
-            # fallback: system admins ถ้าไม่มี org context
+            # Fallback: system admins if no org context
             notify_targets = [a for a in database.get_all_admins() if a.lower() != user.lower()]
             if not notify_targets:
                 notify_targets = database.get_all_admins()
 
-
-        profile = database.get_user_profile(user)
-        user_display = profile.get("display_name", user)
-        for admin in notify_targets:
+        for target in notify_targets:
+            is_direct_mgr = bool(direct_manager and target.lower() == direct_manager.lower())
+            notif_title = "คำขอลาหยุดใหม่จากทีมของคุณ" if is_direct_mgr else "คำขอลาหยุดใหม่"
+            notif_body = (
+                f"คุณพี่ {user_display} (สมาชิกในทีมที่คุณดูแล) ได้ส่งคำขอลาหยุด {l_type} ตั้งแต่วันที่ {s_date} ถึง {e_date}"
+                if is_direct_mgr else
+                f"คุณพี่ {user_display} ได้ส่งคำขอลาหยุด {l_type} ตั้งแต่วันที่ {s_date} ถึง {e_date}"
+            )
             notification_db.add_notification(
-                admin,
+                target,
                 "leave_request",
-                "คำขอลาหยุดใหม่",
-                f"คุณพี่ {user_display} ได้ส่งคำขอลาหยุด {l_type} ตั้งแต่วันที่ {s_date} ถึง {e_date}",
+                notif_title,
+                notif_body,
                 "/#admin"
             )
-            # --- LINE Push Notification to Linked Admin (1-Click Approval Flex Bubble) ---
+            # --- LINE Push Notification to Linked Manager/Admin (1-Click Approval Flex Bubble) ---
             try:
                 from routes.chat import create_leave_approval_flex_bubble, send_line_push_notification
                 leave_bubble = create_leave_approval_flex_bubble(
@@ -2317,21 +2792,31 @@ def api_leave_request():
                     leave_type=l_type,
                     start_date=s_date,
                     end_date=e_date,
-                    reason=reason
+                    reason=reason,
+                    department=user_dept,
+                    position=user_pos
                 )
+                header_msg = "🏖️ สมาชิกในทีมของคุณยื่นคำขอลาหยุดใหม่!" if is_direct_mgr else "🏖️ มีคำขอลาหยุดใหม่รอการอนุมัติ!"
+                sub_msg = f"ผู้ใช้งาน {user_display} ได้ยื่นคำขอลาหยุด {l_type} ({s_date} ถึง {e_date})"
+                push_fields = {
+                    "ผู้ขอลา": user_display,
+                    "ประเภทการลา": l_type,
+                    "ตั้งแต่วันที่": s_date,
+                    "ถึงวันที่": e_date,
+                    "เหตุผล": reason if reason else "-"
+                }
+                if user_pos:
+                    push_fields["ตำแหน่ง"] = user_pos
+                if user_dept:
+                    push_fields["แผนก"] = user_dept
+
                 threading.Thread(target=send_line_push_notification, args=(
-                    admin,
-                    "🏖️ มีคำขอลาหยุดใหม่รอการอนุมัติ!",
-                    f"ผู้ใช้งาน {user_display} ได้ยื่นคำขอลาหยุด {l_type} ({s_date} ถึง {e_date})",
+                    target,
+                    header_msg,
+                    sub_msg,
                 ), kwargs={
                     "flex_bubble": leave_bubble,
-                    "fields": {
-                        "ผู้ขอลา": user_display,
-                        "ประเภทการลา": l_type,
-                        "ตั้งแต่วันที่": s_date,
-                        "ถึงวันที่": e_date,
-                        "เหตุผล": reason if reason else "-"
-                    }
+                    "fields": push_fields
                 }).start()
             except Exception as _lne:
                 logger.warning(f"[LINE Push Error] Leave request notification: {_lne}")
@@ -2349,11 +2834,12 @@ def api_leave_my():
 
 
 @admin_bp.route("/api/admin/leave/all")
-@org_admin_required
+@leave_manager_required
 def api_admin_leave_all():
     org_id = get_current_org_id()
     leaves = database.get_all_leaves(org_id=org_id)
     return jsonify({"ok": True, "leaves": leaves})
+
 
 
 @admin_bp.route("/api/leave/team-calendar")
@@ -2398,10 +2884,10 @@ def api_leave_team_calendar():
 
 
 @admin_bp.route("/api/admin/leave/status", methods=["POST"])
-@org_admin_required
+@login_required
 def api_admin_leave_status():
     admin_user = session.get("user")
-    data = request.get_json()
+    data = request.get_json() or {}
     leave_id = data.get("id")
     status = data.get("status") # approved/rejected
     note = data.get("note", "")
@@ -2413,9 +2899,48 @@ def api_admin_leave_status():
     if not leave:
         return jsonify({"ok": False, "error": "ไม่พบคำขอลาที่ระบุ"}), 404
 
+    applicant = leave.get("username", "")
+
     # 🛡️ Safety Rule: Cannot approve your own leave request
-    if leave.get("username", "").lower() == admin_user.lower():
-        return jsonify({"ok": False, "error": "คุณไม่สามารถอนุมัติหรือปฏิเสธคำขอลาของตนเองได้ค่ะ ต้องให้ Admin ท่านอื่นหรือ Admin ใหญ่เป็นผู้อนุมัติ"}), 403
+    if applicant.lower() == admin_user.lower():
+        return jsonify({"ok": False, "error": "คุณไม่สามารถอนุมัติหรือปฏิเสธคำขอลาของตนเองได้ค่ะ ต้องให้หัวหน้างานหรือ Admin ท่านอื่นเป็นผู้อนุมัติ"}), 403
+
+    # Check permission:
+    # 1. System Admin
+    # 2. Org Admin
+    # 3. User with can_manage_leave
+    # 4. Direct Manager of applicant (via manager_username in organization_members)
+    org_id = leave.get("org_id") or leave.get("organization_id") or get_current_org_id()
+    if not org_id and applicant:
+        user_orgs = database.get_user_orgs(applicant)
+        if user_orgs:
+            org_id = user_orgs[0]["id"]
+
+    is_authorized = False
+    if session.get("role") == "admin":
+        is_authorized = True
+    elif org_id and database.is_org_admin(org_id, admin_user):
+        is_authorized = True
+    else:
+        u_settings = database.get_user_setting(admin_user)
+        if u_settings and u_settings.get("can_manage_leave"):
+            is_authorized = True
+        elif org_id:
+            members = database.get_org_members(org_id)
+            applicant_member = next((m for m in members if m["username"].lower() == applicant.lower()), None)
+            if applicant_member and (applicant_member.get("manager_username") or "").lower() == admin_user.lower():
+                is_authorized = True
+        
+        if not is_authorized and applicant:
+            for uo in (database.get_user_orgs(applicant) or []):
+                m_list = database.get_org_members(uo["id"])
+                app_m = next((m for m in m_list if m["username"].lower() == applicant.lower()), None)
+                if app_m and (app_m.get("manager_username") or "").lower() == admin_user.lower():
+                    is_authorized = True
+                    break
+
+    if not is_authorized:
+        return jsonify({"ok": False, "error": "เฉพาะหัวหน้างานโดยตรง, ผู้มีสิทธิ์จัดการวันลา หรือ Admin เท่านั้นที่มีสิทธิ์ดำเนินการค่ะ"}), 403
         
     ok = database.update_leave_status(leave_id, status, admin_user, note)
     if ok:
@@ -2499,7 +3024,7 @@ def api_admin_leave_quota_update():
 @login_required
 def api_leave_add_comment():
     user = session.get("user")
-    data = request.get_json()
+    data = request.get_json() or {}
     leave_id = data.get("leave_id")
     comment = data.get("comment", "").strip()
     
@@ -3007,7 +3532,7 @@ def superadmin_clear_cache():
 @superadmin_required
 def superadmin_kb_cleanup():
     """ล้างไฟล์ KB ที่ค้างสถานะ 'processing' นานเกิน threshold"""
-    minutes = int(request.get_json(force=True).get("minutes", 30))
+    minutes = int((request.get_json(silent=True) or {}).get("minutes", 30))
     cleaned = rag_engine.cleanup_stale_processing(max_age_minutes=minutes)
     database.log_event(f"[SuperAdmin] KB cleanup: {cleaned} stale files fixed", user=session.get("user"))
     return jsonify({"ok": True, "cleaned": cleaned})
@@ -3844,6 +4369,37 @@ def _backup_sqlite():
         logger.error(f"[Backup] Failed: {_e}")
 
 
+@admin_bp.route("/api/admin/db/backup", methods=["POST"])
+@admin_required
+def api_admin_trigger_backup():
+    """Trigger an immediate hot backup of SQLite database."""
+    try:
+        _backup_sqlite()
+        return jsonify({"ok": True, "message": "สำรองข้อมูลฐานข้อมูลเรียบร้อยแล้ว"})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@admin_bp.route("/api/admin/db/backups", methods=["GET"])
+@admin_required
+def api_admin_list_backups():
+    """List available database backups."""
+    import glob as _glob
+    db_path = os.environ.get("DB_PATH", "chat_history.db")
+    backup_dir = os.path.join(os.path.dirname(os.path.abspath(db_path)), "backups")
+    os.makedirs(backup_dir, exist_ok=True)
+    files = sorted(_glob.glob(os.path.join(backup_dir, "chat_history_*.db")), reverse=True)
+    results = []
+    for f in files:
+        st = os.stat(f)
+        results.append({
+            "filename": os.path.basename(f),
+            "size_bytes": st.st_size,
+            "created_at": datetime.fromtimestamp(st.st_ctime).strftime("%Y-%m-%d %H:%M:%S")
+        })
+    return jsonify({"ok": True, "backups": results})
+
+
 def _run_daily_reminders():
     import time as _t
     _t.sleep(3600)  # wait 1h after startup before first check
@@ -4136,10 +4692,16 @@ def api_dashboard_delete_expense():
     try:
         from google_drive_service import google_manager
         username = session.get("user")
-        org_id = session.get("org_id")
+        org_id = session.get("org_id") or get_current_org_id()
+        user_settings = database.get_user_setting(username)
+        user_role = user_settings.get("role", "user")
+        if user_role != "admin" and not database.is_org_admin(org_id, username) and not user_settings.get("can_view_financial"):
+            return jsonify({"ok": False, "error": "คุณไม่มีสิทธิ์แก้ไขหรือลบรายการรายจ่าย กรุณาติดต่อ Admin"}), 403
+
         google_manager.set_context(username, org_id)
 
         data = request.get_json() or {}
+
         sheet_name = data.get("sheet_name", "").strip()
         row_index = int(data.get("row_index", 0))
 
@@ -4329,12 +4891,17 @@ def get_audit_logs_endpoint():
     search_filter = request.args.get("search", None) or action_filter
     
     res = database.get_audit_logs(org_id=org_id, limit=limit, offset=offset, username=username_filter, search=search_filter)
-    if isinstance(res, dict):
+    if hasattr(res, "logs") and hasattr(res, "total"):
+        logs = res.logs
+        total = res.total
+    elif isinstance(res, dict):
         logs = res.get("logs", [])
         total = res.get("total", 0)
     elif isinstance(res, (tuple, list)):
-        logs = res[0]
-        total = res[1]
+        if len(res) == 2 and isinstance(res[1], int):
+            logs, total = res[0], res[1]
+        else:
+            logs, total = list(res), getattr(res, "total", len(res))
     else:
         logs, total = [], 0
 
@@ -4430,9 +4997,15 @@ def api_dashboard_create_payment_voucher():
 
         org_id = session.get("org_id") or get_current_org_id()
         username = session.get("user")
+        user_settings = database.get_user_setting(username)
+        user_role = user_settings.get("role", "user")
+        if user_role != "admin" and not database.is_org_admin(org_id, username) and not user_settings.get("can_view_financial"):
+            return jsonify({"ok": False, "error": "คุณไม่มีสิทธิ์สร้างใบสำคัญจ่าย กรุณาติดต่อ Admin"}), 403
+
         google_manager.set_context(username, org_id)
 
         data = request.get_json() or {}
+
         items = data.get("items", [])
         if not items or not isinstance(items, list):
             return jsonify({"ok": False, "error": "กรุณาเลือกรายการรายจ่ายอย่างน้อย 1 รายการ"}), 400
@@ -4578,5 +5151,6 @@ def api_admin_security_export_csv():
         mimetype="text/csv",
         headers={"Content-disposition": "attachment; filename=orgchat_security_audit_logs.csv"}
     )
+
 
 

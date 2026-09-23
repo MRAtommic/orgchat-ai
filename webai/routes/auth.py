@@ -2,7 +2,7 @@
 """
 Authentication Blueprint — Login, Logout, OAuth2, QR Login, LINE Magic Link, Password Reset, Org Signup
 """
-from flask import Blueprint, request, jsonify, render_template, render_template_string, send_from_directory, send_file, abort, redirect, session
+from flask import Blueprint, request, jsonify, render_template, render_template_string, send_from_directory, send_file, abort, redirect, session, Response
 from markupsafe import escape as _html_escape
 from werkzeug.utils import secure_filename
 import os
@@ -46,9 +46,49 @@ logger = logging.getLogger("OrgChatAI.Auth")
 
 auth_bp = Blueprint('auth', __name__)
 
+from redis_manager import RedisManager
+
 _qr_tokens = {}  # legacy — superseded by DB-backed qr_* functions in database.py
-_2FA_PRE_AUTH_CACHE = {}  # token -> {"user": username, "expires": timestamp}
-_2FA_SETUP_TEMP_SECRETS = {}  # username -> secret (temporary secret before verification)
+
+# ─── 🛡️ Distributed / Multi-Worker 2FA State Helpers via RedisManager ──────────
+def _2fa_pre_auth_set(token: str, user: str, expires_in: int = 300):
+    RedisManager.set_json(f"2fa_pre_auth:{token}", {"user": user, "expires": time.time() + expires_in}, expire=expires_in)
+
+def _2fa_pre_auth_get(token: str) -> dict | None:
+    data = RedisManager.get_json(f"2fa_pre_auth:{token}")
+    if data and data.get("expires", 0) > time.time():
+        return data
+    return None
+
+def _2fa_pre_auth_pop(token: str) -> dict | None:
+    data = _2fa_pre_auth_get(token)
+    RedisManager.delete(f"2fa_pre_auth:{token}")
+    return data
+
+def _2fa_setup_secret_set(username: str, secret: str, expires_in: int = 600):
+    RedisManager.set_json(f"2fa_setup:{username}", secret, expire=expires_in)
+
+def _2fa_setup_secret_get(username: str) -> str | None:
+    return RedisManager.get_json(f"2fa_setup:{username}")
+
+def _2fa_setup_secret_pop(username: str) -> str | None:
+    secret = _2fa_setup_secret_get(username)
+    RedisManager.delete(f"2fa_setup:{username}")
+    return secret
+
+def _2fa_email_otp_set(username: str, otp: str, expires_in: int = 300):
+    RedisManager.set_json(f"2fa_email_otp:{username}", {"otp": otp, "expires": time.time() + expires_in}, expire=expires_in)
+
+def _2fa_email_otp_get(username: str) -> dict | None:
+    data = RedisManager.get_json(f"2fa_email_otp:{username}")
+    if data and data.get("expires", 0) > time.time():
+        return data
+    return None
+
+def _2fa_email_otp_pop(username: str) -> dict | None:
+    data = _2fa_email_otp_get(username)
+    RedisManager.delete(f"2fa_email_otp:{username}")
+    return data
 
 QR_APPROVE_HTML = """<!DOCTYPE html>
 <html lang="th">
@@ -398,22 +438,40 @@ def auth_google_callback():
     if not username:
         return "<h1>กรุณาเข้าสู่ระบบก่อน</h1><p><a href='/'>กลับหน้าหลัก</a></p>", 401
 
+    # Ensure session is restored/persisted so the user does not get logged out or blocked by loginOverlay
+    session["user"] = username
+    user_info = database.get_user(username) or {}
+    session["role"] = user_info.get("role", "staff")
+    effective_org_id = state_data.get("org_id") or user_info.get("org_id") or 1
+    session["org_id"] = effective_org_id
+    if database.is_org_admin(effective_org_id, username):
+        session["org_role"] = "admin"
+    else:
+        session["org_role"] = user_info.get("org_role", "member")
+    try:
+        session["session_version"] = database.get_user_session_version(username)
+    except Exception:
+        pass
+    session.permanent = True
+
+    target_hash = "#admin" if state_data.get("mode") == 'org' else ""
+
     # Check for error from Google
     error = request.args.get('error')
     if error:
         if error == 'access_denied':
             # User pressed cancel — redirect back, previously connected email is still saved
-            return redirect('/?google_cancelled=1')
-        return redirect(f'/?google_error=1')
+            return redirect(f'/?google_cancelled=1{target_hash}')
+        return redirect(f'/?google_error=1{target_hash}')
 
     authorization_code = request.args.get('code')
     if not authorization_code:
-        return "<h1>ไม่พบ authorization code</h1><p><a href='/'>กลับหน้าหลัก</a></p>", 400
+        return f"<h1>ไม่พบ authorization code</h1><p><a href='/?google_error=1{target_hash}'>กลับหน้าหลัก</a></p>", 400
 
     try:
         redirect_uri = state_data.get("redirect_uri", oauth2_service.redirect_uri)
         mode = state_data.get("mode", "personal")
-        org_id = state_data.get("org_id")
+        org_id = state_data.get("org_id") or effective_org_id
 
         # Exchange the code for tokens
         token_result = oauth2_service.exchange_code_for_token(
@@ -456,6 +514,8 @@ def auth_google_callback():
 
         GoogleWorkspaceManager.invalidate_user_cache(username)
 
+        return_url = f"/?google_connected=1{target_hash}"
+
         _CSS = """body{font-family:'Sarabun','Inter',sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0}
         .card{background:white;border-radius:20px;padding:40px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.3);max-width:460px}
         .email{background:#F0FDF4;color:#059669;padding:8px 16px;border-radius:10px;font-weight:600;display:inline-block;margin:10px 0}
@@ -465,7 +525,7 @@ def auth_google_callback():
         if setup_ok:
             return render_template_string(f"""<!DOCTYPE html><html><head><meta charset="utf-8"><title>เชื่อมต่อสำเร็จ!</title>
             <style>{_CSS}</style>
-            <script>setTimeout(()=>{{window.location.href='/?google_connected=1';}},3000);</script>
+            <script>setTimeout(()=>{{window.location.href='{return_url}';}},2000);</script>
             </head>
             <body style="background:linear-gradient(135deg,#667eea,#764ba2)">
             <div class="card">
@@ -474,20 +534,20 @@ def auth_google_callback():
               <span class="badge">ระดับ: {{{{ scope }}}}</span>
               <br><div class="email">{{{{ email }}}}</div>
               <p style="color:#475569">ระบบสร้าง Google Sheets และโฟลเดอร์ Drive เรียบร้อยแล้ว</p>
-              <p style="color:#94a3b8;font-size:13px">กำลังกลับหน้าหลักใน 3 วินาที...</p>
-              <a href="/?google_connected=1" class="btn">กลับหน้าหลัก</a>
+              <p style="color:#94a3b8;font-size:13px">กำลังกลับหน้าหลักใน 2 วินาที...</p>
+              <a href="{return_url}" class="btn">กลับสู่ระบบ</a>
             </div></body></html>""", email=google_email, scope=scope_label)
         else:
             return render_template_string(f"""<!DOCTYPE html><html><head><meta charset="utf-8"><title>เชื่อมต่อ (บางส่วน)</title>
             <style>{_CSS}</style>
-            <script>setTimeout(()=>{{window.location.href='/?google_connected=1';}},4000);</script>
+            <script>setTimeout(()=>{{window.location.href='{return_url}';}},3000);</script>
             </head>
             <body style="background:linear-gradient(135deg,#f59e0b,#ef4444)">
             <div class="card">
               <h1 style="color:#D97706">⚠️ เชื่อมต่อสำเร็จ แต่สร้าง Workspace ไม่สมบูรณ์</h1>
               <span class="badge">ระดับ: {{{{ scope }}}}</span>
               <p style="color:#475569">บัญชีเชื่อมต่อแล้ว แต่สร้าง Sheets/Drive ไม่สำเร็จ ลองยกเลิกแล้วเชื่อมต่อใหม่</p>
-              <a href="/?google_connected=1" class="btn">กลับหน้าหลัก</a>
+              <a href="{return_url}" class="btn">กลับสู่ระบบ</a>
             </div></body></html>""", scope=scope_label)
 
     except Exception as e:
@@ -554,6 +614,7 @@ def auth_google_status():
 
 
 @auth_bp.route("/api/auth/google/disconnect", methods=["POST"])
+@login_required
 def auth_google_disconnect():
     """
     Disconnect Google account.
@@ -1027,6 +1088,11 @@ def render_login_page(token, error=None):
                 </div>
                 <button type="submit" class="btn">ผูกบัญชีใช้งาน</button>
             </form>
+
+            <div style="margin-top: 24px; padding-top: 18px; border-top: 1px solid rgba(255, 255, 255, 0.1); text-align: center;">
+                <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 10px;">ยังไม่มีบัญชี OrgChat AI ใช่ไหมคะ?</p>
+                <a href="/signup?line_token={token}" style="display: inline-block; padding: 10px 18px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: #FFFFFF; font-size: 13px; font-weight: 600; border-radius: 10px; text-decoration: none; transition: all 0.2s;">✨ สมัครสมาชิกใหม่ (พร้อมผูก LINE ทันที) →</a>
+            </div>
             
             <div class="footer-info">
                 SECURE AUTHENTICATION &bull; ORGCHAT SYSTEM
@@ -1096,10 +1162,12 @@ def line_link_magic():
             session["user"] = resolved_username
             resolved_settings = database.get_user_setting(resolved_username)
             session["role"] = resolved_settings.get("role", "user")
+            _set_session_org(resolved_username)
             database.link_line_user(resolved_username, line_user_id)
             database.line_link_delete(token)
             PENDING_LINE_LINKS.pop(token, None)
             return render_success_page(resolved_username)
+
         else:
             return render_login_page(token, error="ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้องค่ะ")
 
@@ -1160,10 +1228,7 @@ def api_login():
         if settings.get("totp_enabled"):
             # Instead of logging in fully, issue temporary 2FA token
             pre_auth_token = _sec.token_urlsafe(32)
-            _2FA_PRE_AUTH_CACHE[pre_auth_token] = {
-                "user": settings.get("username_original", username_raw),
-                "expires": time.time() + 300  # 5 minutes valid
-            }
+            _2fa_pre_auth_set(pre_auth_token, settings.get("username_original", username_raw), expires_in=300)
             return jsonify({
                 "ok": True,
                 "require_2fa": True,
@@ -1175,6 +1240,7 @@ def api_login():
         session.permanent = True
         session["user"] = settings.get("username_original", username_raw)
         session["role"] = settings.get("role", "user")
+        session["session_version"] = database.get_user_session_version(session["user"])
 
         # Auto-join whitelist orgs (same as Google OAuth) — handles invited users who login normally
         _uname = session["user"]
@@ -1255,6 +1321,7 @@ def api_login():
         session.permanent = True
         session["user"] = user_to_session
         session["role"] = settings.get("role", "user")
+        session["session_version"] = database.get_user_session_version(user_to_session)
         _set_session_org(user_to_session)
         database.record_login_attempt(client_ip, username_raw, success=True)
         database.log_audit_event(user_to_session, "USER_LOGIN", "Login successful", client_ip, session.get("org_id", 1))
@@ -1388,7 +1455,7 @@ def setup_2fa():
     username = session.get("user")
     
     secret = pyotp.random_base32()
-    _2FA_SETUP_TEMP_SECRETS[username] = secret
+    _2fa_setup_secret_set(username, secret, expires_in=600)
     
     totp = pyotp.TOTP(secret)
     provisioning_uri = totp.provisioning_uri(name=username, issuer_name="OrgChat AI")
@@ -1419,8 +1486,8 @@ def send_2fa_email_otp_api():
     
     username = None
     if pre_auth_token:
-        cached = _2FA_PRE_AUTH_CACHE.get(pre_auth_token)
-        if not cached or time.time() > cached.get("expires", 0):
+        cached = _2fa_pre_auth_get(pre_auth_token)
+        if not cached:
             return jsonify({"ok": False, "error": "เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่อีกครั้ง"}), 400
         username = cached["user"]
     else:
@@ -1436,10 +1503,7 @@ def send_2fa_email_otp_api():
         
     import random
     otp_code = f"{random.randint(100000, 999999)}"
-    _2FA_EMAIL_OTP_CACHE[username] = {
-        "otp": otp_code,
-        "expires": time.time() + 300
-    }
+    _2fa_email_otp_set(username, otp_code, expires_in=300)
     
     ok, msg = send_2fa_email_otp(email, otp_code)
     if not ok:
@@ -1458,15 +1522,15 @@ def enable_2fa():
     fa_type = data.get("type", "authenticator")  # 'authenticator' or 'email'
     
     if fa_type == "email":
-        cached_otp = _2FA_EMAIL_OTP_CACHE.get(username)
-        if not cached_otp or time.time() > cached_otp.get("expires", 0):
+        cached_otp = _2fa_email_otp_get(username)
+        if not cached_otp:
             return jsonify({"ok": False, "error": "รหัส OTP หมดอายุแล้ว กรุณากดขอ OTP ใหม่"}), 400
         if not hmac.compare_digest(cached_otp["otp"], code):
             return jsonify({"ok": False, "error": "รหัส OTP ไม่ถูกต้อง"}), 400
         secret = "EMAIL_OTP"
-        _2FA_EMAIL_OTP_CACHE.pop(username, None)
+        _2fa_email_otp_pop(username)
     else:
-        secret = _2FA_SETUP_TEMP_SECRETS.get(username)
+        secret = _2fa_setup_secret_get(username)
         if not secret:
             return jsonify({"ok": False, "error": "กรุณากดตั้งค่า 2FA ใหม่"}), 400
             
@@ -1486,7 +1550,7 @@ def enable_2fa():
     conn.commit()
     conn.close()
     
-    _2FA_SETUP_TEMP_SECRETS.pop(username, None)
+    _2fa_setup_secret_pop(username)
     
     return jsonify({
         "ok": True,
@@ -1500,14 +1564,56 @@ def disable_2fa():
     username = session.get("user")
     data = request.json or {}
     password = data.get("password", "")
+    code = str(data.get("code", "")).strip().replace(" ", "").upper()
     
     settings = database.get_user_setting(username)
     if settings.get("custom_password"):
         if not database.check_password(password, settings["custom_password"]):
             return jsonify({"ok": False, "error": "รหัสผ่านไม่ถูกต้อง"}), 400
+    else:
+        # For OAuth / passwordless accounts or default accounts without custom_password
+        secret = settings.get("totp_secret", "")
+        valid = False
+        if secret and code:
+            try:
+                import pyotp
+                totp = pyotp.TOTP(secret)
+                if totp.verify(code, valid_window=1):
+                    valid = True
+            except Exception:
+                pass
+            if not valid:
+                try:
+                    import base64, time, hmac, hashlib, struct
+                    key = base64.b32decode(secret.upper() + '=' * ((8 - len(secret) % 8) % 8))
+                    current_step = int(time.time() // 30)
+                    for step in (current_step - 1, current_step, current_step + 1):
+                        msg = struct.pack(">Q", step)
+                        h = hmac.new(key, msg, hashlib.sha1).digest()
+                        o = h[19] & 15
+                        val = (struct.unpack(">I", h[o:o+4])[0] & 0x7fffffff) % 1000000
+                        if f"{val:06d}" == str(code).zfill(6):
+                            valid = True
+                            break
+                except Exception:
+                    pass
+        if not valid and code:
+            # Check backup codes (hashes or plaintext)
+            raw_codes = settings.get("totp_backup_codes", "") or ""
+            try:
+                stored_hashes = json.loads(raw_codes) if raw_codes.startswith("[") else []
+                code_hash = hashlib.sha256(code.encode()).hexdigest()
+                if code_hash in stored_hashes or code in stored_hashes:
+                    valid = True
+            except Exception:
+                backup_list = [c.strip().upper() for c in raw_codes.split(",") if c.strip()]
+                if code in backup_list:
+                    valid = True
+        if not valid and not (password and USERS.get(username.lower()) and database.check_password(password, USERS.get(username.lower(), ""))):
+            return jsonify({"ok": False, "error": "กรุณาระบุรหัสผ่าน หรือรหัส 2FA เพื่อยืนยันการปิดใช้งาน"}), 400
             
     conn = database._get_conn()
-    conn.execute("UPDATE user_settings SET totp_enabled = 0, totp_secret = NULL WHERE username = ?", (username,))
+    conn.execute("UPDATE user_settings SET totp_enabled = 0, totp_secret = NULL, totp_backup_codes = NULL, totp_type = NULL WHERE username = ?", (username,))
     conn.commit()
     conn.close()
     
@@ -1521,9 +1627,9 @@ def verify_2fa():
     pre_auth_token = data.get("pre_auth_token", "")
     code = str(data.get("code", "")).strip().replace(" ", "").upper()
     
-    cached = _2FA_PRE_AUTH_CACHE.get(pre_auth_token)
-    if not cached or time.time() > cached.get("expires", 0):
-        _2FA_PRE_AUTH_CACHE.pop(pre_auth_token, None)
+    cached = _2fa_pre_auth_get(pre_auth_token)
+    if not cached:
+        _2fa_pre_auth_pop(pre_auth_token)
         return jsonify({"ok": False, "error": "เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่อีกครั้ง"}), 400
         
     username = cached["user"]
@@ -1533,11 +1639,11 @@ def verify_2fa():
     
     valid = False
     if fa_type == "email":
-        cached_otp = _2FA_EMAIL_OTP_CACHE.get(username)
-        if cached_otp and time.time() <= cached_otp.get("expires", 0):
+        cached_otp = _2fa_email_otp_get(username)
+        if cached_otp:
             if hmac.compare_digest(cached_otp["otp"], code):
                 valid = True
-                _2FA_EMAIL_OTP_CACHE.pop(username, None)
+                _2fa_email_otp_pop(username)
     elif secret:
         totp = pyotp.TOTP(secret)
         if totp.verify(code, valid_window=1):
@@ -1563,7 +1669,7 @@ def verify_2fa():
         return jsonify({"ok": False, "error": "รหัส 2FA หรือ Backup Code ไม่ถูกต้อง"}), 400
         
     # Clear pre-auth token
-    _2FA_PRE_AUTH_CACHE.pop(pre_auth_token, None)
+    _2fa_pre_auth_pop(pre_auth_token)
     
     # Issue actual login session
     client_ip = request.remote_addr or "unknown"
@@ -1572,6 +1678,7 @@ def verify_2fa():
     session.permanent = True
     session["user"] = settings.get("username_original", username)
     session["role"] = settings.get("role", "user")
+    session["session_version"] = database.get_user_session_version(session["user"])
     _set_session_org(session["user"])
     database.record_login_attempt(client_ip, username, success=True)
     database.log_audit_event(session["user"], "USER_LOGIN_2FA", "2FA Login successful", client_ip, session.get("org_id", 1))
@@ -1781,14 +1888,32 @@ def api_login_google():
         avatar_url = profile.get("avatar_url") if profile.get("avatar_url") else idinfo.get("picture")
         database.update_user_profile(username, display_name=display_name, avatar_url=avatar_url)
 
-        # ── บันทึก email ลง user_settings เพื่อใช้ตรวจ collision ในอนาคต ──
+        # ── Ensure user_settings row exists for first-time Google login ──
+        # (whitelisted-org users are seeded in the auto-join branch above,
+        #  but non-whitelisted new users would skip that branch entirely)
         try:
             conn = database._get_conn()
-            conn.execute("UPDATE user_settings SET email=? WHERE username=? AND (email IS NULL OR email='')", (email, username))
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT OR IGNORE INTO user_settings (username, role, is_active, email) VALUES (?, 'user', 1, ?)",
+                (username, email)
+            )
+            cur.execute(
+                "INSERT OR IGNORE INTO user_profiles (username, display_name, department) VALUES (?, ?, 'General')",
+                (username, display_name)
+            )
+            # ── บันทึก email ลง user_settings เพื่อใช้ตรวจ collision ในอนาคต ──
+            cur.execute(
+                "UPDATE user_settings SET email=? WHERE username=? AND (email IS NULL OR email='')",
+                (email, username)
+            )
             conn.commit()
             conn.close()
-        except Exception:
-            pass
+        except Exception as _seed_err:
+            logger.warning(f"[GoogleLogin] seed user data failed for '{username}': {_seed_err}")
+
+        # Re-fetch settings after potential INSERT above
+        settings = database.get_user_setting(username)
 
         session.clear()
         session.permanent = True
@@ -2001,17 +2126,9 @@ def api_forgot_password():
                 "email": target_email,
                 "message": f"ระบบได้ส่งรหัส OTP 6 หลักไปยังอีเมล {target_email} เรียบร้อยแล้วค่ะ"
             })
-        elif email_err == "smtp_not_configured":
-            return jsonify({
-                "ok": True,
-                "step": "otp_sent",
-                "email": target_email,
-                "otp_demo": otp_code,
-                "message": f"พบบัญชี {target_email} ในระบบแล้ว! (หมายเหตุ: ยังไม่ได้ตั้งค่า SMTP บนเซิร์ฟเวอร์ รหัส OTP ของคุณคือ {otp_code})",
-                "reset_url": reset_url
-            })
+        logger.warning(f"[ForgotPassword] Email send failed: {email_err}")
 
-    # Priority 2: Try to send via LINE DM
+    # Priority 2: Try to send via LINE DM if linked
     line_user_id = database.get_line_user_id_for_username(username)
     if line_user_id:
         try:
@@ -2019,37 +2136,37 @@ def api_forgot_password():
             msg = (
                 f"สวัสดีค่ะ คุณได้ขอรีเซ็ตรหัสผ่านสำหรับบัญชี OrgChat AI\n\n"
                 f"🔑 รหัส OTP 6 หลักของคุณคือ: {otp_code}\n(หมดอายุใน 10 นาที)\n\n"
-                f"หรือคลิกลิ้งค์นี้เพื่อตั้งรหัสผ่านใหม่:\n{reset_url}"
+                f"หรือคลิกลิงก์นี้เพื่อตั้งรหัสผ่านใหม่:\n{reset_url}"
             )
             import requests as _req
-            _req.post(
+            resp = _req.post(
                 "https://api.line.me/v2/bot/message/push",
                 headers={"Content-Type": "application/json", "Authorization": f"Bearer {_tok}"},
                 json={"to": line_user_id, "messages": [{"type": "text", "text": msg}]},
                 timeout=10,
             )
-            return jsonify({
-                "ok": True,
-                "step": "otp_sent",
-                "email": username,
-                "message": "ระบบได้ส่งรหัส OTP 6 หลักไปทาง LINE ของคุณแล้วค่ะ กรุณาตรวจสอบข้อความ"
-            })
+            if resp.status_code == 200:
+                return jsonify({
+                    "ok": True,
+                    "step": "otp_sent",
+                    "email": username,
+                    "message": "ระบบได้ส่งรหัส OTP 6 หลักไปยัง LINE ส่วนตัวของคุณเรียบร้อยแล้วค่ะ กรุณาตรวจสอบข้อความใน LINE"
+                })
+            else:
+                logger.error(f"[ForgotPassword] LINE push returned {resp.status_code}: {resp.text}")
         except Exception as _e:
             logger.warning(f"[ForgotPassword] LINE push failed: {_e}")
 
-    # Fallback response
+    # Secure fallback: Never disclose OTP in response JSON
     return jsonify({
-        "ok": True,
-        "step": "otp_sent",
-        "email": target_email or username,
-        "otp_demo": otp_code,
-        "message": f"สร้างรหัส OTP 6 หลักเรียบร้อยแล้ว (รหัสทดสอบ: {otp_code})",
-        "reset_url": reset_url
-    })
+        "ok": False,
+        "error": "cannot_dispatch_otp",
+        "message": "ระบบไม่สามารถส่งรหัส OTP ทางอีเมลได้ (ยังไม่ได้ตั้งค่า SMTP) และบัญชีนี้ยังไม่ได้ผูกกับ LINE กรุณาติดต่อผู้ดูแลระบบเพื่อรีเซ็ตรหัสผ่านค่ะ"
+    }), 400
 
 
 @auth_bp.route("/api/auth/verify-reset-otp", methods=["POST"])
-@_limiter.limit("5 per minute; 20 per hour")
+@_limiter.limit("10 per minute; 30 per hour")
 def api_verify_reset_otp():
     data = request.get_json(force=True)
     target = (data.get("email") or data.get("username") or data.get("target") or "").strip()
@@ -2257,6 +2374,27 @@ def org_public_info():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@auth_bp.route("/api/current_user", methods=["GET"])
+def get_current_user_api():
+    """Compatibility endpoint for current user and organization status."""
+    username = session.get("user")
+    if not username:
+        return jsonify({"ok": False, "user": None, "has_org": False}), 200
+    org_id = get_current_org_id()
+    return jsonify({
+        "ok": True,
+        "has_org": org_id is not None,
+        "user": {
+            "username": username,
+            "has_org": org_id is not None,
+            "org_id": org_id,
+            "role": session.get("role", "user"),
+            "org_role": session.get("org_role")
+        }
+    })
+
+
+
 @auth_bp.route("/api/org/create-for-user", methods=["POST"])
 @login_required
 @_limiter.limit("5 per minute; 10 per hour")
@@ -2268,16 +2406,12 @@ def create_org_for_user():
     if not org_name:
         return jsonify({"ok": False, "error": "กรุณากรอกชื่อองค์กร"}), 400
 
-    existing = database.get_user_orgs(username)
-    if existing:
-        session["org_id"] = existing[0]["id"]
-        session["org_role"] = existing[0]["role"]
-        return jsonify({"ok": True, "org_id": existing[0]["id"], "already_exists": True})
-
     try:
         org_id, _ = database.create_organization(org_name, username)
-    except Exception:
-        return jsonify({"ok": False, "error": "ชื่อองค์กรนี้มีอยู่แล้ว กรุณาเปลี่ยนชื่อ"}), 409
+    except Exception as e:
+        if "UNIQUE" in str(e) or "exists" in str(e).lower():
+            return jsonify({"ok": False, "error": "ชื่อองค์กรนี้มีอยู่แล้ว กรุณาเปลี่ยนชื่อ"}), 409
+        return jsonify({"ok": False, "error": f"ไม่สามารถสร้างองค์กรได้: {e}"}), 500
 
     session["org_id"] = org_id
     session["org_role"] = "admin"
@@ -2336,6 +2470,32 @@ def org_signup():
     session["role"] = "user"
     session["org_id"] = org_id
     session["org_role"] = "admin"
+
+    # Automatically link LINE account if line_token is provided from LINE Magic Link
+    line_token = data.get("line_token")
+    if line_token:
+        link_data = database.line_link_get(line_token)
+        if link_data and time.time() <= link_data.get("expires_at", 0):
+            line_user_id = link_data["line_user_id"]
+            database.link_line_user(username, line_user_id)
+            database.line_link_delete(line_token)
+            logger.info(f"[Signup] Automatically linked LINE user {line_user_id} to new account {username}")
+            try:
+                _tok = billing._get_line_token()
+                welcome_msg = (
+                    f"🎉 ยินดีต้อนรับค่ะคุณ {display_name or username}!\n\n"
+                    f"เชื่อมต่อบัญชี OrgChat AI เข้ากับ LINE สำเร็จแล้วค่ะ ✨\n"
+                    f"คุณสามารถส่งรูปบิล, สลิป หรือส่งพิกัดเพื่อลงเวลาเข้างานได้ทันทีเลยค่ะ"
+                )
+                import requests as _req
+                _req.post(
+                    "https://api.line.me/v2/bot/message/push",
+                    headers={"Content-Type": "application/json", "Authorization": f"Bearer {_tok}"},
+                    json={"to": line_user_id, "messages": [{"type": "text", "text": welcome_msg}]},
+                    timeout=5,
+                )
+            except Exception as _pe:
+                logger.warning(f"[Signup] Welcome push failed: {_pe}")
 
     return jsonify({"ok": True, "user": username, "role": "user", "org_id": org_id})
 
@@ -2798,7 +2958,31 @@ def join_via_invite():
     session["user"] = username
     session["role"] = "user"
     session["org_id"] = org_id
-    session["org_role"] = role
+    # Automatically link LINE account if line_token is provided from LINE Magic Link
+    line_token = data.get("line_token")
+    if line_token:
+        link_data = database.line_link_get(line_token)
+        if link_data and time.time() <= link_data.get("expires_at", 0):
+            line_user_id = link_data["line_user_id"]
+            database.link_line_user(username, line_user_id)
+            database.line_link_delete(line_token)
+            logger.info(f"[JoinInvite] Automatically linked LINE user {line_user_id} to member {username}")
+            try:
+                _tok = billing._get_line_token()
+                welcome_msg = (
+                    f"🎉 ยินดีต้อนรับค่ะคุณ {display_name or username}!\n\n"
+                    f"เชื่อมต่อบัญชี OrgChat AI และเข้าร่วมองค์กรสำเร็จแล้วค่ะ ✨"
+                )
+                import requests as _req
+                _req.post(
+                    "https://api.line.me/v2/bot/message/push",
+                    headers={"Content-Type": "application/json", "Authorization": f"Bearer {_tok}"},
+                    json={"to": line_user_id, "messages": [{"type": "text", "text": welcome_msg}]},
+                    timeout=5,
+                )
+            except Exception as _pe:
+                logger.warning(f"[JoinInvite] Welcome push failed: {_pe}")
+
     logger.info(f"[JoinInvite] '{username}' joined org={org_id} as {role} via email invite")
     return jsonify({"ok": True, "user": username, "org_id": org_id})
 
@@ -2851,12 +3035,245 @@ def update_org_member_permissions(username):
         update_kwargs["can_view_financial"] = bool(data["can_view_financial"])
     if "can_manage_leave" in data:
         update_kwargs["can_manage_leave"] = bool(data["can_manage_leave"])
+    if "can_broadcast_line" in data:
+        update_kwargs["can_broadcast_line"] = bool(data["can_broadcast_line"])
+    if "can_manage_peak" in data:
+        update_kwargs["can_manage_peak"] = bool(data["can_manage_peak"])
     if "notes" in data:
         update_kwargs["notes"] = data["notes"]
         
     database.admin_update_user(username, **update_kwargs)
     database.log_event(f"Permissions updated for {username} by {me}", user=me, org_id=org_id)
     return jsonify({"ok": True})
+
+
+@auth_bp.route("/api/org/quota", methods=["GET"])
+@login_required
+def get_org_quota_route():
+    org_id = get_current_org_id()
+    if not org_id:
+        return jsonify({"ok": False, "error": "คุณยังไม่ได้อยู่ในองค์กร"}), 403
+    quota = database.get_org_quota_info(org_id)
+    return jsonify(quota)
+
+
+@auth_bp.route("/api/org/members/export-csv", methods=["GET"])
+@login_required
+def export_org_members_csv():
+    me = session.get("user")
+    org_id = get_current_org_id()
+    if not org_id:
+        return jsonify({"ok": False, "error": "คุณยังไม่ได้อยู่ในองค์กร"}), 403
+    if not database.is_org_admin(org_id, me):
+        return jsonify({"ok": False, "error": "เฉพาะ Admin องค์กรเท่านั้นที่ส่งออกรายชื่อได้"}), 403
+    
+    import io, csv
+    members = database.get_org_members(org_id)
+    output = io.StringIO()
+    output.write('\ufeff')
+    writer = csv.writer(output)
+    writer.writerow([
+        "ชื่อผู้ใช้ (Username)",
+        "ชื่อที่แสดง (Display Name)",
+        "อีเมล (Email)",
+        "บทบาท (Role)",
+        "สถานะเจ้าของ (Is Owner)",
+        "แผนก (Department)",
+        "ตำแหน่ง (Position)",
+        "หัวหน้างานตรง (Direct Manager)",
+        "วันที่เข้าร่วม (Joined At)",
+        "สิทธิ์ดูการเงิน",
+        "สิทธิ์อนุมัติใบลา",
+        "สิทธิ์ดูคลังความรู้",
+        "สิทธิ์แก้ไขคลังความรู้",
+        "สิทธิ์บรอดแคสต์ LINE",
+        "สิทธิ์จัดการ PEAK",
+        "สถานะบัญชี"
+    ])
+    for m in members:
+        role_th = "Admin" if m.get("role") == "admin" else "Member"
+        if m.get("is_owner"):
+            role_th = "Owner (Admin ใหญ่)"
+        writer.writerow([
+            m.get("username", ""),
+            m.get("display_name", ""),
+            m.get("email", ""),
+            role_th,
+            "ใช่" if m.get("is_owner") else "ไม่ใช่",
+            m.get("department", ""),
+            m.get("position", ""),
+            m.get("manager_username", ""),
+            m.get("joined_at", ""),
+            "มีสิทธิ์" if m.get("can_view_financial") else "ไม่มี",
+            "มีสิทธิ์" if m.get("can_manage_leave") else "ไม่มี",
+            "มีสิทธิ์" if m.get("can_view_kb") else "ไม่มี",
+            "มีสิทธิ์" if m.get("can_edit_kb") else "ไม่มี",
+            "มีสิทธิ์" if m.get("can_broadcast_line") else "ไม่มี",
+            "มีสิทธิ์" if m.get("can_manage_peak") else "ไม่มี",
+            "เปิดใช้งาน" if m.get("is_active") else "ปิดใช้งาน"
+        ])
+    
+    csv_bytes = output.getvalue().encode('utf-8-sig')
+    return Response(
+        csv_bytes,
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=org_{org_id}_members.csv"}
+    )
+
+
+@auth_bp.route("/api/org/transfer-ownership", methods=["POST"])
+@login_required
+def transfer_org_ownership_route():
+    me = session.get("user")
+    org_id = get_current_org_id()
+    if not org_id:
+        return jsonify({"ok": False, "error": "คุณยังไม่ได้อยู่ในองค์กร"}), 403
+    if not database.is_org_owner(org_id, me):
+        return jsonify({"ok": False, "error": "เฉพาะ Owner ปัจจุบันเท่านั้นที่สามารถโอนสิทธิ์ความเป็นเจ้าของได้"}), 403
+    
+    data = request.get_json(force=True)
+    new_owner = (data.get("new_owner") or "").strip()
+    if not new_owner:
+        return jsonify({"ok": False, "error": "กรุณาระบุชื่อผู้ใช้ที่จะรับโอนความเป็นเจ้าของ"}), 400
+    
+    success, msg = database.transfer_org_ownership(org_id, me, new_owner)
+    if success:
+        database.log_audit_event(
+            org_id=org_id,
+            username=me,
+            action="ORG_OWNERSHIP_TRANSFERRED",
+            details=f"Owner role transferred from {me} to {new_owner}",
+            ip_address=request.remote_addr or "127.0.0.1"
+        )
+        return jsonify({"ok": True, "message": msg})
+    return jsonify({"ok": False, "error": msg}), 400
+
+
+@auth_bp.route("/api/org/invite-token", methods=["POST"])
+@login_required
+def create_org_invite_token_route():
+    me = session.get("user")
+    org_id = get_current_org_id()
+    if not org_id:
+        return jsonify({"ok": False, "error": "คุณยังไม่ได้อยู่ในองค์กร"}), 403
+    if not database.is_org_admin(org_id, me):
+        return jsonify({"ok": False, "error": "เฉพาะ Admin องค์กรเท่านั้นที่สร้างลิงก์เชิญได้"}), 403
+    
+    data = request.get_json(force=True) or {}
+    role = data.get("role", "member")
+    department = data.get("department", "")
+    expires_days = int(data.get("expires_days", 7))
+
+    token = database.create_org_invite_token(org_id, me, role=role, department=department, expires_days=expires_days)
+    base_url = request.host_url.rstrip('/')
+    invite_url = f"{base_url}/join-org?code={token}"
+    return jsonify({"ok": True, "token": token, "invite_url": invite_url, "expires_days": expires_days})
+
+
+@auth_bp.route("/join-org", methods=["GET"])
+def join_org_page():
+    code = request.args.get("code", "").strip()
+    me = session.get("user")
+    google_client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
+    
+    if not code:
+        return render_template(
+            "join_org.html",
+            valid=False,
+            error="ไม่พบรหัสเชิญในลิงก์ที่ระบุ กรุณาตรวจสอบลิงก์อีกครั้งค่ะ",
+            google_client_id=google_client_id
+        )
+        
+    info = database.get_org_invite_token_info(code)
+    if not info:
+        return render_template(
+            "join_org.html",
+            valid=False,
+            error="ลิงก์เชิญหรือ QR Code นี้ไม่ถูกต้อง หรือหมดอายุการใช้งานแล้ว",
+            google_client_id=google_client_id
+        )
+        
+    session["pending_invite_code"] = code
+    org_id = info["org_id"]
+    is_member = False
+    if me:
+        is_member = database.is_org_member(org_id, me)
+        
+    inviter_user = info.get("created_by", "")
+    inviter_profile = database.get_user_profile(inviter_user) if inviter_user else {}
+    inviter_display = inviter_profile.get("display_name") or inviter_user
+    
+    from routes.shared import get_or_create_csrf_token
+    csrf_token = get_or_create_csrf_token()
+
+    return render_template(
+        "join_org.html",
+        valid=True,
+        invite=info,
+        current_user=me,
+        is_member=is_member,
+        inviter_display=inviter_display,
+        google_client_id=google_client_id,
+        csrf_token=csrf_token
+    )
+
+
+@auth_bp.route("/api/org/invite-token/info", methods=["GET"])
+def get_invite_token_info_route():
+    code = request.args.get("code", "").strip()
+    if not code:
+        return jsonify({"ok": False, "error": "กรุณาระบุรหัสเชิญ"}), 400
+    info = database.get_org_invite_token_info(code)
+    if not info:
+        return jsonify({"ok": False, "error": "ลิงก์เชิญนี้ไม่ถูกต้องหรือหมดอายุแล้ว"}), 404
+    return jsonify({"ok": True, "invite": info})
+
+
+@auth_bp.route("/api/org/join-by-token", methods=["POST"])
+@login_required
+def join_org_by_token_route():
+    me = session.get("user")
+    data = request.get_json(force=True) or {}
+    code = data.get("code", "").strip()
+    if not code:
+        return jsonify({"ok": False, "error": "กรุณาระบุรหัสเชิญ"}), 400
+    info = database.get_org_invite_token_info(code)
+    if not info:
+        return jsonify({"ok": False, "error": "ลิงก์เชิญนี้ไม่ถูกต้องหรือหมดอายุแล้ว"}), 404
+    
+    org_id = info["org_id"]
+    if database.is_org_member(org_id, me):
+        session["org_id"] = org_id
+        session.pop("pending_invite_code", None)
+        return jsonify({"ok": True, "message": "คุณเป็นสมาชิกขององค์กรนี้อยู่แล้ว", "org_id": org_id})
+    
+    active_plan = billing.get_effective_plan(org_id)
+    plan_config = billing.get_plan_config(active_plan)
+    max_users = plan_config.get("limits", {}).get("max_users", 1)
+    current_count = database.get_org_member_count(org_id)
+    if max_users != -1 and current_count >= max_users:
+        return jsonify({
+            "ok": False,
+            "error": f"องค์กรนี้มีสมาชิกครบตามโควต้า ({max_users} คน) แล้ว"
+        }), 403
+        
+    role = info.get("role", "member")
+    dept = info.get("department", "")
+    database.add_org_member(org_id, me, role=role, invited_by=info.get("created_by", "link"))
+    if dept:
+        database.admin_update_user(me, department=dept)
+    
+    database.log_audit_event(
+        "ORG_MEMBER_JOINED_VIA_TOKEN",
+        me,
+        target=info.get("org_name", ""),
+        details=f"Joined org {org_id} via token {code} (Role: {role}, Dept: {dept})"
+    )
+    
+    session["org_id"] = org_id
+    session["role"] = role
+    session.pop("pending_invite_code", None)
+    return jsonify({"ok": True, "message": f"เข้าร่วมองค์กร {info['org_name']} สำเร็จแล้ว", "org_id": org_id})
 
 
 
@@ -3124,8 +3541,14 @@ def get_my_settings():
         "can_edit_kb": bool(settings.get("can_edit_kb")),
         "can_delete_kb": bool(settings.get("can_delete_kb")),
         "can_view_financial": bool(settings.get("can_view_financial")),
+        "can_manage_leave": bool(settings.get("can_manage_leave")),
+        "can_broadcast_line": bool(settings.get("can_broadcast_line")),
+        "can_manage_peak": bool(settings.get("can_manage_peak")),
+        "can_use_ai": bool(settings.get("can_use_ai", True)),
+        "can_claim_expense": bool(settings.get("can_claim_expense", True)),
         "line_user_id": profile.get("line_user_id") or "",
     })
+
 
 
 @auth_bp.route("/api/user/unbind-line", methods=["POST"])
@@ -3137,6 +3560,37 @@ def user_unbind_line_route():
         database.log_event("Unbound LINE account for self", user=username, org_id=get_current_org_id())
         return jsonify({"ok": True})
     return jsonify({"ok": False, "error": "ไม่สามารถยกเลิกการผูกบัญชี LINE ได้ หรือคุณยังไม่ได้ผูกบัญชี LINE"}), 400
+
+
+@auth_bp.route("/api/user/bind-line-direct", methods=["POST"])
+@login_required
+def user_bind_line_direct():
+    """Directly link LINE account using a token or LINE User ID for currently logged in user."""
+    username = session.get("user")
+    data = request.get_json(force=True) or {}
+    token = (data.get("token") or "").strip()
+    line_user_id = (data.get("line_user_id") or "").strip()
+    
+    if token:
+        # Check DB first
+        link_data = database.line_link_get(token)
+        if not link_data:
+            _mem = PENDING_LINE_LINKS.get(token)
+            if _mem:
+                link_data = {"line_user_id": _mem["line_user_id"]}
+        if not link_data:
+            return jsonify({"ok": False, "error": "รหัสเชื่อมต่อ (Token) ไม่ถูกต้องหรือหมดอายุแล้วค่ะ"}), 400
+        line_user_id = link_data["line_user_id"]
+        database.line_link_delete(token)
+        PENDING_LINE_LINKS.pop(token, None)
+        
+    if not line_user_id:
+        return jsonify({"ok": False, "error": "กรุณาระบุรหัสเชื่อมต่อ (Token) หรือ LINE User ID"}), 400
+        
+    if database.link_line_user(username, line_user_id):
+        database.log_event(f"Bound LINE user ID {line_user_id}", user=username, org_id=get_current_org_id())
+        return jsonify({"ok": True, "message": "เชื่อมต่อบัญชี LINE สำเร็จเรียบร้อยแล้วค่ะ", "line_user_id": line_user_id})
+    return jsonify({"ok": False, "error": "ไม่สามารถบันทึกข้อมูลเชื่อมต่อ LINE ได้"}), 500
 
 
 @auth_bp.route("/api/user/update-notes", methods=["POST"])
@@ -3194,8 +3648,9 @@ def change_my_password():
         # No custom password set yet — allow if user provides their Google/default login (skip verify)
         pass
     database.admin_reset_user_password(username, new_pw)
+    session['session_version'] = database.get_user_session_version(username)
     database.log_event(f"Password changed by user {username}", user=username, org_id=get_current_org_id())
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "message": "เปลี่ยนรหัสผ่านเรียบร้อยแล้วและตัดการเชื่อมต่อจากอุปกรณ์อื่นทั้งหมด"})
 
 
 def _get_line_login_config():
@@ -3238,8 +3693,9 @@ def line_login_init():
     cfg = _get_line_login_config()
     channel_id = cfg["channel_id"]
     
-    if not channel_id:
-        return jsonify({"ok": False, "error": "ไม่ได้ตั้งค่า LINE Login Channel ID ในระบบค่ะ"}), 400
+    if not channel_id or channel_id == "2000000000":
+        return render_link_error("ยังไม่ได้ตั้งค่า LINE Login Channel ID จาก LINE Developers Console ค่ะ (ปัจจุบันใน .env เป็นค่าเริ่มต้น 2000000000)<br><br>👉 <b>วิธีที่ง่ายและแนะนำที่สุด:</b> กรุณาเปิด LINE ทักหาบอท <b>@905gsngi</b> แล้วพิมพ์ <code>/link</code> หรือ <code>ผูกบัญชี</code> จากนั้นแตะปุ่มในแชทเพื่อผูกบัญชีได้ทันทีค่ะ"), 400
+
         
     import secrets
     state = secrets.token_hex(16)
@@ -3443,6 +3899,92 @@ def process_signature_background():
         
     url = f"/static/uploads/signatures/{unique_name}"
     return jsonify({"ok": True, "url": url})
+
+
+# ==============================================================================
+# Organization Departments API Endpoints
+# ==============================================================================
+
+@auth_bp.route("/api/org/departments", methods=["GET"])
+@login_required
+def get_org_departments_route():
+    org_id = get_current_org_id()
+    if not org_id:
+        return jsonify({"ok": False, "error": "คุณยังไม่ได้อยู่ในองค์กร"}), 403
+    departments = database.get_org_departments(org_id)
+    return jsonify({"ok": True, "departments": departments})
+
+
+@auth_bp.route("/api/org/departments", methods=["POST"])
+@login_required
+def create_org_department_route():
+    me = session.get("user")
+    org_id = get_current_org_id()
+    if not org_id:
+        return jsonify({"ok": False, "error": "คุณยังไม่ได้อยู่ในองค์กร"}), 403
+    if not database.is_org_admin(org_id, me) and session.get("role") != "admin":
+        return jsonify({"ok": False, "error": "เฉพาะ Admin องค์กรเท่านั้นที่สามารถสร้างแผนกได้"}), 403
+
+    data = request.get_json(force=True) or {}
+    name = (data.get("department_name") or data.get("name") or "").strip()
+    description = (data.get("description") or "").strip()
+    color = (data.get("color") or "#3b82f6").strip()
+    icon = (data.get("icon") or "building").strip()
+    head_username = (data.get("head_username") or "").strip()
+
+    dept_id, err = database.create_org_department(org_id, name, description, color, icon, head_username)
+    if err:
+        return jsonify({"ok": False, "error": err}), 400
+
+    database.log_event(f"Created department '{name}' by {me}", user=me, org_id=org_id)
+    return jsonify({"ok": True, "id": dept_id, "name": name, "department_name": name, "color": color})
+
+
+@auth_bp.route("/api/org/departments/<int:dept_id>", methods=["PUT"])
+@login_required
+def update_org_department_route(dept_id):
+    me = session.get("user")
+    org_id = get_current_org_id()
+    if not org_id:
+        return jsonify({"ok": False, "error": "คุณยังไม่ได้อยู่ในองค์กร"}), 403
+    if not database.is_org_admin(org_id, me) and session.get("role") != "admin":
+        return jsonify({"ok": False, "error": "เฉพาะ Admin องค์กรเท่านั้นที่สามารถแก้ไขแผนกได้"}), 403
+
+    data = request.get_json(force=True) or {}
+    name = (data.get("department_name") or data.get("name") or "").strip()
+    description = data.get("description")
+    color = data.get("color")
+    icon = data.get("icon")
+    head_username = data.get("head_username")
+
+    ok, err = database.update_org_department(dept_id, org_id, name, description, color, icon, head_username)
+    if not ok:
+        return jsonify({"ok": False, "error": err or "แก้ไขแผนกไม่สำเร็จ"}), 400
+
+    database.log_event(f"Updated department id={dept_id} ('{name}') by {me}", user=me, org_id=org_id)
+    return jsonify({"ok": True})
+
+
+@auth_bp.route("/api/org/departments/<int:dept_id>", methods=["DELETE"])
+@login_required
+def delete_org_department_route(dept_id):
+    me = session.get("user")
+    org_id = get_current_org_id()
+    if not org_id:
+        return jsonify({"ok": False, "error": "คุณยังไม่ได้อยู่ในองค์กร"}), 403
+    if not database.is_org_admin(org_id, me) and session.get("role") != "admin":
+        return jsonify({"ok": False, "error": "เฉพาะ Admin องค์กรเท่านั้นที่สามารถลบแผนกได้"}), 403
+
+    data = request.get_json(silent=True) or {}
+    fallback_dept = (data.get("fallback_dept") or "").strip()
+
+    ok, err = database.delete_org_department(dept_id, org_id, fallback_dept)
+    if not ok:
+        return jsonify({"ok": False, "error": err or "ลบแผนกไม่สำเร็จ"}), 400
+
+    database.log_event(f"Deleted department id={dept_id} by {me}", user=me, org_id=org_id)
+    return jsonify({"ok": True})
+
 
 
 

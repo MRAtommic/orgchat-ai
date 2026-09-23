@@ -271,6 +271,7 @@ class GoogleWorkspaceManager:
         self._creds_lock = threading.Lock()
         self._auth_failures = {}
         self._auth_failure_lock = threading.Lock()
+        self._last_auth_errors = {}
 
         self.credentials_path = 'service-account.json'
         self.scopes = [
@@ -282,6 +283,27 @@ class GoogleWorkspaceManager:
         # Network calls (token refresh, API build, spreadsheet validation) are lazy —
         # triggered on first use via drive_service/sheets_service properties.
         self._initialized = True
+
+    def get_auth_error(self, org_id=None):
+        """Returns the most recent auth error for the org or global service account."""
+        key = org_id if org_id is not None else 'global'
+        err = self._last_auth_errors.get(key) or self._last_auth_errors.get('global')
+        if err and (time.time() - err.get("timestamp", 0) < 86400):  # Keep alert for 24h
+            return err
+        return None
+
+    def _record_auth_error(self, error, org_id=None):
+        """Records an authentication failure for system health dashboards."""
+        key = org_id if org_id is not None else 'global'
+        self._last_auth_errors[key] = {
+            "message": str(error),
+            "timestamp": time.time(),
+            "org_id": key
+        }
+
+    def clear_auth_error(self, org_id=None):
+        key = org_id if org_id is not None else 'global'
+        self._last_auth_errors.pop(key, None)
 
     def _load_contacts_registry(self):
         """Loads contacts registry from the Excel export, caching results."""
@@ -1004,6 +1026,7 @@ class GoogleWorkspaceManager:
                 if "invalid_grant" in err_str or "invalid_jwt" in err_str or "jwt signature" in err_str:
                     logger.error(f"❌ Service account credential error checking spreadsheet {self.spreadsheet_id}: {e}. "
                                  "The service account key may be revoked or corrupted — regenerate it in Google Cloud Console.")
+                    self._record_auth_error(e, getattr(self._local, 'org_id', 'global'))
                 else:
                     # Resilient: Network timeouts, transient errors, socket issues.
                     # NEVER create a new spreadsheet for transient network issues!
@@ -1018,7 +1041,9 @@ class GoogleWorkspaceManager:
         import time as _time, random as _random
         for attempt in range(max_retries + 1):
             try:
-                return build_request_fn().execute()
+                res = build_request_fn().execute()
+                self.clear_auth_error(getattr(self._local, 'org_id', None))
+                return res
             except HttpError as e:
                 if e.resp.status == 429:
                     if attempt == max_retries:
@@ -1036,6 +1061,7 @@ class GoogleWorkspaceManager:
                     logger.error(f"❌ [Circuit Breaker] Google Sheets API Auth/Permission error {e.resp.status}: {e}")
                     org_id = getattr(self._local, 'org_id', None)
                     cache_key = org_id if org_id is not None else 'global'
+                    self._record_auth_error(e, org_id)
                     with self._auth_failure_lock:
                         self._auth_failures[cache_key] = _time.time()
                     raise
@@ -1043,10 +1069,11 @@ class GoogleWorkspaceManager:
                     raise
             except Exception as e:
                 err_name = type(e).__name__
-                if err_name in ["RefreshError", "TransportError"] or "invalid_grant" in str(e).lower():
+                if err_name in ["RefreshError", "TransportError"] or "invalid_grant" in str(e).lower() or "invalid_jwt" in str(e).lower():
                     logger.error(f"❌ [Circuit Breaker] Google Auth failure ({err_name}): {e}")
                     org_id = getattr(self._local, 'org_id', None)
                     cache_key = org_id if org_id is not None else 'global'
+                    self._record_auth_error(e, org_id)
                     with self._auth_failure_lock:
                         self._auth_failures[cache_key] = _time.time()
                 raise

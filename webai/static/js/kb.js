@@ -7,9 +7,10 @@ const previewFileName = $('previewFileName');
 
 // Helper: Check if can edit KB
 function canEditKB() {
-  if (state.isAdmin) return true;
+  if (state.isAdmin || state.isOrgAdmin) return true;
   return !!state.canEditKB;
 }
+
 
 const navItems = document.querySelectorAll('.nav-item');
 
@@ -393,7 +394,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 document.addEventListener('DOMContentLoaded', () => {
   const genBtn = $('generateGlobalSummaryBtn');
-  if (genBtn) genBtn.onclick = generateGlobalSummary;
+  if (genBtn) genBtn.onclick = () => { if (typeof generateGlobalSummary === 'function') generateGlobalSummary(); };
 
   const copyBtn = $('copySummaryBtn');
   if (copyBtn) {
@@ -426,21 +427,38 @@ document.addEventListener('touchend', e => {
 
 document.addEventListener('DOMContentLoaded', () => {
   // AI Productivity Listeners
-  if (aiGenKanbanBtn) aiGenKanbanBtn.onclick = () => {
-    aiGenKanbanModal.classList.remove('hidden');
-    aiGenKanbanModal.classList.add('flex', 'items-center', 'justify-center');
-  };
-  if (closeAiGenModal) closeAiGenModal.onclick = () => {
-    aiGenKanbanModal.classList.add('hidden');
-    aiGenKanbanModal.classList.remove('flex', 'items-center', 'justify-center');
-  };
-  if (confirmAiGenBtn) confirmAiGenBtn.onclick = handleAiGenKanban;
+  const aiGenBtn = $('aiGenKanbanBtn');
+  const aiGenModal = $('aiGenKanbanModal');
+  const closeGenModal = $('closeAiGenModal');
+  const confAiGenBtn = $('confirmAiGenBtn');
+  const bCompareBtn = $('bulkCompareBtn');
+  const closeCompareModal = $('closeAiCompareModal');
+  const aiCmpModal = $('aiCompareModal');
 
-  if (bulkCompareBtn) bulkCompareBtn.onclick = handleBulkCompare;
-  if (closeAiCompareModal) closeAiCompareModal.onclick = () => {
-    aiCompareModal.classList.add('hidden');
-    aiCompareModal.classList.remove('flex', 'items-center', 'justify-center');
-  };
+  if (aiGenBtn && aiGenModal) {
+    aiGenBtn.onclick = () => {
+      aiGenModal.classList.remove('hidden');
+      aiGenModal.classList.add('flex', 'items-center', 'justify-center');
+    };
+  }
+  if (closeGenModal && aiGenModal) {
+    closeGenModal.onclick = () => {
+      aiGenModal.classList.add('hidden');
+      aiGenModal.classList.remove('flex', 'items-center', 'justify-center');
+    };
+  }
+  if (confAiGenBtn && typeof handleAiGenKanban === 'function') {
+    confAiGenBtn.onclick = handleAiGenKanban;
+  }
+  if (bCompareBtn && typeof handleBulkCompare === 'function') {
+    bCompareBtn.onclick = handleBulkCompare;
+  }
+  if (closeCompareModal && aiCmpModal) {
+    closeCompareModal.onclick = () => {
+      aiCmpModal.classList.add('hidden');
+      aiCmpModal.classList.remove('flex', 'items-center', 'justify-center');
+    };
+  }
 
   initIcons();
 });
@@ -837,6 +855,7 @@ const FILE_LUCIDE = {
   pdf: 'file-text', csv: 'table-2', txt: 'file-code', md: 'file-code',
   docx: 'file-text', xlsx: 'table-2',
   png: 'image', jpg: 'image', jpeg: 'image', bmp: 'image', webp: 'image',
+  web: 'globe', url: 'globe', html: 'globe',
 };
 
 function formatSize(bytes) {
@@ -1134,6 +1153,129 @@ async function moveFileToCategory(fileId) {
   }
 }
 
+async function promptRenameFile(fileId, currentName) {
+  if (!canEditKB()) return;
+
+  const existing = document.getElementById('renameFileModal');
+  if (existing) existing.remove();
+
+  const safeCurrentName = (currentName || '').trim();
+  const modal = document.createElement('div');
+  modal.id = 'renameFileModal';
+  modal.className = 'fixed inset-0 z-[9999] bg-surface-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200';
+  modal.innerHTML = `
+    <div class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-5 animate-in zoom-in-95 duration-200" onclick="event.stopPropagation()">
+      <div class="flex items-center justify-between border-b border-surface-100 dark:border-surface-800 pb-4">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-2xl bg-amber-50 dark:bg-amber-900/30 text-amber-600 flex items-center justify-center flex-shrink-0">
+            <i data-lucide="edit-3" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="font-black text-base text-surface-900 dark:text-white tracking-tight">เปลี่ยนชื่อไฟล์</h3>
+            <p class="text-xs text-surface-400">ระบุชื่อใหม่สำหรับไฟล์นี้ในคลังข้อมูล</p>
+          </div>
+        </div>
+        <button id="closeRenameModalBtn" class="p-2 text-surface-400 hover:text-surface-600 dark:hover:text-surface-200 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800 transition">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="space-y-2">
+        <label class="block text-xs font-bold text-surface-700 dark:text-surface-300">ชื่อไฟล์ใหม่ (New File Name)</label>
+        <div class="relative flex items-center">
+          <input id="renameFileInput" type="text" value="${safeCurrentName.replace(/"/g, '&quot;')}"
+            class="w-full bg-surface-50 dark:bg-surface-800 border-2 border-surface-200 dark:border-surface-700 rounded-2xl px-4 py-3 text-sm font-medium text-surface-900 dark:text-white outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 transition-all shadow-sm"
+            placeholder="พิมพ์ชื่อไฟล์ที่ต้องการ..." autocomplete="off" />
+        </div>
+        <p class="text-[11px] text-surface-400">💡 เคล็ดลับ: ระบบจะรักษานามสกุลไฟล์เดิมให้อัตโนมัติ หากไม่ได้ระบุนามสกุล</p>
+      </div>
+
+      <div class="flex items-center justify-end gap-3 pt-2">
+        <button id="cancelRenameBtn" class="px-4 py-2.5 rounded-2xl text-xs font-bold text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-800 transition">
+          ยกเลิก
+        </button>
+        <button id="submitRenameBtn" class="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-brand-600 to-indigo-600 text-white text-xs font-bold shadow-lg shadow-brand-500/25 hover:shadow-brand-500/40 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center gap-2">
+          <i data-lucide="check" class="w-4 h-4"></i> บันทึกชื่อใหม่
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+  if (typeof initIcons === 'function') initIcons();
+
+  const input = modal.querySelector('#renameFileInput');
+  const closeBtn = modal.querySelector('#closeRenameModalBtn');
+  const cancelBtn = modal.querySelector('#cancelRenameBtn');
+  const submitBtn = modal.querySelector('#submitRenameBtn');
+
+  const closeModal = () => modal.remove();
+
+  closeBtn.onclick = closeModal;
+  cancelBtn.onclick = closeModal;
+  modal.onclick = (e) => { if (e.target === modal) closeModal(); };
+
+  setTimeout(() => {
+    input.focus();
+    const lastDot = safeCurrentName.lastIndexOf('.');
+    if (lastDot > 0) {
+      input.setSelectionRange(0, lastDot);
+    } else {
+      input.select();
+    }
+  }, 100);
+
+  const doRename = async () => {
+    const newName = input.value.trim();
+    if (!newName) {
+      toast('กรุณาระบุชื่อไฟล์', 'error');
+      input.focus();
+      return;
+    }
+    if (newName === safeCurrentName) {
+      closeModal();
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<div class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> กำลังบันทึก...';
+
+    try {
+      const res = await apiFetch(`/api/files/${fileId}/rename`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName })
+      });
+
+      if (res && res.ok) {
+        toast(`เปลี่ยนชื่อเป็น "${res.name}" สำเร็จแล้ว`, 'success');
+        closeModal();
+        if (typeof loadFiles === 'function') await loadFiles();
+      } else {
+        toast(res.error || 'เปลี่ยนชื่อไฟล์ไม่สำเร็จ', 'error');
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i data-lucide="check" class="w-4 h-4"></i> บันทึกชื่อใหม่';
+        if (typeof initIcons === 'function') initIcons();
+      }
+    } catch (err) {
+      toast('เกิดข้อผิดพลาด: ' + err.message, 'error');
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<i data-lucide="check" class="w-4 h-4"></i> บันทึกชื่อใหม่';
+      if (typeof initIcons === 'function') initIcons();
+    }
+  };
+
+  submitBtn.onclick = doRename;
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      doRename();
+    } else if (e.key === 'Escape') {
+      closeModal();
+    }
+  });
+}
+
 function renderFileList(files) {
   if (!files.length) {
     fileList.innerHTML = `
@@ -1158,6 +1300,7 @@ function renderFileList(files) {
     const isError = f.status === 'error';
     const catName = getKBCategoryName(f.category_id);
     const fileSize = formatSize(f.size);
+    const safeName = (f.name || '').replace(/"/g, '&quot;');
     
     return `
       <div class="group relative bg-white dark:bg-surface-900 border border-surface-100 dark:border-surface-800 rounded-3xl p-5 transition-all duration-300 hover:shadow-2xl hover:shadow-brand-500/10 hover:border-brand-500/50 flex flex-col gap-4 animate-in slide-in-from-bottom-4 duration-500" 
@@ -1187,7 +1330,14 @@ function renderFileList(files) {
             <i data-lucide="${FILE_LUCIDE[f.type] || 'file'}" class="w-6 h-6"></i>
           </div>
           <div class="min-w-0 flex-1 pt-1">
-            <h4 class="font-black text-sm text-surface-900 dark:text-white truncate uppercase tracking-tight mb-1" title="${f.name}">${f.name}</h4>
+            <div class="flex items-center gap-1.5 group/fname mb-1">
+              <h4 class="font-black text-sm text-surface-900 dark:text-white truncate uppercase tracking-tight" title="${safeName}">${safeName}</h4>
+              ${canEditKB() ? `
+                <button class="file-rename-btn opacity-0 group-hover/fname:opacity-100 p-1 text-surface-400 hover:text-amber-600 rounded-lg transition-all flex-shrink-0" data-id="${f.file_id}" data-name="${safeName}" title="เปลี่ยนชื่อไฟล์">
+                  <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
+                </button>
+              ` : ''}
+            </div>
             <div class="flex items-center gap-2">
                <span class="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-purple-50 dark:bg-purple-900/20 text-purple-600 uppercase">${f.department || 'General'}</span>
                <span class="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 uppercase truncate max-w-[80px]">${catName}</span>
@@ -1212,7 +1362,7 @@ function renderFileList(files) {
              <span class="text-[9px] font-black text-surface-400 ml-1 truncate opacity-60" title="ID: ${f.file_id}">ID: ${f.file_id.substring(0, 8)}...</span>
           </div>
           <div class="flex items-center gap-1 flex-shrink-0">
-            <button class="file-view-btn p-1.5 text-surface-400 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-all rounded-xl" data-id="${f.file_id}" data-name="${f.name}" title="เปิดอ่าน">
+            <button class="file-view-btn p-1.5 text-surface-400 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-all rounded-xl" data-id="${f.file_id}" data-name="${safeName}" title="เปิดอ่าน">
               <i data-lucide="eye" class="w-4 h-4"></i>
             </button>
             ${!isProcessing ? `
@@ -1220,6 +1370,9 @@ function renderFileList(files) {
                 <i data-lucide="scan-search" class="w-4 h-4"></i>
               </button>
               ${canEditKB() ? `
+                <button class="file-rename-btn p-1.5 text-surface-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-all rounded-xl" data-id="${f.file_id}" data-name="${safeName}" title="เปลี่ยนชื่อไฟล์">
+                  <i data-lucide="edit-3" class="w-4 h-4"></i>
+                </button>
                 ${['csv', 'txt', 'md'].includes((f.type || '').toLowerCase()) ? `
                 <button class="file-edit-btn p-1.5 text-surface-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all rounded-xl" data-id="${f.file_id}" data-type="${(f.type || '').toLowerCase()}" title="แก้ไขไฟล์">
                   <i data-lucide="edit" class="w-4 h-4"></i>
@@ -1240,6 +1393,12 @@ function renderFileList(files) {
   }).join('');
 
   // Re-bind events
+  fileList.querySelectorAll('.file-rename-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      promptRenameFile(btn.dataset.id, btn.dataset.name);
+    });
+  });
   fileList.querySelectorAll('.file-del-btn').forEach(btn => {
     btn.addEventListener('click', (e) => { e.stopPropagation(); deleteFile(btn.dataset.id); });
   });
@@ -1458,7 +1617,7 @@ function renderSearchResults(results, query = '') {
   initIcons();
 }
 
-if (chatAttachBtn && chatImageInput) {
+if (typeof chatAttachBtn !== 'undefined' && typeof chatImageInput !== 'undefined' && chatAttachBtn && chatImageInput) {
   chatAttachBtn.onclick = () => chatImageInput.click();
   chatImageInput.onchange = (e) => {
     const file = e.target.files[0];
@@ -1475,3 +1634,324 @@ if (chatAttachBtn && chatImageInput) {
     }
   };
 }
+
+// ═══════════════════════════════════════════════════════════════
+// 🌐 SMART WEB CRAWLER & URL INGESTION FRONTEND LOGIC
+// ═══════════════════════════════════════════════════════════════
+
+function switchKBSubTab(tab) {
+  const tabs = {
+    files: { btn: document.getElementById('kb-tab-files'), sec: document.getElementById('kbFilesSection') },
+    crawler: { btn: document.getElementById('kb-tab-crawler'), sec: document.getElementById('kbCrawlerSection') },
+    search: { btn: document.getElementById('kb-tab-search'), sec: document.getElementById('kbSearchSection') },
+    summary: { btn: document.getElementById('kb-tab-summary'), sec: document.getElementById('kbSummarySection') }
+  };
+
+  const activeClasses = ['bg-white', 'dark:bg-surface-700', 'shadow-sm', 'text-brand-600'];
+  const inactiveClasses = ['text-surface-400'];
+
+  Object.keys(tabs).forEach(k => {
+    const item = tabs[k];
+    const isActive = (k === tab);
+    if (item.btn) {
+      if (isActive) {
+        item.btn.classList.add(...activeClasses);
+        item.btn.classList.remove(...inactiveClasses);
+      } else {
+        item.btn.classList.remove(...activeClasses);
+        item.btn.classList.add(...inactiveClasses);
+      }
+    }
+    if (item.sec) {
+      item.sec.classList.toggle('hidden', !isActive);
+    }
+  });
+
+  if (tab === 'crawler') {
+    if (typeof loadCrawlerCategories === 'function') loadCrawlerCategories();
+    if (typeof loadCrawledWebsitesList === 'function') loadCrawledWebsitesList();
+  } else if (tab === 'search') {
+    const input = document.getElementById('searchInput');
+    if (input) setTimeout(() => input.focus(), 150);
+  } else if (tab === 'summary') {
+    if (typeof renderSummary === 'function') renderSummary();
+    if (typeof loadCategories === 'function') loadCategories();
+  }
+  if (typeof initIcons === 'function') initIcons();
+}
+window.switchKBSubTab = switchKBSubTab;
+
+function toggleCrawlerMaxPages(checked) {
+  const sel = document.getElementById('crawlerMaxPagesSelect');
+  if (sel) {
+    sel.classList.toggle('hidden', !checked);
+  }
+}
+
+async function pasteToCrawlerUrl() {
+  try {
+    const text = await navigator.clipboard.readText();
+    const input = document.getElementById('crawlerUrlInput');
+    if (input && text) {
+      input.value = text.trim();
+      input.focus();
+    }
+  } catch (err) {
+    toast('ไม่สามารถอ่านคลิปบอร์ดได้ กรุณาวางลิงก์ด้วยตนเอง (Ctrl+V)', 'warning');
+  }
+}
+
+function loadCrawlerCategories() {
+  const sel = document.getElementById('crawlerCategorySelect');
+  if (!sel) return;
+  const cats = state.categories || [];
+  sel.innerHTML = '<option value="">หมวดหมู่ทั่วไป (Default)</option>' +
+    cats.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+}
+
+async function handleCrawlerPreview() {
+  const input = document.getElementById('crawlerUrlInput');
+  const url = (input ? input.value : '').trim();
+  if (!url) {
+    toast('กรุณาระบุ URL เว็บไซต์ที่ต้องการตรวจสอบ', 'warning');
+    if (input) input.focus();
+    return;
+  }
+
+  const previewCard = document.getElementById('crawlerPreviewCard');
+  const btn = document.getElementById('btnCrawlerPreview');
+  const origHtml = btn ? btn.innerHTML : '';
+
+  try {
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<div class="w-3.5 h-3.5 border-2 border-brand-600 border-t-transparent rounded-full animate-spin"></div> กำลังดึงข้อมูลตัวอย่าง...';
+    }
+
+    const res = await apiFetch('/api/kb/crawl-preview', {
+      method: 'POST',
+      body: JSON.stringify({ url: url })
+    });
+
+    if (res.ok && res.data) {
+      const data = res.data;
+      const titleEl = document.getElementById('previewUrlTitle');
+      const subEl = document.getElementById('previewUrlSubtitle');
+      const wordEl = document.getElementById('previewWordCountBadge');
+      const linksEl = document.getElementById('previewLinksCountBadge');
+      const textEl = document.getElementById('previewExtractedText');
+
+      if (titleEl) titleEl.textContent = data.title || data.url;
+      if (subEl) subEl.textContent = data.url;
+      if (wordEl) wordEl.textContent = `${(data.word_count || 0).toLocaleString()} คำ (${(data.char_count || 0).toLocaleString()} ตัวอักษร)`;
+      if (linksEl) linksEl.textContent = `${data.internal_links_count || 0} ลิงก์ภายใน`;
+      if (textEl) textEl.textContent = data.preview_text || '(ไม่พบเนื้อหาข้อความ)';
+      
+      if (previewCard) {
+        previewCard.classList.remove('hidden');
+        previewCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+      toast('ดึงข้อมูลตัวอย่างสำเร็จ!', 'success');
+    } else {
+      toast(res.error || 'ไม่สามารถดึงข้อมูลตัวอย่างได้', 'error');
+    }
+  } catch (err) {
+    toast('เกิดข้อผิดพลาด: ' + err.message, 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = origHtml;
+    }
+    if (typeof initIcons === 'function') initIcons();
+  }
+}
+
+async function handleCrawlerIngest() {
+  if (!canEditKB()) {
+    toast('คุณไม่มีสิทธิ์ในการเพิ่มข้อมูลลงคลังความรู้', 'error');
+    return;
+  }
+
+  const input = document.getElementById('crawlerUrlInput');
+  const url = (input ? input.value : '').trim();
+  if (!url) {
+    toast('กรุณาระบุ URL เว็บไซต์ที่ต้องการดูดข้อมูล', 'warning');
+    if (input) input.focus();
+    return;
+  }
+
+  const deptSel = document.getElementById('crawlerDeptSelect');
+  const catSel = document.getElementById('crawlerCategorySelect');
+  const subpagesCheck = document.getElementById('crawlerSubpagesCheck');
+  const maxPagesSel = document.getElementById('crawlerMaxPagesSelect');
+
+  const dept = deptSel ? deptSel.value : 'General';
+  const categoryId = catSel && catSel.value ? parseInt(catSel.value) : null;
+  const crawlSubpages = subpagesCheck ? subpagesCheck.checked : false;
+  const maxPages = maxPagesSel && crawlSubpages ? parseInt(maxPagesSel.value) : 1;
+
+  const btn = document.getElementById('btnCrawlerIngest');
+  const progressCard = document.getElementById('crawlerProgressCard');
+  const progressText = document.getElementById('crawlerProgressText');
+  const origHtml = btn ? btn.innerHTML : '';
+
+  try {
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<div class="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> กำลังดูดและสร้าง AI Chunks...';
+    }
+    if (progressCard) {
+      progressCard.classList.remove('hidden');
+      if (progressText) progressText.textContent = `กำลังส่งบอทไปดึงข้อมูลจาก ${url} (${crawlSubpages ? `สูงสุด ${maxPages} หน้า` : 'หน้าเดียว'})...`;
+    }
+
+    const res = await apiFetch('/api/kb/crawl-ingest', {
+      method: 'POST',
+      body: JSON.stringify({
+        url: url,
+        crawl_subpages: crawlSubpages,
+        max_pages: maxPages,
+        department: dept,
+        category_id: categoryId
+      })
+    });
+
+    if (res.ok) {
+      toast(res.message || 'ดูดข้อมูลและบันทึกเข้าคลัง AI เรียบร้อยแล้ว!', 'success');
+      if (input) input.value = '';
+      const previewCard = document.getElementById('crawlerPreviewCard');
+      if (previewCard) previewCard.classList.add('hidden');
+      
+      // Reload KB file records and crawled websites list
+      await loadFiles();
+      loadCrawledWebsitesList();
+    } else {
+      toast(res.error || 'การดูดข้อมูลล้มเหลว', 'error');
+    }
+  } catch (err) {
+    toast('เกิดข้อผิดพลาด: ' + err.message, 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = origHtml;
+    }
+    if (progressCard) {
+      progressCard.classList.add('hidden');
+    }
+    if (typeof initIcons === 'function') initIcons();
+  }
+}
+
+async function loadCrawledWebsitesList() {
+  const container = document.getElementById('crawledWebsitesList');
+  if (!container) return;
+
+  const files = state.files || [];
+  const webFiles = files.filter(f => f.type === 'web' || (f.url && f.url.startsWith('http')));
+
+  if (!webFiles.length) {
+    container.innerHTML = `
+      <div class="py-12 text-center text-xs text-surface-400">
+        <div class="w-12 h-12 bg-surface-50 dark:bg-surface-800 rounded-2xl flex items-center justify-center mx-auto mb-3 text-surface-300">
+          <i data-lucide="globe" class="w-6 h-6"></i>
+        </div>
+        <p class="font-bold text-surface-600 dark:text-surface-300">ยังไม่มีเว็บไซต์ในคลังความรู้</p>
+        <p class="text-[11px] text-surface-400 mt-1">กรอก URL ด้านบนเพื่อเริ่มให้ AI เรียนรู้ข้อมูลจากเว็บไซต์ของคุณ</p>
+      </div>
+    `;
+    if (typeof initIcons === 'function') initIcons();
+    return;
+  }
+
+  container.innerHTML = webFiles.map(f => {
+    const catName = getKBCategoryName(f.category_id);
+    const dateStr = f.crawled_at ? new Date(f.crawled_at).toLocaleString('th-TH') : (f.timestamp ? new Date(f.timestamp).toLocaleString('th-TH') : '—');
+    const wordCount = f.word_count ? `${f.word_count.toLocaleString()} คำ` : (f.size ? formatSize(f.size) : '—');
+
+    return `
+      <div class="py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 group">
+        <div class="flex items-start gap-3.5 min-w-0 flex-1">
+          <div class="w-10 h-10 rounded-2xl bg-brand-50 dark:bg-brand-900/20 text-brand-600 flex items-center justify-center flex-shrink-0 border border-brand-100 dark:border-brand-800">
+            <i data-lucide="globe" class="w-5 h-5"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2">
+              <h5 class="text-xs font-bold text-surface-900 dark:text-white truncate" title="${f.name}">${f.name}</h5>
+              <span class="px-2 py-0.5 rounded-md bg-purple-50 dark:bg-purple-900/20 text-purple-600 text-[9px] font-black uppercase">${f.department || 'General'}</span>
+              <span class="px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 text-[9px] font-black uppercase">${catName}</span>
+            </div>
+            <a href="${f.url || f.path}" target="_blank" class="text-[11px] text-brand-600 hover:underline flex items-center gap-1 mt-0.5 truncate">
+              <span class="truncate">${f.url || f.path}</span>
+              <i data-lucide="external-link" class="w-3 h-3 flex-shrink-0"></i>
+            </a>
+            <div class="flex items-center gap-3 text-[10px] text-surface-400 mt-1">
+              <span><strong class="text-surface-700 dark:text-surface-300 font-bold">${f.chunks || 0}</strong> Chunks</span>
+              <span>•</span>
+              <span>${wordCount}</span>
+              <span>•</span>
+              <span>อัปเดตล่าสุด: ${dateStr}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2 self-end sm:self-center">
+          <button onclick="handleRecrawlWebsite('${f.file_id}', '${f.url || f.path}')"
+            class="px-3 py-1.5 rounded-xl bg-surface-50 dark:bg-surface-800 hover:bg-brand-50 hover:text-brand-600 text-surface-600 dark:text-surface-300 text-[11px] font-bold border border-surface-200 dark:border-surface-700 transition flex items-center gap-1.5">
+            <i data-lucide="refresh-cw" class="w-3 h-3"></i> อัปเดตข้อมูล
+          </button>
+          <button onclick="handleDeleteCrawledWebsite('${f.file_id}', '${f.name}')"
+            class="p-1.5 rounded-xl hover:bg-rose-50 text-surface-400 hover:text-rose-600 transition">
+            <i data-lucide="trash-2" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  if (typeof initIcons === 'function') initIcons();
+}
+
+async function handleRecrawlWebsite(fileId, url) {
+  if (!canEditKB()) {
+    toast('คุณไม่มีสิทธิ์ในการอัปเดตข้อมูล', 'error');
+    return;
+  }
+  try {
+    toast('กำลังเริ่มดึงข้อมูลอัปเดตจากเว็บไซต์...', 'info');
+    const res = await apiFetch('/api/kb/crawl-refresh', {
+      method: 'POST',
+      body: JSON.stringify({ file_id: fileId, url: url })
+    });
+    if (res.ok) {
+      toast(res.message || 'อัปเดตข้อมูลสำเร็จ!', 'success');
+      await loadFiles();
+      loadCrawledWebsitesList();
+    } else {
+      toast(res.error || 'อัปเดตข้อมูลล้มเหลว', 'error');
+    }
+  } catch (err) {
+    toast('เกิดข้อผิดพลาด: ' + err.message, 'error');
+  }
+}
+
+async function handleDeleteCrawledWebsite(fileId, name) {
+  if (typeof canDeleteKB === 'function' && !canDeleteKB()) {
+    toast('คุณไม่มีสิทธิ์ในการลบข้อมูล', 'error');
+    return;
+  }
+  if (!confirm(`คุณต้องการลบข้อมูลเว็บไซต์ "${name || fileId}" ออกจากคลังความรู้ AI หรือไม่?`)) {
+    return;
+  }
+  try {
+    const res = await apiFetch(`/api/files/${fileId}`, { method: 'DELETE' });
+    if (res.ok) {
+      toast('ลบข้อมูลเว็บไซต์ออกจากคลังสำเร็จ', 'success');
+      await loadFiles();
+      loadCrawledWebsitesList();
+    } else {
+      toast(res.error || 'ลบข้อมูลล้มเหลว', 'error');
+    }
+  } catch (err) {
+    toast('เกิดข้อผิดพลาด: ' + err.message, 'error');
+  }
+}
