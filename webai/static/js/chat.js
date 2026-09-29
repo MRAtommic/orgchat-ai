@@ -7305,6 +7305,8 @@ async function switchChat(type, id, name, avatarUrl) {
 
   if (chatHeaderName) chatHeaderName.textContent = name;
   if (chatInputArea) chatInputArea.classList.remove('hidden');
+  const chatInputFooter = $('chatInputFooter');
+  if (chatInputFooter) chatInputFooter.classList.remove('hidden');
 
   // Reverted mobile view logic: keep both sidebar and main area visible if layout permits
   // No longer adding 'chat-open' class
@@ -8215,7 +8217,67 @@ document.querySelectorAll('.bg-preset-btn').forEach(btn => {
   };
 });
 
-// Mobile Chat Management
+// Reset Chat Right Panel to Clean Empty State
+function resetChatToEmptyState() {
+  state.currentChat = { type: null, id: null, name: null };
+  state.lastRendered.messages = '';
+  stopChatPolling();
+  
+  if (chatHeaderName) chatHeaderName.textContent = 'เลือกบทสนทนา';
+  if (chatHeaderAvatar) {
+    chatHeaderAvatar.innerHTML = '<i data-lucide="message-square" class="w-5 h-5 text-brand-600"></i>';
+  }
+  if (chatHeaderStatus) chatHeaderStatus.classList.add('hidden');
+  
+  // Hide call and group action buttons
+  $('voiceCallBtn')?.classList.add('hidden');
+  $('videoCallBtn')?.classList.add('hidden');
+  $('viewMembersBtn')?.classList.add('hidden');
+  $('addMemberBtn')?.classList.add('hidden');
+  $('editGroupBtn')?.classList.add('hidden');
+  $('deleteGroupBtn')?.classList.add('hidden');
+  
+  // Hide footer input & previews
+  $('chatInputFooter')?.classList.add('hidden');
+  $('replyPreview')?.classList.add('hidden');
+  $('pinnedMessagesContainer')?.classList.add('hidden');
+  $('unifiedTypingIndicator')?.classList.add('hidden');
+  
+  // Clear input value and file queue
+  if (groupChatInput) groupChatInput.value = '';
+  state.groupChat.pendingFiles = [];
+  if (typeof renderChatAttachmentPreview === 'function') {
+    renderChatAttachmentPreview();
+  }
+  
+  // Render empty placeholder inside messages container
+  if (groupChatMessages) {
+    groupChatMessages.innerHTML = `
+      <div id="chatEmptyPlaceholder" class="flex-1 flex flex-col items-center justify-center text-center p-8 h-full select-none">
+        <div class="relative mb-6">
+          <div class="w-24 h-24 rounded-3xl bg-gradient-to-tr from-brand-600/20 via-brand-500/10 to-transparent flex items-center justify-center shadow-inner border border-brand-500/20">
+            <i data-lucide="messages-square" class="w-12 h-12 text-brand-500"></i>
+          </div>
+          <div class="absolute -bottom-1 -right-1 w-8 h-8 rounded-2xl bg-surface-100 dark:bg-surface-800 flex items-center justify-center border border-surface-200 dark:border-surface-700 shadow-sm text-surface-400">
+            <i data-lucide="sparkles" class="w-4 h-4 text-amber-500"></i>
+          </div>
+        </div>
+        <h3 class="text-xl font-black text-surface-900 dark:text-white mb-2">เลือกบทสนทนาเพื่อเริ่มแชท</h3>
+        <p class="text-xs text-surface-400 max-w-[280px] leading-relaxed">
+          คลิกที่รายชื่อผู้ติดต่อหรือกลุ่มจากแถบด้านซ้าย เพื่อเปิดดูข้อความและเริ่มการสนทนา
+        </p>
+      </div>
+    `;
+  }
+  
+  // Remove active highlight from sidebar items
+  document.querySelectorAll('.messenger-chat-item').forEach(el => el.classList.remove('active'));
+  
+  if (typeof initIcons === 'function') initIcons();
+}
+window.resetChatToEmptyState = resetChatToEmptyState;
+
+// Mobile & Desktop Chat Management
 function openMobileChat() {
   if (!groupChatModal) return;
   state.groupChat.isOpen = !state.groupChat.isOpen;
@@ -8223,6 +8285,10 @@ function openMobileChat() {
   if (state.groupChat.isOpen) {
     groupChatModal.classList.remove('hidden');
     groupChatModal.classList.remove('chat-open'); // Messenger style: start at list
+    
+    // Always start with clean empty state so old chat is not retained
+    resetChatToEmptyState();
+    
     loadChatList();
     loadUnreadCounts();
     
@@ -8232,26 +8298,24 @@ function openMobileChat() {
       initIcons();
     }, 100);
   } else {
-    groupChatModal.classList.add('hidden');
-    document.getElementById('mobileMessagesBtn')?.classList.remove('active');
-    if (state.currentView !== 'dm' && state.currentView !== 'ai-chat') {
-        state.currentChat = { type: null, id: null, name: null };
-    }
+    closeMobileChat();
   }
 }
+window.openMobileChat = openMobileChat;
 
 function backToChatList() {
   if (groupChatModal) {
     groupChatModal.classList.remove('chat-open'); // Slide main area away
-    state.currentChat = { type: null, id: null, name: null };
+    resetChatToEmptyState();
     
     // Smooth delay for clearing and reloading
     setTimeout(() => {
-        loadChatList();
-        loadUnreadCounts();
+      loadChatList();
+      loadUnreadCounts();
     }, 150);
   }
 }
+window.backToChatList = backToChatList;
 
 function closeMobileChat() {
   if (!groupChatModal) return;
@@ -8259,10 +8323,9 @@ function closeMobileChat() {
   groupChatModal.classList.add('hidden');
   groupChatModal.classList.remove('chat-open');
   document.getElementById('mobileMessagesBtn')?.classList.remove('active');
-  if (state.currentView !== 'dm' && state.currentView !== 'ai-chat') {
-    state.currentChat = { type: null, id: null, name: null };
-  }
+  resetChatToEmptyState();
 }
+window.closeMobileChat = closeMobileChat;
 
 function showMobileChatSidebar() {
   if (groupChatModal) groupChatModal.classList.remove('chat-open');
@@ -8275,16 +8338,25 @@ if (groupChatHead) {
 }
 
 if (closeGroupChat) {
-  closeGroupChat.onclick = () => {
-    state.groupChat.isOpen = false;
-    groupChatModal.classList.add('hidden');
-    groupChatModal.classList.remove('flex', 'items-center', 'justify-center');
-    // Also clear currentChat to allow notifications if we are not in that route
-    if (state.currentView !== 'dm' && state.currentView !== 'ai-chat') {
-      state.currentChat = { type: null, id: null, name: null };
-    }
-  };
+  closeGroupChat.onclick = closeMobileChat;
 }
+
+// Close on backdrop click & Escape key
+if (groupChatModal) {
+  groupChatModal.addEventListener('click', (e) => {
+    if (e.target === groupChatModal) {
+      closeMobileChat();
+    }
+  });
+}
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (groupChatModal && !groupChatModal.classList.contains('hidden')) {
+      closeMobileChat();
+    }
+  }
+});
 
 if (summonBotBtn) {
   summonBotBtn.onclick = () => {

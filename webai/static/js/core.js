@@ -24,7 +24,7 @@ const state = {
     replyTo: null
   },
   feedPollInterval: null,
-  currentChat: { type: 'room', id: 1, name: 'General' },
+  currentChat: { type: null, id: null, name: null },
   chatList: { rooms: [], contacts: [] },
   isAdmin: false,
   isSuperAdmin: false,
