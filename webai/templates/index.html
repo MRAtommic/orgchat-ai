@@ -927,7 +927,7 @@
         <div class="flex-1 min-w-0 user-info">
           <p id="sidebarDisplayName" class="text-sm font-bold truncate">Loading...</p>
           <div class="flex items-center gap-1.5 mt-0.5">
-            <span id="sidebarUserRole" class="text-[9px] text-surface-400 font-bold uppercase tracking-widest">Member</span>
+            <span id="sidebarUserRole" class="text-[9px] {% if is_superadmin %}text-amber-500 font-extrabold{% elif is_org_admin or is_admin %}text-indigo-500 font-bold{% else %}text-surface-400 font-bold{% endif %} uppercase tracking-widest">{% if is_superadmin %}Super Admin{% elif is_org_admin or is_admin %}Admin{% else %}Member{% endif %}</span>
             <span id="sidebarPlanBadge" class="hidden px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase tracking-wider">FREE</span>
           </div>
         </div>

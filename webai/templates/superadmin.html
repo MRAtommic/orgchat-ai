@@ -43,8 +43,6 @@
 
     /* ── Embedded Mode (when loaded in iframe inside OrgChat SPA) ── */
     html.embedded-iframe aside { display: none !important; }
-    html.embedded-iframe .topbar-nav { display: flex !important; }
-    .topbar-nav { display: none; }
     
     * { box-sizing: border-box; }
     body { font-family: 'Outfit', sans-serif; background: var(--bg); color: var(--text); margin: 0; }
@@ -321,21 +319,6 @@
         <span style="font-size:11px; color: var(--muted);">Python <span class="mono" id="tb-python">—</span></span>
         <span style="color: var(--border);">|</span>
         <span style="font-size:11px; color: var(--muted);">Provider: <span style="color: var(--accent); font-weight:700;" id="tb-provider">—</span></span>
-      </div>
-
-      <!-- Topbar Tab Nav (Visible when embedded in OrgChat iframe) -->
-      <div class="topbar-nav" style="display:none; align-items:center; gap:4px; overflow-x:auto; padding:2px 0;">
-        <button class="nav-item active btn-xs" data-tab="overview" onclick="showTab('overview')" style="width:auto; padding:6px 12px;">📊 ภาพรวม</button>
-        <button class="nav-item btn-xs" data-tab="billing" onclick="showTab('billing')" style="width:auto; padding:6px 12px;">💰 รายได้ & Billing</button>
-        <button class="nav-item btn-xs" data-tab="analytics" onclick="showTab('analytics')" style="width:auto; padding:6px 12px;">📈 Analytics</button>
-        <button class="nav-item btn-xs" data-tab="orgs" onclick="showTab('orgs')" style="width:auto; padding:6px 12px;">🏢 องค์กร</button>
-        <button class="nav-item btn-xs" data-tab="users" onclick="showTab('users')" style="width:auto; padding:6px 12px;">👥 ผู้ใช้งาน</button>
-        <button class="nav-item btn-xs" data-tab="broadcast" onclick="showTab('broadcast')" style="width:auto; padding:6px 12px;">📢 Broadcast</button>
-        <button class="nav-item btn-xs" data-tab="maintenance" onclick="showTab('maintenance')" style="width:auto; padding:6px 12px;">🛠️ Maintenance</button>
-        <button class="nav-item btn-xs" data-tab="system" onclick="showTab('system')" style="width:auto; padding:6px 12px;">⚙️ Config</button>
-        <button class="nav-item btn-xs" data-tab="db" onclick="showTab('db')" style="width:auto; padding:6px 12px;">🗄️ DB Explorer</button>
-        <button class="nav-item btn-xs" data-tab="sql" onclick="showTab('sql')" style="width:auto; padding:6px 12px;">💻 SQL</button>
-        <button class="nav-item btn-xs" data-tab="logs" onclick="showTab('logs')" style="width:auto; padding:6px 12px;">📜 Logs</button>
       </div>
 
       <div style="display:flex; align-items:center; gap:8px;">

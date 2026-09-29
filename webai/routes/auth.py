@@ -3472,6 +3472,8 @@ def get_my_profile():
             
         settings = database.get_user_setting(username)
         profile["role"] = settings.get("role", "user")
+        from routes.shared import is_superadmin_user
+        profile["is_superadmin"] = bool(is_superadmin_user(username))
         
     return jsonify({"ok": True, "profile": profile})
 

@@ -304,7 +304,16 @@ function applyProfile(profile) {
   if (sidebarDisplayName) sidebarDisplayName.textContent = profile.display_name || profile.username;
   const sidebarUserRoleEl = $('sidebarUserRole');
   if (sidebarUserRoleEl) {
-    sidebarUserRoleEl.textContent = profile.org_role === 'admin' ? 'Admin' : 'Member';
+    if (profile.is_superadmin) {
+      sidebarUserRoleEl.textContent = 'Super Admin';
+      sidebarUserRoleEl.className = 'text-[9px] text-amber-500 font-extrabold uppercase tracking-widest';
+    } else if (profile.org_role === 'admin' || profile.role === 'admin') {
+      sidebarUserRoleEl.textContent = 'Admin';
+      sidebarUserRoleEl.className = 'text-[9px] text-indigo-500 font-bold uppercase tracking-widest';
+    } else {
+      sidebarUserRoleEl.textContent = 'Member';
+      sidebarUserRoleEl.className = 'text-[9px] text-surface-400 font-bold uppercase tracking-widest';
+    }
   }
   if (profile.avatar_url && sidebarAvatar) {
     sidebarAvatar.innerHTML = `<img src="${profile.avatar_url}" class="w-full h-full object-cover">`;
