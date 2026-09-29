@@ -745,6 +745,10 @@ async function loadStatus() {
     state.apiKeySet = data.api_key_set;
     if (statFiles) statFiles.textContent = data.total_files ?? 0;
     if (statChunks) statChunks.textContent = data.total_chunks ?? 0;
+    const mFiles = document.getElementById('statFilesMobile');
+    const mChunks = document.getElementById('statChunksMobile');
+    if (mFiles) mFiles.textContent = data.total_files ?? 0;
+    if (mChunks) mChunks.textContent = data.total_chunks ?? 0;
 
     const providerName = data.provider ? data.provider.toUpperCase() : 'GEMINI';
     const q = data.quota_info || {};
@@ -2098,14 +2102,14 @@ function showWelcome() {
 function appendMessage(role, html, sources = [], scroll = true, msgId = null) {
   const isUser = role === 'user';
   const row = document.createElement('div');
-  row.className = `chat-msg-row flex gap-3 ${isUser ? 'flex-row-reverse msg-user' : 'flex-row msg-bot'} items-start animate-in fade-in group/msgrow mb-1`;
+  row.className = `chat-msg-row flex gap-3 ${isUser ? 'flex-row-reverse msg-user' : 'flex-row msg-bot'} items-start animate-in fade-in group/msgrow mb-2`;
   if (msgId) row.dataset.id = msgId;
 
   const icon = isUser ? 'user' : 'bot';
   const avatarClass = isUser ? 'bg-surface-800' : 'bg-brand-600';
   const name = isUser ? 'USER' : 'น้องพั้น (Nong Punch)';
   const bubbleClass = isUser
-    ? 'bubble-me bg-brand-600 text-white rounded-2xl rounded-tr-none'
+    ? 'bubble-me bg-brand-600 dark:bg-[#27272a] text-white rounded-2xl rounded-tr-none'
     : 'bubble-them bg-surface-100 dark:bg-surface-800 text-surface-900 dark:text-surface-100 rounded-2xl rounded-tl-none border border-surface-200 dark:border-surface-700';
 
   let feedbackPanel = !isUser ? `
@@ -2123,47 +2127,82 @@ function appendMessage(role, html, sources = [], scroll = true, msgId = null) {
       ${msgId ? `<button class="del-msg-btn p-1.5 glass rounded-lg hover:text-red-200 transition-colors" title="ลบข้อความ"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>` : ''}
     </div>`;
 
+  const userImages = isUser ? (sources || []).filter(s => s.type === 'image') : [];
+  const botSources = !isUser ? (sources || []) : [];
+  const hasText = html && typeof html === 'string' && html.trim().length > 0 && html !== '<span class="typing-dots">...</span>';
+  const isTyping = html === '<span class="typing-dots">...</span>';
+
+  let contentHtml = '';
+
+  if (isUser) {
+    // 1. Standalone user images (Clean dark/neutral card, no neon blue backdrop)
+    const imagesHtml = userImages.length > 0 ? `
+      <div class="flex flex-wrap justify-end gap-2 mb-2 w-full">
+        ${userImages.map(img => `
+          <div class="relative group/userimg rounded-2xl overflow-hidden border border-surface-200 dark:border-white/10 bg-surface-100 dark:bg-[#18181b] shadow-md transition-all hover:scale-[1.01] cursor-pointer max-w-[280px]" onclick="openImageViewer('${img.url}')">
+            <img src="${img.url}" class="w-full h-auto max-h-[320px] object-contain rounded-2xl block" alt="Attached Image">
+            <div class="absolute inset-0 bg-black/0 hover:bg-black/10 transition-colors pointer-events-none"></div>
+          </div>
+        `).join('')}
+      </div>` : '';
+
+    // 2. User text bubble (Rendered below the image, or standalone if text only)
+    const textBubbleHtml = (hasText || isTyping || userImages.length === 0) ? `
+      <div class="${bubbleClass} chat-bubble relative group/msg ml-auto max-w-prose">
+        <div class="prose dark:prose-invert prose-sm max-w-none text-left">${html}</div>
+        ${feedbackPanel}
+      </div>` : '';
+
+    contentHtml = `
+      <div class="flex flex-col items-end w-full">
+        <span class="text-[9px] font-bold text-surface-400 tracking-widest uppercase mb-1 px-1">${name}</span>
+        ${imagesHtml}
+        ${textBubbleHtml}
+      </div>`;
+  } else {
+    // Bot message with document citation sources
+    const sourcesHtml = botSources.length > 0 ? `
+      <div class="mt-3 pt-3 border-t border-surface-200 dark:border-surface-700/50 flex flex-wrap gap-1.5">
+        <span class="w-full text-[9px] font-black text-surface-400 uppercase tracking-widest mb-1 flex items-center gap-1">
+          <i data-lucide="book-open" class="w-2.5 h-2.5"></i> แหล่งข้อมูลอ้างอิง
+        </span>
+        ${botSources.map(s => {
+          if (s.type === 'image') {
+            return `
+              <div class="mt-2 relative group-img rounded-xl overflow-hidden border border-surface-200 dark:border-surface-700 shadow-sm transition-all hover:ring-2 hover:ring-brand-500 max-w-[200px]">
+                <img src="${s.url}" class="w-full h-auto object-cover cursor-pointer" onclick="openImageViewer('${s.url}')" alt="Attached Image">
+              </div>`;
+          }
+          const safeName = (s.name || s.source || 'Document').replace(/'/g, "\\'");
+          const safeLoc = (s.location || '').replace(/'/g, "\\'");
+          return `
+            <button onclick="openPdfViewer('${s.file_id}', '${safeName}', '${safeLoc}')" 
+              class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white/50 dark:bg-surface-900/40 text-surface-600 dark:text-surface-300 text-[10px] font-bold border border-surface-200 dark:border-surface-700 hover:border-brand-500 hover:text-brand-600 dark:hover:text-brand-400 transition-all shadow-sm">
+              <i data-lucide="${FILE_LUCIDE[s.type] || 'file-text'}" class="w-3 h-3 text-brand-500"></i>
+              <span class="truncate max-w-[120px]">${s.name || s.source || 'Document'}</span>
+              ${s.location && s.location !== 'Document' ? `<span class="opacity-50 text-[9px]">#${s.location}</span>` : ''}
+            </button>
+          `;
+        }).join('')}
+      </div>` : '';
+
+    contentHtml = `
+      <span class="text-[9px] font-bold text-surface-400 tracking-widest uppercase mb-0.5 px-1">${name}</span>
+      <div class="${bubbleClass} chat-bubble relative group/msg">
+        <div class="prose dark:prose-invert prose-sm max-w-none text-left">${html}</div>
+        ${sourcesHtml}
+        <!-- Action Panel (Dynamic) -->
+        <div class="action-panel mt-3 hidden"></div>
+        ${feedbackPanel}
+      </div>`;
+  }
+
   row.innerHTML = `
     <div class="w-8 h-8 flex-shrink-0 rounded-lg ${avatarClass} flex items-center justify-center text-white">
       <i data-lucide="${icon}" class="w-4 h-4"></i>
     </div>
     <div class="msg-content-wrapper flex-1 min-w-0">
-      <span class="text-[9px] font-bold text-surface-400 tracking-widest uppercase mb-0.5 px-1">${name}</span>
-      <div class="${bubbleClass} chat-bubble relative group/msg">
-        <div class="prose dark:prose-invert prose-sm max-w-none text-left">${html}</div>
-        
-        <!-- Sources Section -->
-        ${sources && sources.length > 0 ? `
-          <div class="mt-3 pt-3 border-t border-surface-200 dark:border-surface-700/50 flex flex-wrap gap-1.5">
-            <span class="w-full text-[9px] font-black text-surface-400 uppercase tracking-widest mb-1 flex items-center gap-1">
-              <i data-lucide="book-open" class="w-2.5 h-2.5"></i> แหล่งข้อมูลอ้างอิง
-            </span>
-            ${sources.map(s => {
-              if (s.type === 'image') {
-                return `
-                  <div class="mt-2 relative group-img rounded-xl overflow-hidden border border-surface-200 dark:border-surface-700 shadow-sm transition-all hover:ring-2 hover:ring-brand-500 max-w-[200px]">
-                    <img src="${s.url}" class="w-full h-auto object-cover cursor-pointer" onclick="openImageViewer('${s.url}')" alt="Attached Image">
-                  </div>`;
-              }
-              const safeName = (s.name || s.source || 'Document').replace(/'/g, "\\'");
-              const safeLoc = (s.location || '').replace(/'/g, "\\'");
-              return `
-                <button onclick="openPdfViewer('${s.file_id}', '${safeName}', '${safeLoc}')" 
-                  class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white/50 dark:bg-surface-900/40 text-surface-600 dark:text-surface-300 text-[10px] font-bold border border-surface-200 dark:border-surface-700 hover:border-brand-500 hover:text-brand-600 dark:hover:text-brand-400 transition-all shadow-sm">
-                  <i data-lucide="${FILE_LUCIDE[s.type] || 'file-text'}" class="w-3 h-3 text-brand-500"></i>
-                  <span class="truncate max-w-[120px]">${s.name || s.source || 'Document'}</span>
-                  ${s.location && s.location !== 'Document' ? `<span class="opacity-50 text-[9px]">#${s.location}</span>` : ''}
-                </button>
-              `;
-            }).join('')}
-          </div>
-        ` : ''}
-        
-        <!-- Action Panel (Dynamic) -->
-        <div class="action-panel mt-3 hidden"></div>
-
-        ${feedbackPanel}
-      </div>
+      ${contentHtml}
     </div>`;
 
   chatArea.appendChild(row);
@@ -2418,7 +2457,7 @@ async function sendMessage(text) {
   }
 
   appendMessage('user', text, displayContext, true); 
-  state.history.push({ role: 'user', text });
+  state.history.push({ role: 'user', text, sources: displayContext });
   saveHistory();
 
   // 🔔 Play Send Chime & Haptic
@@ -3698,9 +3737,9 @@ if (realTimeCallBtn) {
   msgInput.focus();
 
   // ─── Global Background Poller ─────────────────────────────────
-  // Runs every 5 seconds — ข้ามถ้าไม่ได้ login อยู่ (ป้องกัน 401 spam)
+  // Runs every 30 seconds as fallback — ข้ามถ้าไม่ได้ login อยู่ หรือ initAppContent ลงทะเบียนแล้ว
   setInterval(async () => {
-    if (!state.user) return; // ไม่ login → ไม่ต้อง poll
+    if (!state.user || state._pollRegistered || document.hidden) return;
 
     // 1. Refresh Notification badge count silently
     try {
@@ -3726,7 +3765,7 @@ if (realTimeCallBtn) {
       } catch (e) { /* silent */ }
     }
 
-  }, 5000);
+  }, 30000);
 })();
 
 // ─── Social Feed Logic ─────────────────────────
@@ -3893,23 +3932,48 @@ function renderPosts(posts) {
         </div>
       ` : ''}
 
-      ${p.link ? `
-        <div id="link-preview-${p.id}" class="post-preview-container">
-          <a href="${p.link}" target="_blank" class="block p-4 bg-surface-50 dark:bg-surface-800/40 rounded-2xl border border-surface-100 dark:border-surface-700 hover:border-brand-500 transition-all group">
-            <div class="flex gap-4">
-              <div id="lp-img-${p.id}" class="hidden w-20 h-20 rounded-xl overflow-hidden bg-surface-200 flex-shrink-0 animate-pulse"></div>
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2 text-brand-600 mb-1">
-                  <i data-lucide="link" class="w-3 h-3"></i>
-                  <span class="text-[10px] font-bold truncate uppercase tracking-widest">${p.link.split('/')[2] || 'LINK'}</span>
+      ${(() => {
+        const effectiveLink = p.link || (p.content ? (p.content.match(/https?:\/\/[^\s<>"']+/i) || [])[0] : null);
+        if (!effectiveLink) return '';
+        const hasImages = p.attachments && p.attachments.some(f => f.type?.startsWith('image/') || f.path?.match(/\.(jpg|jpeg|png|gif|webp)$/i));
+        const domain = (effectiveLink.split('/')[2] || 'LINK').replace('www.', '').toUpperCase();
+        
+        if (!hasImages) {
+          return `
+            <div id="link-preview-${p.id}" class="post-preview-container mt-3">
+              <a href="${effectiveLink}" target="_blank" class="block overflow-hidden rounded-2xl border border-surface-200/90 dark:border-surface-700/70 bg-surface-50 dark:bg-surface-800/40 hover:border-brand-500/80 dark:hover:border-brand-500/80 transition-all group shadow-sm hover:shadow-md">
+                <div id="lp-img-${p.id}" class="hidden w-full h-48 sm:h-56 overflow-hidden bg-surface-200 dark:bg-surface-800 relative"></div>
+                <div class="p-4 space-y-1.5 bg-white dark:bg-surface-900/60">
+                  <div class="flex items-center gap-1.5 text-brand-600 dark:text-brand-400 font-bold text-[10px] uppercase tracking-wider">
+                    <i data-lucide="link" class="w-3.5 h-3.5"></i>
+                    <span>${domain}</span>
+                  </div>
+                  <h4 id="lp-title-${p.id}" class="text-sm font-bold text-surface-900 dark:text-white line-clamp-2 leading-snug group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors">${effectiveLink}</h4>
+                  <p id="lp-desc-${p.id}" class="text-xs text-surface-500 dark:text-surface-400 line-clamp-2 leading-relaxed"></p>
                 </div>
-                <h4 id="lp-title-${p.id}" class="text-xs font-bold text-surface-900 dark:text-white mb-1 truncate">${p.link}</h4>
-                <p id="lp-desc-${p.id}" class="text-[10px] text-surface-500 line-clamp-2 leading-snug"></p>
-              </div>
+              </a>
             </div>
-          </a>
-        </div>
-      ` : ''}
+          `;
+        } else {
+          return `
+            <div id="link-preview-${p.id}" class="post-preview-container mt-2">
+              <a href="${effectiveLink}" target="_blank" class="block p-3.5 bg-surface-50 dark:bg-surface-800/40 rounded-2xl border border-surface-100 dark:border-surface-700 hover:border-brand-500 transition-all group">
+                <div class="flex gap-3.5 items-center">
+                  <div id="lp-img-${p.id}" class="hidden w-16 h-16 rounded-xl overflow-hidden bg-surface-200 dark:bg-surface-700 flex-shrink-0"></div>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-1.5 text-brand-600 mb-0.5">
+                      <i data-lucide="link" class="w-3 h-3"></i>
+                      <span class="text-[9px] font-bold truncate uppercase tracking-widest">${domain}</span>
+                    </div>
+                    <h4 id="lp-title-${p.id}" class="text-xs font-bold text-surface-900 dark:text-white mb-0.5 truncate">${effectiveLink}</h4>
+                    <p id="lp-desc-${p.id}" class="text-[10px] text-surface-500 line-clamp-1 leading-snug"></p>
+                  </div>
+                </div>
+              </a>
+            </div>
+          `;
+        }
+      })()}
 
       ${p.attachments && p.attachments.length ? `
         <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -4114,7 +4178,11 @@ function addPollOption() {
   initIcons();
 }
 
+let _isSubmittingPost = false;
 submitPostBtn.onclick = async () => {
+  if (_isSubmittingPost) return;
+  _isSubmittingPost = true;
+
   const content = postInput.value.trim();
   const category = postCategory.value;
   const link = postLink.value.trim();
@@ -4124,6 +4192,7 @@ submitPostBtn.onclick = async () => {
   const pollQuestion = isPollActive ? $('pollQuestion').value.trim() : '';
 
   if (!content && !link && postFiles.length === 0 && !pollQuestion) {
+    _isSubmittingPost = false;
     return toast('กรุณาใส่ข้อความ ลิงก์ โพลล์ หรือแนบไฟล์อย่างใดอย่างหนึ่ง', 'warning');
   }
 
@@ -4185,6 +4254,7 @@ submitPostBtn.onclick = async () => {
   } catch (e) {
     toast('โพสต์ล้มเหลว: ' + e.message, 'error');
   } finally {
+    _isSubmittingPost = false;
     submitPostBtn.disabled = false;
     submitPostBtn.textContent = 'โพสต์';
   }
@@ -4779,7 +4849,8 @@ document.querySelectorAll('.feed-filter-chip').forEach(btn => {
   btn.onclick = () => {
     document.querySelectorAll('.feed-filter-chip').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    showView(btn.dataset.view);
+    const cat = btn.dataset.cat || 'All';
+    loadPosts(cat);
   };
 });
 
@@ -7397,7 +7468,7 @@ function renderChatMessages(shouldScroll = false) {
       <div class="chat-attachment-container ${isMe ? 'justify-end' : ''} mt-2 flex flex-wrap gap-2">
         ${imageAttachments.map(img => `
           <div onclick="openLightbox('${img.url}')" class="chat-img-attachment cursor-pointer hover:scale-[1.02] transition-transform w-[280px] h-[200px] max-w-full rounded-2xl overflow-hidden border border-surface-100 dark:border-surface-800 shadow-md">
-            <img src="${img.url}?t=${Date.now()}" class="w-full h-full object-cover" onerror="this.onerror=null;this.src='${img.url}'">
+            <img src="${img.url}" class="w-full h-full object-cover" loading="lazy" onerror="this.onerror=null;this.src='${img.url}'">
           </div>
         `).join('')}
       </div>
@@ -8581,31 +8652,40 @@ async function init() {
       state._pollRegistered = true;
       state._chatPollRegistered = true;
 
-      // Notification Polling
+      // Notification Polling (Polite 30s interval, skipped when tab is in background)
       loadNotifications();
-      setInterval(loadNotifications, 5000);
+      setInterval(() => {
+        if (!document.hidden) loadNotifications();
+      }, 30000);
 
-      // Unified Chat Load & Polling
+      // Unified Chat Load & Polling (15s interval, skipped when tab is in background)
       loadChatList();
       loadUnreadCounts();
       setInterval(() => {
+        if (document.hidden) return;
         loadUnreadCounts();
         if (state.groupChat.isOpen) {
           const isModalHidden = groupChatModal && groupChatModal.classList.contains('hidden');
           loadChatMessages(false, isModalHidden);
         }
-      }, 3000);
+      }, 15000);
 
-      // Main Chat Polling
-      setInterval(() => {
+      // Re-sync state cleanly on window focus instead of continuous 4s DOM-trashing polling
+      window.addEventListener('focus', () => {
         const activeView = document.querySelector('.view:not(.hidden)');
         if (activeView && activeView.id === 'view-chat' && !state.sending) {
           loadHistory(true);
         }
-      }, 4000);
+        loadNotifications();
+        loadUnreadCounts();
+      });
 
-      // Typing Status Polling
-      setInterval(pollTypingStatus, 2000);
+      // Typing Status Polling (Only as fallback when Socket.IO is disconnected)
+      setInterval(() => {
+        if (!document.hidden && (!socket || !socket.connected)) {
+          pollTypingStatus();
+        }
+      }, 15000);
     }
 
     // Listen for main chat typing
@@ -15140,6 +15220,14 @@ function initLeaveForm() {
                 return;
             }
 
+            const submitBtn = form.querySelector('button[type="submit"]') || form.querySelector('.btn-primary');
+            if (submitBtn) {
+                if (submitBtn.disabled) return;
+                submitBtn.disabled = true;
+                submitBtn.dataset.origText = submitBtn.textContent;
+                submitBtn.textContent = "กำลังส่งคำขอลา...";
+            }
+
             try {
                 const res = await fetch('/api/leave/request', {
                     method: 'POST',
@@ -15157,6 +15245,11 @@ function initLeaveForm() {
             } catch (err) {
                 console.error(err);
                 toast("ไม่สามารถติดต่อเซิร์ฟเวอร์ได้", "error");
+            } finally {
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = submitBtn.dataset.origText || "ส่งคำขอลา";
+                }
             }
         };
         _leaveFormInitialized = true;
@@ -17525,6 +17618,110 @@ async function scanReceiptWithAI(input) {
   }
 }
 
+let rrCurrentZoom = 1.0;
+
+function openRRPreviewFullscreen() {
+  const modal = $('rrFullscreenModal');
+  const src = $('rrPreview');
+  const target = $('rrFullscreenPaper');
+  if (!modal || !src || !target) return;
+
+  // Sync latest values
+  updateRRPreview();
+
+  // Clone content into fullscreen paper
+  target.innerHTML = src.innerHTML;
+
+  // Auto-fit zoom to viewport width
+  const winW = window.innerWidth;
+  if (winW < 850) {
+    rrCurrentZoom = Math.max(0.4, (winW - 32) / 820);
+  } else {
+    rrCurrentZoom = 1.0;
+  }
+  applyRRZoom();
+
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+  document.body.style.overflow = 'hidden';
+
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function closeRRPreviewFullscreen() {
+  const modal = $('rrFullscreenModal');
+  if (!modal) return;
+  modal.classList.add('hidden');
+  modal.classList.remove('flex');
+  document.body.style.overflow = '';
+}
+
+function changeRRZoom(delta) {
+  rrCurrentZoom = Math.min(2.5, Math.max(0.35, rrCurrentZoom + delta));
+  applyRRZoom();
+}
+
+function resetRRZoom() {
+  rrCurrentZoom = 1.0;
+  applyRRZoom();
+}
+
+function applyRRZoom() {
+  const wrapper = $('rrFullscreenWrapper');
+  const label = $('rrZoomLabel');
+  if (wrapper) {
+    wrapper.style.transform = `scale(${rrCurrentZoom})`;
+  }
+  if (label) {
+    label.textContent = `${Math.round(rrCurrentZoom * 100)}%`;
+  }
+}
+
+function printRRPaper() {
+  const preview = $('rrPreview');
+  if (!preview) return;
+  const printWin = window.open('', '', 'width=900,height=800');
+  if (!printWin) {
+    window.print();
+    return;
+  }
+  printWin.document.write(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>พิมพ์ใบแทนใบเสร็จรับเงิน</title>
+        <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+        <style>
+          @page { size: A4 portrait; margin: 0; }
+          body { margin: 0; padding: 15mm; font-family: 'Sarabun', 'Outfit', sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          #printPaper { width: 210mm; min-height: 297mm; box-sizing: border-box; }
+        </style>
+      </head>
+      <body>
+        <div id="printPaper">${preview.innerHTML}</div>
+        <script>
+          window.onload = function() {
+            window.focus();
+            window.print();
+            window.close();
+          };
+        <\/script>
+      </body>
+    </html>
+  `);
+  printWin.document.close();
+}
+
+// Close on Escape key
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    const modal = $('rrFullscreenModal');
+    if (modal && !modal.classList.contains('hidden')) {
+      closeRRPreviewFullscreen();
+    }
+  }
+});
+
 window.initReplacementReceiptView = initReplacementReceiptView;
 window.openReplacementFromExpense = openReplacementFromExpense;
 window.calcRRTotal = calcRRTotal;
@@ -17532,6 +17729,11 @@ window.updateRRPreview = updateRRPreview;
 window.clearRRForm = clearRRForm;
 window.generateRRPdf = generateRRPdf;
 window.scanReceiptWithAI = scanReceiptWithAI;
+window.openRRPreviewFullscreen = openRRPreviewFullscreen;
+window.closeRRPreviewFullscreen = closeRRPreviewFullscreen;
+window.changeRRZoom = changeRRZoom;
+window.resetRRZoom = resetRRZoom;
+window.printRRPaper = printRRPaper;
 
 // ─── PEAK API Integration ──────────────────────────────────────────────────────
 

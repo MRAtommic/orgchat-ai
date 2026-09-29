@@ -37,7 +37,7 @@ import ai_providers
 import notification_db
 import billing
 import payment
-from google_drive_service import google_manager, GoogleWorkspaceManager
+from google_drive_service import google_manager, GoogleWorkspaceManager, get_bangkok_now
 import google_drive_service
 from task_tracker import db_task_tracker
 from reconciliation_service import ReconciliationService
@@ -89,26 +89,30 @@ def _err500(e: Exception, context: str = "") -> tuple:
     return jsonify({"ok": False, "error": "เกิดข้อผิดพลาดภายในระบบ กรุณาลองใหม่อีกครั้ง"}), 500
 
 @socketio.on('connect')
-def handle_connect():
-    print(f"Client connected: {request.sid}")
+def handle_connect(*args, **kwargs):
+    sid = getattr(request, 'sid', 'unknown')
+    print(f"Client connected: {sid}")
 
 
 @socketio.on('disconnect')
-def handle_disconnect():
-    username = online_users_registry.pop(request.sid, None)
-    if not username:
-        username = session.get('user')
-    if username:
-        # Only set user offline in DB if they do not have another tab/socket active
-        if username not in online_users_registry.values():
-            database.set_user_offline(username)
-        online_users = database.get_online_users()
-        active_users = list(set(online_users_registry.values()))
-        socketio.emit('user_status_updated', {
-            'username': username,
-            'status': 'offline' if username not in online_users_registry.values() else 'online',
-            'online_users': online_users
-        }, broadcast=True)
+def handle_disconnect(*args, **kwargs):
+    try:
+        sid = getattr(request, 'sid', None)
+        username = online_users_registry.pop(sid, None) if sid else None
+        if not username:
+            username = session.get('user')
+        if username:
+            # Only set user offline in DB if they do not have another tab/socket active
+            if username not in online_users_registry.values():
+                database.set_user_offline(username)
+            online_users = database.get_online_users()
+            socketio.emit('user_status_updated', {
+                'username': username,
+                'status': 'offline' if username not in online_users_registry.values() else 'online',
+                'online_users': online_users
+            })
+    except Exception as e:
+        print(f"⚠️ Error in handle_disconnect: {e}", flush=True)
 
 
 
@@ -225,6 +229,8 @@ def create_magic_link_flex_bubble(magic_link_url):
             ]
         }
     }
+    return clean_flex_payload(bubble)
+
 
 def create_leave_approval_flex_bubble(leave_id, applicant_name, leave_type, start_date, end_date, reason, department=None, position=None):
     """Creates a high-end 1-Click approval Flex Message for Managers/Admins in LINE."""
@@ -744,6 +750,59 @@ def create_onboarding_guide_flex_bubble(base_url, link_magic_url=None):
 
 
 
+def extract_smart_amount(ext, analysis=None, qr_decoded=None, raw_result=None):
+    """
+    Robustly extracts financial transaction amount with multi-layer fallback:
+    1. Direct ext net_amount, total_amount, amount, gross_amount, transfer_amount
+    2. QR Code Tag 54 (EMVCo)
+    3. AI summary regex (e.g. 'จำนวน 50.00 บาท', '50.00 THB')
+    4. smart_name / filename regex (e.g. '_50.00.jpg')
+    """
+    import re
+    if ext and isinstance(ext, dict):
+        for k in ['net_amount', 'total_amount', 'amount', 'gross_amount', 'transfer_amount', 'paid_amount']:
+            val = ext.get(k)
+            if val is not None and str(val).strip() not in ['', '-', '0', '0.0', '0.00', 'None', 'null']:
+                try:
+                    c = float(str(val).replace(',', '').replace('฿', '').replace('THB', '').strip())
+                    if c > 0:
+                        return c
+                except:
+                    pass
+    if qr_decoded and isinstance(qr_decoded, dict) and qr_decoded.get('amount'):
+        try:
+            c = float(str(qr_decoded['amount']).replace(',', '').strip())
+            if c > 0:
+                return c
+        except:
+            pass
+    if not analysis and raw_result and isinstance(raw_result, dict):
+        analysis = raw_result.get('analysis')
+    if analysis and isinstance(analysis, dict):
+        summary = analysis.get('summary', '')
+        if summary:
+            m = re.search(r'(?:จำนวน|ยอดเงิน|ยอดโอน|ยอดสุทธิ|ยอดรวม|เป็นเงิน)?\s*([\d,]+(?:\.\d{1,2})?)\s*(?:บาท|THB)', summary)
+            if m:
+                try:
+                    c = float(m.group(1).replace(',', '').strip())
+                    if c > 0:
+                        return c
+                except:
+                    pass
+        s_name = analysis.get('smart_name', '')
+        if s_name:
+            m = re.search(r'_([\d,]+(?:\.\d{1,2})?)\.(?:jpg|jpeg|png|pdf)', s_name, re.I)
+            if m:
+                try:
+                    c = float(m.group(1).replace(',', '').strip())
+                    if c > 0:
+                        return c
+                except:
+                    pass
+    return None
+
+
+
 def create_expense_flex_bubble(sheet_name, folder_name, net_amount, date_str, memo, vendor, file_link, sheet_url, edit_data_postback, raw_result=None, org_id=None, username=None):
     """Creates an ultra-premium LINE Flex Message, custom tailored to each document type."""
     # Extract row_num safely
@@ -789,7 +848,12 @@ def create_expense_flex_bubble(sheet_name, folder_name, net_amount, date_str, me
         except:
             pass
 
-    # Clean amount display
+    # Clean amount display with smart fallbacks
+    if not net_amount or str(net_amount).strip() in ['0', '0.0', '0.00', 'None', '', '-']:
+        smart_amt = extract_smart_amount(ext, raw_result=raw_result)
+        if smart_amt is not None and smart_amt > 0:
+            net_amount = smart_amt
+
     try:
         if isinstance(net_amount, (int, float)):
             amount_big = f"{net_amount:,.2f}"
@@ -1711,15 +1775,16 @@ def _get_item_flex_block(idx, r, folder_name, base_url, org_id=None, username=No
     
     sheet_name_str = str(sheet_name)
     
-    # Format amount beautifully
+    # Format amount beautifully with smart fallbacks
     ext = r.get('analysis', {}).get('extracted_data', {}) if r.get('analysis') else {}
-    net_amt = ext.get('net_amount')
+    smart_amt = extract_smart_amount(ext, analysis=r.get('analysis'), raw_result=r)
+    net_amt = smart_amt if (smart_amt is not None and smart_amt > 0) else ext.get('net_amount')
     try:
         val_clean = str(net_amt).replace(",", "").strip()
         val_float = float(val_clean)
-        amt_str = f"{val_float:,.2f} THB"
+        amt_str = f"{val_float:,.2f} THB" if val_float > 0 else "-"
     except:
-        amt_str = f"{net_amt} THB" if net_amt and net_amt != "-" else "-"
+        amt_str = f"{net_amt} THB" if net_amt and str(net_amt).strip() not in ['0', '0.0', '0.00', '-'] else "-"
 
     if amt_str.endswith(".00"):
         amt_str = amt_str[:-3]
@@ -2152,10 +2217,11 @@ def create_batch_summary_flex_bubble(uploaded_results, folder_name):
         status = r.get("status")
         name = r.get("name", "ไฟล์")
         ext = r.get('analysis', {}).get('extracted_data', {}) if r.get('analysis') else {}
-        net_amt = ext.get('net_amount')
+        smart_amt = extract_smart_amount(ext, analysis=r.get('analysis'), raw_result=r)
+        net_amt = smart_amt if (smart_amt is not None and smart_amt > 0) else ext.get('net_amount')
         
         parsed_amt = 0.0
-        if net_amt is not None and net_amt != "-":
+        if net_amt is not None and str(net_amt).strip() not in ['-', '0', '0.0', '0.00']:
             try:
                 parsed_amt = float(str(net_amt).replace(",", "").strip())
             except ValueError:
@@ -3433,8 +3499,8 @@ def process_line_event(event_data):
                         try:
                             from tasks.upload_tasks import process_pending_uploads_task
                             process_pending_uploads_task.delay(pending_id, did, f_id, f_name, reply_tok)
-                        except (ImportError, ModuleNotFoundError):
-                            logger.info("Celery/Redis not available. Running upload process synchronously in background thread.")
+                        except Exception as _celery_err:
+                            logger.info(f"Celery/Redis unavailable ({_celery_err}). Running upload process synchronously in background thread.")
                             files = RedisManager.pop_pending_files(pending_id)
                             if files:
                                 threading.Thread(
@@ -3469,7 +3535,7 @@ def process_line_event(event_data):
                     reply_to_line(reply_tok, "❌ น้องพั้นดึงข้อมูลไฟล์ไม่สำเร็จค่ะ")
 
             try:
-                timer = threading.Timer(1.5, handle_upload_background, args=(batch_key, dest_id, user_id, reply_token))
+                timer = threading.Timer(1.8, handle_upload_background, args=(batch_key, dest_id, user_id, reply_token))
                 _line_batch_timer[batch_key]["timer"] = timer
                 timer.start()
             except Exception:
@@ -3606,8 +3672,8 @@ def process_line_event(event_data):
                         try:
                             from tasks.upload_tasks import process_pending_uploads_task
                             process_pending_uploads_task.delay(pending_id, dest_id, f_id, f_name, reply_token)
-                        except (ImportError, ModuleNotFoundError):
-                            logger.info("Celery/Redis not available. Running upload process synchronously in background thread.")
+                        except Exception as _celery_err:
+                            logger.info(f"Celery/Redis unavailable ({_celery_err}). Running upload process synchronously in background thread.")
                             files = RedisManager.pop_pending_files(pending_id)
                             if files:
                                 threading.Thread(
@@ -3896,6 +3962,7 @@ def _process_pending_uploads_inner(b_key, did, folder_id, folder_name, reply_tok
 
             # --- 🔍 Scan QR Code for Bank Slips ---
             verification_status = "-"
+            qr_decoded = None
             if folder_name == "สลิปโอนเงิน":
                 is_valid_slip = False
                 try:
@@ -3913,6 +3980,7 @@ def _process_pending_uploads_inner(b_key, did, folder_id, folder_name, reply_tok
                             from tools.emvco_parser import EMVCoParser
                             parser = EMVCoParser()
                             decoded = parser.decode_slip_qr(val_qr)
+                            qr_decoded = decoded
                             
                             if val_qr.startswith("000201") and ("A000000677" in val_qr):
                                 is_valid_slip = True
@@ -3969,20 +4037,37 @@ def _process_pending_uploads_inner(b_key, did, folder_id, folder_name, reply_tok
             sender_id = item.get("sender_id")
             u_name = database.get_username_by_line_id(sender_id) if sender_id else None
 
-            # Upload
+            # --- Offline-First: Always save local backup first to prevent any data loss ---
+            from tools.offline_storage import save_local_receipt_backup
+            rel_backup_path, abs_backup_path, local_backup_url = save_local_receipt_backup(content, original_name)
+
+            # Upload to Google Drive (with graceful offline fallback)
             link, upload_err = google_manager.upload_file(content, original_name, mimetype, folder_id=folder_id, org_id=_upload_org_id, username=u_name)
+            is_offline_backup = False
             if not link:
-                logger.error(f"❌ Drive upload failed for '{original_name}': {upload_err}")
-                return {"status": "upload_failed", "name": original_name, "error": str(upload_err)}
+                logger.warning(f"⚠️ Drive upload unavailable for '{original_name}': {upload_err}. Using resilient local backup.")
+                link = local_backup_url
+                is_offline_backup = True
 
             # --- 🛠️ Data Sanitization for Google Sheets (Prevent Column Sprouting) ---
             raw_ext = analysis.get("extracted_data", {}) if analysis else {}
             sanitized_ext = raw_ext.copy()
             if "date" not in sanitized_ext or not sanitized_ext["date"]:
-                sanitized_ext["date"] = datetime.now().strftime("%d/%m/%Y")
+                sanitized_ext["date"] = get_bangkok_now().strftime("%d/%m/%Y")
             sanitized_ext["category"] = folder_name
             for field in ["time", "sender", "receiver", "memo", "ref_number"]:
                 if field not in sanitized_ext: sanitized_ext[field] = "-"
+
+            # Robust fallback for amount
+            smart_amt = extract_smart_amount(sanitized_ext, analysis=analysis, qr_decoded=qr_decoded)
+            if smart_amt is not None and smart_amt > 0:
+                sanitized_ext["net_amount"] = smart_amt
+                if "total_amount" not in sanitized_ext or not sanitized_ext["total_amount"]:
+                    sanitized_ext["total_amount"] = smart_amt
+                if analysis and "extracted_data" in analysis:
+                    analysis["extracted_data"]["net_amount"] = smart_amt
+                    if "total_amount" not in analysis["extracted_data"] or not analysis["extracted_data"]["total_amount"]:
+                        analysis["extracted_data"]["total_amount"] = smart_amt
 
             sender_name = get_line_sender_name(did if (did.startswith("C") or did.startswith("R")) else None, sender_id)
 
@@ -3995,7 +4080,25 @@ def _process_pending_uploads_inner(b_key, did, folder_id, folder_name, reply_tok
                 "verification_status": verification_status
             }
 
-            log_res = google_manager.log_expense(log_data, org_id=_upload_org_id, username=u_name)
+            if is_offline_backup:
+                # Queue for cloud sync when connection/credentials recover
+                database.add_offline_upload(
+                    org_id=_upload_org_id,
+                    username=u_name,
+                    user_id=sender_id,
+                    original_filename=real_original_name,
+                    local_filepath=abs_backup_path,
+                    mimetype=mimetype,
+                    folder_id=folder_id,
+                    folder_name=folder_name,
+                    analysis=analysis,
+                    extracted_data=sanitized_ext,
+                    verification_status=verification_status,
+                    line_sender_name=sender_name
+                )
+                log_res = {"ok": True, "sheet": folder_name, "row": 0}
+            else:
+                log_res = google_manager.log_expense(log_data, org_id=_upload_org_id, username=u_name)
 
             # Log to local database for Dashboard stats (regardless of Sheets result)
             try:
@@ -4016,7 +4119,9 @@ def _process_pending_uploads_inner(b_key, did, folder_id, folder_name, reply_tok
                     summary=analysis.get("summary") if analysis else f"Auto-upload: {real_original_name}",
                     file_link=link,
                     user_id=sender_id,
-                    org_id=_upload_org_id
+                    org_id=_upload_org_id,
+                    sync_status="pending_cloud_sync" if is_offline_backup else "synced",
+                    local_filepath=abs_backup_path
                 )
             except Exception as dbe:
                 logger.error(f"❌ Database Log Error: {dbe}")
@@ -4030,21 +4135,23 @@ def _process_pending_uploads_inner(b_key, did, folder_id, folder_name, reply_tok
                     "verification_status": verification_status,
                     "sheet": log_res.get("sheet"),
                     "row": log_res.get("row"),
-                    "ref_number": log_res.get("ref_number")
+                    "ref_number": log_res.get("ref_number"),
+                    "is_offline_backup": is_offline_backup
                 }
 
             if not log_res or not log_res.get("ok"):
                 logger.warning(f"⚠️ Sheets log failed for '{original_name}' (Drive OK). log_res={log_res}")
 
-            # Always return success if Drive upload succeeded — Sheets is best-effort
+            # Return success even if offline (safe local backup preserved)
             return {
                 "status": "success",
                 "name": original_name,
                 "link": link,
                 "analysis": analysis,
                 "verification_status": verification_status,
-                "sheet": log_res.get("sheet") if log_res else "ทั่วไป",
-                "row": log_res.get("row") if log_res else 0
+                "sheet": log_res.get("sheet") if log_res else (folder_name or "ทั่วไป"),
+                "row": log_res.get("row") if log_res else 0,
+                "is_offline_backup": is_offline_backup
             }
 
         except Exception as e:
@@ -4055,7 +4162,7 @@ def _process_pending_uploads_inner(b_key, did, folder_id, folder_name, reply_tok
 
     with ThreadPoolExecutor(max_workers=5) as executor:
         futures = [executor.submit(_process_single_upload, item) for item in files]
-        for future in as_completed(futures):
+        for future in futures:
             res = future.result()
             if res:
                 uploaded_results.append(res)
@@ -4297,8 +4404,9 @@ def _process_pending_uploads_inner(b_key, did, folder_id, folder_name, reply_tok
                 
                 if status == "duplicate":
                     ext = r.get('analysis', {}).get('extracted_data', {}) if r.get('analysis') else {}
-                    net_amt = ext.get('net_amount')
-                    if not net_amt or net_amt in [0, '0', 'None', '']:
+                    smart_amt = extract_smart_amount(ext, analysis=r.get('analysis'), raw_result=r)
+                    net_amt = smart_amt if (smart_amt is not None and smart_amt > 0) else ext.get('net_amount')
+                    if not net_amt or str(net_amt).strip() in ['0', '0.0', '0.00', 'None', '', '-']:
                         net_amt = "-"
                     
                     ref_num = r.get("ref_number", "-")
@@ -4318,8 +4426,9 @@ def _process_pending_uploads_inner(b_key, did, folder_id, folder_name, reply_tok
                     })
                 else:
                     ext = r.get('analysis', {}).get('extracted_data', {}) if r.get('analysis') else {}
-                    net_amt = ext.get('net_amount')
-                    if not net_amt or net_amt in [0, '0', 'None', '']:
+                    smart_amt = extract_smart_amount(ext, analysis=r.get('analysis'), raw_result=r)
+                    net_amt = smart_amt if (smart_amt is not None and smart_amt > 0) else ext.get('net_amount')
+                    if not net_amt or str(net_amt).strip() in ['0', '0.0', '0.00', 'None', '', '-']:
                         net_amt = "-"
                     
                     date_val = ext.get('date') or datetime.now().strftime("%d/%m/%Y")
@@ -7121,7 +7230,7 @@ def send_unified_message():
             threading.Thread(target=handle_bot_response, args=(cid, text, "dm", user, ai_image, ai_mime, get_current_org_id())).start()
             
     # Emit socket signal for real-time update
-    socket_room = f"room_{cid}" if ctype == "room" else f"dm_{user}_{cid}"
+    socket_room = f"room_{cid}" if ctype == "room" else None
     
     # Common response data
     res_data = {
@@ -7200,7 +7309,7 @@ def log_bot(message):
     try:
         with open("bot_debug.log", "a", encoding="utf-8") as f:
             f.write(f"[{get_current_time()}] {message}\n")
-    except:
+    except Exception:
         pass
 
 
@@ -7323,9 +7432,10 @@ def handle_bot_response(cid, user_text, ctype, original_sender=None, image_data=
             )
         
         response_text = ""
+        socket_room = f"room_{cid}" if ctype == "room" else f"dm_{original_sender}"
         
         # Mark as typing
-        socketio.emit('bot_typing', {'room_id': cid, 'type': ctype}, room=f"room_{cid}" if ctype == "room" else f"dm_{cid}")
+        socketio.emit('bot_typing', {'room_id': cid, 'type': ctype}, room=socket_room)
         
         # Use generator with image_data
         stream = provider.chat_stream(user_text, history, system_prompt, image_data=image_data, mime_type=mime_type)
@@ -7336,7 +7446,6 @@ def handle_bot_response(cid, user_text, ctype, original_sender=None, image_data=
         for chunk in stream:
             response_text += chunk
             # Emit chunk to client for real-time streaming
-            socket_room = f"room_{cid}" if ctype == "room" else f"dm_{original_sender}"
             socketio.emit('ai_chunk', {
                 "cid": cid,
                 "ctype": ctype,
@@ -7351,6 +7460,9 @@ def handle_bot_response(cid, user_text, ctype, original_sender=None, image_data=
             log_bot("⚠️ Provider returned empty response.")
             response_text = "ขออภัยค่ะพี่ น้องพั้นไม่พบข้อมูลที่เกี่ยวข้องในระบบฐานความรู้ขององค์กรนะคะ"
             socketio.emit('ai_chunk', {"cid": cid, "ctype": ctype, "chunk": response_text, "is_start": True}, room=socket_room)
+            socketio.emit('ai_done', {"cid": cid, "ctype": ctype}, room=socket_room)
+            if "AI-Assistant" in _typing_status.get(bot_key, {}):
+                _typing_status[bot_key]["AI-Assistant"] = 0
         else:
             log_bot(f"✅ Bot response generated ({len(response_text)} chars).")
             # Clear bot typing status and notify end of stream
@@ -7374,16 +7486,40 @@ def handle_bot_response(cid, user_text, ctype, original_sender=None, image_data=
                 # Keep everything up to the first emoji + the first emoji itself, then strip all other emojis from the rest
                 prefix = text[:first_idx + len(first_emoji)]
                 rest = text[first_idx + len(first_emoji):]
-                rest_cleaned = "".join([c for c in rest if c not in re.findall(r'[\U00010000-\U0010ffff]', rest)])
+                rest_cleaned = re.sub(r'[\U00010000-\U0010ffff]', '', rest)
                 return prefix + rest_cleaned
             return text
         
         response_text = limit_emojis(response_text)
 
         if ctype == "room":
-            database.add_room_message(cid, "AI-Assistant", response_text, [])
+            mid = database.add_room_message(cid, "AI-Assistant", response_text, [])
+            res_data = {
+                "id": mid,
+                "room_id": int(cid),
+                "type": "room",
+                "sender": "AI-Assistant",
+                "username": "AI-Assistant",
+                "text": response_text,
+                "attachments": [],
+                "timestamp": datetime.utcnow().isoformat() + "Z"
+            }
+            socketio.emit('new_message', res_data, room=socket_room)
         else:
-            database.save_dm("AI-Assistant", original_sender, response_text, [], org_id=org_id)
+            mid = database.save_dm("AI-Assistant", original_sender, response_text, [], org_id=org_id)
+            res_dm_data = {
+                "id": mid,
+                "type": "dm",
+                "sender": "AI-Assistant",
+                "username": "AI-Assistant",
+                "sender_id": "AI-Assistant",
+                "text": response_text,
+                "attachments": [],
+                "timestamp": datetime.utcnow().isoformat() + "Z"
+            }
+            socketio.emit('new_message', res_dm_data, room=f"dm_{original_sender}")
+            if cid and str(cid) != str(original_sender):
+                socketio.emit('new_message', res_dm_data, room=f"dm_{cid}")
             # NEW: Send push notification to the user who mentioned the bot in DM
             if original_sender:
                 send_push_notification(original_sender, "AI-Assistant ตอบกลับคุณ", response_text[:100], url='#chat')
@@ -7768,7 +7904,7 @@ def chat():
             got_first_chunk = False
             for chunk in response_stream:
                 if chunk:
-                    chunk = chunk.replace("ครับ/ค่ะ", "ค่ะ").replace("ครับ", "ค่ะ")
+                    chunk = re.sub(r'ครับ\s*/\s*ค่ะ', 'ค่ะ', chunk).replace("ครับ", "ค่ะ")
                     
                     if not got_first_chunk:
                         got_first_chunk = True
@@ -7777,8 +7913,7 @@ def chat():
             
             print(f"Stream finished. Total length: {len(bot_full_text)}")
             
-            bot_full_text = re.sub(r'ครับ\s*/\s*ค่ะ', 'ค่ะ', bot_full_text)
-            bot_full_text = bot_full_text.replace("ครับ", "ค่ะ")
+            bot_full_text = re.sub(r'ครับ\s*/\s*ค่ะ', 'ค่ะ', bot_full_text).replace("ครับ", "ค่ะ")
             
             def limit_emojis_stream(text):
                 all_emojis = re.findall(r'[\U00010000-\U0010ffff]', text)
@@ -7787,7 +7922,7 @@ def chat():
                     first_idx = text.find(first_emoji)
                     prefix = text[:first_idx + len(first_emoji)]
                     rest = text[first_idx + len(first_emoji):]
-                    rest_cleaned = "".join([c for c in rest if c not in re.findall(r'[\U00010000-\U0010ffff]', rest)])
+                    rest_cleaned = re.sub(r'[\U00010000-\U0010ffff]', '', rest)
                     return prefix + rest_cleaned
                 return text
             
@@ -8150,8 +8285,8 @@ def create_quotation():
                 org_id=org_id,
                 username=user
             )
-        except (ImportError, ModuleNotFoundError):
-            logger.info("Celery/Redis not available. Running sheet_append_quotation synchronously in background thread.")
+        except Exception as _celery_err:
+            logger.info(f"Celery/Redis unavailable ({_celery_err}). Running sheet_append_quotation synchronously in background thread.")
             threading.Thread(
                 target=_sync_sheet_append_quotation,
                 args=(google_manager.spreadsheet_id, 'ใบเสนอราคา (สร้างจากระบบ)', row_data, org_id, user)
@@ -8684,10 +8819,17 @@ def web_drive_upload():
             except Exception as e:
                 logger.error(f"AI analysis failed in web upload: {e}")
                 
-        # Upload file to Drive
+        # --- Offline-First: Always save local backup first to prevent any data loss ---
+        from tools.offline_storage import save_local_receipt_backup
+        rel_backup_path, abs_backup_path, local_backup_url = save_local_receipt_backup(content, original_name)
+
+        # Upload file to Drive (with graceful offline fallback)
         link, upload_err = google_manager.upload_file(content, original_name, mimetype, folder_id=folder_id, org_id=org_id, username=username)
+        is_offline_backup = False
         if not link:
-            return {"status": "upload_failed", "name": original_name, "error": str(upload_err)}
+            logger.warning(f"⚠️ Drive upload unavailable in web upload for '{original_name}': {upload_err}. Using resilient local backup.")
+            link = local_backup_url
+            is_offline_backup = True
             
         # Sanitize data for Google Sheets
         raw_ext = analysis.get("extracted_data", {}) if analysis else {}
@@ -8743,8 +8885,25 @@ def web_drive_upload():
             "verification_status": verification_status
         }
         
-        # Log to Sheets
-        log_res = google_manager.log_expense(log_data, org_id=org_id, username=username)
+        if is_offline_backup:
+            database.add_offline_upload(
+                org_id=org_id,
+                username=username,
+                user_id=f"web_{username}",
+                original_filename=f.filename or "web_upload",
+                local_filepath=abs_backup_path,
+                mimetype=mimetype,
+                folder_id=folder_id,
+                folder_name=folder_name,
+                analysis=analysis,
+                extracted_data=sanitized_ext,
+                verification_status=verification_status,
+                line_sender_name=f"Web (พี่ {username})"
+            )
+            log_res = {"ok": True, "sheet": folder_name, "row": 0}
+        else:
+            # Log to Sheets
+            log_res = google_manager.log_expense(log_data, org_id=org_id, username=username)
         
         # Log to local DB
         amt = 0.0
@@ -8767,7 +8926,9 @@ def web_drive_upload():
                 summary=analysis.get("summary") if analysis else f"Web upload: {f.filename}",
                 file_link=link,
                 user_id=f"web_{username}",
-                org_id=org_id
+                org_id=org_id,
+                sync_status="pending_cloud_sync" if is_offline_backup else "synced",
+                local_filepath=abs_backup_path
             )
         except Exception as dbe:
             logger.error(f"Database Log Error in web upload: {dbe}")
@@ -8780,11 +8941,13 @@ def web_drive_upload():
             "status": status,
             "name": original_name,
             "link": link,
-            "sheet": log_res.get("sheet") if log_res else "ทั่วไป",
+            "sheet": log_res.get("sheet") if log_res else (folder_name or "ทั่วไป"),
             "row": log_res.get("row") if log_res else 0,
             "amount": amt,
             "date": sanitized_ext.get("date"),
-            "category": folder_name
+            "category": folder_name,
+            "is_offline_backup": is_offline_backup,
+            "message": "บันทึกในเครื่องเรียบร้อยแล้ว (สำรองข้อมูลปลอดภัย รอซิงค์ Cloud)" if is_offline_backup else "บันทึกสำเร็จ"
         }
 
     with ThreadPoolExecutor(max_workers=5) as executor:

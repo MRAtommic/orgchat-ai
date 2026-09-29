@@ -122,12 +122,13 @@ def sheet_append_quotation(self, spreadsheet_id, tab_name, row_data, org_id=None
             google_manager.set_context(username=username, org_id=org_id)
 
         sheets_svc = google_manager.sheets_service
-        if not sheets_svc or not spreadsheet_id:
+        target_spreadsheet_id = google_manager.spreadsheet_id or spreadsheet_id
+        if not sheets_svc or not target_spreadsheet_id:
             return {"ok": False, "error": "sheets not initialized"}
 
         # Ensure tab exists
         try:
-            spreadsheet = sheets_svc.spreadsheets().get(spreadsheetId=google_manager.spreadsheet_id).execute()
+            spreadsheet = sheets_svc.spreadsheets().get(spreadsheetId=target_spreadsheet_id).execute()
             sheet_exists = any(s['properties']['title'] == tab_name for s in spreadsheet.get('sheets', []))
         except Exception:
             sheet_exists = False
@@ -135,17 +136,17 @@ def sheet_append_quotation(self, spreadsheet_id, tab_name, row_data, org_id=None
         if not sheet_exists:
             requests = [{'addSheet': {'properties': {'title': tab_name}}}]
             sheets_svc.spreadsheets().batchUpdate(
-                spreadsheetId=google_manager.spreadsheet_id, body={'requests': requests}
+                spreadsheetId=target_spreadsheet_id, body={'requests': requests}
             ).execute()
             headers = [["วันที่ทำรายการ", "เลขที่ใบเสนอราคา", "ชื่อลูกค้า/บริษัท", "ข้อมูลติดต่อ",
                         "ยอดรวมก่อนลด", "ส่วนลด", "ยอดสุทธิ (VAT 7%)", "ผู้ออกเอกสาร", "ลิงก์ไฟล์ PDF"]]
             sheets_svc.spreadsheets().values().update(
-                spreadsheetId=google_manager.spreadsheet_id, range=f"'{tab_name}'!A1",
+                spreadsheetId=target_spreadsheet_id, range=f"'{tab_name}'!A1",
                 valueInputOption="USER_ENTERED", body={"values": headers}
             ).execute()
 
             # Style headers
-            spreadsheet = sheets_svc.spreadsheets().get(spreadsheetId=google_manager.spreadsheet_id).execute()
+            spreadsheet = sheets_svc.spreadsheets().get(spreadsheetId=target_spreadsheet_id).execute()
             sheet_id = next(
                 s['properties']['sheetId'] for s in spreadsheet.get('sheets', [])
                 if s['properties']['title'] == tab_name
@@ -166,12 +167,12 @@ def sheet_append_quotation(self, spreadsheet_id, tab_name, row_data, org_id=None
                 }
             }
             sheets_svc.spreadsheets().batchUpdate(
-                spreadsheetId=google_manager.spreadsheet_id, body={"requests": [format_req]}
+                spreadsheetId=target_spreadsheet_id, body={"requests": [format_req]}
             ).execute()
 
         # Append the row
         sheets_svc.spreadsheets().values().append(
-            spreadsheetId=google_manager.spreadsheet_id, range=f"'{tab_name}'!A1",
+            spreadsheetId=target_spreadsheet_id, range=f"'{tab_name}'!A1",
             valueInputOption="USER_ENTERED", body={"values": [row_data]}
         ).execute()
 

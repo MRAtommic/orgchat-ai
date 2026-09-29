@@ -140,8 +140,13 @@ class DynamicCursorWrapper:
     def __init__(self, cursor, is_postgres=False, connection_wrapper=None):
         self._cursor = cursor
         self._is_postgres = is_postgres
-        self._connection_wrapper = connection_wrapper
+        import weakref
+        self._connection_wrapper_ref = weakref.ref(connection_wrapper) if connection_wrapper else None
         self._lastrowid = None
+
+    @property
+    def _connection_wrapper(self):
+        return self._connection_wrapper_ref() if self._connection_wrapper_ref else None
 
     def translate_sql(self, sql):
         if not self._is_postgres or not sql:
@@ -423,7 +428,7 @@ def _get_conn(timeout: int = 30):
                 logger.warning(f"⚠️ Failed to get connection from Postgres pool: {e}. Falling back to SQLite...")
                 
     conn = sqlite3.connect(DB_PATH, timeout=timeout)
-    conn.execute("PRAGMA busy_timeout=30000")
+    conn.execute("PRAGMA busy_timeout=60000")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute("PRAGMA cache_size=-32000")
@@ -1327,14 +1332,50 @@ def init_db():
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    # Migration: add org_id to drive_logs if missing
+    # Migration: add org_id, sync_status, local_filepath to drive_logs if missing
     try:
         cursor.execute("ALTER TABLE drive_logs ADD COLUMN org_id INTEGER DEFAULT 1")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE drive_logs ADD COLUMN sync_status TEXT DEFAULT 'synced'")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE drive_logs ADD COLUMN local_filepath TEXT")
     except Exception:
         pass
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_drive_logs_created_at ON drive_logs(created_at)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_drive_logs_filename ON drive_logs(filename)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_drive_logs_org_id ON drive_logs(org_id)")
+
+    # --- Offline-First Resilient Upload Queue ---
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS offline_upload_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            org_id INTEGER DEFAULT 1,
+            username TEXT,
+            user_id TEXT,
+            original_filename TEXT NOT NULL,
+            local_filepath TEXT NOT NULL,
+            mimetype TEXT,
+            folder_id TEXT,
+            folder_name TEXT,
+            analysis_json TEXT,
+            extracted_data_json TEXT,
+            verification_status TEXT,
+            line_sender_name TEXT,
+            sync_status TEXT DEFAULT 'pending',
+            drive_link TEXT,
+            sheets_row INTEGER,
+            error_message TEXT,
+            retry_count INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            synced_at DATETIME
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_offline_queue_sync_status ON offline_upload_queue(sync_status)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_offline_queue_org_id ON offline_upload_queue(org_id)")
 
     # --- Per-User Google OAuth2 Token Storage (personal / no-org users) ---
     cursor.execute("""
@@ -2924,22 +2965,168 @@ def set_whitelist_status(org_id: int, enabled: bool):
     conn.close()
 
 
-def add_drive_log(filename, category=None, amount=None, doc_date=None, summary=None, file_link=None, user_id=None, org_id=1):
-    """Log a file upload/analysis event to the database."""
+def add_drive_log(filename, category=None, amount=None, doc_date=None, summary=None, file_link=None, user_id=None, org_id=1, sync_status="synced", local_filepath=None):
+    """Log a file upload/analysis event to the database with connection safety."""
     try:
-        conn = _get_conn()
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO drive_logs (filename, category, amount, doc_date, summary, file_link, user_id, org_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (filename, category, amount, doc_date, summary, file_link, user_id, org_id or 1))
-        log_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        return log_id
+        with _get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO drive_logs (filename, category, amount, doc_date, summary, file_link, user_id, org_id, sync_status, local_filepath)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (filename, category, amount, doc_date, summary, file_link, user_id, org_id or 1, sync_status, local_filepath))
+            log_id = cursor.lastrowid
+            return log_id
     except Exception as e:
         print(f"❌ Error adding drive log: {e}")
         return None
+
+def add_offline_upload(org_id=1, username=None, user_id=None, original_filename="", local_filepath="",
+                       mimetype=None, folder_id=None, folder_name=None, analysis=None,
+                       extracted_data=None, verification_status="-", line_sender_name=None):
+    """Register an offline or local receipt upload for subsequent cloud sync."""
+    try:
+        import json
+        analysis_json = json.dumps(analysis, ensure_ascii=False) if analysis else None
+        extracted_data_json = json.dumps(extracted_data, ensure_ascii=False) if extracted_data else None
+        with _get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO offline_upload_queue (
+                    org_id, username, user_id, original_filename, local_filepath,
+                    mimetype, folder_id, folder_name, analysis_json, extracted_data_json,
+                    verification_status, line_sender_name, sync_status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+            """, (
+                org_id or 1, username, user_id, original_filename, local_filepath,
+                mimetype, folder_id, folder_name, analysis_json, extracted_data_json,
+                verification_status, line_sender_name
+            ))
+            return cursor.lastrowid
+    except Exception as e:
+        print(f"❌ Error adding offline upload queue item: {e}")
+        return None
+
+def get_pending_offline_uploads(limit=20):
+    """Retrieve pending offline uploads that need syncing to Google Drive/Sheets."""
+    try:
+        import json
+        with _get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM offline_upload_queue
+                WHERE sync_status = 'pending' OR (sync_status = 'failed' AND retry_count < 10)
+                ORDER BY id ASC LIMIT ?
+            """, (limit,))
+            columns = [col[0] for col in cursor.description]
+            rows = cursor.fetchall()
+            items = []
+            for row in rows:
+                d = dict(zip(columns, row))
+                if d.get("analysis_json"):
+                    try: d["analysis"] = json.loads(d["analysis_json"])
+                    except: d["analysis"] = None
+                else:
+                    d["analysis"] = None
+                if d.get("extracted_data_json"):
+                    try: d["extracted_data"] = json.loads(d["extracted_data_json"])
+                    except: d["extracted_data"] = None
+                else:
+                    d["extracted_data"] = None
+                items.append(d)
+            return items
+    except Exception as e:
+        print(f"❌ Error retrieving pending offline uploads: {e}")
+        return []
+
+def update_offline_upload_status(upload_id: int, sync_status: str, drive_link: str = None, sheets_row: int = None, error_message: str = None):
+    """Update sync status of an item in the offline upload queue, and update drive_logs if synced."""
+    try:
+        with _get_conn() as conn:
+            cursor = conn.cursor()
+            if sync_status == 'synced':
+                cursor.execute("""
+                    UPDATE offline_upload_queue
+                    SET sync_status = ?, drive_link = COALESCE(?, drive_link),
+                        sheets_row = COALESCE(?, sheets_row), error_message = NULL,
+                        synced_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """, (sync_status, drive_link, sheets_row, upload_id))
+                if drive_link:
+                    cursor.execute("""
+                        SELECT local_filepath FROM offline_upload_queue WHERE id = ?
+                    """, (upload_id,))
+                    lfp_row = cursor.fetchone()
+                    if lfp_row and lfp_row[0]:
+                        cursor.execute("""
+                            UPDATE drive_logs
+                            SET file_link = ?, sync_status = 'synced'
+                            WHERE local_filepath = ?
+                        """, (drive_link, lfp_row[0]))
+            elif sync_status == 'failed':
+                cursor.execute("""
+                    UPDATE offline_upload_queue
+                    SET sync_status = ?, error_message = ?, retry_count = retry_count + 1
+                    WHERE id = ?
+                """, (sync_status, str(error_message)[:500] if error_message else None, upload_id))
+            else:
+                cursor.execute("""
+                    UPDATE offline_upload_queue
+                    SET sync_status = ?
+                    WHERE id = ?
+                """, (sync_status, upload_id))
+            return True
+    except Exception as e:
+        print(f"❌ Error updating offline upload status: {e}")
+        return False
+
+def get_offline_queue_stats(org_id=None):
+    """Get counts of pending, synced, and failed items in offline upload queue."""
+    try:
+        with _get_conn() as conn:
+            cursor = conn.cursor()
+            if org_id is not None:
+                cursor.execute("""
+                    SELECT sync_status, COUNT(*) FROM offline_upload_queue
+                    WHERE org_id = ? GROUP BY sync_status
+                """, (org_id,))
+            else:
+                cursor.execute("SELECT sync_status, COUNT(*) FROM offline_upload_queue GROUP BY sync_status")
+            rows = cursor.fetchall()
+            counts = {"pending": 0, "synced": 0, "failed": 0, "total": 0}
+            for status, cnt in rows:
+                if status in counts:
+                    counts[status] = cnt
+                counts["total"] += cnt
+            return counts
+    except Exception as e:
+        print(f"❌ Error getting offline queue stats: {e}")
+        return {"pending": 0, "synced": 0, "failed": 0, "total": 0}
+
+
+def optimize_and_checkpoint_db():
+    """Performs WAL checkpoint (TRUNCATE), PRAGMA optimize, and incremental vacuum to maintain SQLite health."""
+    try:
+        with _get_conn() as conn:
+            # Commit pending WAL frames back to main database file and truncate WAL to 0 bytes
+            res = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            res_row = res.fetchone() if res else None
+            # Analyze query planner stats
+            conn.execute("PRAGMA optimize")
+            # Free unused pages
+            try:
+                conn.execute("PRAGMA incremental_vacuum(500)")
+            except Exception:
+                pass
+            import logging
+            logger = logging.getLogger("database")
+            logger.info(f"🧹 [DB Maintenance] SQLite WAL Checkpoint (TRUNCATE) & Optimize completed. Status: {res_row}")
+            return {"ok": True, "wal_checkpoint": list(res_row) if res_row else None}
+    except Exception as e:
+        import logging
+        logger = logging.getLogger("database")
+        logger.warning(f"⚠️ [DB Maintenance] Optimization error: {e}")
+        return {"ok": False, "error": str(e)}
+
 
 def get_drive_logs(limit=50, offset=0, user_id=None, org_id=None):
     """Retrieve recent drive logs filtered by org."""
@@ -3273,20 +3460,24 @@ def mark_private_message_as_read(message_id):
 @db_transaction_retry()
 def save_message(role, text, sources=None, username="Admin", org_id=1):
     conn = _get_conn()
-    cursor = conn.cursor()
-    sources_json = json.dumps(sources) if sources else None
-    cursor.execute("INSERT INTO messages (role, text, sources, username, organization_id) VALUES (?, ?, ?, ?, ?)", (role, text, sources_json, username, org_id))
-    msg_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    return msg_id
+    try:
+        cursor = conn.cursor()
+        sources_json = json.dumps(sources) if sources else None
+        cursor.execute("INSERT INTO messages (role, text, sources, username, organization_id) VALUES (?, ?, ?, ?, ?)", (role, text, sources_json, username, org_id))
+        msg_id = cursor.lastrowid
+        conn.commit()
+        return msg_id
+    finally:
+        conn.close()
 
 def get_history(username="Admin", limit=50, org_id=1):
     conn = _get_conn()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, role, text, sources FROM messages WHERE username = ? AND organization_id = ? ORDER BY timestamp DESC LIMIT ?", (username, org_id, limit))
-    rows = cursor.fetchall()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, role, text, sources FROM messages WHERE username = ? AND organization_id = ? ORDER BY timestamp DESC LIMIT ?", (username, org_id, limit))
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
 
     history = []
     for r in rows:
@@ -3301,23 +3492,27 @@ def get_history(username="Admin", limit=50, org_id=1):
 
 def clear_history(username="Admin", org_id=1):
     conn = _get_conn()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM messages WHERE username = ? AND organization_id = ?", (username, org_id))
-    conn.commit()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM messages WHERE username = ? AND organization_id = ?", (username, org_id))
+        conn.commit()
+    finally:
+        conn.close()
 
 def delete_message(msg_id, username="Admin"):
     """Delete a specific message by its ID, verifying ownership."""
     conn = _get_conn()
-    cursor = conn.cursor()
-    if username == "Admin":
-        cursor.execute("DELETE FROM messages WHERE id = ?", (msg_id,))
-    else:
-        cursor.execute("DELETE FROM messages WHERE id = ? AND username = ?", (msg_id, username))
-    
-    deleted = cursor.rowcount > 0
-    conn.commit()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        if username == "Admin":
+            cursor.execute("DELETE FROM messages WHERE id = ?", (msg_id,))
+        else:
+            cursor.execute("DELETE FROM messages WHERE id = ? AND username = ?", (msg_id, username))
+        deleted = cursor.rowcount > 0
+        conn.commit()
+        return deleted
+    finally:
+        conn.close()
     return deleted
 
 # ─── Admin Chat Management ─────────────────────────────
@@ -4162,16 +4357,18 @@ def update_user_profile(username, display_name=None, avatar_url=None, background
 @db_transaction_retry()
 def save_dm(sender, recipient, text, attachments=None, reply_to_id=None, org_id=None):
     conn = _get_conn()
-    cursor = conn.cursor()
-    attach_json = json.dumps(attachments) if attachments else None
-    cursor.execute("""
-        INSERT INTO private_messages (sender, recipient, text, attachments, reply_to_id, organization_id) 
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (sender, recipient, text, attach_json, reply_to_id, org_id))
-    msg_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    return msg_id
+    try:
+        cursor = conn.cursor()
+        attach_json = json.dumps(attachments) if attachments else None
+        cursor.execute("""
+            INSERT INTO private_messages (sender, recipient, text, attachments, reply_to_id, organization_id) 
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (sender, recipient, text, attach_json, reply_to_id, org_id))
+        msg_id = cursor.lastrowid
+        conn.commit()
+        return msg_id
+    finally:
+        conn.close()
 
 def get_dm_history(user1, user2, limit=50, org_id=None):
     conn = _get_conn()
@@ -4412,16 +4609,18 @@ def update_group_profile(room_id, name=None, avatar_url=None):
 @db_transaction_retry()
 def add_room_message(room_id, username, text, attachments=None, reply_to_id=None):
     conn = _get_conn()
-    cursor = conn.cursor()
-    attach_json = json.dumps(attachments) if attachments else None
-    cursor.execute("""
-        INSERT INTO room_messages (room_id, username, text, attachments, reply_to_id) 
-        VALUES (?, ?, ?, ?, ?)
-    """, (room_id, username, text, attach_json, reply_to_id))
-    msg_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    return msg_id
+    try:
+        cursor = conn.cursor()
+        attach_json = json.dumps(attachments) if attachments else None
+        cursor.execute("""
+            INSERT INTO room_messages (room_id, username, text, attachments, reply_to_id) 
+            VALUES (?, ?, ?, ?, ?)
+        """, (room_id, username, text, attach_json, reply_to_id))
+        msg_id = cursor.lastrowid
+        conn.commit()
+        return msg_id
+    finally:
+        conn.close()
 
 def toggle_room_message_pin(msg_id):
     """Toggles the pinned status of a room message."""

@@ -24,6 +24,17 @@ from dotenv import load_dotenv
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+try:
+    from zoneinfo import ZoneInfo
+    BANGKOK_TZ = ZoneInfo("Asia/Bangkok")
+except Exception:
+    from datetime import timezone, timedelta
+    BANGKOK_TZ = timezone(timedelta(hours=7))
+
+def get_bangkok_now():
+    """Returns the current datetime in Bangkok (UTC+7) timezone."""
+    return datetime.now(BANGKOK_TZ)
+
 def parse_to_yyyymmdd(date_str):
     """Parses date string into YYYYMMDD format, handling Thai Buddhist Era and various formats."""
     if not date_str or str(date_str).strip() in ['-', '']:
@@ -737,8 +748,8 @@ class GoogleWorkspaceManager:
                         {"source": "ai_keys:time"},
                         {"source": "sender_name_fallback"},
                         {"source": "receiver_name_fallback"},
-                        {"source": "ai_keys:net_amount", "cleaner": "float"},
-                        {"source": "ai_keys:gross_amount", "cleaner": "float"},
+                        {"source": "ai_keys:net_amount,total_amount,amount,gross_amount,transfer_amount", "cleaner": "float"},
+                        {"source": "ai_keys:gross_amount,net_amount,total_amount,amount", "cleaner": "float"},
                         {"source": "ai_keys:wht_amount", "cleaner": "float"},
                         {"source": "ai_keys:ref_number", "cleaner": "literal"},
                         {"source": "ai_keys:sender_bank,bank_from"},
@@ -2661,11 +2672,11 @@ class GoogleWorkspaceManager:
 
                 val = "-"
                 if src == "current_datetime":
-                    val = datetime.now().strftime("%d/%m/%Y %H:%M")
+                    val = get_bangkok_now().strftime("%d/%m/%Y %H:%M")
                 elif src == "current_date":
-                    val = datetime.now().strftime("%d/%m/%Y")
+                    val = get_bangkok_now().strftime("%d/%m/%Y")
                 elif src == "current_time":
-                    val = datetime.now().strftime("%H:%M")
+                    val = get_bangkok_now().strftime("%H:%M")
                 elif src == "ai_model":
                     val = context_data.get('ai_model', '-')
                 elif src == "file_link":
@@ -3210,6 +3221,17 @@ class GoogleWorkspaceManager:
                 # Apply data cleaners
                 if cleaner == "float":
                     val = clean_val(val)
+                    if (val == 0.0 or val == 0) and target_sheet_name in ["สลิปโอนเงิน", "Petty Cash", "บันทึกค่าใช้จ่าย"]:
+                        # Fallback for amount: if net_amount was 0 or missing, check summary text for amount
+                        summary_str = context_data.get('summary', '') if context_data else ''
+                        if summary_str and summary_str != '-':
+                            m_amt = re.search(r'(?:จำนวน|ยอดเงิน|ยอดโอน|ยอดสุทธิ|ยอดรวม|เป็นเงิน)?\s*([\d,]+(?:\.\d{1,2})?)\s*(?:บาท|THB)', summary_str)
+                            if m_amt:
+                                try:
+                                    fallback_amt = float(m_amt.group(1).replace(',', '').strip())
+                                    if fallback_amt > 0:
+                                        val = fallback_amt
+                                except: pass
                 elif cleaner == "id":
                     val = clean_id(val)
                 elif cleaner == "branch":

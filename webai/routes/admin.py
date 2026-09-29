@@ -58,6 +58,51 @@ from routes.shared import (
 
 logger = logging.getLogger("OrgChatAI.Admin")
 
+# ─── DASHBOARD CACHE (Thread-Safe, TTL=60s) ─────────────────────────────────────
+_DASHBOARD_CACHE = {}  # key: org_id -> {"data": {...}, "ts": float}
+_DASHBOARD_CACHE_LOCK = threading.Lock()
+_DASHBOARD_CACHE_TTL = 60  # seconds
+
+def _invalidate_dashboard_cache(org_id):
+    """Clear cached dashboard data for an org after data mutations."""
+    with _DASHBOARD_CACHE_LOCK:
+        _DASHBOARD_CACHE.pop(org_id, None)
+
+def _get_dashboard_cache(org_id):
+    """Return cached data if still valid, else None."""
+    with _DASHBOARD_CACHE_LOCK:
+        entry = _DASHBOARD_CACHE.get(org_id)
+        if entry and (time.time() - entry["ts"]) < _DASHBOARD_CACHE_TTL:
+            return entry["data"]
+    return None
+
+def _set_dashboard_cache(org_id, data):
+    """Store computed dashboard data in cache."""
+    with _DASHBOARD_CACHE_LOCK:
+        _DASHBOARD_CACHE[org_id] = {"data": data, "ts": time.time()}
+
+# ─── THAI TAX ID (Mod 11 Checksum) VALIDATION ────────────────────────────────────
+def validate_thai_tax_id(tax_id: str) -> dict:
+    """
+    Validates a Thai Tax Identification Number using the official Mod 11 checksum.
+    Returns {"valid": bool, "type": str, "message": str}.
+    """
+    if not tax_id:
+        return {"valid": False, "type": "unknown", "message": "ไม่มีเลขผู้เสียภาษี"}
+    clean = re.sub(r'[^0-9]', '', str(tax_id).strip())
+    if len(clean) != 13:
+        return {"valid": False, "type": "unknown", "message": f"ต้องเป็นตัวเลข 13 หลัก (พบ {len(clean)} หลัก)"}
+    # Mod 11 checksum: multiply digits 1-12 by weights 13,12,...,2 then sum, check digit = (11 - sum%11) % 10
+    digits = [int(c) for c in clean]
+    checksum = sum(d * (13 - i) for i, d in enumerate(digits[:12]))
+    expected_check = (11 - (checksum % 11)) % 10
+    is_valid = (digits[12] == expected_check)
+    id_type = "นิติบุคคล" if clean.startswith("0") else "บุคคลธรรมดา"
+    if is_valid:
+        return {"valid": True, "type": id_type, "message": f"เลขผู้เสียภาษีถูกต้อง ({id_type})"}
+    else:
+        return {"valid": False, "type": id_type, "message": f"เลขผู้เสียภาษีไม่ผ่าน Checksum (หลักตรวจสอบควรเป็น {expected_check})"}
+
 admin_bp = Blueprint('admin', __name__)
 
 from routes.chat import get_line_config, save_line_config, broadcast_line_announcement, send_line_push_notification, push_to_org_line_groups
@@ -241,6 +286,57 @@ def clock_attendance_web():
     today_records = database.get_today_attendance(user, org_id=org_id)
     check_in_rec = next((r for r in today_records if r.get("check_type") == "check_in"), None)
     check_out_rec = next((r for r in reversed(today_records) if r.get("check_type") == "check_out"), None)
+
+    # --- Debounce & Idempotency Guard (Prevent rapid accidental double-clicks from toggling check-in to check-out) ---
+    if check_in_rec:
+        try:
+            ci_time_str = check_in_rec.get("check_time") or ""
+            ci_dt = None
+            if check_in_rec.get("created_at"):
+                ci_dt = datetime.strptime(str(check_in_rec["created_at"])[:19], "%Y-%m-%d %H:%M:%S")
+            elif ci_time_str:
+                ci_parts = [int(p) for p in ci_time_str.split(":")[:3]]
+                ci_dt = now_dt.replace(hour=ci_parts[0], minute=ci_parts[1], second=ci_parts[2] if len(ci_parts) > 2 else 0)
+            
+            if ci_dt and abs((now_dt - ci_dt).total_seconds()) < 8:
+                return jsonify({
+                    "ok": True,
+                    "message": f"บันทึกเวลาเข้างานเรียบร้อยแล้วค่ะ ({check_in_rec.get('check_time', time_str)} น.)",
+                    "check_type": "check_in",
+                    "status": check_in_rec.get("status", "on_time"),
+                    "status_text": "เข้างานแล้ว",
+                    "distance_meters": check_in_rec.get("distance_meters", distance),
+                    "is_outside": is_outside,
+                    "record": check_in_rec,
+                    "debounced": True
+                })
+        except Exception as _ci_err:
+            logger.warning(f"Check-in debounce check error: {_ci_err}")
+
+    if check_out_rec:
+        try:
+            co_time_str = check_out_rec.get("check_time") or ""
+            co_dt = None
+            if check_out_rec.get("created_at"):
+                co_dt = datetime.strptime(str(check_out_rec["created_at"])[:19], "%Y-%m-%d %H:%M:%S")
+            elif co_time_str:
+                co_parts = [int(p) for p in co_time_str.split(":")[:3]]
+                co_dt = now_dt.replace(hour=co_parts[0], minute=co_parts[1], second=co_parts[2] if len(co_parts) > 2 else 0)
+            
+            if co_dt and abs((now_dt - co_dt).total_seconds()) < 5:
+                return jsonify({
+                    "ok": True,
+                    "message": f"บันทึกเวลาเลิกงานเรียบร้อยแล้วค่ะ ({check_out_rec.get('check_time', time_str)} น.)",
+                    "check_type": "check_out",
+                    "status": check_out_rec.get("status", "on_time"),
+                    "status_text": "เลิกงานเรียบร้อย",
+                    "distance_meters": check_out_rec.get("distance_meters", distance),
+                    "is_outside": is_outside,
+                    "record": check_out_rec,
+                    "debounced": True
+                })
+        except Exception as _co_err:
+            logger.warning(f"Check-out debounce check error: {_co_err}")
 
     if not check_in_rec:
         # Check-in
@@ -1267,7 +1363,7 @@ def tax_expense_ai_insight():
 @login_required
 @billing.require_feature("financial_dashboard")
 def tax_expense_data_api():
-    """Aggregates tax and expense data from Google Sheets for the dashboard."""
+    """Aggregates tax and expense data from Google Sheets for the dashboard. Uses server-side cache (TTL 60s)."""
     try:
         from google_drive_service import google_manager
         username = session.get("user")
@@ -1278,12 +1374,21 @@ def tax_expense_data_api():
         org_id = get_current_org_id()
         google_manager.set_context(username, org_id)
 
-        # Keep local SQLite logs fully aligned with current sheet content to avoid dashboard drift
-        try:
-            from google_drive_service import sync_drive_logs_from_sheets
-            sync_drive_logs_from_sheets(org_id, username)
-        except Exception as sync_err:
-            logger.warning(f"Failed to sync drive logs from sheets: {sync_err}")
+        force_refresh = request.args.get("refresh", "0") == "1"
+
+        # Only sync drive logs on explicit refresh to avoid blocking every page load
+        if force_refresh:
+            _invalidate_dashboard_cache(org_id)
+            try:
+                from google_drive_service import sync_drive_logs_from_sheets
+                sync_drive_logs_from_sheets(org_id, username)
+            except Exception as sync_err:
+                logger.warning(f"Failed to sync drive logs from sheets: {sync_err}")
+
+        # Return cached data if available and not a forced refresh
+        cached = _get_dashboard_cache(org_id) if not force_refresh else None
+        if cached:
+            return jsonify(cached)
 
         if not google_manager.sheets_service:
             return jsonify({"ok": False, "error": "ยังไม่ได้เชื่อมต่อ Google Drive/Sheets — กรุณาให้ Admin ขององค์กรเชื่อมต่อ Google ในหน้า 'จัดการองค์กร'"}), 200
@@ -1330,6 +1435,7 @@ def tax_expense_data_api():
             vals = res_tax.get('values', [])
             if vals and len(vals) > 1:
                 header = vals[0]
+                idx_upload_time = next((i for i, h in enumerate(header) if "เวลาที่บันทึก" in h or "เวลาบันทึก" in h or "timestamp" in h.lower()), 0)
                 idx_date = next((i for i, h in enumerate(header) if "วันที่" in h), 2)
                 idx_amt = next((i for i, h in enumerate(header) if "สุทธิ" in h or "ยอดเงิน" in h), 9)
                 idx_cat = next((i for i, h in enumerate(header) if "หมวดหมู่" in h), 1)
@@ -1367,6 +1473,7 @@ def tax_expense_data_api():
                     ai_summary = str(row[idx_ai_summary]).strip() if idx_ai_summary < len(row) else ""
                     vendor = str(row[idx_rec]).strip() if idx_rec < len(row) else "-"
                     date_val = str(row[idx_date]).strip() if idx_date < len(row) else "-"
+                    upload_val = str(row[idx_upload_time]).strip() if idx_upload_time < len(row) else ""
                     link_val = str(row[idx_link]).strip() if idx_link < len(row) else ""
                     
                     is_unclear = False
@@ -1385,6 +1492,7 @@ def tax_expense_data_api():
                     if is_unclear:
                         unclear_scans.append({
                             "sheet": "ใบเสร็จ/ใบกำกับภาษี", "row": r_idx, "date": date_val,
+                            "upload_time": upload_val,
                             "vendor": vendor, "amount": amt, "issues": ", ".join(issues), "link": link_val
                         })
 
@@ -1461,7 +1569,7 @@ def tax_expense_data_api():
 
         biz_profile = database.get_org_profile(org_id) if org_id else None
 
-        return jsonify({
+        result = {
             "ok": True,
             "total_expense": total_expense,
             "total_vat": total_vat,
@@ -1474,7 +1582,10 @@ def tax_expense_data_api():
             "spreadsheet_url": spreadsheet_url,
             "drive_folder_url": drive_folder_url,
             "biz_profile": biz_profile
-        })
+        }
+        # Store in cache for subsequent fast loads
+        _set_dashboard_cache(org_id, result)
+        return jsonify(result)
 
     except Exception as e:
         import traceback
@@ -2718,6 +2829,21 @@ def api_leave_request():
     if s_dt > e_dt:
         return jsonify({"ok": False, "error": "วันที่เริ่มต้นต้องไม่เกินวันที่สิ้นสุดค่ะ"}), 400
 
+    # --- Debounce & Idempotency Guard (10-second duplicate submission prevention) ---
+    recent_leaves = database.get_user_leaves(user)
+    if recent_leaves:
+        latest = recent_leaves[0]
+        if latest.get("type") == l_type and latest.get("start_date") == s_date and latest.get("end_date") == e_date:
+            try:
+                from datetime import datetime as _dt
+                ts_str = latest.get("timestamp") or ""
+                if ts_str:
+                    l_dt = _dt.strptime(ts_str[:19].replace("T", " "), "%Y-%m-%d %H:%M:%S")
+                    if abs((_dt.now() - l_dt).total_seconds()) < 10:
+                        return jsonify({"ok": True, "leave_id": latest.get("id"), "message": "ส่งคำขอลาเรียบร้อยแล้วค่ะ", "debounced": True})
+            except Exception:
+                pass
+
     # ตรวจ overlap กับใบลาที่มีอยู่
     overlap = database.check_leave_overlap(user, s_date, e_date)
     if overlap:
@@ -3705,7 +3831,7 @@ def _superadmin_validate_table_and_cols(table_name, columns=None):
     """
     import sqlite3
     # ใช้ DB_PATH จาก database module
-    with sqlite3.connect(database.DB_PATH) as conn:
+    with database._get_conn() as conn:
         cursor = conn.cursor()
         # 1. ตรวจสอบชื่อตาราง (Whitelist validation via sqlite_master)
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
@@ -3724,21 +3850,19 @@ def _superadmin_validate_table_and_cols(table_name, columns=None):
 @admin_bp.route("/api/superadmin/db/tables")
 @superadmin_required
 def superadmin_db_tables():
-    import sqlite3
     try:
-        conn = sqlite3.connect(database.DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        tables = [r[0] for r in cursor.fetchall() if not r[0].startswith("sqlite_")]
-        
-        table_info = []
-        for t in tables:
-            cursor.execute(f"SELECT COUNT(*) FROM `{t}`")
-            count = cursor.fetchone()[0]
-            table_info.append({"name": t, "count": count})
+        with database._get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            tables = [r[0] for r in cursor.fetchall() if not r[0].startswith("sqlite_")]
             
-        conn.close()
-        return jsonify({"ok": True, "tables": table_info})
+            table_info = []
+            for t in tables:
+                cursor.execute(f"SELECT COUNT(*) FROM `{t}`")
+                count = cursor.fetchone()[0]
+                table_info.append({"name": t, "count": count})
+                
+            return jsonify({"ok": True, "tables": table_info})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
@@ -3746,7 +3870,6 @@ def superadmin_db_tables():
 @admin_bp.route("/api/superadmin/db/table/<table_name>")
 @superadmin_required
 def superadmin_db_table_data(table_name):
-    import sqlite3
     limit = int(request.args.get("limit", 50))
     offset = int(request.args.get("offset", 0))
     q = request.args.get("q", "").strip()
@@ -3755,37 +3878,38 @@ def superadmin_db_table_data(table_name):
         # Validate table name first
         _superadmin_validate_table_and_cols(table_name)
         
-        conn = sqlite3.connect(database.DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        # Get schema columns
-        cursor.execute(f"PRAGMA table_info(`{table_name}`)")
-        cols = [{"name": r["name"], "type": r["type"], "pk": r["pk"]} for r in cursor.fetchall()]
-        col_names = [c["name"] for c in cols]
-        
-        # Search query if specified
-        where_clause = ""
-        params = []
-        if q and col_names:
-            where_conditions = []
-            for col in col_names:
-                where_conditions.append(f"`{col}` LIKE ?")
-                params.append(f"%{q}%")
-            where_clause = " WHERE " + " OR ".join(where_conditions)
+        with database._get_conn() as conn:
+            cursor = conn.cursor()
             
-        # Count total rows
-        count_query = f"SELECT COUNT(*) FROM `{table_name}`" + where_clause
-        cursor.execute(count_query, params)
-        total = cursor.fetchone()[0]
-        
-        # Get rows
-        select_query = f"SELECT * FROM `{table_name}`" + where_clause + " LIMIT ? OFFSET ?"
-        cursor.execute(select_query, params + [limit, offset])
-        rows = [dict(r) for r in cursor.fetchall()]
-        
-        conn.close()
-        return jsonify({"ok": True, "columns": cols, "rows": rows, "total": total})
+            # Get schema columns
+            cursor.execute(f"PRAGMA table_info(`{table_name}`)")
+            cols_raw = cursor.fetchall()
+            cols = [{"name": r[1], "type": r[2], "pk": r[5]} for r in cols_raw]
+            col_names = [c["name"] for c in cols]
+            
+            # Search query if specified
+            where_clause = ""
+            params = []
+            if q and col_names:
+                where_conditions = []
+                for col in col_names:
+                    where_conditions.append(f"`{col}` LIKE ?")
+                    params.append(f"%{q}%")
+                where_clause = " WHERE " + " OR ".join(where_conditions)
+                
+            # Count total rows
+            count_query = f"SELECT COUNT(*) FROM `{table_name}`" + where_clause
+            cursor.execute(count_query, params)
+            total = cursor.fetchone()[0]
+            
+            # Get rows
+            select_query = f"SELECT * FROM `{table_name}`" + where_clause + " LIMIT ? OFFSET ?"
+            cursor.execute(select_query, params + [limit, offset])
+            col_headers = [desc[0] for desc in cursor.description]
+            raw_rows = cursor.fetchall()
+            rows = [dict(zip(col_headers, r)) for r in raw_rows]
+            
+            return jsonify({"ok": True, "columns": cols, "rows": rows, "total": total})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
@@ -3793,7 +3917,6 @@ def superadmin_db_table_data(table_name):
 @admin_bp.route("/api/superadmin/db/table/<table_name>/row", methods=["POST"])
 @superadmin_required
 def superadmin_db_table_insert(table_name):
-    import sqlite3
     data = request.get_json() or {}
     if not data:
         return jsonify({"ok": False, "error": "ไม่มีข้อมูลส่งมา"}), 400
@@ -3802,16 +3925,13 @@ def superadmin_db_table_insert(table_name):
         # Validate table and columns
         _superadmin_validate_table_and_cols(table_name, columns=data.keys())
         
-        conn = sqlite3.connect(database.DB_PATH)
-        cursor = conn.cursor()
-        
         cols = list(data.keys())
         placeholders = [f":" + c for c in cols]
         
         query = f"INSERT INTO `{table_name}` (" + ", ".join([f"`{c}`" for c in cols]) + ") VALUES (" + ", ".join(placeholders) + ")"
-        cursor.execute(query, data)
-        conn.commit()
-        conn.close()
+        with database._get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, data)
         database.log_event(f"[SuperAdmin] Inserted row into {table_name}", user=session.get("user"), org_id=get_current_org_id())
         return jsonify({"ok": True})
     except Exception as e:
@@ -3821,7 +3941,6 @@ def superadmin_db_table_insert(table_name):
 @admin_bp.route("/api/superadmin/db/table/<table_name>/row/update", methods=["POST"])
 @superadmin_required
 def superadmin_db_table_update(table_name):
-    import sqlite3
     data = request.get_json() or {}
     pk_cols = data.get("_pk_cols", {})  # e.g. {"id": 5} or {"username": "mex"}
     fields = data.get("_fields", {})    # New column values
@@ -3833,9 +3952,6 @@ def superadmin_db_table_update(table_name):
         # Validate table and columns (both PK and data fields)
         all_cols = list(pk_cols.keys()) + list(fields.keys())
         _superadmin_validate_table_and_cols(table_name, columns=all_cols)
-        
-        conn = sqlite3.connect(database.DB_PATH)
-        cursor = conn.cursor()
         
         # Build UPDATE query
         set_parts = []
@@ -3850,9 +3966,9 @@ def superadmin_db_table_update(table_name):
             params.append(val)
             
         query = f"UPDATE `{table_name}` SET " + ", ".join(set_parts) + " WHERE " + " AND ".join(where_parts)
-        cursor.execute(query, params)
-        conn.commit()
-        conn.close()
+        with database._get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
         database.log_event(f"[SuperAdmin] Updated row in {table_name} where {pk_cols}", user=session.get("user"), org_id=get_current_org_id())
         return jsonify({"ok": True})
     except Exception as e:
@@ -3862,7 +3978,6 @@ def superadmin_db_table_update(table_name):
 @admin_bp.route("/api/superadmin/db/table/<table_name>/row/delete", methods=["POST"])
 @superadmin_required
 def superadmin_db_table_delete(table_name):
-    import sqlite3
     pk_cols = request.get_json() or {} # e.g. {"id": 5}
     if not pk_cols:
         return jsonify({"ok": False, "error": "Primary key columns are required for deletion"}), 400
@@ -3871,9 +3986,6 @@ def superadmin_db_table_delete(table_name):
         # Validate table and PK columns
         _superadmin_validate_table_and_cols(table_name, columns=pk_cols.keys())
         
-        conn = sqlite3.connect(database.DB_PATH)
-        cursor = conn.cursor()
-        
         where_parts = []
         params = []
         for col, val in pk_cols.items():
@@ -3881,9 +3993,9 @@ def superadmin_db_table_delete(table_name):
             params.append(val)
             
         query = f"DELETE FROM `{table_name}` WHERE " + " AND ".join(where_parts)
-        cursor.execute(query, params)
-        conn.commit()
-        conn.close()
+        with database._get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
         database.log_event(f"[SuperAdmin] Deleted row from {table_name} where {pk_cols}", user=session.get("user"), org_id=get_current_org_id())
         return jsonify({"ok": True})
     except Exception as e:
@@ -3893,48 +4005,38 @@ def superadmin_db_table_delete(table_name):
 @admin_bp.route("/api/superadmin/db/query", methods=["POST"])
 @superadmin_required
 def superadmin_db_query():
-    import sqlite3
     data = request.get_json() or {}
     sql = (data.get("sql") or "").strip()
     if not sql:
         return jsonify({"ok": False, "error": "โปรดกรอก SQL query ที่ต้องการสั่งงาน"}), 400
         
     try:
-        conn = sqlite3.connect(database.DB_PATH)
-        # Safe limit for superadmin SELECT queries so they don't crash memory
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        cursor.execute(sql)
-        
-        # Check if query returns rows (like SELECT or PRAGMA)
-        is_select = cursor.description is not None
-        
-        if is_select:
-            cols = [desc[0] for desc in cursor.description]
-            # Fetch up to 500 records max for safety
-            rows = cursor.fetchmany(500)
-            rows_dict = [dict(r) for r in rows]
-            conn.close()
-            database.log_event(f"[SuperAdmin] Executed SQL SELECT: {sql[:100]}...", user=session.get("user"), org_id=get_current_org_id())
-            return jsonify({
-                "ok": True, 
-                "is_select": True, 
-                "columns": cols, 
-                "rows": rows_dict, 
-                "total": len(rows_dict),
-                "truncated": len(rows_dict) == 500
-            })
-        else:
-            conn.commit()
-            affected = cursor.rowcount
-            conn.close()
-            database.log_event(f"[SuperAdmin] Executed SQL WRITE: {sql[:100]}...", user=session.get("user"), org_id=get_current_org_id())
-            return jsonify({
-                "ok": True, 
-                "is_select": False, 
-                "affected_rows": affected
-            })
+        with database._get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute(sql)
+            is_select = cursor.description is not None
+            
+            if is_select:
+                cols = [desc[0] for desc in cursor.description]
+                rows_raw = cursor.fetchmany(500)
+                rows_dict = [dict(zip(cols, r)) for r in rows_raw]
+                database.log_event(f"[SuperAdmin] Executed SQL SELECT: {sql[:100]}...", user=session.get("user"), org_id=get_current_org_id())
+                return jsonify({
+                    "ok": True, 
+                    "is_select": True, 
+                    "columns": cols, 
+                    "rows": rows_dict, 
+                    "total": len(rows_dict),
+                    "truncated": len(rows_dict) == 500
+                })
+            else:
+                affected = cursor.rowcount
+                database.log_event(f"[SuperAdmin] Executed SQL WRITE: {sql[:100]}...", user=session.get("user"), org_id=get_current_org_id())
+                return jsonify({
+                    "ok": True, 
+                    "is_select": False, 
+                    "affected_rows": affected
+                })
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 400
 
@@ -4353,12 +4455,12 @@ def _backup_sqlite():
     os.makedirs(backup_dir, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     dest = os.path.join(backup_dir, f"chat_history_{ts}.db")
+    src = None
+    dst = None
     try:
-        src = sqlite3.connect(db_path, timeout=10)
+        src = sqlite3.connect(db_path, timeout=60)
         dst = sqlite3.connect(dest)
         src.backup(dst)   # atomic hot backup — safe under concurrent writes
-        src.close()
-        dst.close()
         logger.info(f"[Backup] SQLite backed up → {dest}")
         # Keep only last 7 backups
         old = sorted(_glob.glob(os.path.join(backup_dir, "chat_history_*.db")))
@@ -4367,6 +4469,13 @@ def _backup_sqlite():
             logger.info(f"[Backup] Removed old backup: {f}")
     except Exception as _e:
         logger.error(f"[Backup] Failed: {_e}")
+    finally:
+        if src:
+            try: src.close()
+            except Exception: pass
+        if dst:
+            try: dst.close()
+            except Exception: pass
 
 
 @admin_bp.route("/api/admin/db/backup", methods=["POST"])
@@ -4470,6 +4579,54 @@ def api_admin_remove_whitelist(email):
     return jsonify({"ok": True})
 
 
+def _parse_upload_datetime(dt_str):
+    if not dt_str or str(dt_str).strip() in ('-', ''):
+        return '', '', ''
+    s = str(dt_str).strip()
+    import re
+    # 1. Match dd/mm/yyyy hh:mm:ss or dd/mm/yyyy hh:mm or dd/mm/yy
+    m1 = re.match(r'^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})(?:[T\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?', s)
+    if m1:
+        d, m, y, hr, mn = m1.group(1), m1.group(2), m1.group(3), m1.group(4) or '00', m1.group(5) or '00'
+        sec = m1.group(6) or '00'
+        y_int = int(y)
+        if y_int < 100:
+            if y_int >= 50:
+                y_int += 2500 - 543
+            else:
+                y_int += 2000
+        elif y_int > 2400:
+            y_int -= 543
+        sort_key = f"{y_int:04d}-{int(m):02d}-{int(d):02d} {int(hr):02d}:{int(mn):02d}:{int(sec):02d}"
+        clean_date = f"{int(d):02d}/{int(m):02d}/{y_int:04d}"
+        clean_time = f"{int(hr):02d}:{int(mn):02d}:{int(sec):02d}" if m1.group(6) else (f"{int(hr):02d}:{int(mn):02d}" if m1.group(4) else "")
+        return clean_date, clean_time, sort_key
+
+    # 2. Match yyyy-mm-dd hh:mm:ss or yyyy-mm-ddThh:mm:ss
+    m2 = re.match(r'^(\d{4})[/-](\d{1,2})[/-](\d{1,2})(?:[T\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?', s)
+    if m2:
+        y, m, d = m2.group(1), m2.group(2), m2.group(3)
+        hr = m2.group(4) or '00'
+        mn = m2.group(5) or '00'
+        sec = m2.group(6) or '00'
+        y_int = int(y)
+        if y_int > 2400: y_int -= 543
+        sort_key = f"{y_int:04d}-{int(m):02d}-{int(d):02d} {int(hr):02d}:{int(mn):02d}:{int(sec):02d}"
+        clean_date = f"{int(d):02d}/{int(m):02d}/{y_int:04d}"
+        clean_time = f"{int(hr):02d}:{int(mn):02d}:{int(sec):02d}" if m2.group(6) else (f"{int(hr):02d}:{int(mn):02d}" if m2.group(4) else "")
+        return clean_date, clean_time, sort_key
+
+    # 3. Match time only (e.g. 18:18:24 or 18:18 or 18:18 น.)
+    m3 = re.match(r'^(\d{1,2})[:.](\d{2})(?:[:.](\d{2}))?', s)
+    if m3:
+        hr, mn = m3.group(1), m3.group(2)
+        sec = m3.group(3) or '00'
+        clean_time = f"{int(hr):02d}:{int(mn):02d}"
+        return '', clean_time, f"0000-00-00 {int(hr):02d}:{int(mn):02d}:{int(sec):02d}"
+
+    return s, '', s
+
+
 @admin_bp.route("/api/dashboard/all-expenses", methods=["GET"])
 @login_required
 @billing.require_feature("financial_dashboard")
@@ -4493,6 +4650,42 @@ def api_dashboard_all_expenses():
 
         all_expenses = []
         target_sheets = ["ใบเสร็จ/ใบกำกับภาษี", "สลิปโอนเงิน", "ใบหัก ณ ที่จ่าย", "บันทึกค่าใช้จ่าย", "peak"]
+
+        drive_logs_cache = {}
+        drive_links_cache = {}
+        drive_date_amt_cache = {}
+        try:
+            conn = database._get_conn()
+            cur = conn.cursor()
+            cur.execute("SELECT filename, file_link, created_at, org_id, amount, doc_date, summary FROM drive_logs ORDER BY id ASC")
+            for fn, flink, cat, d_org, damt, ddate, dsum in cur.fetchall():
+                cat_str = str(cat).strip() if cat else ''
+                if not cat_str: continue
+                if fn:
+                    fn_str = str(fn).strip()
+                    drive_logs_cache[fn_str] = cat_str
+                    drive_logs_cache[fn_str.lower()] = cat_str
+                    base_fn = os.path.splitext(fn_str)[0]
+                    drive_logs_cache[base_fn] = cat_str
+                    drive_logs_cache[base_fn.lower()] = cat_str
+                if flink:
+                    flink_str = str(flink).strip()
+                    drive_links_cache[flink_str] = cat_str
+                    import re
+                    fid_m = re.search(r'/d/([a-zA-Z0-9_-]+)', flink_str) or re.search(r'id=([a-zA-Z0-9_-]+)', flink_str)
+                    if fid_m:
+                        drive_links_cache[fid_m.group(1)] = cat_str
+                if ddate and damt is not None:
+                    try:
+                        damt_round = round(float(damt), 2)
+                        drive_date_amt_cache[(str(ddate).strip(), damt_round)] = cat_str
+                        clean_d, _, _ = _parse_upload_datetime(str(ddate).strip())
+                        if clean_d:
+                            drive_date_amt_cache[(clean_d, damt_round)] = cat_str
+                    except Exception:
+                        pass
+        except Exception as ex:
+            logger.debug(f"Drive logs cache load skipped: {ex}")
 
         def clean_float_val(v):
             if not v or str(v).strip() == '-': return 0.0
@@ -4544,6 +4737,70 @@ def api_dashboard_all_expenses():
                     batch_id = get_col_val(row, ["รหัสกลุ่ม (batch id)", "batch_id", "รหัสกลุ่ม"], default='-')
                     verification_status = get_col_val(row, ["การตรวจสอบ (wht/qr)", "verification_status", "การตรวจสอบ"], default='-')
 
+                    # Upload and document timestamp extraction
+                    upload_time_raw = get_col_val(row, [
+                        "เวลาที่บันทึก", "เวลาบันทึก", "วันที่บันทึก", "วันที่อัปโหลด", "เวลาอัปโหลด", 
+                        "timestamp", "created_at", "upload_time", "uploaded_at", 
+                        "วันเวลาที่บันทึก", "วันเวลาอัปโหลด", "เวลาที่อัพโหลด", "วันเวลาที่อัพโหลด", "เวลาอัพโหลด"
+                    ], default='')
+                    if not upload_time_raw and len(row) > 0:
+                        first_col = str(row[0]).strip()
+                        if ('/' in first_col or '-' in first_col or ':' in first_col) and any(c.isdigit() for c in first_col):
+                            upload_time_raw = first_col
+                    if not upload_time_raw and original_file:
+                        of_str = str(original_file).strip()
+                        upload_time_raw = (
+                            drive_logs_cache.get(of_str) or
+                            drive_logs_cache.get(of_str.lower()) or
+                            drive_logs_cache.get(os.path.splitext(of_str)[0]) or
+                            drive_logs_cache.get(os.path.splitext(of_str)[0].lower()) or ''
+                        )
+                    if not upload_time_raw and link_val:
+                        link_clean = str(link_val).strip()
+                        upload_time_raw = drive_links_cache.get(link_clean, '')
+                        if not upload_time_raw:
+                            import re
+                            fid_m = re.search(r'/d/([a-zA-Z0-9_-]+)', link_clean) or re.search(r'id=([a-zA-Z0-9_-]+)', link_clean)
+                            if fid_m:
+                                upload_time_raw = drive_links_cache.get(fid_m.group(1), '')
+                    if not upload_time_raw and date_val and date_val != '-':
+                        clean_amt_lookup = round(clean_float_val(net_amt), 2)
+                        upload_time_raw = (
+                            drive_date_amt_cache.get((str(date_val).strip(), clean_amt_lookup)) or ''
+                        )
+
+                    doc_time = get_col_val(row, ["เวลาในเอกสาร", "เวลาเอกสาร", "เวลาทำรายการ", "เวลา"], default='')
+                    clean_up_date, clean_up_time, upload_sort_key = _parse_upload_datetime(upload_time_raw)
+
+                    # If upload_time_short is empty but doc_time is available, fallback for display
+                    if not clean_up_time and doc_time:
+                        clean_up_time = doc_time
+
+                    # Fallback: extract time from details/memo if still missing (e.g. "เวลา 18:18 น.")
+                    if not clean_up_time and details and details != '-':
+                        import re
+                        t_m = re.search(r'(?:เวลา|time)\s*(\d{1,2}[:.]\d{2}(?::\d{2})?)', details)
+                        if t_m:
+                            extracted_t = t_m.group(1).replace('.', ':')
+                            clean_up_time = extracted_t
+                            if not doc_time:
+                                doc_time = extracted_t
+
+                    if not clean_up_date and date_val and date_val != '-':
+                        clean_up_date = date_val
+
+                    # Ensure robust sort key (newest upload/time first)
+                    if not upload_sort_key:
+                        if clean_up_date and clean_up_date != '-':
+                            _, _, upload_sort_key = _parse_upload_datetime(f"{clean_up_date} {clean_up_time or '00:00:00'}")
+                        elif date_val and date_val != '-':
+                            _, _, upload_sort_key = _parse_upload_datetime(f"{date_val} {doc_time or clean_up_time or '00:00:00'}")
+
+                    if not upload_sort_key:
+                        upload_sort_key = f"1970-01-01 00:00:00.{r_idx:05d}"
+                    else:
+                        upload_sort_key = f"{upload_sort_key}.{r_idx:05d}"
+
                     all_expenses.append({
                         "sheet_name": sheet_name,
                         "row_index": r_idx,
@@ -4566,13 +4823,20 @@ def api_dashboard_all_expenses():
                         "line_sender_name": sender_name,
                         "status": status,
                         "batch_id": batch_id,
-                        "verification_status": verification_status
+                        "verification_status": verification_status,
+                        "upload_time": upload_time_raw,
+                        "upload_date": clean_up_date,
+                        "upload_time_short": clean_up_time,
+                        "upload_sort_key": upload_sort_key,
+                        "doc_time": doc_time
                     })
             except Exception as se:
                 logger.error(f"Error parsing sheet {sheet_name}: {se}")
                 if "quota" in str(se).lower() or "limit" in str(se).lower() or "429" in str(se):
                     raise se
 
+        # Sort all expenses by upload_sort_key descending (latest upload first) by default
+        all_expenses.sort(key=lambda x: x.get("upload_sort_key", ""), reverse=True)
         return jsonify({"ok": True, "expenses": all_expenses})
     except Exception as e:
         from google.auth.exceptions import RefreshError
@@ -4675,6 +4939,23 @@ def api_dashboard_update_expense():
 
         # Re-run reconciliation
         google_manager.auto_reconcile_internal()
+
+        # Audit log: record who edited what
+        try:
+            changed_fields = ", ".join([f"{k}={v}" for k, v in fields_to_update.items() if v])
+            audit_detail = f"แก้ไขรายจ่าย ชีต='{sheet_name}' แถว={row_index} ฟิลด์: {changed_fields}"
+            database.log_audit_event(
+                username=username,
+                action="EXPENSE_UPDATE",
+                details=audit_detail,
+                ip_address=request.remote_addr or "127.0.0.1",
+                org_id=org_id or 1
+            )
+        except Exception as audit_err:
+            logger.warning(f"Audit log failed for expense update: {audit_err}")
+
+        # Invalidate dashboard cache so next load picks up new data
+        _invalidate_dashboard_cache(org_id)
 
         return jsonify({"ok": True})
     except Exception as e:
@@ -4814,6 +5095,22 @@ def api_dashboard_delete_expense():
         # Re-run reconciliation
         google_manager.auto_reconcile_internal()
 
+        # Audit log: record who deleted what
+        try:
+            audit_detail = f"ลบรายจ่าย ชีต='{sheet_name}' แถว={row_index}"
+            database.log_audit_event(
+                username=username,
+                action="EXPENSE_DELETE",
+                details=audit_detail,
+                ip_address=request.remote_addr or "127.0.0.1",
+                org_id=org_id or 1
+            )
+        except Exception as audit_err:
+            logger.warning(f"Audit log failed for expense delete: {audit_err}")
+
+        # Invalidate dashboard cache so next load picks up the deletion
+        _invalidate_dashboard_cache(org_id)
+
         return jsonify({"ok": True})
     except Exception as e:
         logger.error(f"Error in api_dashboard_delete_expense: {e}")
@@ -4822,7 +5119,7 @@ def api_dashboard_delete_expense():
         return jsonify({"ok": False, "error": "ไม่สามารถลบข้อมูลได้ กรุณาลองใหม่"}), 500
 
 
-# ─── PEAK API Integration ──────────────────────────────────────────────────────
+# ─── TAX ID VALIDATION API ────────────────────────────────────────────────────\r\n\r\n@admin_bp.route("/api/dashboard/validate-tax-id", methods=["POST"])\r\n@login_required\r\ndef api_validate_tax_id():\r\n    """Validates a Thai Tax ID (13 digits) using Mod 11 checksum."""\r\n    data = request.get_json() or {}\r\n    tax_id = data.get("tax_id", "").strip()\r\n    result = validate_thai_tax_id(tax_id)\r\n    return jsonify(result)\r\n\r\n\r\n# ─── PEAK API Integration ──────────────────────────────────────────────────────
 
 @admin_bp.route("/api/peak/settings", methods=["GET"])
 @login_required
@@ -5153,4 +5450,28 @@ def api_admin_security_export_csv():
     )
 
 
+@admin_bp.route("/api/sync/offline_queue", methods=["GET", "POST"])
+@login_required
+def api_sync_offline_queue():
+    """Returns status of offline upload queue or triggers cloud synchronization."""
+    from tools.offline_storage import sync_all_pending_offline_uploads
+    org_id = get_current_org_id()
+    if request.method == "POST":
+        limit = int(request.args.get("limit", 20))
+        result = sync_all_pending_offline_uploads(limit=limit)
+        stats = database.get_offline_queue_stats(org_id=org_id)
+        return jsonify({"ok": True, "result": result, "stats": stats})
+    else:
+        stats = database.get_offline_queue_stats(org_id=org_id)
+        return jsonify({"ok": True, "stats": stats})
 
+
+@admin_bp.route("/api/admin/db/optimize", methods=["POST"])
+@admin_required
+def api_admin_trigger_optimize():
+    """Triggers WAL checkpoint (TRUNCATE) and incremental vacuum."""
+    res = database.optimize_and_checkpoint_db()
+    if res.get("ok"):
+        return jsonify({"ok": True, "message": "ทำความสะอาดฐานข้อมูลและ WAL Checkpoint เรียบร้อยแล้ว", "details": res})
+    else:
+        return jsonify({"ok": False, "error": res.get("error", "Optimization failed")}), 500

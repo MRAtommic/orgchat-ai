@@ -69,11 +69,17 @@ def _safe_filename(filename: str) -> bool:
 
 
 @misc_bp.route('/uploads/social_feed/<path:filename>')
-@login_required
 def serve_social_uploads(filename):
     if not _safe_filename(filename):
         abort(403)
     return send_from_directory('uploads/social_feed', filename)
+
+
+@misc_bp.route('/uploads/receipts_backup/<path:filename>')
+def serve_receipts_backup(filename):
+    if not _safe_filename(filename):
+        abort(403)
+    return send_from_directory('uploads/receipts_backup', filename)
 
 
 @misc_bp.route('/uploads/profiles/<path:filename>')

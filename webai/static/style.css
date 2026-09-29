@@ -1904,6 +1904,15 @@ tr:hover .delete-row-btn {
 /* ─── KB Mobile Fixes ────────────────────────────── */
 @media (max-width: 1023px) {
 
+  #view-kb header {
+    height: auto !important;
+  }
+
+  #view-kb .kb-main-tab {
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+  }
+
   /* Stack KB sidebar above content */
   #view-kb>div.flex-1 {
     flex-direction: column !important;
@@ -2294,10 +2303,23 @@ tr:hover .delete-row-btn {
 }
 
 .bubble-me {
-  background: var(--brand-600, #2563eb) !important;
+  background: var(--brand-600, #2563eb);
   color: white !important;
   border-bottom-right-radius: 4px !important;
   box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15) !important;
+}
+
+.dark .bubble-me {
+  background: #27272a !important;
+  color: #f4f4f5 !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25) !important;
+}
+
+.dark .bubble-me .prose,
+.dark .bubble-me .prose p,
+.dark .bubble-me .prose span {
+  color: #f4f4f5 !important;
 }
 
 .bubble-them {

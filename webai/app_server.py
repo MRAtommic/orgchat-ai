@@ -276,6 +276,7 @@ def async_startup_tasks():
     os.makedirs(os.path.join(_data_root, "uploads/social_feed"), exist_ok=True)
     os.makedirs(os.path.join(_data_root, "uploads/kb"), exist_ok=True)
     os.makedirs(os.path.join(_data_root, "uploads/meetings"), exist_ok=True)
+    os.makedirs(os.path.join(_data_root, "uploads/receipts_backup"), exist_ok=True)
     os.makedirs(os.path.join(_data_root, "exports"), exist_ok=True)
 
 
@@ -584,26 +585,29 @@ def create_app():
             from flask import redirect as _redir_hijack
             return _redir_hijack('/?session_invalid=1')
 
-        # 🔐 5. Multi-Device Session Invalidation (Session Versioning)
+        now = _time.time()
+
+        # 🔐 5. Multi-Device Session Invalidation (Session Versioning - throttled every 30s)
         current_username = session.get('user')
         if current_username:
-            try:
-                db_session_ver = database.get_user_session_version(current_username)
-                sess_ver = session.get('session_version')
-                if sess_ver is not None and sess_ver != db_session_ver:
-                    logger.warning(f"🔐 [Session Revoked] User {current_username} session version mismatch (sess={sess_ver}, db={db_session_ver}) — revoking session")
-                    session.clear()
-                    if _req.path.startswith('/api/') or _req.path.startswith('/line/') or _req.is_json:
-                        from flask import jsonify as _json_revoked
-                        return _json_revoked({"ok": False, "error": "session_revoked", "message": "รหัสผ่านหรือสิทธิ์ของคุณมีการเปลี่ยนแปลง กรุณาเข้าสู่ระบบใหม่"}), 401
-                    from flask import redirect as _redir_revoked
-                    return _redir_revoked('/?session_revoked=1')
-                elif sess_ver is None:
-                    session['session_version'] = db_session_ver
-            except Exception as _sve:
-                logger.debug(f"Session version check bypass: {_sve}")
-
-        now = _time.time()
+            last_ver_check = session.get('_last_ver_check', 0)
+            if now - last_ver_check > 30:
+                session['_last_ver_check'] = now
+                try:
+                    db_session_ver = database.get_user_session_version(current_username)
+                    sess_ver = session.get('session_version')
+                    if sess_ver is not None and sess_ver != db_session_ver:
+                        logger.warning(f"🔐 [Session Revoked] User {current_username} session version mismatch (sess={sess_ver}, db={db_session_ver}) — revoking session")
+                        session.clear()
+                        if _req.path.startswith('/api/') or _req.path.startswith('/line/') or _req.is_json:
+                            from flask import jsonify as _json_revoked
+                            return _json_revoked({"ok": False, "error": "session_revoked", "message": "รหัสผ่านหรือสิทธิ์ของคุณมีการเปลี่ยนแปลง กรุณาเข้าสู่ระบบใหม่"}), 401
+                        from flask import redirect as _redir_revoked
+                        return _redir_revoked('/?session_revoked=1')
+                    elif sess_ver is None:
+                        session['session_version'] = db_session_ver
+                except Exception as _sve:
+                    logger.debug(f"Session version check bypass: {_sve}")
         last = session.get('_last_active', now)
         if now - last > _IDLE_SECONDS:
             session.clear()
@@ -997,20 +1001,16 @@ try:
 
     _scheduler.add_job(_scheduled_meeting_reminders, 'interval', minutes=1, id='meeting_reminders')
 
-    # 🧹 ทำความสะอาดและ Optimize ฐานข้อมูล SQLite ทุกสัปดาห์ (วันอาทิตย์ เวลา 03:00)
-    def _scheduled_db_optimize():
+    # 🧹 ทำความสะอาดและ Optimize ฐานข้อมูล SQLite (WAL Checkpoint ประจำวันเวลา 03:30 + Optimize วันอาทิตย์)
+    def _scheduled_db_wal_checkpoint():
         try:
-            conn = database._get_conn()
-            try:
-                conn.execute("PRAGMA optimize")
-                conn.execute("PRAGMA incremental_vacuum(500)")
-                logger.info("🧹 [DB Housekeeping] SQLite PRAGMA optimize & incremental_vacuum completed.")
-            finally:
-                conn.close()
+            res = database.optimize_and_checkpoint_db()
+            logger.info(f"🧹 [Scheduled DB Maintenance] {res}")
         except Exception as _e:
-            logger.warning(f"[DB Housekeeping] error: {_e}")
+            logger.warning(f"[Scheduled DB Maintenance] error: {_e}")
 
-    _scheduler.add_job(_scheduled_db_optimize, 'cron', day_of_week='sun', hour=3, minute=0, id='db_optimize')
+    _scheduler.add_job(_scheduled_db_wal_checkpoint, 'cron', hour=3, minute=30, id='db_wal_checkpoint')
+    _scheduler.add_job(_scheduled_db_wal_checkpoint, 'cron', day_of_week='sun', hour=3, minute=0, id='db_optimize')
 
 except ImportError:
     print(">>> APScheduler not installed - run: pip install APScheduler")

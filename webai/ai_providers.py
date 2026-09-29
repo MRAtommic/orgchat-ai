@@ -8,6 +8,7 @@ import os
 import json
 import logging
 import requests
+import time
 
 # Force UTF-8 encoding for stdout/stderr to support emojis on Windows terminals
 try:
@@ -171,8 +172,8 @@ class AIProvider:
         raise NotImplementedError
 
 class GeminiProvider(AIProvider):
-    _cached_models = []
-    _cache_time = 0
+    _cached_models = ["gemini-3.5-flash-lite", "gemini-flash-latest", "gemini-flash-lite-latest", "gemini-3.5-flash", "gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash"]
+    _cache_time = time.time()
 
     def __init__(self, api_key: str):
         self.api_key = api_key
@@ -183,10 +184,16 @@ class GeminiProvider(AIProvider):
             if k and k not in self._all_keys:
                 self._all_keys.append(k)
         self.backup_key = self._all_keys[1] if len(self._all_keys) > 1 else None
-        print(f"🔑 Gemini API Key Pool: {len(self._all_keys)} key(s) available for rotation")
         if HAS_NEW_SDK:
             self.client = genai.Client(api_key=api_key)
+            self._client_pool = {api_key: self.client}
+            for k in self._all_keys[1:]:
+                try:
+                    self._client_pool[k] = genai.Client(api_key=k)
+                except Exception as e:
+                    print(f"⚠️ Failed to init Gemini client for backup key: {e}")
         else:
+            self._client_pool = {}
             old_genai.configure(api_key=api_key)
 
     def _get_active_models(self) -> list:
@@ -250,78 +257,133 @@ class GeminiProvider(AIProvider):
                     active_ids = self._get_active_models()
                     if active_ids:
                         dynamic_models = []
-                        # Ranking of preferred Gemini models in 2026
+                        # Ranking of preferred Gemini models (prioritizing fastest, lowest-latency GA models):
+                        # 1. gemini-3.5-flash-lite (Ultra-fast, lowest latency, official recommendation)
+                        # 2. gemini-flash-latest / gemini-flash-lite-latest
+                        # 3. gemini-3.5-flash / gemini-3.8-flash
+                        # 4. gemini-3.1-flash-lite / gemini-3-flash-preview
+                        # 5. gemini-2.5-flash
                         patterns = [
+                            "gemini-3.5-flash-lite",
+                            "gemini-flash-latest",
+                            "gemini-flash-lite-latest",
+                            "gemini-3.5-flash",
+                            "gemini-3.8-flash",
                             "gemini-3.1-flash-lite",
-                            "gemini-3.1-flash",
-                            "gemini-3.1-pro",
-                            "gemini-3-flash",
-                            "gemini-2.5-flash-lite",
+                            "gemini-3-flash-preview",
                             "gemini-2.5-flash",
-                            "gemini-2.5-pro",
-                            "gemini-2.0-flash-lite",
                             "gemini-2.0-flash",
-                            "gemini-1.5-flash"
+                            "gemini-1.5-flash",
+                        ]
+                        deprecated_or_specialized = [
+                            "embedding", "imagen", "veo", "lyria", "aqa", "audio", "tts", "image", "live", "customtools"
                         ]
                         for pattern in patterns:
                             for m in active_ids:
                                 m_lower = m.lower()
-                                # Filter out non-text/specialized models
-                                if any(x in m_lower for x in ["embedding", "imagen", "veo", "lyria", "aqa", "audio", "tts", "image", "live"]):
+                                if any(x in m_lower for x in deprecated_or_specialized):
                                     continue
                                 if pattern in m_lower and m not in dynamic_models:
                                     dynamic_models.append(m)
                         
                         for m in active_ids:
                             m_lower = m.lower()
-                            if any(x in m_lower for x in ["embedding", "imagen", "veo", "lyria", "aqa", "audio", "tts", "image", "live"]):
+                            if any(x in m_lower for x in deprecated_or_specialized):
                                 continue
                             if m not in dynamic_models:
                                 dynamic_models.append(m)
                         
                         if not dynamic_models:
-                            dynamic_models = ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-1.5-flash"]
+                            dynamic_models = ["gemini-3.5-flash-lite", "gemini-flash-latest", "gemini-flash-lite-latest", "gemini-3.5-flash", "gemini-3.8-flash", "gemini-2.5-flash"]
                         models = dynamic_models
                     else:
                         models = [
-                            "gemini-2.5-flash-lite",
-                            "gemini-2.5-flash",
-                            "gemini-1.5-flash"
+                            "gemini-3.5-flash-lite",
+                            "gemini-flash-latest",
+                            "gemini-flash-lite-latest",
+                            "gemini-3.5-flash",
+                            "gemini-3.8-flash",
+                            "gemini-2.5-flash"
                         ]
-                    # Limit the models we try to avoid infinite 429 rate limit retries
-                    models = models[:3]
+                    # Select top models to try (support up to 6 models for resilient failover)
+                    models = models[:6]
                     
-                    # Build rotation chain from all available API keys
+                    # Build rotation chain from all available API keys using pre-warmed client pool
                     clients_to_try = []
+                    pool = getattr(self, '_client_pool', {})
                     for idx, key in enumerate(self._all_keys):
                         label = "Primary" if idx == 0 else f"Key-{idx+1}"
-                        clients_to_try.append((label, genai.Client(api_key=key)))
+                        client_obj = pool.get(key)
+                        if not client_obj:
+                            client_obj = self.client if (idx == 0 and getattr(self, 'client', None)) else genai.Client(api_key=key)
+                            pool[key] = client_obj
+                        clients_to_try.append((label, client_obj))
+
+                    has_yielded = False
+                    overloaded_models = set()
 
                     for client_name, client_obj in clients_to_try:
-                        key_had_error = False
+                        key_quota_exhausted = False
                         for model in models:
+                            if model in overloaded_models:
+                                continue
                             try:
                                 for chunk in client_obj.models.generate_content_stream(model=model, contents=contents, config=config):
-                                    if chunk.text: yield chunk.text
+                                    if chunk.text:
+                                        has_yielded = True
+                                        yield chunk.text
                                 return  # Success — exit immediately
                             except Exception as e:
-                                print(f"⚠️ Gemini ({client_name}) ({model}) Error: {e}")
+                                print(f"⚠️ Gemini ({client_name}) ({model}) Error: {e}", flush=True)
+                                if has_yielded:
+                                    print("⚠️ Mid-stream error after yielding partial content. Aborting retries to prevent corrupted duplicate output.", flush=True)
+                                    return
                                 e_str = str(e).lower()
-                                if any(code in e_str for code in ["429", "503", "500", "502", "504", "resource_exhausted", "quota", "unavailable", "high demand", "overloaded", "spikes in demand"]):
-                                    print(f"🔄 {client_name} hit temporary error/rate-limit. Trying next key...")
-                                    key_had_error = True
-                                    break  # Break model loop, try next key
+
+                                # 1. Model Overload / High Demand (503 / 500 / 502 / 504 / high demand / overloaded / unavailable)
+                                # This is a Google backend/capacity issue on this specific MODEL.
+                                # Mark the model as overloaded, and immediately continue to the NEXT MODEL on the SAME key!
+                                if any(code in e_str for code in ["503", "500", "502", "504", "unavailable", "high demand", "overloaded", "spikes in demand"]):
+                                    print(f"🔄 Model '{model}' is experiencing high demand/unavailable (503). Switching to next model on {client_name}...", flush=True)
+                                    overloaded_models.add(model)
+                                    continue  # Try NEXT model in `models` on this same client!
+
+                                # 2. Model Deprecated / Not Found (404 / no longer available / not found)
+                                # The model has been retired by Google. Exclude from all keys and try next model.
+                                if any(code in e_str for code in ["404", "not_found", "no longer available", "not found"]):
+                                    print(f"🚫 Model '{model}' is deprecated or not available (404). Excluding model from all keys...", flush=True)
+                                    overloaded_models.add(model)
+                                    continue
+
+                                # 3. Key Quota Exceeded / Rate-limit (429 / resource_exhausted / quota)
+                                if any(code in e_str for code in ["429", "resource_exhausted", "quota"]):
+                                    # If the quota failure is model-specific (e.g. Free Tier limit on gemini-2.5-flash)
+                                    if "model" in e_str or "free_tier" in e_str or "generate_content_free_tier_requests" in e_str:
+                                        print(f"🔄 Model '{model}' hit model-specific quota (429). Switching to next model on {client_name}...", flush=True)
+                                        overloaded_models.add(model)
+                                        continue  # Try next model on this same key!
+                                    else:
+                                        print(f"🔄 {client_name} hit general account quota/rate-limit on {model}. Trying next key...", flush=True)
+                                        key_quota_exhausted = True
+                                        overloaded_models.add(model)
+                                        break  # Break out to next client in clients_to_try
+
+                                # Any other unexpected error, try next model
                                 continue
-                        if key_had_error:
+
+                        if key_quota_exhausted:
                             continue
                     print("⚠️ All Gemini keys attempted without success, proceeding to fallback...")
                 except Exception as e:
                     print(f"⚠️ New SDK Setup Error: {e}")
 
+            if 'has_yielded' in locals() and has_yielded:
+                return
+
             # 🟡 Old SDK Fallback — ใช้ได้เฉพาะเมื่อ New SDK ไม่ได้ติดตั้ง
             if not HAS_NEW_SDK:
                 try:
-                    model_name = "gemini-3.1-flash-lite"
+                    model_name = "gemini-2.5-flash"
                     model = old_genai.GenerativeModel(model_name=model_name, system_instruction=system_prompt)
                     if image_data:
                         content = [{"mime_type": mime_type, "data": image_data}, question]
@@ -338,7 +400,7 @@ class GeminiProvider(AIProvider):
             groq_key = os.environ.get("GROQ_API_KEY", "")
             if groq_key:
                 groq = GroqProvider(groq_key)
-                yield from groq.chat_stream(question, history, system_prompt, image_data, mime_type)
+                yield from groq.chat_stream(question, history, system_prompt, image_data, mime_type, is_fallback=True)
             else:
                 yield "⚠️ Gemini ไม่สามารถเชื่อมต่อได้ และไม่มี GROQ_API_KEY สำรอง"
 
@@ -375,11 +437,16 @@ class GroqProvider(AIProvider):
         return []
 
     def chat_stream(self, question: str, history: list, system_prompt: str, 
-                    image_data: bytes = None, mime_type: str = "image/jpeg"):
+                    image_data: bytes = None, mime_type: str = "image/jpeg", is_fallback: bool = False):
         def _stream():
             # 📸 Multimodal Vision Check: Groq API does not serve vision models.
             # Seamlessly delegate multimodal attachments to GeminiProvider (which has native vision & 3-key pool).
             if image_data:
+                if is_fallback:
+                    print("⚠️ Image attachment cannot be processed by Groq and Gemini has already failed. Aborting delegation loop.", flush=True)
+                    yield "⚠️ ขออภัยค่ะ ขณะนี้ระบบ AI วิเคราะห์รูปภาพขัดข้องชั่วคราว (Gemini ทุกโมเดลและทุกคีย์กำลังใช้งานหนาแน่น) กรุณาลองส่งใหม่อีกครั้งในอีกสักครู่ค่ะ"
+                    return
+
                 gemini_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY_2") or os.environ.get("GEMINI_API_KEY_3")
                 if gemini_key:
                     print("📸 Multimodal/image attachment detected: Groq delegating to Gemini Vision...", flush=True)
@@ -492,16 +559,17 @@ class GroqProvider(AIProvider):
                 if key_worked:
                     return
 
-            # Fallback to Gemini if all Groq keys/models failed
-            gemini_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY_2") or os.environ.get("GEMINI_API_KEY_3")
-            if gemini_key:
-                print("🔄 All Groq keys/models failed. Falling back to GeminiProvider...", flush=True)
-                try:
-                    gemini = GeminiProvider(gemini_key)
-                    yield from gemini.chat_stream(question, history, system_prompt, image_data=image_data, mime_type=mime_type)
-                    return
-                except Exception as e_fb:
-                    print(f"⚠️ Gemini fallback after Groq error: {e_fb}", flush=True)
+            # Fallback to Gemini if all Groq keys/models failed (and we didn't already come from Gemini)
+            if not is_fallback:
+                gemini_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY_2") or os.environ.get("GEMINI_API_KEY_3")
+                if gemini_key:
+                    print("🔄 All Groq keys/models failed. Falling back to GeminiProvider...", flush=True)
+                    try:
+                        gemini = GeminiProvider(gemini_key)
+                        yield from gemini.chat_stream(question, history, system_prompt, image_data=image_data, mime_type=mime_type, is_fallback=True)
+                        return
+                    except Exception as e_fb:
+                        print(f"⚠️ Gemini fallback after Groq error: {e_fb}", flush=True)
 
             yield "⚠️ ระบบ AI ขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้งค่ะ"
 
@@ -584,7 +652,10 @@ RULES:
    - NEVER abbreviate, shorten, or omit any part of the company name.
    - Example WRONG: "บอกบุญ 888" → CORRECT: "บริษัท บอกบุญ 888 จำกัด"
    - Example WRONG: "อิมแพ็ค" → CORRECT: "บริษัท อิมแพ็ค เอ็กซิบิชั่น แมเนจเม้นท์ จำกัด"
-1. Bank Slip: Extract exact sender_bank/receiver_bank in English. Check logos. For Bill Payment without receiver logo, receiver_bank="-".
+1. Bank Slip (สลิปโอนเงิน / เติมเงิน / ชำระบิล):
+   - CRITICAL: Extract the EXACT transfer/payment amount into BOTH `net_amount` AND `total_amount` (e.g. 50.00).
+   - If the slip is for a top-up, promptpay, wallet (G-Wallet/TrueMoney), or bill payment, extract the transaction amount into `net_amount` and `total_amount`. NEVER leave `net_amount` as 0 if an amount is shown.
+   - Extract exact sender_bank/receiver_bank in English. Check logos. For Bill Payment, E-Wallet, or PromptPay without receiver bank logo, set receiver_bank="-".
 2. Receipt/Invoice/PaymentVoucher:
    - `vendor_tax_id` and `tax_id` = เลขที่ภาษี 13 หลักของ **ผู้รับเงิน/ผู้ขาย** เท่านั้น (ห้ามใส่เลขของผู้จ่ายเงิน/บริษัทที่ออกเอกสาร).
    - PaymentVoucher (ใบสำคัญจ่าย): ผู้รับเงิน = บุคคลหรือบริษัทที่อยู่ใต้หัวข้อ "ผู้ขาย" หรือ "ผู้รับเงิน" → ใช้เลขภาษีของคนนั้น ไม่ใช่บริษัทที่ออกเอกสาร.
@@ -614,25 +685,46 @@ RULES:
     except Exception as e:
         print(f"⚠️ Primary Gemini failed: {e}. Trying fallback...", flush=True)
 
-    # Robust Fallback
+    # Robust Fallback: If streaming did not return valid JSON, try non-streaming generate_content directly
     is_valid_json = "{" in full_response and "}" in full_response
     if len(full_response) < 50 or not is_valid_json or "⚠️" in full_response:
         try:
-            # Note: Groq might not support audio via this specific call, 
-            # so we focus on Gemini for audio.
-            if not is_audio:
-                provider = get_provider() 
-                if isinstance(provider, GeminiProvider):
-                    groq_key = os.environ.get("GROQ_API_KEY")
-                    if groq_key:
-                        provider = GroqProvider(groq_key)
+            if HAS_NEW_SDK:
+                print("🔄 Streaming did not yield valid JSON, attempting direct generate_content fallback...", flush=True)
+                direct_keys = []
+                for env_k in ["GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3", "GEMINI_API_KEY_BACKUP"]:
+                    k_val = (os.environ.get(env_k) or "").strip()
+                    if k_val and k_val not in direct_keys:
+                        direct_keys.append(k_val)
                 
-                full_response = ""
-                for chunk in provider.chat_stream(prompt, [], "You are a professional accounting AI.", image_data=content_data, mime_type=mime_type):
-                    full_response += chunk
+                direct_models = ["gemini-3.5-flash-lite", "gemini-flash-latest", "gemini-3.5-flash", "gemini-3.8-flash", "gemini-flash-lite-latest"]
+                for d_key in direct_keys:
+                    d_client = genai.Client(api_key=d_key)
+                    for d_model in direct_models:
+                        try:
+                            contents_parts = [types.Part.from_text(text=prompt)]
+                            if content_data:
+                                contents_parts.append(types.Part.from_bytes(data=content_data, mime_type=mime_type))
+                            res_obj = d_client.models.generate_content(
+                                model=d_model,
+                                contents=contents_parts,
+                                config=types.GenerateContentConfig(
+                                    system_instruction="You are a professional accounting AI. Output ONLY JSON.",
+                                    temperature=0.2
+                                )
+                            )
+                            if res_obj and res_obj.text and "{" in res_obj.text:
+                                full_response = res_obj.text
+                                print(f"✅ Direct generate_content fallback succeeded with model {d_model}!", flush=True)
+                                break
+                        except Exception as e_direct:
+                            print(f"⚠️ Direct model {d_model} failed: {e_direct}", flush=True)
+                            continue
+                    if "{" in full_response and "}" in full_response:
+                        break
         except Exception as e:
             import traceback
-            logger.error(f"Fallback also failed: {e}\n{traceback.format_exc()}")
+            logger.error(f"Direct fallback also failed: {e}\n{traceback.format_exc()}")
 
     logger.debug(f"AI Raw Response ({len(full_response)} chars): {full_response[:500]}...")
     
@@ -693,13 +785,25 @@ RULES:
                 if "_" in name_val:
                     result["category"] = name_val.split("_")[0]
             
-        # Extract net_amount
-        amt_match = re.search(r'"net_amount"\s*:\s*([\d.]+)', search_target)
+        # Extract net_amount with multiple key checks and summary fallback
+        amt_match = re.search(r'"(?:net_amount|total_amount|amount|gross_amount|transfer_amount)"\s*:\s*([\d.]+)', search_target)
         if amt_match:
             try:
-                result["extracted_data"]["net_amount"] = float(amt_match.group(1))
+                amt_val = float(amt_match.group(1))
+                if amt_val > 0:
+                    result["extracted_data"]["net_amount"] = amt_val
             except:
                 pass
+        if not result["extracted_data"].get("net_amount"):
+            sum_text = result.get("summary", "") or search_target
+            sum_m = re.search(r'(?:จำนวน|ยอดเงิน|ยอดโอน|ยอดสุทธิ|ยอดรวม|เป็นเงิน)?\s*([\d,]+(?:\.\d{1,2})?)\s*(?:บาท|THB)', sum_text)
+            if sum_m:
+                try:
+                    s_amt = float(sum_m.group(1).replace(',', '').strip())
+                    if s_amt > 0:
+                        result["extracted_data"]["net_amount"] = s_amt
+                except:
+                    pass
                 
         # Extract sender
         sender_match = re.search(r'"sender"\s*:\s*"([^"]+)"', search_target)

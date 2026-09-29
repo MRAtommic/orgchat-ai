@@ -198,15 +198,21 @@ async function loadAttendanceToday() {
   }
 }
 
+let _isAttendanceClocking = false;
+
 /**
  * Handle Clock-in / Clock-out Action Button
  */
 async function handleClockAction() {
+  if (_isAttendanceClocking) return;
+  _isAttendanceClocking = true;
+
   const clockBtn = document.getElementById('attClockBtn');
   const clockBtnText = document.getElementById('attClockBtnText');
   const clockBtnSub = document.getElementById('attClockBtnSub');
 
   if (!navigator.geolocation) {
+    _isAttendanceClocking = false;
     showToast('เบราว์เซอร์ของคุณไม่รองรับระบบระบุตำแหน่ง GPS', 'error');
     return;
   }
@@ -255,11 +261,13 @@ async function handleClockAction() {
         console.error('[handleClockAction] Submit error:', err);
         showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
       } finally {
+        _isAttendanceClocking = false;
         if (clockBtn) clockBtn.disabled = false;
         loadAttendanceToday();
       }
     },
     (err) => {
+      _isAttendanceClocking = false;
       console.warn('[handleClockAction] Geolocation error:', err);
       if (clockBtn) clockBtn.disabled = false;
       loadAttendanceToday();

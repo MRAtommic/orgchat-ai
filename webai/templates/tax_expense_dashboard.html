@@ -215,7 +215,7 @@
                 <a href="/" class="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-surface-500 hover:text-brand-600 hover:bg-brand-50 rounded-xl transition">
                     <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> กลับหน้าหลัก
                 </a>
-                <button onclick="loadDashboardData()" class="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-xl transition shadow-sm shadow-brand-500/20">
+                <button onclick="loadDashboardData(true)" class="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-xl transition shadow-sm shadow-brand-500/20">
                     <i data-lucide="refresh-cw" id="refreshIcon" class="w-3.5 h-3.5"></i> รีเฟรช
                 </button>
             </div>
@@ -331,7 +331,7 @@
                         <span class="flex items-center gap-1.5"><i data-lucide="list" class="w-3.5 h-3.5"></i> รายการค่าใช้จ่าย</span>
                     </button>
                     <button onclick="switchTab('vat')" id="tabBtn-vat" class="tab-btn text-sm font-semibold text-surface-400">
-                        <span class="flex items-center gap-1.5"><i data-lucide="receipt" class="w-3.5 h-3.5"></i> ใบสำคัญจ่าย (Tax / WHT)</span>
+                        <span class="flex items-center gap-1.5"><i data-lucide="receipt" class="w-3.5 h-3.5"></i> รายการภาษี (VAT & WHT)</span>
                     </button>
                     <button onclick="switchTab('unclear')" id="tabBtn-unclear" class="tab-btn text-sm font-semibold text-surface-400">
                         <span class="flex items-center gap-1.5"><i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i> รายการที่ต้องตรวจสอบ</span>
@@ -341,9 +341,6 @@
                     </button>
                     <button onclick="switchTab('ai-insights')" id="tabBtn-ai-insights" class="tab-btn text-sm font-semibold text-surface-400">
                         <span class="flex items-center gap-1.5"><i data-lucide="sparkles" class="w-3.5 h-3.5 text-indigo-500"></i> วิเคราะห์ & พยากรณ์ AI</span>
-                    </button>
-                    <button onclick="switchTab('live-sheets')" id="tabBtn-live-sheets" class="tab-btn text-sm font-semibold text-surface-400">
-                        <span class="flex items-center gap-1.5"><i data-lucide="file-spreadsheet" class="w-3.5 h-3.5 text-emerald-500"></i> Google Sheets จริง</span>
                     </button>
                 </div>
                 <div class="flex items-center gap-3">
@@ -805,7 +802,8 @@
                                     </div>
                                     <div id="group-field-taxId">
                                         <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">เลขผู้เสียภาษีคู่ค้า</label>
-                                        <input type="text" id="modalField-taxId" placeholder="เลข 13 หลัก..." class="w-full px-4 py-2.5 text-xs bg-white border border-surface-200 rounded-xl text-surface-700">
+                                        <input type="text" id="modalField-taxId" placeholder="เลข 13 หลัก..." oninput="validateTaxIdLive(this.value)" class="w-full px-4 py-2.5 text-xs bg-white border border-surface-200 rounded-xl text-surface-700">
+                                        <div id="taxIdBadge" class="mt-1.5 text-[10px] font-bold hidden"></div>
                                     </div>
                                     <div id="group-field-expenseType">
                                         <label class="block text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">ประเภทค่าใช้จ่าย</label>
@@ -1073,15 +1071,22 @@
         });
 
         // ─── DATA LOADING ────────────────────────────────────
-        function loadDashboardData() {
+        // Pagination state
+        let _paginationPage = 1;
+        const _PAGE_SIZE = 25;
+
+        function loadDashboardData(forceRefresh = false) {
             const icon = document.getElementById('refreshIcon');
             icon.classList.add('spinning');
+            _paginationPage = 1; // reset to page 1 on fresh load
 
             document.getElementById('catList').innerHTML =
                 '<div class="text-center py-8 text-surface-400 text-sm">กำลังดึงข้อมูล...</div>';
 
+            const refreshParam = forceRefresh ? '?refresh=1' : '';
+
             // 1. Fetch dashboard summaries, unclear scans, and categories
-            fetch('/api/dashboard/tax-expense-data')
+            fetch('/api/dashboard/tax-expense-data' + refreshParam)
                 .then(r => r.json())
                 .then(data => {
                     if (!data.ok) { showError(data.error); return; }
@@ -1226,6 +1231,7 @@
         // ─── TAB SWITCHING ───────────────────────────────────
         function switchTab(tab) {
             currentTab = tab;
+            _paginationPage = 1; // reset pagination on tab switch
 
             // Toggle active tab buttons
             document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -1240,17 +1246,13 @@
             // Toggle filters visibility
             const filterSec = document.getElementById('dashboardFiltersSection');
             if (filterSec) {
-                filterSec.classList.toggle('hidden', tab === 'live-sheets' || tab === 'ai-insights' || tab === 'pnd');
+                filterSec.classList.toggle('hidden', tab === 'ai-insights' || tab === 'pnd');
             }
 
             if (tab === 'pnd') {
                 loadPndReport();
             } else if (tab === 'ai-insights') {
                 loadAiInsights();
-            } else if (tab === 'live-sheets') {
-                if (typeof initLiveSheetsView === 'function') {
-                    initLiveSheetsView();
-                }
             } else {
                 applyAllFilters();
             }
@@ -1457,6 +1459,9 @@
 
                 return true;
             });
+
+            // Reset to page 1 when filters change
+            _paginationPage = 1;
 
             // Handle Active Tab Views
             if (currentTab === 'all') {

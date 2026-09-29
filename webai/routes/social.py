@@ -190,7 +190,12 @@ def manage_posts():
         content = request.form.get("content")
         author = session.get("user", request.form.get("author", "Anonymous"))  # Always use session user
         category = request.form.get("category", "General")
-        link = request.form.get("link")
+        link = (request.form.get("link") or "").strip()
+        if not link and content:
+            import re
+            url_match = re.search(r'https?://[^\s<>"]+', content)
+            if url_match:
+                link = url_match.group(0)
         
         has_attachments = 'files' in request.files and any(f.filename for f in request.files.getlist('files'))
         poll_question = request.form.get("poll_question")
@@ -232,6 +237,22 @@ def manage_posts():
         poll_question = request.form.get("poll_question")
         poll_options_raw = request.form.get("poll_options")
         
+        # Debounce / Idempotency Guard (4-second duplicate post prevention)
+        if content:
+            recent_posts = database.get_posts(org_id=get_current_org_id())
+            if recent_posts:
+                for rp in recent_posts[:3]:
+                    if rp.get("author") == author and rp.get("content") == content:
+                        try:
+                            from datetime import datetime as _dt
+                            p_ts = rp.get("timestamp") or ""
+                            if p_ts:
+                                p_dt = _dt.strptime(str(p_ts)[:19].replace("T", " "), "%Y-%m-%d %H:%M:%S")
+                                if abs((_dt.now() - p_dt).total_seconds()) < 4:
+                                    return jsonify({"ok": True, "id": rp.get("id"), "debounced": True, "message": "โพสต์สำเร็จแล้วค่ะ"})
+                        except Exception:
+                            pass
+
         pid = database.add_post(content, author, category, link, attachments, org_id=get_current_org_id())
 
         if poll_question and poll_options_raw:
@@ -268,295 +289,412 @@ def manage_posts():
                     if _tok:
                         import requests as _req
                         _groups = database.get_line_groups_for_org(_oid) or []
-                        if category and category.lower() in ["announcement", "ประกาศ", "news", "ทั่วไป", "general", "it help"]:
-                            # Premium Flex Message for Announcements
-                            flex_msg = {
-                                "type": "flex",
-                                "altText": f"📢 ประกาศใหม่: {category} — โดย {display_name}",
-                                "contents": {
-                                    "type": "bubble",
-                                    "size": "mega",
-                                    "header": {
-                                        "type": "box",
-                                        "layout": "vertical",
-                                        "contents": [
-                                            {
-                                                "type": "box",
-                                                "layout": "horizontal",
-                                                "contents": [
-                                                    {
-                                                        "type": "box",
-                                                        "layout": "vertical",
-                                                        "contents": [
-                                                            {"type": "text", "text": "📢", "size": "xl", "align": "center"}
-                                                        ],
-                                                        "width": "40px",
-                                                        "height": "40px",
-                                                        "backgroundColor": "#ffffff20",
-                                                        "cornerRadius": "12px",
-                                                        "justifyContent": "center",
-                                                        "alignItems": "center"
-                                                    },
-                                                    {
-                                                        "type": "box",
-                                                        "layout": "vertical",
-                                                        "contents": [
-                                                            {"type": "text", "text": "ประกาศใหม่", "color": "#ffffff", "size": "lg", "weight": "bold"},
-                                                            {"type": "text", "text": "NEW ANNOUNCEMENT", "color": "#ffffff90", "size": "xxs"}
-                                                        ],
-                                                        "paddingStart": "12px"
-                                                    }
-                                                ],
-                                                "alignItems": "center"
-                                            }
-                                        ],
-                                        "backgroundColor": "#1B2838",
-                                        "paddingAll": "16px"
-                                    },
-                                    "body": {
-                                        "type": "box",
-                                        "layout": "vertical",
-                                        "contents": [
-                                            {
-                                                "type": "box",
-                                                "layout": "horizontal",
-                                                "contents": [
-                                                    {
-                                                        "type": "text",
-                                                        "text": category.upper(),
-                                                        "size": "xxs",
-                                                        "color": "#2563EB",
-                                                        "weight": "bold"
-                                                    }
-                                                ],
-                                                "backgroundColor": "#EFF6FF",
-                                                "cornerRadius": "20px",
-                                                "paddingAll": "6px",
-                                                "paddingStart": "12px",
-                                                "paddingEnd": "12px",
-                                                "width": "120px",
-                                                "justifyContent": "center"
-                                            },
-                                            {"type": "text", "text": (content or "ไม่มีเนื้อหา")[:120], "wrap": True, "size": "sm", "color": "#374151", "margin": "lg"},
-                                            {"type": "separator", "margin": "lg", "color": "#F3F4F6"},
-                                            {
-                                                "type": "box",
-                                                "layout": "horizontal",
-                                                "contents": [
-                                                    {
-                                                        "type": "box",
-                                                        "layout": "vertical",
-                                                        "contents": [
-                                                            {"type": "text", "text": display_name[:1].upper(), "color": "#ffffff", "size": "xs", "align": "center"}
-                                                        ],
-                                                        "width": "28px",
-                                                        "height": "28px",
-                                                        "backgroundColor": "#6366F1",
-                                                        "cornerRadius": "14px",
-                                                        "justifyContent": "center",
-                                                        "alignItems": "center"
-                                                    },
-                                                    {
-                                                        "type": "box",
-                                                        "layout": "vertical",
-                                                        "contents": [
-                                                            {"type": "text", "text": display_name, "size": "xs", "color": "#111827", "weight": "bold"},
-                                                            {"type": "text", "text": "เมื่อสักครู่", "size": "xxs", "color": "#9CA3AF"}
-                                                        ],
-                                                        "paddingStart": "10px"
-                                                    }
-                                                ],
-                                                "alignItems": "center",
-                                                "margin": "lg"
-                                            }
-                                        ],
-                                        "paddingAll": "20px",
-                                        "backgroundColor": "#ffffff"
-                                    },
-                                    "footer": {
-                                        "type": "box",
-                                        "layout": "vertical",
-                                        "contents": [
-                                            {
-                                                "type": "button",
-                                                "action": {"type": "uri", "label": "อ่านเพิ่มเติม", "uri": "https://openchat.sbs"},
-                                                "style": "primary",
-                                                "color": "#2563EB",
-                                                "height": "sm"
-                                            }
-                                        ],
-                                        "paddingAll": "12px",
-                                        "backgroundColor": "#F9FAFB"
-                                    },
-                                    "styles": {
-                                        "footer": {"separator": False}
-                                    }
-                                }
-                            }
+                        _base_url = (os.environ.get("BASE_URL") or os.environ.get("PUBLIC_URL") or "https://openchat.sbs").rstrip('/')
+                        portal_url = f"{_base_url}/#feed"
+
+                        is_announcement = category and category.lower() in ["announcement", "ประกาศ", "news", "ทั่วไป", "general", "it help"]
+                        if is_announcement:
+                            primary_color = "#2563EB"
+                            badge_bg = "#EFF6FF"
+                            header_bg = "#1B2838"
+                            header_icon = "📢"
+                            header_title = "ประกาศใหม่"
+                            header_sub = "NEW ANNOUNCEMENT"
+                            alt_prefix = "📢 ประกาศใหม่"
                         else:
-                            # Premium Flex Message for Feed Posts
-                            flex_msg = {
-                                "type": "flex",
-                                "altText": f"✨ โพสต์ใหม่จาก {display_name} — {category}",
-                                "contents": {
-                                    "type": "bubble",
-                                    "size": "mega",
-                                    "header": {
-                                        "type": "box",
-                                        "layout": "vertical",
-                                        "contents": [
-                                            {
-                                                "type": "box",
-                                                "layout": "horizontal",
-                                                "contents": [
-                                                    {
-                                                        "type": "box",
-                                                        "layout": "vertical",
-                                                        "contents": [
-                                                            {"type": "text", "text": "✨", "size": "xl", "align": "center"}
-                                                        ],
-                                                        "width": "40px",
-                                                        "height": "40px",
-                                                        "backgroundColor": "#ffffff20",
-                                                        "cornerRadius": "12px",
-                                                        "justifyContent": "center",
-                                                        "alignItems": "center"
-                                                    },
-                                                    {
-                                                        "type": "box",
-                                                        "layout": "vertical",
-                                                        "contents": [
-                                                            {"type": "text", "text": "โพสต์ใหม่ใน Feed", "color": "#ffffff", "size": "lg", "weight": "bold"},
-                                                            {"type": "text", "text": "NEW FEED POST", "color": "#ffffff90", "size": "xxs"}
-                                                        ],
-                                                        "paddingStart": "12px"
-                                                    }
-                                                ],
-                                                "alignItems": "center"
-                                            }
-                                        ],
-                                        "backgroundColor": "#7C3AED",
-                                        "paddingAll": "16px"
-                                    },
-                                    "body": {
-                                        "type": "box",
-                                        "layout": "vertical",
-                                        "contents": [
-                                            {
-                                                "type": "box",
-                                                "layout": "horizontal",
-                                                "contents": [
-                                                    {
-                                                        "type": "text",
-                                                        "text": category.upper() if category else "FEED",
-                                                        "size": "xxs",
-                                                        "color": "#7C3AED",
-                                                        "weight": "bold"
-                                                    }
-                                                ],
-                                                "backgroundColor": "#F5F3FF",
-                                                "cornerRadius": "20px",
-                                                "paddingAll": "6px",
-                                                "paddingStart": "12px",
-                                                "paddingEnd": "12px",
-                                                "width": "120px",
-                                                "justifyContent": "center"
-                                            },
-                                            {"type": "text", "text": (content or "ไม่มีเนื้อหา")[:120], "wrap": True, "size": "sm", "color": "#374151", "margin": "lg"},
-                                            {"type": "separator", "margin": "lg", "color": "#F3F4F6"},
-                                            {
-                                                "type": "box",
-                                                "layout": "horizontal",
-                                                "contents": [
-                                                    {
-                                                        "type": "box",
-                                                        "layout": "vertical",
-                                                        "contents": [
-                                                            {"type": "text", "text": display_name[:1].upper(), "color": "#ffffff", "size": "xs", "align": "center"}
-                                                        ],
-                                                        "width": "28px",
-                                                        "height": "28px",
-                                                        "backgroundColor": "#7C3AED",
-                                                        "cornerRadius": "14px",
-                                                        "justifyContent": "center",
-                                                        "alignItems": "center"
-                                                    },
-                                                    {
-                                                        "type": "box",
-                                                        "layout": "vertical",
-                                                        "contents": [
-                                                            {"type": "text", "text": display_name, "size": "xs", "color": "#111827", "weight": "bold"},
-                                                            {"type": "text", "text": "เมื่อสักครู่", "size": "xxs", "color": "#9CA3AF"}
-                                                        ],
-                                                        "paddingStart": "10px"
-                                                    }
-                                                ],
-                                                "alignItems": "center",
-                                                "margin": "lg"
-                                            }
-                                        ],
-                                        "paddingAll": "20px",
-                                        "backgroundColor": "#ffffff"
-                                    },
-                                    "footer": {
-                                        "type": "box",
-                                        "layout": "vertical",
-                                        "contents": [
-                                            {
-                                                "type": "button",
-                                                "action": {"type": "uri", "label": "💬 เข้าดูโพสต์", "uri": "https://openchat.sbs"},
-                                                "style": "primary",
-                                                "color": "#7C3AED",
-                                                "height": "sm"
-                                            }
-                                        ],
-                                        "paddingAll": "12px",
-                                        "backgroundColor": "#F9FAFB"
-                                    },
-                                    "styles": {
-                                        "footer": {"separator": False}
+                            primary_color = "#7C3AED"
+                            badge_bg = "#F5F3FF"
+                            header_bg = "#7C3AED"
+                            header_icon = "✨"
+                            header_title = "โพสต์ใหม่ใน Feed"
+                            header_sub = "NEW FEED POST"
+                            alt_prefix = "✨ โพสต์ใหม่"
+
+                        # 1) Parse Image Attachments
+                        image_urls = []
+                        if attachments:
+                            for att in attachments:
+                                att_path = att.get("path", "")
+                                att_type = (att.get("type") or "").lower()
+                                att_name = (att.get("name") or "").lower()
+                                is_img = (
+                                    att_type.startswith("image/") or
+                                    att_name.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"))
+                                )
+                                if is_img and att_path:
+                                    full_img_url = att_path if att_path.startswith("http") else f"{_base_url}{att_path}"
+                                    image_urls.append(full_img_url)
+
+                        # 2) Parse Attached Link & Preview Metadata
+                        clean_link = None
+                        link_domain = None
+                        link_title = None
+                        link_image = None
+                        if link and link.strip():
+                            clean_link = link.strip()
+                        elif content:
+                            import re as _re
+                            _m = _re.search(r'https?://[^\s<>"]+', content)
+                            if _m:
+                                clean_link = _m.group(0)
+
+                        if clean_link:
+                            if not clean_link.startswith(("http://", "https://")):
+                                clean_link = "https://" + clean_link
+                            try:
+                                from urllib.parse import urlparse
+                                parsed = urlparse(clean_link)
+                                link_domain = (parsed.netloc or "LINK").upper()
+                                # Fast fetch link title & illustration image for preview
+                                try:
+                                    if "youtube.com" in clean_link or "youtu.be" in clean_link:
+                                        yt_res = _req.get(f"https://www.youtube.com/oembed?url={clean_link}&format=json", timeout=2.0)
+                                        if yt_res.status_code == 200:
+                                            yt_data = yt_res.json()
+                                            link_title = yt_data.get("title")
+                                            link_image = yt_data.get("thumbnail_url")
+                                    if not link_title or not link_image:
+                                        h_resp = _req.get(clean_link, timeout=1.5, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
+                                        if h_resp.status_code == 200:
+                                            from bs4 import BeautifulSoup
+                                            _soup = BeautifulSoup(h_resp.content[:32768], 'html.parser')
+                                            if not link_title:
+                                                og_t = _soup.find("meta", property="og:title")
+                                                if og_t and og_t.get("content"):
+                                                    link_title = og_t["content"].strip()
+                                                elif _soup.title and _soup.title.string:
+                                                    link_title = _soup.title.string.strip()
+                                            if not link_image:
+                                                og_img = _soup.find("meta", property="og:image") or _soup.find("meta", attrs={"name": "twitter:image"})
+                                                if og_img and og_img.get("content"):
+                                                    link_image = og_img["content"].strip()
+                                except Exception:
+                                    pass
+                            except Exception:
+                                link_domain = "LINK"
+                            if not link_title:
+                                link_title = clean_link
+
+                        # If post has NO image attachments, but the link HAS a preview image:
+                        # Automatically use the link preview image as the illustration image!
+                        if not image_urls and link_image:
+                            image_urls.append(link_image)
+
+                        # 3) Build Body Contents
+                        body_contents = [
+                            {
+                                "type": "box",
+                                "layout": "horizontal",
+                                "contents": [
+                                    {
+                                        "type": "text",
+                                        "text": category.upper() if category else ("GENERAL" if is_announcement else "FEED"),
+                                        "size": "xxs",
+                                        "color": primary_color,
+                                        "weight": "bold"
+                                    }
+                                ],
+                                "backgroundColor": badge_bg,
+                                "cornerRadius": "20px",
+                                "paddingAll": "6px",
+                                "paddingStart": "12px",
+                                "paddingEnd": "12px",
+                                "width": "120px",
+                                "justifyContent": "center"
+                            },
+                            {
+                                "type": "text",
+                                "text": (content or "ไม่มีเนื้อหา")[:300],
+                                "wrap": True,
+                                "size": "sm",
+                                "color": "#374151",
+                                "margin": "lg"
+                            }
+                        ]
+
+                        # Add Image Box if images exist (NOTE: cornerRadius is on box, NOT on image for LINE Flex compliance)
+                        if image_urls:
+                            primary_img = image_urls[0]
+                            img_box_contents = [
+                                {
+                                    "type": "image",
+                                    "url": primary_img,
+                                    "size": "full",
+                                    "aspectRatio": "16:9",
+                                    "aspectMode": "cover",
+                                    "action": {
+                                        "type": "uri",
+                                        "label": "ดูรูปภาพเต็ม",
+                                        "uri": primary_img
                                     }
                                 }
+                            ]
+                            if len(image_urls) > 1:
+                                img_box_contents.append({
+                                    "type": "box",
+                                    "layout": "horizontal",
+                                    "contents": [
+                                        {
+                                            "type": "text",
+                                            "text": f"📷 แนบทั้งหมด {len(image_urls)} รูป (แตะเพื่อดูรูปภาพ)",
+                                            "size": "xxs",
+                                            "color": "#6B7280",
+                                            "align": "center"
+                                        }
+                                    ],
+                                    "paddingTop": "6px",
+                                    "justifyContent": "center"
+                                })
+                            body_contents.append({
+                                "type": "box",
+                                "layout": "vertical",
+                                "contents": img_box_contents,
+                                "cornerRadius": "12px",
+                                "margin": "lg"
+                            })
+
+                        # Add Link Preview Card Box if link exists
+                        if clean_link:
+                            body_contents.append({
+                                "type": "box",
+                                "layout": "vertical",
+                                "contents": [
+                                    {
+                                        "type": "box",
+                                        "layout": "horizontal",
+                                        "contents": [
+                                            {"type": "text", "text": "🔗", "size": "xs", "flex": 0},
+                                            {
+                                                "type": "text",
+                                                "text": link_domain or "LINK",
+                                                "size": "xxs",
+                                                "weight": "bold",
+                                                "color": primary_color,
+                                                "margin": "xs",
+                                                "flex": 1
+                                            }
+                                        ],
+                                        "alignItems": "center"
+                                    },
+                                    {
+                                        "type": "text",
+                                        "text": (link_title or "เปิดดูเนื้อหาตามลิงก์ที่แนบ")[:80],
+                                        "size": "xs",
+                                        "weight": "bold",
+                                        "color": "#1E293B",
+                                        "wrap": True,
+                                        "maxLines": 2,
+                                        "margin": "xs"
+                                    }
+                                ],
+                                "backgroundColor": "#F8FAFC",
+                                "cornerRadius": "10px",
+                                "paddingAll": "10px",
+                                "margin": "lg",
+                                "borderWidth": "1px",
+                                "borderColor": "#E2E8F0",
+                                "action": {
+                                    "type": "uri",
+                                    "label": "เปิดลิงก์",
+                                    "uri": clean_link
+                                }
+                            })
+
+                        # Separator and Author Info
+                        body_contents.append({"type": "separator", "margin": "lg", "color": "#F3F4F6"})
+                        body_contents.append({
+                            "type": "box",
+                            "layout": "horizontal",
+                            "contents": [
+                                {
+                                    "type": "box",
+                                    "layout": "vertical",
+                                    "contents": [
+                                        {"type": "text", "text": display_name[:1].upper(), "color": "#ffffff", "size": "xs", "align": "center"}
+                                    ],
+                                    "width": "28px",
+                                    "height": "28px",
+                                    "backgroundColor": primary_color,
+                                    "cornerRadius": "14px",
+                                    "justifyContent": "center",
+                                    "alignItems": "center"
+                                },
+                                {
+                                    "type": "box",
+                                    "layout": "vertical",
+                                    "contents": [
+                                        {"type": "text", "text": display_name, "size": "xs", "color": "#111827", "weight": "bold"},
+                                        {"type": "text", "text": "เมื่อสักครู่", "size": "xxs", "color": "#9CA3AF"}
+                                    ],
+                                    "paddingStart": "10px"
+                                }
+                            ],
+                            "alignItems": "center",
+                            "margin": "lg"
+                        })
+
+                        # 4) Build Footer Buttons
+                        footer_contents = []
+                        if clean_link:
+                            # Primary button: Open attached link directly in LINE In-App Browser
+                            footer_contents.append({
+                                "type": "button",
+                                "action": {"type": "uri", "label": "🌐 เปิดลิงก์ที่แนบ", "uri": clean_link},
+                                "style": "primary",
+                                "color": primary_color,
+                                "height": "sm"
+                            })
+                            # Secondary button: View in OrgChat
+                            footer_contents.append({
+                                "type": "button",
+                                "action": {"type": "uri", "label": "💬 ดูในระบบ OrgChat", "uri": portal_url},
+                                "style": "secondary",
+                                "height": "sm",
+                                "margin": "sm"
+                            })
+                        elif image_urls:
+                            # Primary button: View full size image
+                            footer_contents.append({
+                                "type": "button",
+                                "action": {"type": "uri", "label": "🔍 ดูรูปภาพขนาดเต็ม", "uri": image_urls[0]},
+                                "style": "primary",
+                                "color": primary_color,
+                                "height": "sm"
+                            })
+                            # Secondary button: View in OrgChat
+                            footer_contents.append({
+                                "type": "button",
+                                "action": {"type": "uri", "label": "💬 ดูในระบบ OrgChat", "uri": portal_url},
+                                "style": "secondary",
+                                "height": "sm",
+                                "margin": "sm"
+                            })
+                        else:
+                            # Single button: View post in OrgChat
+                            btn_label = "อ่านเพิ่มเติม" if is_announcement else "💬 เข้าดูโพสต์"
+                            footer_contents.append({
+                                "type": "button",
+                                "action": {"type": "uri", "label": btn_label, "uri": portal_url},
+                                "style": "primary",
+                                "color": primary_color,
+                                "height": "sm"
+                            })
+
+                        # 5) Alt Text summary
+                        extras = []
+                        if image_urls:
+                            extras.append("รูปภาพ")
+                        if clean_link:
+                            extras.append("ลิงก์")
+                        extra_str = f" [แนบ{'+'.join(extras)}]" if extras else ""
+                        alt_text = f"{alt_prefix}: {category} — โดย {display_name}{extra_str}"
+
+                        flex_msg = {
+                            "type": "flex",
+                            "altText": alt_text,
+                            "contents": {
+                                "type": "bubble",
+                                "size": "mega",
+                                "header": {
+                                    "type": "box",
+                                    "layout": "vertical",
+                                    "contents": [
+                                        {
+                                            "type": "box",
+                                            "layout": "horizontal",
+                                            "contents": [
+                                                {
+                                                    "type": "box",
+                                                    "layout": "vertical",
+                                                    "contents": [
+                                                        {"type": "text", "text": header_icon, "size": "xl", "align": "center"}
+                                                    ],
+                                                    "width": "40px",
+                                                    "height": "40px",
+                                                    "backgroundColor": "#ffffff20",
+                                                    "cornerRadius": "12px",
+                                                    "justifyContent": "center",
+                                                    "alignItems": "center"
+                                                },
+                                                {
+                                                    "type": "box",
+                                                    "layout": "vertical",
+                                                    "contents": [
+                                                        {"type": "text", "text": header_title, "color": "#ffffff", "size": "lg", "weight": "bold"},
+                                                        {"type": "text", "text": header_sub, "color": "#ffffff90", "size": "xxs"}
+                                                    ],
+                                                    "paddingStart": "12px"
+                                                }
+                                            ],
+                                            "alignItems": "center"
+                                        }
+                                    ],
+                                    "backgroundColor": header_bg,
+                                    "paddingAll": "16px"
+                                },
+                                "body": {
+                                    "type": "box",
+                                    "layout": "vertical",
+                                    "contents": body_contents,
+                                    "paddingAll": "20px",
+                                    "backgroundColor": "#ffffff"
+                                },
+                                "footer": {
+                                    "type": "box",
+                                    "layout": "vertical",
+                                    "contents": footer_contents,
+                                    "paddingAll": "12px",
+                                    "backgroundColor": "#F9FAFB"
+                                },
+                                "styles": {
+                                    "footer": {"separator": False}
+                                }
                             }
+                        }
                         
-                        # 1) Push to LINE Groups (as before)
+                        # 1) Push to LINE Groups immediately
                         for _g in _groups:
                             _gid = _g.get("group_id")
                             if _gid:
                                 try:
-                                    _req.post(
+                                    _resp = _req.post(
                                         "https://api.line.me/v2/bot/message/push",
                                         headers={"Content-Type": "application/json", "Authorization": f"Bearer {_tok}"},
                                         json={"to": _gid, "messages": [flex_msg]},
-                                        timeout=5
+                                        timeout=4
                                     )
-                                except Exception:
-                                    pass
+                                    if _resp.status_code == 200:
+                                        logger.info(f"🚀 [LINE Group Push] Sent successfully to group {_gid}")
+                                    else:
+                                        logger.error(f"❌ [LINE Group Push Error] Target: {_gid} - Status: {_resp.status_code} - Body: {_resp.text}")
+                                except Exception as _ge:
+                                    logger.error(f"❌ [LINE Group Push Exception] {_ge}")
                         
-                        # 2) Push to individual LINE users in this org (personal DM)
+                        # 2) Push to individual LINE users in this org (personal DM) using Multicast
                         try:
                             org_members = database.get_org_members(_oid) or []
-                            _sent_ids = set()
+                            _target_lids = []
                             for member in org_members:
                                 _uname = member.get("username", "")
-                                # Skip the author — don't notify yourself
                                 if _uname.lower() == author.lower():
                                     continue
-                                # Skip inactive members
                                 if not member.get("is_active", True):
                                     continue
                                 _lid = database.get_line_id_by_username(_uname)
-                                if _lid and _lid not in _sent_ids:
-                                    _sent_ids.add(_lid)
-                                    try:
-                                        _req.post(
-                                            "https://api.line.me/v2/bot/message/push",
-                                            headers={"Content-Type": "application/json", "Authorization": f"Bearer {_tok}"},
-                                            json={"to": _lid, "messages": [flex_msg]},
-                                            timeout=5
-                                        )
-                                    except Exception:
-                                        pass
+                                if _lid and _lid not in _target_lids:
+                                    _target_lids.append(_lid)
+
+                            if _target_lids:
+                                _m_resp = _req.post(
+                                    "https://api.line.me/v2/bot/message/multicast",
+                                    headers={"Content-Type": "application/json", "Authorization": f"Bearer {_tok}"},
+                                    json={"to": _target_lids, "messages": [flex_msg]},
+                                    timeout=4
+                                )
+                                if _m_resp.status_code == 200:
+                                    logger.info(f"🚀 [LINE Multicast Push] Sent to {len(_target_lids)} users")
+                                else:
+                                    logger.error(f"❌ [LINE Multicast Error] Status: {_m_resp.status_code} - Body: {_m_resp.text}")
                         except Exception as _member_err:
                             logger.warning(f"Failed to push announcement to individual LINE users: {_member_err}")
 

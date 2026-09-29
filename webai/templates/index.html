@@ -1621,37 +1621,59 @@
         <!-- Knowledge Base View -->
         <section id="view-kb"
           class="view hidden flex-1 flex flex-col overflow-hidden animate-in fade-in duration-300 w-full">
-          <header
-            class="h-auto border-b border-surface-100 dark:border-surface-800 bg-white dark:bg-surface-900 w-full">
-            <div class="h-14 flex items-center justify-between px-6">
-              <div class="flex items-center gap-3">
-                <h2 class="font-semibold text-sm">คลังความรู้ส่วนตัว</h2>
-                <div class="flex items-center gap-1.5 p-1 bg-surface-100 dark:bg-surface-800 rounded-xl">
+          <header class="border-b border-surface-100 dark:border-surface-800 bg-white dark:bg-surface-900 w-full flex-shrink-0">
+            <div class="px-4 py-2.5 md:py-0 md:h-14 flex flex-col md:flex-row md:items-center md:justify-between gap-2.5 md:gap-4">
+              <!-- Top row on mobile / Left side on desktop -->
+              <div class="flex items-center justify-between gap-3 w-full md:w-auto">
+                <div class="flex items-center gap-2">
+                  <div class="w-7 h-7 rounded-lg bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center text-brand-600 flex-shrink-0">
+                    <i data-lucide="database" class="w-4 h-4"></i>
+                  </div>
+                  <h2 class="font-bold text-sm text-surface-900 dark:text-white whitespace-nowrap">คลังความรู้ส่วนตัว</h2>
+                </div>
+                
+                <!-- Stats on Mobile -->
+                <div class="flex md:hidden items-center gap-2.5 text-[11px] font-bold text-surface-400">
+                  <div class="flex items-center gap-1.5 bg-surface-100 dark:bg-surface-800 px-2 py-1 rounded-lg">
+                    <span><span id="statFilesMobile" class="text-surface-900 dark:text-white font-extrabold">0</span> ไฟล์</span>
+                    <span class="text-surface-300 dark:text-surface-600">•</span>
+                    <span><span id="statChunksMobile" class="text-surface-900 dark:text-white font-extrabold">0</span> ชิ้นส่วน</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Sub-tabs bar: scrollable horizontally on mobile with smooth touch scrolling -->
+              <div class="w-full md:w-auto overflow-x-auto no-scrollbar -mx-4 px-4 md:mx-0 md:px-0">
+                <div class="flex items-center gap-1 p-1 bg-surface-100 dark:bg-surface-800 rounded-xl w-max md:w-auto">
                   <button id="kb-tab-files" onclick="switchKBSubTab('files')"
-                    class="kb-main-tab px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest bg-white dark:bg-surface-700 shadow-sm text-brand-600 transition-all flex items-center gap-1.5">
-                    <i data-lucide="file-text" class="w-3 h-3"></i> ไฟล์ KB
+                    class="kb-main-tab px-3 py-1.5 rounded-lg text-[10px] md:text-[11px] font-black uppercase tracking-wider bg-white dark:bg-surface-700 shadow-sm text-brand-600 transition-all flex items-center gap-1.5 whitespace-nowrap flex-shrink-0">
+                    <i data-lucide="file-text" class="w-3.5 h-3.5"></i> ไฟล์ KB
                   </button>
                   <button id="kb-tab-crawler" onclick="switchKBSubTab('crawler')"
-                    class="kb-main-tab px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest text-surface-400 hover:text-brand-600 transition-all flex items-center gap-1.5">
-                    <i data-lucide="globe" class="w-3 h-3"></i> เว็บไซต์ AI
+                    class="kb-main-tab px-3 py-1.5 rounded-lg text-[10px] md:text-[11px] font-black uppercase tracking-wider text-surface-400 hover:text-brand-600 transition-all flex items-center gap-1.5 whitespace-nowrap flex-shrink-0">
+                    <i data-lucide="globe" class="w-3.5 h-3.5"></i> เว็บไซต์ AI
                   </button>
                   <button id="kb-tab-search" onclick="switchKBSubTab('search')"
-                    class="kb-main-tab px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest text-surface-400 hover:text-brand-600 transition-all flex items-center gap-1.5">
-                    <i data-lucide="search" class="w-3 h-3"></i> ค้นหา AI
+                    class="kb-main-tab px-3 py-1.5 rounded-lg text-[10px] md:text-[11px] font-black uppercase tracking-wider text-surface-400 hover:text-brand-600 transition-all flex items-center gap-1.5 whitespace-nowrap flex-shrink-0">
+                    <i data-lucide="search" class="w-3.5 h-3.5"></i> ค้นหา AI
                   </button>
                   <button id="kb-tab-summary" onclick="switchKBSubTab('summary')"
-                    class="kb-main-tab px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest text-surface-400 hover:text-brand-600 transition-all flex items-center gap-1.5">
-                    <i data-lucide="sparkles" class="w-3 h-3"></i> สรุป AI
+                    class="kb-main-tab px-3 py-1.5 rounded-lg text-[10px] md:text-[11px] font-black uppercase tracking-wider text-surface-400 hover:text-brand-600 transition-all flex items-center gap-1.5 whitespace-nowrap flex-shrink-0">
+                    <i data-lucide="sparkles" class="w-3.5 h-3.5"></i> สรุป AI
                   </button>
                 </div>
               </div>
-              <div class="flex items-center gap-4">
-                <div class="text-[11px] font-bold text-surface-400 flex items-center gap-3 border-r border-surface-100 pr-4">
+
+              <!-- Desktop Stats & Refresh Button -->
+              <div class="hidden md:flex items-center gap-4 flex-shrink-0">
+                <div class="text-[11px] font-bold text-surface-400 flex items-center gap-3 border-r border-surface-100 dark:border-surface-800 pr-4">
                   <div><span id="statFiles" class="text-surface-900 dark:text-white">0</span> ไฟล์</div>
                   <div><span id="statChunks" class="text-surface-900 dark:text-white">0</span> ชิ้นส่วน</div>
                 </div>
                 <button id="refreshFilesBtn"
-                  class="text-xs font-semibold text-brand-600 hover:text-brand-700 transition-colors">↻ รีเฟรช</button>
+                  class="text-xs font-semibold text-brand-600 hover:text-brand-700 transition-colors flex items-center gap-1">
+                  <i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i> รีเฟรช
+                </button>
               </div>
             </div>
           </header>
@@ -7031,6 +7053,9 @@
                 <button onclick="generateRRPdf()" class="px-4 py-2 text-sm font-bold text-white bg-amber-500 rounded-xl hover:bg-amber-600 transition flex items-center gap-1.5 shadow-sm">
                   <i data-lucide="download" class="w-4 h-4"></i> ดาวน์โหลด PDF
                 </button>
+                <button type="button" onclick="openRRPreviewFullscreen()" class="px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition flex items-center gap-1.5 shadow-xs cursor-pointer">
+                  <i data-lucide="maximize-2" class="w-4 h-4 text-amber-500"></i> ดูเต็มจอ
+                </button>
               </div>
             </div>
 
@@ -7187,12 +7212,23 @@
               <!-- RIGHT: A4 Preview -->
               <div class="lg:sticky lg:top-6 self-start">
                 <div class="bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden">
-                  <div class="bg-slate-50 border-b border-slate-200 px-4 py-2.5 flex items-center gap-2">
-                    <i data-lucide="eye" class="w-3.5 h-3.5 text-slate-400"></i>
-                    <span class="text-xs font-semibold text-slate-500">ตัวอย่างเอกสาร (A4)</span>
+                  <div class="bg-slate-50 border-b border-slate-200 px-4 py-2.5 flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                      <i data-lucide="eye" class="w-3.5 h-3.5 text-slate-400"></i>
+                      <span class="text-xs font-semibold text-slate-500">ตัวอย่างเอกสาร (A4)</span>
+                    </div>
+                    <button type="button" onclick="openRRPreviewFullscreen()" class="inline-flex items-center gap-1.5 px-3 py-1 bg-white hover:bg-amber-50 text-amber-700 text-xs font-bold rounded-lg border border-amber-200 shadow-xs transition cursor-pointer" title="ดูเอกสารขนาดเต็มจอ">
+                      <i data-lucide="maximize-2" class="w-3.5 h-3.5"></i>
+                      <span>ดูเต็มจอ</span>
+                    </button>
                   </div>
-                  <!-- A4 Paper Preview -->
-                  <div class="p-4 bg-slate-100 min-h-[600px] flex items-start justify-center overflow-hidden">
+                  <!-- A4 Paper Preview (Clickable) -->
+                  <div class="p-4 bg-slate-100 min-h-[600px] flex items-start justify-center overflow-hidden cursor-pointer group relative" onclick="openRRPreviewFullscreen()" title="คลิกเพื่อดูตัวอย่างแบบเต็มจอ">
+                    <div class="absolute inset-0 bg-slate-900/0 group-hover:bg-slate-900/10 transition-all flex items-center justify-center pointer-events-none z-20">
+                      <span class="opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900/80 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow-lg flex items-center gap-1.5 backdrop-blur-sm">
+                        <i data-lucide="maximize-2" class="w-3.5 h-3.5"></i> คลิกเพื่อดูขนาดเต็มจอ
+                      </span>
+                    </div>
                     <div id="rrPreview" style="width:210mm; min-height:297mm; background:#fff; padding:15mm 15mm 15mm 15mm; font-family:'Sarabun','Outfit',sans-serif; font-size:12px; color:#1e293b; box-shadow:0 4px 32px rgba(0,0,0,0.12); transform-origin:top center; transform:scale(0.55); margin-bottom:-130mm; display:flex; flex-direction:column; justify-content:space-between;" class="relative">
                       <div>
                         <!-- Top Header Bar -->
@@ -7322,6 +7358,62 @@
                       </div>
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 📄 FULLSCREEN A4 PREVIEW MODAL -->
+          <div id="rrFullscreenModal" class="hidden fixed inset-0 z-[9999] bg-slate-950/85 backdrop-blur-md flex-col items-center justify-between p-3 md:p-6 transition-all duration-300">
+            <!-- Top Floating Action Toolbar -->
+            <div class="w-full max-w-5xl bg-white dark:bg-surface-900 border border-slate-200 dark:border-surface-800 rounded-2xl px-5 py-3 shadow-2xl flex flex-wrap items-center justify-between gap-4 z-50 mb-3">
+              <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center font-bold">
+                  <i data-lucide="receipt" class="w-5 h-5"></i>
+                </div>
+                <div>
+                  <h3 class="text-sm font-extrabold text-slate-900 dark:text-white leading-tight">ตัวอย่างเอกสาร A4 (ขนาดเต็ม)</h3>
+                  <p class="text-[11px] text-slate-400">ใบแทนใบเสร็จรับเงิน — ตัวอย่างคมชัดขนาดมาตรฐานก่อนพิมพ์ / บันทึก PDF</p>
+                </div>
+              </div>
+
+              <!-- Zoom & Action Controls -->
+              <div class="flex items-center gap-2">
+                <div class="flex items-center bg-slate-100 dark:bg-surface-800 rounded-xl p-1 border border-slate-200 dark:border-surface-700">
+                  <button type="button" onclick="changeRRZoom(-0.15)" class="w-7 h-7 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-surface-700 rounded-lg transition cursor-pointer" title="ย่อขนาด">
+                    <i data-lucide="minus" class="w-3.5 h-3.5"></i>
+                  </button>
+                  <span id="rrZoomLabel" class="text-xs font-bold text-slate-700 dark:text-slate-200 w-12 text-center select-none">100%</span>
+                  <button type="button" onclick="changeRRZoom(0.15)" class="w-7 h-7 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-surface-700 rounded-lg transition cursor-pointer" title="ขยายขนาด">
+                    <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                  </button>
+                  <button type="button" onclick="resetRRZoom()" class="text-[10px] font-bold text-slate-500 hover:text-slate-800 dark:hover:text-white px-2 py-1 hover:bg-white dark:hover:bg-surface-700 rounded-lg transition ml-1 cursor-pointer" title="ขนาด 100%">
+                    100%
+                  </button>
+                </div>
+
+                <!-- Print -->
+                <button type="button" onclick="printRRPaper()" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-surface-800 dark:text-slate-200 text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer">
+                  <i data-lucide="printer" class="w-4 h-4"></i> พิมพ์
+                </button>
+
+                <!-- Download PDF -->
+                <button type="button" onclick="generateRRPdf()" class="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm cursor-pointer">
+                  <i data-lucide="download" class="w-4 h-4"></i> ดาวน์โหลด PDF
+                </button>
+
+                <!-- Close Modal -->
+                <button type="button" onclick="closeRRPreviewFullscreen()" class="w-9 h-9 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-500 hover:text-rose-600 flex items-center justify-center transition border border-slate-200 dark:bg-surface-800 dark:border-surface-700 cursor-pointer" title="ปิดหน้าจอ (Esc)">
+                  <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- Document Scrollable Viewport -->
+            <div id="rrFullscreenViewport" class="flex-1 w-full overflow-auto custom-scrollbar flex items-start justify-center p-2 md:p-6" onclick="if(event.target===this) closeRRPreviewFullscreen()">
+              <div id="rrFullscreenWrapper" style="transition: transform 0.12s ease-out; transform-origin: top center;" class="my-auto">
+                <div id="rrFullscreenPaper" style="width:210mm; min-height:297mm; background:#fff; padding:15mm; font-family:'Sarabun','Outfit',sans-serif; font-size:12px; color:#1e293b; box-shadow:0 25px 50px -12px rgba(0,0,0,0.5); border-radius:4px; margin:0 auto; display:flex; flex-direction:column; justify-content:space-between;" class="relative">
+                  <!-- Cloned preview content -->
                 </div>
               </div>
             </div>
@@ -7759,13 +7851,24 @@
                         ภ.ง.ด. รายเดือน
                     </button>
                 </div>
-                <div class="flex items-center gap-3">
+                <div class="flex items-center gap-3 flex-wrap">
                     <span class="text-xs text-slate-400 font-medium">วันที่ในใบเสร็จ</span>
                     <label class="switch">
-                        <input type="checkbox" id="dateToggle" onchange="loadDashboardData()">
+                        <input type="checkbox" id="dateToggle" onchange="applyAllFilters()">
                         <span class="slider"></span>
                     </label>
                     <span class="text-xs text-slate-400 font-medium">วันที่อัปโหลด</span>
+
+                    <div class="flex items-center gap-1.5 border-l border-slate-200 dark:border-slate-700 pl-3">
+                        <i data-lucide="arrow-down-up" class="w-3.5 h-3.5 text-slate-400"></i>
+                        <span class="text-xs text-slate-400 font-medium whitespace-nowrap">เรียง:</span>
+                        <select id="filterSortOrder" onchange="applyAllFilters()" class="px-2 py-1 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 focus:ring-1 focus:ring-brand-500 font-medium cursor-pointer">
+                            <option value="upload_asc">🕒 เวลาอัปโหลด (เก่า -> ใหม่)</option>
+                            <option value="upload_desc" selected>🕒 เวลาอัปโหลด (ล่าสุดก่อน / ใหม่ -> เก่า)</option>
+                            <option value="date_desc">📅 วันที่เอกสาร (ใหม่ -> เก่า)</option>
+                            <option value="date_asc">📅 วันที่เอกสาร (เก่า -> ใหม่)</option>
+                        </select>
+                    </div>
                 </div>
             </div>
 
@@ -7828,7 +7931,7 @@
                     <table class="w-full text-left">
                         <thead>
                             <tr class="bg-slate-50 border-b border-slate-200">
-                                <th class="px-6 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">วันที่</th>
+                                <th class="px-6 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">วันที่ / เวลาอัปโหลด</th>
                                 <th class="px-6 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">ร้านค้า / ผู้ส่ง</th>
                                 <th class="px-6 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">รายละเอียด</th>
                                 <th class="px-6 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">ก่อนภาษี</th>
@@ -7853,7 +7956,7 @@
                     <table class="w-full text-left">
                         <thead>
                             <tr class="bg-slate-50 border-b border-slate-200">
-                                <th class="px-6 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">วันที่</th>
+                                <th class="px-6 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">วันที่ / เวลาอัปโหลด</th>
                                 <th class="px-6 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">ร้านค้า / ผู้ส่ง</th>
                                 <th class="px-6 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">ยอดเงิน</th>
                                 <th class="px-6 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">ปัญหา</th>
@@ -8581,7 +8684,10 @@
                         <i data-lucide="edit-3" class="w-4 h-4 text-white"></i>
                     </div>
                     <div>
-                        <h3 class="text-base font-bold text-slate-950">แก้ไขรายจ่าย</h3>
+                        <div class="flex items-center gap-2">
+                            <h3 class="text-base font-bold text-slate-950">แก้ไขรายจ่าย</h3>
+                            <span id="modalUploadTimeBadge" class="hidden text-[10px] font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full items-center gap-1"></span>
+                        </div>
                         <p class="text-[10px] text-slate-400 font-medium">ปรับปรุงข้อมูลค่าใช้จ่ายและแนบใบสำคัญจ่าย</p>
                     </div>
                 </div>
@@ -12321,7 +12427,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 return `
                 <tr class="table-row-hover transition cursor-pointer" onclick="openEditModalFromRow(${itemJson})">
-                    <td class="px-6 py-4 text-xs text-slate-500 whitespace-nowrap">${escHtml(item.date)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="text-xs font-semibold text-slate-700">${escHtml(item.date)}</span>
+                        ${item.upload_time ? `<div class="text-[10px] text-slate-400 mt-0.5"><i data-lucide="clock" class="w-2.5 h-2.5 inline mr-1"></i>${escHtml(item.upload_time)}</div>` : ''}
+                    </td>
                     <td class="px-6 py-4">
                         <p class="text-xs font-bold text-slate-800">${escHtml(item.vendor)}</p>
                         <p class="text-[9px] text-slate-400 font-medium uppercase mt-0.5">${escHtml(item.sheet)} &middot; แถว ${item.row}</p>
