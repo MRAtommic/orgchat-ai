@@ -472,13 +472,44 @@ document.addEventListener('click', (e) => {
   }
 });
 
+// Helper: Format attachment label if no text
+function formatAttachmentPreview(attachments) {
+  if (!attachments) return '';
+  let parsed = attachments;
+  if (typeof attachments === 'string') {
+    try { parsed = JSON.parse(attachments); } catch(e) {}
+  }
+  if (Array.isArray(parsed) && parsed.length > 0) {
+    const first = parsed[0] || {};
+    const type = (first.type || '').toLowerCase();
+    const url = (first.url || '').toLowerCase();
+    const name = first.name || '';
+    if (type === 'audio' || url.includes('voice_') || /\.(webm|mp3|wav|m4a|ogg)($|\?)/i.test(url)) {
+      return '🎤 ข้อความเสียง';
+    } else if (type === 'image' || /\.(jpg|jpeg|png|gif|webp|bmp)($|\?)/i.test(url)) {
+      return '📷 รูปภาพ';
+    } else if (type === 'video' || /\.(mp4|mov|avi|mkv)($|\?)/i.test(url)) {
+      return '🎥 วิดีโอ';
+    } else if (name) {
+      return `📎 ${name}`;
+    } else {
+      return '📎 ไฟล์แนบ';
+    }
+  }
+  return '';
+}
+
 // Helper: Get preview text with sender prefix
-function getChatPreview(msg, sender) {
-  if (!msg) return 'ยังไม่มีข้อความ';
+function getChatPreview(msg, sender, attachments) {
+  let displayMsg = (msg || '').trim();
+  if (!displayMsg && attachments) {
+    displayMsg = formatAttachmentPreview(attachments);
+  }
+  if (!displayMsg) return 'ยังไม่มีข้อความ';
   const currentUser = (typeof state.user === 'object' ? state.user?.username : state.user);
   const prefix = (sender && currentUser && sender.toLowerCase() === currentUser.toLowerCase()) ? 'คุณ: ' : '';
-  const text = msg.replace(/<[^>]*>/g, '').substring(0, 30);
-  return `${prefix}${text}${msg.length > 30 ? '...' : ''}`;
+  const text = displayMsg.replace(/<[^>]*>/g, '').substring(0, 30);
+  return `${prefix}${text}${displayMsg.length > 30 ? '...' : ''}`;
 }
 
 // Unified Chat Refs
@@ -4917,6 +4948,7 @@ function initSocket() {
         console.log("👀 New message in active chat, refreshing sync...");
         loadChatMessages(true); 
       }
+      loadChatList();
     } else {
       // Message is for another chat or we are not looking at the chat modal
       if (data.sender !== currentUser) {
@@ -4925,6 +4957,7 @@ function initSocket() {
         }
         console.log("🔔 New message in background, showing notification...");
         loadUnreadCounts();
+        loadChatList();
       } else {
         // If it's our own message, we should still refresh the list to see it
         loadChatList();
@@ -7024,7 +7057,7 @@ async function loadUnreadCounts() {
                     id: roomId,
                     chatName,
                     sender: msg.display_name || msg.username,
-                    preview: msg.text || '',
+                    preview: (msg.text && msg.text.trim()) || formatAttachmentPreview(msg.attachments) || '',
                     count: count // total unread for this chat
                   });
                 });
@@ -7069,7 +7102,7 @@ async function loadUnreadCounts() {
                     id: dmId,
                     chatName,
                     sender: msg.display_name || msg.username,
-                    preview: msg.text || '',
+                    preview: (msg.text && msg.text.trim()) || formatAttachmentPreview(msg.attachments) || '',
                     count: count
                   });
                 });
@@ -7166,7 +7199,7 @@ function renderChatSidebar() {
     const unreadCount = isActive ? 0 : (item.type === 'room' ? (state.groupChat.unreadCounts.rooms[item.id] || 0) : (state.groupChat.unreadCounts.dms[item.id] || 0));
     const isUnread = unreadCount > 0;
     const lastTime = item.last_time ? formatRelativeTime(item.last_time) : '';
-    const preview = getChatPreview(item.last_msg, item.last_sender);
+    const preview = getChatPreview(item.last_msg, item.last_sender, item.last_attachments);
     const avatarIcon = item.type === 'room' ? 'users' : 'user';
     const isOnline = item.type === 'dm' && state.onlineUsers.includes(item.username || item.id);
     const dotClass = isOnline ? 'online' : 'offline';

@@ -4682,6 +4682,37 @@ def get_room_messages(room_id, limit=100):
         "read_count": r[11]
     } for r in rows]
 
+def format_chat_message_preview(text: str, attachments_raw=None) -> str:
+    """Format the preview text of a message (handles text, audio, images, files)."""
+    text_clean = (text or "").strip()
+    if text_clean:
+        return text_clean
+        
+    if attachments_raw:
+        try:
+            import json
+            atts = json.loads(attachments_raw) if isinstance(attachments_raw, str) else attachments_raw
+            if isinstance(atts, list) and len(atts) > 0:
+                first = atts[0]
+                att_type = (first.get("type") or "").lower()
+                att_name = first.get("name") or ""
+                url = (first.get("url") or "").lower()
+                
+                if att_type == "audio" or "voice_" in url or url.endswith((".webm", ".mp3", ".wav", ".m4a", ".ogg")):
+                    return "🎤 ข้อความเสียง"
+                elif att_type == "image" or url.endswith((".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp")):
+                    return "📷 รูปภาพ"
+                elif att_type == "video" or url.endswith((".mp4", ".mov", ".avi", ".mkv")):
+                    return "🎥 วิดีโอ"
+                elif att_name:
+                    return f"📎 {att_name}"
+                else:
+                    return "📎 ไฟล์แนบ"
+        except Exception:
+            pass
+            
+    return ""
+
 def get_rooms_for_user(username, org_id=1):
     conn = _get_conn()
     cursor = conn.cursor()
@@ -4689,11 +4720,12 @@ def get_rooms_for_user(username, org_id=1):
     # Get rooms with their last message
     cursor.execute("""
         SELECT r.id, r.name, r.avatar_url, r.owner,
-               m.text as last_msg, m.timestamp as last_time, m.username as last_sender
+               m.text as last_msg, m.timestamp as last_time, m.username as last_sender,
+               m.attachments as last_attachments
         FROM chat_rooms r
         JOIN room_members rm ON r.id = rm.room_id
         LEFT JOIN (
-            SELECT room_id, text, timestamp, username,
+            SELECT room_id, text, attachments, timestamp, username,
                    ROW_NUMBER() OVER (PARTITION BY room_id ORDER BY id DESC) as rn
             FROM room_messages
         ) m ON r.id = m.room_id AND m.rn = 1
@@ -4704,17 +4736,18 @@ def get_rooms_for_user(username, org_id=1):
     
     rooms = []
     for r in cursor.fetchall():
+        last_msg = format_chat_message_preview(r[4], r[7])
         rooms.append({
             "id": r[0], "name": r[1], "avatar_url": r[2], "owner": r[3], "type": "room",
-            "last_msg": r[4], "last_time": r[5], "last_sender": r[6]
+            "last_msg": last_msg, "last_time": r[5], "last_sender": r[6], "last_attachments": r[7]
         })
     
     # Recent DM contacts with their last message
     cursor.execute("""
-        SELECT contact, text as last_msg, timestamp as last_time, sender as last_sender
+        SELECT contact, text as last_msg, timestamp as last_time, sender as last_sender, attachments as last_attachments
         FROM (
             SELECT CASE WHEN sender = ? COLLATE NOCASE THEN recipient ELSE sender END as contact,
-                   text, timestamp, sender,
+                   text, attachments, timestamp, sender,
                    ROW_NUMBER() OVER (PARTITION BY CASE WHEN sender = ? COLLATE NOCASE THEN recipient ELSE sender END ORDER BY id DESC) as rn
             FROM private_messages
             WHERE sender = ? COLLATE NOCASE OR recipient = ? COLLATE NOCASE
@@ -4737,10 +4770,11 @@ def get_rooms_for_user(username, org_id=1):
     for c in cursor.fetchall():
         contact_name = c[0]
         p = get_user_profile(contact_name)
+        last_msg = format_chat_message_preview(c[1], c[4])
         contacts.append({
             "id": contact_name, "name": p["display_name"], 
             "avatar_url": p["avatar_url"], "type": "dm",
-            "last_msg": c[1], "last_time": c[2], "last_sender": c[3]
+            "last_msg": last_msg, "last_time": c[2], "last_sender": c[3], "last_attachments": c[4]
         })
     
     conn.close()
