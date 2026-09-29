@@ -5426,10 +5426,13 @@ def superadmin_get_system_stats() -> dict:
     total_orgs = (cur.fetchone() or {"cnt": 0})["cnt"]
     cur.execute("SELECT COUNT(*) AS cnt FROM user_profiles")
     total_users = (cur.fetchone() or {"cnt": 0})["cnt"]
-    cur.execute("SELECT COUNT(*) AS cnt FROM messages WHERE role='user'")
-    total_ai_queries = (cur.fetchone() or {"cnt": 0})["cnt"]
     cur.execute("SELECT SUM(ai_query_count) AS cnt FROM usage_tracking WHERE year_month=?", (ym,))
     ai_queries_this_month = (cur.fetchone() or {"cnt": 0})["cnt"] or 0
+    cur.execute("SELECT SUM(ai_query_count) AS cnt FROM usage_tracking")
+    tracked_total = (cur.fetchone() or {"cnt": 0})["cnt"] or 0
+    cur.execute("SELECT COUNT(*) AS cnt FROM messages WHERE role='user'")
+    msg_total = (cur.fetchone() or {"cnt": 0})["cnt"] or 0
+    total_ai_queries = max(tracked_total, msg_total, ai_queries_this_month)
     cur.execute("SELECT COUNT(*) AS cnt FROM organizations WHERE COALESCE(plan,'free') != 'free'")
     paying_orgs = (cur.fetchone() or {"cnt": 0})["cnt"]
     cur.execute("SELECT COUNT(*) AS cnt FROM messages")
