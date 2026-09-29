@@ -347,10 +347,17 @@ function scrollToBottom(behavior = 'smooth', onlyIfAtBottom = false) {
   }
 }
 
-// Global Error Handler for White Screen debugging
+// Global Error Handler (Console logging with optional debug banner)
 window.onerror = function (msg, url, line, col, error) {
-  console.error("Critical JS Error:", msg, "at", url, ":", line);
-  document.body.insertAdjacentHTML('afterbegin', `<div style="position:fixed; top:0; left:0; width:100%; min-height:50px; background:#f44336; color:white; font-family:sans-serif; font-size:12px; padding:10px; z-index:99999; overflow:auto;"><b>JS Error:</b> ${msg} (Line ${line})</div>`);
+  const msgStr = String(msg || '');
+  // Ignore harmless browser/extension errors
+  if (msgStr.includes('ResizeObserver') || msgStr.includes('Script error.') || (url && (url.includes('chrome-extension://') || url.includes('moz-extension://')))) {
+    return false;
+  }
+  console.error("OrgChat JS Error:", msg, "at", url, ":", line);
+  if (localStorage.getItem('debug_errors') === 'true') {
+    document.body.insertAdjacentHTML('afterbegin', `<div style="position:fixed; top:0; left:0; width:100%; min-height:36px; background:#e53e3e; color:white; font-family:sans-serif; font-size:12px; padding:8px 12px; z-index:99999; display:flex; justify-content:space-between; align-items:center;"><span><b>JS Debug Error:</b> ${msg} (Line ${line})</span><button onclick="this.parentElement.remove()" style="background:none; border:none; color:white; font-weight:bold; cursor:pointer;">✕</button></div>`);
+  }
   return false;
 };
 
@@ -4435,23 +4442,30 @@ async function toggleComments(pid) {
   setTimeout(() => initMentionInput(`comment-input-${pid}`), 150);
 }
 
+const _submittingComments = new Set();
 async function submitComment(pid) {
+  if (_submittingComments.has(pid)) return;
   const input = $(`comment-input-${pid}`);
-  const content = input.value.trim();
+  const content = input ? input.value.trim() : '';
   if (!content) return;
 
+  _submittingComments.add(pid);
   try {
     await apiFetch(`/api/posts/${pid}/comments`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content, author: typeof state.user === 'object' ? state.user?.username : (state.user || 'Current User') })
     });
-    input.value = '';
+    if (input) input.value = '';
     const el = $(`comments-${pid}`);
-    el.classList.add('hidden'); // Close it
+    if (el) el.classList.add('hidden'); // Close it
     loadPosts(); // Refresh for count
     toggleComments(pid); // Re-open to show new comment
-  } catch (e) { toast('คอมเมนต์ล้มเหลว', 'error'); }
+  } catch (e) {
+    toast('คอมเมนต์ล้มเหลว', 'error');
+  } finally {
+    setTimeout(() => _submittingComments.delete(pid), 500);
+  }
 }
 
 async function deleteComment(pid, cid) {

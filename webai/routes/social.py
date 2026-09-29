@@ -784,15 +784,29 @@ def manage_comments(pid):
         
         if not content:
             return jsonify({"ok": False, "error": "Comment content required"}), 400
+
+        # Debounce / Idempotency Guard (3-second duplicate comment prevention)
+        existing_comments = database.get_comments(pid)
+        if existing_comments:
+            for ec in existing_comments[-3:]:
+                if ec.get("author") == author and ec.get("content") == content:
+                    try:
+                        from datetime import datetime as _dt
+                        c_ts = ec.get("timestamp") or ""
+                        if c_ts:
+                            c_dt = _dt.strptime(str(c_ts)[:19].replace("T", " "), "%Y-%m-%d %H:%M:%S")
+                            if abs((_dt.now() - c_dt).total_seconds()) < 3:
+                                return jsonify({"ok": True, "id": ec.get("id"), "debounced": True})
+                    except Exception:
+                        pass
             
         database.add_comment(pid, content, author)
         
         # --- Comment Notification ---
         profile = database.get_user_profile(author)
         display_name = profile.get("display_name", author)
-        posts = database.get_posts(org_id=org_id)
-        post = next((p for p in posts if p["id"] == pid), None)
-        if post and post["author"] != author:
+        post = database.get_post_by_id(pid)
+        if post and post.get("author") != author:
             notification_db.add_notification(
                 post["author"],
                 'comment',
@@ -873,9 +887,8 @@ def post_like(pid):
     
     # --- Reaction Notification ---
     if liked:
-        posts = database.get_posts(org_id=org_id)
-        post = next((p for p in posts if p["id"] == pid), None)
-        if post and post["author"] != user:
+        post = database.get_post_by_id(pid)
+        if post and post.get("author") != user:
             notification_db.add_notification(
                 post["author"],
                 'like',
@@ -907,9 +920,8 @@ def post_react(pid):
             'haha': '😆 ฮาเลย', 'wow': '😲 ทึ่งเลย',
             'sad': '😢 เศร้า', 'angry': '😡 โกรธ'
         }
-        posts = database.get_posts(org_id=org_id)
-        post = next((p for p in posts if p["id"] == pid), None)
-        if post and post["author"] != user:
+        post = database.get_post_by_id(pid)
+        if post and post.get("author") != user:
             notification_db.add_notification(
                 post["author"],
                 'like',
@@ -965,8 +977,7 @@ def get_reactions(pid):
 @login_required
 @_limiter.limit("20 per minute; 60 per hour")
 def summarize_post_route(pid):
-    posts = database.get_posts(org_id=get_current_org_id())
-    post = next((p for p in posts if p["id"] == pid), None)
+    post = database.get_post_by_id(pid)
     if not post:
         return jsonify({"ok": False, "error": "Post not found"}), 404
     

@@ -273,11 +273,13 @@ def async_startup_tasks():
 
     # Ensure critical directories exist (Railway Volume หรือ local)
     _data_root = os.environ.get("DATA_DIR", ".")
-    os.makedirs(os.path.join(_data_root, "uploads/social_feed"), exist_ok=True)
-    os.makedirs(os.path.join(_data_root, "uploads/kb"), exist_ok=True)
-    os.makedirs(os.path.join(_data_root, "uploads/meetings"), exist_ok=True)
-    os.makedirs(os.path.join(_data_root, "uploads/receipts_backup"), exist_ok=True)
-    os.makedirs(os.path.join(_data_root, "exports"), exist_ok=True)
+    for _sub in [
+        "uploads/social_feed", "uploads/kb", "uploads/meetings",
+        "uploads/receipts_backup", "uploads/profiles", "uploads/group_profiles",
+        "uploads/group_chat", "uploads/dm_chat", "uploads/voice",
+        "exports", "backups", "static/uploads/logos", "static/uploads/signatures"
+    ]:
+        os.makedirs(os.path.join(_data_root, _sub), exist_ok=True)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -742,6 +744,42 @@ def create_app():
             }), 500
         return render_template_string(ERROR_TEMPLATE, error_message=msg), 500
 
+    @app.errorhandler(400)
+    def bad_request_error(e):
+        from flask import render_template_string
+        msg = "คำขอไม่ถูกต้อง (Bad Request) กรุณาตรวจสอบข้อมูลที่ส่งเข้ามาค่ะ"
+        if request.path.startswith('/api/') or request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({
+                "ok": False,
+                "error": "bad_request",
+                "message": str(e) or msg
+            }), 400
+        return render_template_string(ERROR_TEMPLATE, error_message=msg), 400
+
+    @app.errorhandler(403)
+    def forbidden_error(e):
+        from flask import render_template_string
+        msg = "คุณไม่มีสิทธิ์เข้าถึงส่วนนี้ (Forbidden)"
+        if request.path.startswith('/api/') or request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({
+                "ok": False,
+                "error": "forbidden",
+                "message": msg
+            }), 403
+        return render_template_string(ERROR_TEMPLATE, error_message=msg), 403
+
+    @app.errorhandler(404)
+    def not_found_error(e):
+        from flask import render_template_string
+        msg = "ไม่พบหน้าที่ต้องการ (404 Not Found)"
+        if request.path.startswith('/api/') or request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({
+                "ok": False,
+                "error": "not_found",
+                "message": f"Endpoint not found: {request.path}"
+            }), 404
+        return render_template_string(ERROR_TEMPLATE, error_message=msg), 404
+
     return app
 
 
@@ -1011,6 +1049,18 @@ try:
 
     _scheduler.add_job(_scheduled_db_wal_checkpoint, 'cron', hour=3, minute=30, id='db_wal_checkpoint')
     _scheduler.add_job(_scheduled_db_wal_checkpoint, 'cron', day_of_week='sun', hour=3, minute=0, id='db_optimize')
+
+    # 📤 อัตโนมัติ Sync ข้อมูล Offline Uploads (สลิป/ใบเสร็จ) ขึ้น Google Drive & Sheets ทุก 5 นาที
+    def _scheduled_offline_queue_sync():
+        try:
+            from tools.offline_storage import sync_all_pending_offline_uploads
+            res = sync_all_pending_offline_uploads(limit=20)
+            if res.get("synced", 0) > 0:
+                logger.info(f"📤 [Offline Sync Auto-Job] Successfully synced {res['synced']} items to cloud.")
+        except Exception as _sync_e:
+            logger.warning(f"[Offline Sync Auto-Job] Error during periodic sync: {_sync_e}")
+
+    _scheduler.add_job(_scheduled_offline_queue_sync, 'interval', minutes=5, id='offline_queue_sync')
 
 except ImportError:
     print(">>> APScheduler not installed - run: pip install APScheduler")
