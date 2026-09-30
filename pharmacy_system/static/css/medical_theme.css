@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Anuphan:wght@300;400;500;600;700&family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+
 /* ==========================================================================
    🏥 PHARMACORE / RXINVENTORY — PROFESSIONAL ENTERPRISE CLINICAL DESIGN SYSTEM
    Crafted with precision: Linear / Stripe / Epic EHR Human Design Standard
@@ -738,12 +740,19 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .clinical-table td {
-  padding: 0.75rem 1rem;
+  padding: 0.85rem 1rem;
   border-bottom: 1px solid var(--border-subtle);
   vertical-align: middle;
+  white-space: nowrap;
+}
+
+.clinical-table td:nth-child(2) {
+  white-space: normal;
+  max-width: 380px;
 }
 
 .clinical-table tbody tr:last-child td {
@@ -760,15 +769,15 @@ body {
 
 /* Low stock visual indicator row */
 .clinical-table tbody tr.row-low-stock {
-  background-color: rgba(255, 241, 242, 0.45);
+  background-color: rgba(255, 241, 242, 0.55);
 }
 
 .clinical-table tbody tr.row-low-stock:hover {
-  background-color: rgba(255, 241, 242, 0.85);
+  background-color: rgba(255, 241, 242, 0.9);
 }
 
 .clinical-table tbody tr.row-low-stock td:first-child {
-  border-left: 3.5px solid var(--rose-600);
+  border-left: 4px solid var(--rose-600);
 }
 
 [data-theme="dark"] .clinical-table tbody tr.row-low-stock {
@@ -778,30 +787,41 @@ body {
   background-color: rgba(225, 29, 72, 0.15);
 }
 
-/* Hero Action: - ตัดสต็อก Button */
+/* Primary Row Action: ตัดสต็อก Button (Clean, Friendly & Professional) */
 .btn-dispense-action {
   height: 32px;
-  padding: 0 0.75rem;
+  padding: 0 0.85rem;
   font-size: 0.775rem;
-  font-weight: 700;
+  font-weight: 600;
   border-radius: var(--radius-sm);
-  background-color: #FFF1F2;
-  color: #BE123C;
-  border: 1px solid #FECDD3;
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border-strong);
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.45rem;
   cursor: pointer;
   transition: all 0.15s ease;
   white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.btn-dispense-action i {
+  color: var(--brand-500);
+  font-size: 0.85rem;
+  transition: transform 0.15s ease;
 }
 
 .btn-dispense-action:hover {
-  background-color: #FFE4E6;
-  color: #9F1239;
-  border-color: #FDA4AF;
+  background-color: var(--brand-50);
+  color: var(--brand-600);
+  border-color: var(--brand-500);
   transform: translateY(-1px);
-  box-shadow: 0 2px 5px rgba(225, 29, 72, 0.15);
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.14);
+}
+
+.btn-dispense-action:hover i {
+  transform: scale(1.15);
 }
 
 .btn-dispense-action:active {
@@ -809,14 +829,15 @@ body {
 }
 
 [data-theme="dark"] .btn-dispense-action {
-  background-color: rgba(225, 29, 72, 0.2);
-  color: #FDA4AF;
-  border-color: rgba(225, 29, 72, 0.45);
+  background-color: var(--bg-subtle);
+  color: var(--text-primary);
+  border-color: var(--border-default);
 }
 
 [data-theme="dark"] .btn-dispense-action:hover {
-  background-color: rgba(225, 29, 72, 0.32);
-  color: #FFFFFF;
+  background-color: rgba(37, 99, 235, 0.2);
+  color: #60A5FA;
+  border-color: var(--brand-500);
 }
 
 /* ==========================================================================
