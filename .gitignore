@@ -10,6 +10,10 @@ env.bak/
 venv.bak/
 chat_history.db
 db.sqlite3
+*.db
+*.sqlite
+*.sqlite3
+pharmacy_system/uploads/
 *.log
 .vscode/
 .idea/
