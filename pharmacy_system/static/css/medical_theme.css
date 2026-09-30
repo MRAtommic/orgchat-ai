@@ -957,27 +957,41 @@ body {
     justify-content: flex-end;
   }
 
-  /* KPI Strip on Mobile: 2x2 Grid */
-  .kpi-strip {
-    grid-template-columns: 1fr 1fr !important;
-    border-radius: var(--radius-md) !important;
+  /* KPI Grid on Mobile: 2x2 Clean Grid */
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 0.65rem !important;
     margin-bottom: 0.85rem !important;
   }
 
-  .kpi-cell {
+  .kpi-card {
     padding: 0.75rem 0.85rem !important;
+    gap: 0.65rem !important;
+    border-radius: var(--radius-md) !important;
+    align-items: center !important;
   }
 
-  .kpi-cell:nth-child(2) {
-    border-right: none !important;
+  .kpi-icon-box {
+    width: 40px !important;
+    height: 40px !important;
+    font-size: 1.1rem !important;
+    border-radius: 10px !important;
+    flex-shrink: 0 !important;
   }
 
-  .kpi-cell:nth-child(1), .kpi-cell:nth-child(2) {
-    border-bottom: 1px solid var(--border-default) !important;
+  .kpi-label {
+    font-size: 0.7rem !important;
+    white-space: nowrap !important;
+    margin-bottom: 0.1rem !important;
   }
 
   .kpi-value {
-    font-size: 1.25rem !important;
+    font-size: 1.35rem !important;
+    line-height: 1.15 !important;
+  }
+
+  .kpi-subtext {
+    display: none !important;
   }
 
   /* Table replaced by Cards on Mobile */
