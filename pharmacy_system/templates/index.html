@@ -14,7 +14,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     
     <!-- Enterprise Design System Stylesheet -->
-    <link rel="stylesheet" href="/static/css/medical_theme.css?v=5.2">
+    <link rel="stylesheet" href="/static/css/medical_theme.css?v=5.3">
 
     <!-- QR Code Generator Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -57,27 +57,50 @@
     <!-- Main Container -->
     <main class="main-wrapper">
 
-        <!-- 📊 Compact 4-Metric Summary Strip -->
-        <section class="kpi-strip">
-            <div class="kpi-cell">
-                <div class="kpi-label"><i class="fas fa-layer-group"></i> รายการยาทั้งหมด</div>
-                <div class="kpi-value" id="statTotalDrugs">-</div>
-                <div class="kpi-subtext">รายการในคลัง</div>
+        <!-- 📊 4-Metric Summary Cards with Distinct Visual Anchors -->
+        <section class="kpi-grid">
+            <div class="kpi-card kpi-blue">
+                <div class="kpi-icon-box">
+                    <i class="fas fa-prescription-bottle-medical"></i>
+                </div>
+                <div class="kpi-info">
+                    <span class="kpi-label">รายการยาทั้งหมด</span>
+                    <div class="kpi-value" id="statTotalDrugs">-</div>
+                    <span class="kpi-subtext">รายการยาในระบบคลัง</span>
+                </div>
             </div>
-            <div class="kpi-cell">
-                <div class="kpi-label"><i class="fas fa-boxes-stacked"></i> สต็อกคงเหลือรวม</div>
-                <div class="kpi-value" id="statTotalUnits">-</div>
-                <div class="kpi-subtext">หน่วยคงคลังทั้งหมด</div>
+
+            <div class="kpi-card kpi-emerald">
+                <div class="kpi-icon-box">
+                    <i class="fas fa-boxes-stacked"></i>
+                </div>
+                <div class="kpi-info">
+                    <span class="kpi-label">สต็อกคงเหลือรวม</span>
+                    <div class="kpi-value" id="statTotalUnits">-</div>
+                    <span class="kpi-subtext">หน่วยคงคลังทั้งหมด</span>
+                </div>
             </div>
-            <div class="kpi-cell">
-                <div class="kpi-label"><i class="fas fa-triangle-exclamation"></i> ใกล้หมดสต็อก</div>
-                <div class="kpi-value" id="statLowStock" style="color: var(--rose-600);">-</div>
-                <div class="kpi-subtext">ถึงจุดเตือนขั้นต่ำ</div>
+
+            <div class="kpi-card kpi-rose" id="kpiCardLowStock">
+                <div class="kpi-icon-box">
+                    <i class="fas fa-triangle-exclamation"></i>
+                </div>
+                <div class="kpi-info">
+                    <span class="kpi-label">ยาใกล้หมดสต็อก</span>
+                    <div class="kpi-value text-rose" id="statLowStock">-</div>
+                    <span class="kpi-subtext">ถึงจุดเตือนขั้นต่ำ</span>
+                </div>
             </div>
-            <div class="kpi-cell">
-                <div class="kpi-label"><i class="fas fa-clipboard-check"></i> ตัดสต็อกวันนี้</div>
-                <div class="kpi-value" id="statTodayDispensed">-</div>
-                <div class="kpi-subtext">หน่วยที่จ่ายออกวันนี้</div>
+
+            <div class="kpi-card kpi-purple">
+                <div class="kpi-icon-box">
+                    <i class="fas fa-clipboard-check"></i>
+                </div>
+                <div class="kpi-info">
+                    <span class="kpi-label">ตัดสต็อกวันนี้</span>
+                    <div class="kpi-value text-purple" id="statTodayDispensed">-</div>
+                    <span class="kpi-subtext">หน่วยที่เบิกจ่ายวันนี้</span>
+                </div>
             </div>
         </section>
 
@@ -578,6 +601,6 @@
     <div id="qr-reader-file-temp" style="display: none;"></div>
 
     <!-- App Script with Cache Busting -->
-    <script src="/static/js/app.js?v=5.2"></script>
+    <script src="/static/js/app.js?v=5.3"></script>
 </body>
 </html>

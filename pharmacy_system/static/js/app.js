@@ -125,6 +125,11 @@ async function loadDashboardStats() {
             document.getElementById('statLowStock').innerText = s.low_stock_count || 0;
             document.getElementById('statTodayDispensed').innerText = s.today_units_dispensed || 0;
 
+            const lowCard = document.getElementById('kpiCardLowStock');
+            if (lowCard) {
+                lowCard.classList.toggle('has-alerts', (s.low_stock_count || 0) > 0);
+            }
+
             const dot = document.getElementById('sheetStatusDot');
             const text = document.getElementById('sheetStatusText');
             if (dot && text) {
@@ -193,18 +198,19 @@ function renderDrugsTable(drugs) {
     if (tbody) {
         tbody.innerHTML = drugs.map(d => {
             const isLow = d.stock_qty <= d.min_threshold;
+            const rowClass = isLow ? 'class="row-low-stock"' : '';
             const stockBadge = isLow
-                ? `<span class="badge badge-danger"><i class="fas fa-circle-exclamation"></i> ใกล้หมด (${d.stock_qty} ${d.unit})</span>`
-                : `<span class="badge badge-success"><i class="fas fa-check"></i> ${d.stock_qty} ${d.unit}</span>`;
+                ? `<span class="badge badge-danger" style="font-weight: 700; padding: 0.25rem 0.65rem;"><i class="fas fa-circle-exclamation"></i> ใกล้หมด (${d.stock_qty} ${d.unit})</span>`
+                : `<span class="badge badge-success" style="font-weight: 700; padding: 0.25rem 0.65rem;"><i class="fas fa-check-circle"></i> ${d.stock_qty} ${d.unit}</span>`;
 
             return `
-                <tr>
+                <tr ${rowClass}>
                     <td>
                         <span class="code-pill">${escapeHtml(d.code)}</span>
                     </td>
                     <td>
-                        <div style="font-weight: 700; color: var(--text-primary); font-size: 0.875rem;">${escapeHtml(d.name)}</div>
-                        ${d.generic_name ? `<div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.1rem;">${escapeHtml(d.generic_name)}</div>` : ''}
+                        <div style="font-weight: 700; color: var(--text-primary); font-size: 0.9rem;">${escapeHtml(d.name)}</div>
+                        ${d.generic_name ? `<div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.15rem;">${escapeHtml(d.generic_name)}</div>` : ''}
                     </td>
                     <td>
                         <span class="badge badge-teal">${escapeHtml(d.category)}</span>
@@ -220,16 +226,16 @@ function renderDrugsTable(drugs) {
                     </td>
                     <td style="text-align: right;">
                         <div style="display: inline-flex; gap: 0.35rem; align-items: center;">
-                            <button class="btn btn-outline" title="ตัดจ่ายยานี้" onclick="openDispenseModalForDrug(${d.id})" style="height: 30px; padding: 0 0.6rem; font-size: 0.75rem; color: var(--rose-600); border-color: var(--rose-100);">
-                                <i class="fas fa-minus"></i> ตัดสต็อก
+                            <button class="btn-dispense-action" title="ตัดจ่ายยานี้" onclick="openDispenseModalForDrug(${d.id})">
+                                <i class="fas fa-minus-circle"></i> ตัดสต็อก
                             </button>
-                            <button class="btn btn-outline btn-icon" title="พิมพ์ QR Code" onclick="openQrModal(${d.id})" style="height: 30px; width: 30px; font-size: 0.75rem;">
+                            <button class="btn btn-outline btn-icon" title="พิมพ์ QR Code" onclick="openQrModal(${d.id})" style="height: 32px; width: 32px; font-size: 0.8rem;">
                                 <i class="fas fa-qrcode"></i>
                             </button>
-                            <button class="btn btn-outline btn-icon" title="แก้ไขข้อมูลยา" onclick="openEditDrugModal(${d.id})" style="height: 30px; width: 30px; font-size: 0.75rem;">
+                            <button class="btn btn-outline btn-icon" title="แก้ไขข้อมูลยา" onclick="openEditDrugModal(${d.id})" style="height: 32px; width: 32px; font-size: 0.8rem;">
                                 <i class="fas fa-pen"></i>
                             </button>
-                            <button class="btn btn-outline btn-icon" title="ลบยา" onclick="confirmDeleteDrug(${d.id})" style="height: 30px; width: 30px; font-size: 0.75rem; color: var(--text-subtle);">
+                            <button class="btn btn-outline btn-icon" title="ลบยา" onclick="confirmDeleteDrug(${d.id})" style="height: 32px; width: 32px; font-size: 0.8rem; color: var(--text-subtle);">
                                 <i class="fas fa-trash-can"></i>
                             </button>
                         </div>
@@ -242,16 +248,17 @@ function renderDrugsTable(drugs) {
     if (cardsContainer) {
         cardsContainer.innerHTML = drugs.map(d => {
             const isLow = d.stock_qty <= d.min_threshold;
+            const cardBorder = isLow ? 'border-color: #FDA4AF; background: linear-gradient(135deg, var(--bg-surface) 0%, rgba(225, 29, 72, 0.04) 100%);' : '';
             const stockBadge = isLow
-                ? `<span class="badge badge-danger">ใกล้หมด (${d.stock_qty})</span>`
-                : `<span class="badge badge-success">${d.stock_qty} ${d.unit}</span>`;
+                ? `<span class="badge badge-danger" style="font-weight: 700;">ใกล้หมด (${d.stock_qty} ${d.unit})</span>`
+                : `<span class="badge badge-success" style="font-weight: 700;">${d.stock_qty} ${d.unit}</span>`;
 
             return `
-                <div class="drug-mobile-card">
+                <div class="drug-mobile-card" style="${cardBorder}">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.35rem;">
                         <div style="flex: 1;">
                             <span class="code-pill" style="font-size: 0.7rem;">${escapeHtml(d.code)}</span>
-                            <div style="font-weight: 700; font-size: 0.95rem; color: var(--text-primary); margin-top: 0.2rem;">${escapeHtml(d.name)}</div>
+                            <div style="font-weight: 700; font-size: 0.95rem; color: var(--text-primary); margin-top: 0.25rem;">${escapeHtml(d.name)}</div>
                             ${d.generic_name ? `<div style="font-size: 0.75rem; color: var(--text-muted);">${escapeHtml(d.generic_name)}</div>` : ''}
                         </div>
                         <div style="text-align: right;">
@@ -259,24 +266,24 @@ function renderDrugsTable(drugs) {
                         </div>
                     </div>
                     
-                    <div style="display: flex; gap: 0.4rem; align-items: center; margin: 0.5rem 0; flex-wrap: wrap;">
+                    <div style="display: flex; gap: 0.4rem; align-items: center; margin: 0.6rem 0; flex-wrap: wrap;">
                         <span class="badge badge-teal" style="font-size: 0.7rem;">${escapeHtml(d.category)}</span>
                         <span style="font-size: 0.75rem; color: var(--text-muted);">${escapeHtml(d.dosage_form || 'เม็ด')}</span>
                         ${d.location ? `<span style="font-size: 0.75rem; color: var(--text-muted);"><i class="fas fa-location-dot"></i> ${escapeHtml(d.location)}</span>` : ''}
                         ${d.price ? `<span style="font-size: 0.75rem; color: var(--brand-600); font-weight: 700;">฿${d.price}</span>` : ''}
                     </div>
 
-                    <div style="display: flex; gap: 0.35rem; margin-top: 0.65rem; padding-top: 0.65rem; border-top: 1px solid var(--border-subtle);">
-                        <button class="btn btn-outline" onclick="openDispenseModalForDrug(${d.id})" style="flex: 1; height: 34px; font-size: 0.8rem; color: var(--rose-600); border-color: var(--rose-100);">
-                            <i class="fas fa-minus"></i> ตัดสต็อก
+                    <div style="display: flex; gap: 0.4rem; margin-top: 0.65rem; padding-top: 0.65rem; border-top: 1px solid var(--border-default);">
+                        <button class="btn-dispense-action" onclick="openDispenseModalForDrug(${d.id})" style="flex: 1; height: 36px; justify-content: center; font-size: 0.85rem;">
+                            <i class="fas fa-minus-circle"></i> ตัดสต็อก
                         </button>
-                        <button class="btn btn-outline btn-icon" title="QR Code" onclick="openQrModal(${d.id})" style="height: 34px; width: 34px;">
+                        <button class="btn btn-outline btn-icon" title="QR Code" onclick="openQrModal(${d.id})" style="height: 36px; width: 36px;">
                             <i class="fas fa-qrcode"></i>
                         </button>
-                        <button class="btn btn-outline btn-icon" title="แก้ไข" onclick="openEditDrugModal(${d.id})" style="height: 34px; width: 34px;">
+                        <button class="btn btn-outline btn-icon" title="แก้ไข" onclick="openEditDrugModal(${d.id})" style="height: 36px; width: 36px;">
                             <i class="fas fa-pen"></i>
                         </button>
-                        <button class="btn btn-outline btn-icon" title="ลบ" onclick="confirmDeleteDrug(${d.id})" style="height: 34px; width: 34px; color: var(--text-subtle);">
+                        <button class="btn btn-outline btn-icon" title="ลบ" onclick="confirmDeleteDrug(${d.id})" style="height: 36px; width: 36px; color: var(--text-subtle);">
                             <i class="fas fa-trash-can"></i>
                         </button>
                     </div>
