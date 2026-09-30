@@ -217,6 +217,16 @@ body {
   gap: 0.5rem;
 }
 
+.header-quick-add {
+  display: none;
+}
+
+@media (min-width: 840px) {
+  .header-quick-add {
+    display: inline-flex;
+  }
+}
+
 /* Status Pill */
 .status-pill {
   display: inline-flex;
@@ -757,6 +767,19 @@ body {
     display: none !important;
   }
 
+  .search-input-group {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .controls-left, .controls-right {
+    width: 100% !important;
+  }
+
+  .controls-right {
+    justify-content: flex-end;
+  }
+
   /* KPI Strip on Mobile: 2x2 Grid */
   .kpi-strip {
     grid-template-columns: 1fr 1fr !important;
@@ -791,7 +814,7 @@ body {
     gap: 0.65rem !important;
   }
 
-  .drug-mobile-card {
+  .drug-mobile-card, .log-mobile-card {
     background-color: var(--bg-surface) !important;
     border: 1px solid var(--border-default) !important;
     border-radius: var(--radius-md) !important;

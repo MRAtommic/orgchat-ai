@@ -531,38 +531,39 @@ function renderLogsTable(logs) {
 
     if (tbody) {
         tbody.innerHTML = logs.map(l => {
-            let channelBadge = '<span class="badge badge-teal">Web Manual</span>';
+            let channelBadge = '<span class="badge badge-teal">Web Counter</span>';
             if (l.channel.includes('LINE')) {
-                channelBadge = '<span class="badge badge-success"><i class="fab fa-line"></i> LINE</span>';
+                channelBadge = '<span class="badge badge-success"><i class="fab fa-line"></i> LINE Bot</span>';
             } else if (l.channel.includes('QR')) {
-                channelBadge = '<span class="badge badge-warning"><i class="fas fa-qrcode"></i> QR Scan</span>';
+                channelBadge = '<span class="badge badge-warning"><i class="fas fa-barcode"></i> Scanner</span>';
             }
 
             const driveBtn = l.drive_file_link
-                ? `<a href="${l.drive_file_link}" target="_blank" class="btn btn-outline" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; color: var(--color-accent);"><i class="fab fa-google-drive"></i> ดูรูป</a>`
-                : '-';
+                ? `<a href="${l.drive_file_link}" target="_blank" class="btn btn-outline" style="padding: 0.2rem 0.55rem; font-size: 0.725rem; height: 26px; color: var(--brand-600);"><i class="fab fa-google-drive"></i> ดูรูปสลิป</a>`
+                : '<span style="color: var(--text-subtle); font-size: 0.75rem;">-</span>';
 
             return `
                 <tr>
-                    <td style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); font-family: monospace;">
+                    <td style="font-size: 0.75rem; font-weight: 500; color: var(--text-muted); font-family: var(--font-mono);">
                         ${l.created_at}
                     </td>
                     <td>
-                        <div style="font-weight: 700; color: var(--text-main);">${escapeHtml(l.drug_name)}</div>
-                        <div style="font-size: 0.75rem; color: var(--text-muted);">${escapeHtml(l.drug_code || '-')}</div>
+                        <div style="font-weight: 700; color: var(--text-primary); font-size: 0.85rem;">${escapeHtml(l.drug_name)}</div>
+                        ${l.drug_code ? `<span class="code-pill" style="font-size: 0.675rem; margin-top: 0.15rem; display: inline-block;">${escapeHtml(l.drug_code)}</span>` : ''}
                     </td>
                     <td>
-                        <span style="font-weight: 800; color: var(--color-danger); font-size: 0.95rem;">-${l.quantity}</span>
+                        <span style="font-weight: 700; color: var(--rose-600); font-family: var(--font-mono); font-size: 0.875rem;">-${l.quantity}</span>
                     </td>
                     <td>
-                        <span style="font-size: 0.85rem; color: var(--text-muted);">${l.balance_before} ➔ </span>
-                        <span style="font-weight: 800; color: var(--color-brand);">${l.balance_after}</span>
+                        <span style="font-size: 0.8125rem; color: var(--text-muted); font-family: var(--font-mono);">${l.balance_before} ➔ </span>
+                        <span style="font-weight: 700; color: var(--emerald-600); font-family: var(--font-mono); font-size: 0.875rem;">${l.balance_after}</span>
                     </td>
                     <td>${channelBadge}</td>
                     <td>
-                        <span style="font-size: 0.85rem; color: var(--text-main); font-weight: 600;">${escapeHtml(l.dispensed_by || '-')}</span>
+                        <span style="font-size: 0.8125rem; color: var(--text-secondary); font-weight: 500;">${escapeHtml(l.dispensed_by || '-')}</span>
+                        ${l.patient_name ? `<div style="font-size: 0.7rem; color: var(--text-muted);"><i class="fas fa-user" style="font-size: 0.65rem;"></i> ${escapeHtml(l.patient_name)}</div>` : ''}
                     </td>
-                    <td>${driveBtn}</td>
+                    <td style="text-align: right;">${driveBtn}</td>
                 </tr>
             `;
         }).join('');
@@ -570,31 +571,31 @@ function renderLogsTable(logs) {
 
     if (cardsContainer) {
         cardsContainer.innerHTML = logs.map(l => {
-            let channelBadge = '<span class="badge badge-teal">Web</span>';
+            let channelBadge = '<span class="badge badge-teal" style="font-size: 0.7rem;">Web</span>';
             if (l.channel.includes('LINE')) {
-                channelBadge = '<span class="badge badge-success"><i class="fab fa-line"></i> LINE</span>';
+                channelBadge = '<span class="badge badge-success" style="font-size: 0.7rem;"><i class="fab fa-line"></i> LINE</span>';
             } else if (l.channel.includes('QR')) {
-                channelBadge = '<span class="badge badge-warning"><i class="fas fa-qrcode"></i> QR</span>';
+                channelBadge = '<span class="badge badge-warning" style="font-size: 0.7rem;"><i class="fas fa-barcode"></i> Barcode</span>';
             }
 
             const driveBtn = l.drive_file_link
-                ? `<a href="${l.drive_file_link}" target="_blank" class="btn btn-outline" style="padding: 0.2rem 0.5rem; font-size: 0.725rem; color: var(--color-accent);"><i class="fab fa-google-drive"></i> ดูรูป</a>`
+                ? `<a href="${l.drive_file_link}" target="_blank" class="btn btn-outline" style="padding: 0.15rem 0.45rem; font-size: 0.7rem; height: 26px; color: var(--brand-600);"><i class="fab fa-google-drive"></i> รูป</a>`
                 : '';
 
             return `
                 <div class="log-mobile-card">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.35rem;">
                         <div>
-                            <div style="font-weight: 800; font-size: 0.95rem; color: var(--text-main);">${escapeHtml(l.drug_name)}</div>
-                            <div style="font-size: 0.75rem; color: var(--text-muted); font-family: monospace;">${escapeHtml(l.drug_code || '-')} • ${l.created_at}</div>
+                            <div style="font-weight: 700; font-size: 0.9rem; color: var(--text-primary);">${escapeHtml(l.drug_name)}</div>
+                            <div style="font-size: 0.7rem; color: var(--text-muted); font-family: var(--font-mono);">${escapeHtml(l.drug_code || '')} • ${l.created_at}</div>
                         </div>
-                        <span style="font-weight: 800; color: var(--color-danger); font-size: 1.1rem; background: var(--color-danger-light); padding: 0.2rem 0.6rem; border-radius: 8px;">-${l.quantity}</span>
+                        <span style="font-weight: 700; color: var(--rose-600); font-family: var(--font-mono); font-size: 0.95rem; background: var(--rose-50); border: 1px solid var(--rose-100); padding: 0.15rem 0.5rem; border-radius: 6px;">-${l.quantity}</span>
                     </div>
-                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: var(--text-muted); margin-top: 0.4rem; padding-top: 0.4rem; border-top: 1px dashed var(--border-subtle);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.775rem; color: var(--text-muted); margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border-default);">
                         <div>
-                            <span>คงเหลือ: ${l.balance_before} ➔ </span><strong style="color: var(--color-brand);">${l.balance_after}</strong>
+                            <span>คงเหลือ: ${l.balance_before} ➔ </span><strong style="color: var(--emerald-600); font-family: var(--font-mono);">${l.balance_after}</strong>
                         </div>
-                        <div style="display: flex; gap: 0.4rem; align-items: center;">
+                        <div style="display: flex; gap: 0.35rem; align-items: center;">
                             ${channelBadge}
                             ${driveBtn}
                         </div>
@@ -1011,38 +1012,66 @@ function setupEventListeners() {
 
     const logChannel = document.getElementById('logChannelFilter');
     if (logChannel) logChannel.addEventListener('change', loadDispensingLogs);
+
+    // Global Keyboard Shortcuts (Linear-grade Pro UX)
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            closeDrugModal();
+            closeDispenseModal();
+            closeQrModal();
+            closeGoogleSettingsModal();
+            closeNewBarcodeModal();
+        }
+        const isEditing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
+        if ((e.key === '/' && !isEditing) || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k')) {
+            e.preventDefault();
+            const s = document.getElementById('drugSearchInput');
+            if (s) {
+                switchTab('inventory');
+                s.focus();
+                s.select();
+            }
+        }
+    });
 }
 
 function showToast(message, type = 'info') {
     const toast = document.createElement('div');
     toast.className = 'toast-alert';
+    const borderColor = type === 'success' ? 'var(--emerald-600)' : (type === 'error' ? 'var(--rose-600)' : 'var(--brand-500)');
+    const iconClass = type === 'success' ? 'fa-check-circle' : (type === 'error' ? 'fa-circle-exclamation' : 'fa-circle-info');
+    const iconColor = type === 'success' ? 'var(--emerald-600)' : (type === 'error' ? 'var(--rose-600)' : 'var(--brand-500)');
+
     toast.style.cssText = `
         position: fixed;
-        bottom: 2rem;
-        right: 2rem;
-        z-index: 100;
+        bottom: 1.75rem;
+        right: 1.75rem;
+        z-index: 10000;
         background-color: var(--bg-surface);
-        border: 1px solid var(--border-color);
-        border-left: 4px solid ${type === 'success' ? 'var(--color-success)' : 'var(--color-brand)'};
-        color: var(--text-main);
-        padding: 0.875rem 1.25rem;
-        border-radius: 12px;
-        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-        font-weight: 700;
-        font-size: 0.9rem;
-        display: flex;
+        border: 1px solid var(--border-default);
+        border-left: 4px solid ${borderColor};
+        color: var(--text-primary);
+        padding: 0.75rem 1.15rem;
+        border-radius: var(--radius-md);
+        box-shadow: var(--shadow-modal);
+        font-family: var(--font-sans);
+        font-weight: 600;
+        font-size: 0.825rem;
+        display: inline-flex;
         align-items: center;
-        gap: 0.75rem;
-        animation: slideUp 0.3s ease;
+        gap: 0.65rem;
+        animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        max-width: 90vw;
     `;
-    toast.innerHTML = `<i class="fas ${type === 'success' ? 'fa-check-circle text-success' : 'fa-info-circle'}"></i> ${message}`;
+    toast.innerHTML = `<i class="fas ${iconClass}" style="color: ${iconColor}; font-size: 1rem;"></i> <span>${escapeHtml(message)}</span>`;
     document.body.appendChild(toast);
 
     setTimeout(() => {
         toast.style.opacity = '0';
-        toast.style.transition = 'opacity 0.4s ease';
-        setTimeout(() => toast.remove(), 400);
-    }, 3500);
+        toast.style.transform = 'translateY(8px)';
+        toast.style.transition = 'all 0.25s ease';
+        setTimeout(() => toast.remove(), 260);
+    }, 3200);
 }
 
 function escapeHtml(str) {
@@ -1116,10 +1145,13 @@ async function loadGoogleConfig() {
             }
 
             if (c.is_connected && c.spreadsheet_id) {
-                banner.style.background = 'var(--color-success-light)';
-                banner.style.border = '1px solid var(--color-success)';
-                statusText.innerHTML = `<span style="color: var(--color-success);"><i class="fas fa-check-circle"></i> เชื่อมต่อ Google Drive & Sheets สำเร็จ</span> (${escapeHtml(c.sheet_title || 'พร้อมใช้งาน')})`;
-
+                if (banner) {
+                    banner.style.background = 'var(--emerald-50)';
+                    banner.style.border = '1px solid var(--emerald-600)';
+                }
+                if (statusText) {
+                    statusText.innerHTML = `<span style="color: var(--emerald-600);"><i class="fas fa-check-circle"></i> เชื่อมต่อ Google Drive & Sheets สำเร็จ</span> (${escapeHtml(c.sheet_title || 'พร้อมใช้งาน')})`;
+                }
                 if (linkSheet && c.spreadsheet_url) {
                     linkSheet.href = c.spreadsheet_url;
                     linkSheet.style.display = 'inline-flex';
@@ -1129,11 +1161,15 @@ async function loadGoogleConfig() {
                     linkDrive.style.display = 'inline-flex';
                 }
             } else {
-                banner.style.background = 'var(--color-warning-light)';
-                banner.style.border = '1px solid var(--color-warning)';
-                statusText.innerHTML = `<span style="color: var(--color-warning);"><i class="fas fa-exclamation-triangle"></i> กำลังใช้งานในโหมด Local Cache (ยังไม่ได้เชื่อมต่อ Google Sheet)</span>`;
-                if (c.connection_error) {
-                    statusText.innerHTML += `<div style="font-size: 0.75rem; color: var(--color-danger); margin-top: 0.25rem;">ข้อผิดพลาด: ${escapeHtml(c.connection_error)}</div>`;
+                if (banner) {
+                    banner.style.background = 'var(--amber-50)';
+                    banner.style.border = '1px solid var(--amber-600)';
+                }
+                if (statusText) {
+                    statusText.innerHTML = `<span style="color: var(--amber-600);"><i class="fas fa-exclamation-triangle"></i> กำลังใช้งานในโหมด Local Cache (ยังไม่ได้เชื่อมต่อ Google Sheet)</span>`;
+                    if (c.connection_error) {
+                        statusText.innerHTML += `<div style="font-size: 0.75rem; color: var(--rose-600); margin-top: 0.25rem;">ข้อผิดพลาด: ${escapeHtml(c.connection_error)}</div>`;
+                    }
                 }
                 if (linkSheet) linkSheet.style.display = 'none';
                 if (linkDrive) linkDrive.style.display = 'none';
