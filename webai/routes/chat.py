@@ -4525,8 +4525,16 @@ def line_webhook():
     # Get raw bytes for signature verification
     body_bytes = request.get_data()
     
-    if not signature or not verify_line_signature(body_bytes, signature):
+    logger.info(f"[LINE Webhook] Received request. Signature present: {bool(signature)}, Body length: {len(body_bytes)}")
+    
+    if not signature:
+        logger.warning("[LINE Webhook] No X-Line-Signature header — returning 400")
         return abort(400)
+    
+    if not verify_line_signature(body_bytes, signature):
+        logger.warning(f"[LINE Webhook] Signature mismatch — returning 400. Received sig: {signature[:20]}...")
+        return abort(400)
+
     
     # After reading get_data(), we can still get json if it's parsed
     data = request.get_json()
