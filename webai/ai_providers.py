@@ -544,7 +544,8 @@ class GroqProvider(AIProvider):
                                         data = json.loads(line_str)
                                         content = data['choices'][0]['delta'].get('content', '')
                                         if content: yield content
-                                    except: continue
+                                    except (json.JSONDecodeError, KeyError, IndexError):
+                                        continue
                             return # Success
                         elif response.status_code == 401:
                             print(f"❌ Groq key {active_key[:10]} is invalid (401). Trying next key...", flush=True)
@@ -792,7 +793,7 @@ RULES:
                 amt_val = float(amt_match.group(1))
                 if amt_val > 0:
                     result["extracted_data"]["net_amount"] = amt_val
-            except:
+            except (ValueError, TypeError):
                 pass
         if not result["extracted_data"].get("net_amount"):
             sum_text = result.get("summary", "") or search_target
@@ -802,7 +803,7 @@ RULES:
                     s_amt = float(sum_m.group(1).replace(',', '').strip())
                     if s_amt > 0:
                         result["extracted_data"]["net_amount"] = s_amt
-                except:
+                except (ValueError, TypeError):
                     pass
                 
         # Extract sender

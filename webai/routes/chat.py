@@ -767,14 +767,14 @@ def extract_smart_amount(ext, analysis=None, qr_decoded=None, raw_result=None):
                     c = float(str(val).replace(',', '').replace('฿', '').replace('THB', '').strip())
                     if c > 0:
                         return c
-                except:
+                except (ValueError, TypeError):
                     pass
     if qr_decoded and isinstance(qr_decoded, dict) and qr_decoded.get('amount'):
         try:
             c = float(str(qr_decoded['amount']).replace(',', '').strip())
             if c > 0:
                 return c
-        except:
+        except (ValueError, TypeError):
             pass
     if not analysis and raw_result and isinstance(raw_result, dict):
         analysis = raw_result.get('analysis')
@@ -787,7 +787,7 @@ def extract_smart_amount(ext, analysis=None, qr_decoded=None, raw_result=None):
                     c = float(m.group(1).replace(',', '').strip())
                     if c > 0:
                         return c
-                except:
+                except (ValueError, TypeError):
                     pass
         s_name = analysis.get('smart_name', '')
         if s_name:
@@ -797,7 +797,7 @@ def extract_smart_amount(ext, analysis=None, qr_decoded=None, raw_result=None):
                     c = float(m.group(1).replace(',', '').strip())
                     if c > 0:
                         return c
-                except:
+                except (ValueError, TypeError):
                     pass
     return None
 
@@ -812,7 +812,7 @@ def create_expense_flex_bubble(sheet_name, folder_name, net_amount, date_str, me
             for part in str(edit_data_postback).split("&"):
                 if part.startswith("row="):
                     row_num = int(part.split("=")[1])
-        except:
+        except (ValueError, IndexError):
             pass
 
     # Extracted data from AI smart scan
@@ -845,7 +845,7 @@ def create_expense_flex_bubble(sheet_name, folder_name, net_amount, date_str, me
                 if 1 <= month <= 12:
                     formatted_date = f"{day:02d} {thai_months[month]} {year}"
                     initial_date = f"{year:04d}-{month:02d}-{day:02d}"
-        except:
+        except (ValueError, IndexError):
             pass
 
     # Clean amount display with smart fallbacks
@@ -861,7 +861,7 @@ def create_expense_flex_bubble(sheet_name, folder_name, net_amount, date_str, me
             val_clean = str(net_amount).replace(",", "").strip()
             val_float = float(val_clean)
             amount_big = f"{val_float:,.2f}"
-    except:
+    except (ValueError, TypeError):
         amount_big = str(net_amount) if net_amount else "-"
 
     if amount_big.endswith(".00"):
@@ -1076,10 +1076,10 @@ def create_expense_flex_bubble(sheet_name, folder_name, net_amount, date_str, me
 
                 try:
                     w_float = float(str(t_withdraw).replace(',', '').strip()) if t_withdraw and str(t_withdraw) != '-' else 0.0
-                except: w_float = 0.0
+                except (ValueError, TypeError): w_float = 0.0
                 try:
                     d_float = float(str(t_deposit).replace(',', '').strip()) if t_deposit and str(t_deposit) != '-' else 0.0
-                except: d_float = 0.0
+                except (ValueError, TypeError): d_float = 0.0
 
                 amt_str = ""
                 amt_color = "#334155"
@@ -1256,11 +1256,11 @@ def create_expense_flex_bubble(sheet_name, folder_name, net_amount, date_str, me
         wht_amt = ext.get('wht_amount') or "-"
 
         try: gross_str = f"{float(str(gross_amt).replace(',', '')):,.2f} THB" if gross_amt and str(gross_amt) != '-' else "-"
-        except: gross_str = str(gross_amt)
+        except (ValueError, TypeError): gross_str = str(gross_amt)
         try: vat_str = f"{float(str(vat_amt).replace(',', '')):,.2f} THB" if vat_amt and str(vat_amt) != '-' else "-"
-        except: vat_str = str(vat_amt)
+        except (ValueError, TypeError): vat_str = str(vat_amt)
         try: wht_str = f"{float(str(wht_amt).replace(',', '')):,.2f} THB" if wht_amt and str(wht_amt) != '-' else "-"
-        except: wht_str = str(wht_amt)
+        except (ValueError, TypeError): wht_str = str(wht_amt)
 
         body_contents = [
             {"type": "separator", "color": "#F1F5F9"},
@@ -1318,7 +1318,7 @@ def create_expense_flex_bubble(sheet_name, folder_name, net_amount, date_str, me
         wht_amt = ext.get('wht_amount') or "-"
 
         try: wht_str = f"{float(str(wht_amt).replace(',', '')):,.2f} THB" if wht_amt and str(wht_amt) != '-' else "-"
-        except: wht_str = str(wht_amt)
+        except (ValueError, TypeError): wht_str = str(wht_amt)
 
         title_text = wht_str
         subtitle_text = "ยอดหักภาษี ณ ที่จ่าย"
@@ -1783,7 +1783,7 @@ def _get_item_flex_block(idx, r, folder_name, base_url, org_id=None, username=No
         val_clean = str(net_amt).replace(",", "").strip()
         val_float = float(val_clean)
         amt_str = f"{val_float:,.2f} THB" if val_float > 0 else "-"
-    except:
+    except (ValueError, TypeError):
         amt_str = f"{net_amt} THB" if net_amt and str(net_amt).strip() not in ['0', '0.0', '0.00', '-'] else "-"
 
     if amt_str.endswith(".00"):
@@ -2071,7 +2071,7 @@ def create_duplicate_warning_flex_bubble(sheet_name, row_num, ref_number, net_am
         val_clean = str(net_amount).replace(",", "").strip()
         val_float = float(val_clean)
         amt_str = f"{val_float:,.2f} THB"
-    except:
+    except (ValueError, TypeError):
         amt_str = f"{net_amount} THB" if net_amount and net_amount != "-" else "-"
         
     sheet_name_str = str(sheet_name)
@@ -2283,8 +2283,8 @@ def create_batch_summary_flex_bubble(uploaded_results, folder_name):
             if sf['name'].lower() == folder_name.lower():
                 folder_url = f"https://drive.google.com/drive/folders/{sf['id']}"
                 break
-    except:
-        pass
+    except Exception as e:
+        logger.warning(f"[resolve_folder_url] Error finding subfolder: {e}")
         
     total_str = f"{total_val:,.2f} THB"
     if total_str.endswith(".00 THB"):
@@ -4109,7 +4109,7 @@ def _process_pending_uploads_inner(b_key, did, folder_id, folder_name, reply_tok
                         amt = float(amt.replace(',', '').replace('฿', '').strip())
                     else:
                         amt = float(amt)
-                except:
+                except (ValueError, TypeError):
                     amt = 0.0
                 database.add_drive_log(
                     filename=real_original_name,
@@ -5691,7 +5691,7 @@ def kb_crawl_ingest():
     category_id = data.get("category_id")
     if category_id is not None:
         try: category_id = int(category_id)
-        except: category_id = None
+        except (ValueError, TypeError): category_id = None
         
     org_id = get_current_org_id()
 
@@ -7089,7 +7089,7 @@ def send_unified_message():
     reply_to_id = request.form.get("reply_to_id")
     if reply_to_id:
         try: reply_to_id = int(reply_to_id)
-        except: reply_to_id = None
+        except (ValueError, TypeError): reply_to_id = None
     files = request.files.getlist("files")
     
     attachments = []
@@ -7810,7 +7810,8 @@ def chat():
             inv_data = rag_engine._kb.collection.get(include=['metadatas'], limit=100)
             _kb_filenames_cache = sorted(list(set([m.get("source") for m in inv_data.get("metadatas", []) if m.get("source")])))
             _kb_filenames_cache_ts = time.time()
-        except:
+        except Exception as e:
+            logger.debug(f"[system_prompt] kb collection get notice: {e}")
             _kb_filenames_cache = []
     
     kb_inventory = f"\n[คลังข้อมูล]: คุณมีสิทธิ์เข้าถึงไฟล์: {', '.join(_kb_filenames_cache)}\n" if _kb_filenames_cache else ""
@@ -8179,13 +8180,13 @@ def append_quotation_to_sheet(quotation_data, pdf_url, user, org_id=None):
             valueInputOption="USER_ENTERED", body={"values": row}
         ).execute()
     except Exception as e:
-        print(f"⚠️ [Quotation] Sheet Sync Error: {e}")
+        logger.error(f"[Quotation] Sheet Sync Error: {e}")
     finally:
         try:
             from google_drive_service import google_manager
             google_manager.clear_context()
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"[Quotation] clear_context notice: {e}")
 
 
 def _sync_sheet_append_quotation(spreadsheet_id, tab_name, row_data, org_id=None, username=None):
@@ -8235,14 +8236,14 @@ def _sync_sheet_append_quotation(spreadsheet_id, tab_name, row_data, org_id=None
         ).execute()
         return {"ok": True}
     except Exception as e:
-        print(f"⚠️ [Quotation Sync Fallback] Sheet Sync Error: {e}")
+        logger.error(f"[Quotation Sync Fallback] Sheet Sync Error: {e}")
         return {"ok": False, "error": str(e)}
     finally:
         try:
             from google_drive_service import google_manager
             google_manager.clear_context()
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"[Quotation Sync Fallback] clear_context notice: {e}")
 
 
 @chat_bp.route("/api/quotation/create", methods=["POST"])
@@ -8779,7 +8780,7 @@ def web_drive_upload():
     org_id = session.get("org_id")
     try:
         org_id = int(org_id) if org_id else 1
-    except:
+    except (ValueError, TypeError):
         org_id = 1
         
     google_manager.set_context(username=username, org_id=org_id)
@@ -9012,7 +9013,7 @@ def financial_insights():
         amount = log.get("amount") or 0.0
         try:
             amount = float(amount)
-        except:
+        except (ValueError, TypeError):
             amount = 0.0
             
         # Determine the month
@@ -9072,7 +9073,7 @@ def financial_insights():
         last_m_str = sorted_months[-1]
         try:
             last_m_dt = datetime.strptime(last_m_str, "%Y-%m")
-        except:
+        except (ValueError, TypeError):
             last_m_dt = datetime.now()
             
         for i in range(1, 4):

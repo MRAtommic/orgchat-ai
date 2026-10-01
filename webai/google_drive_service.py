@@ -2105,7 +2105,9 @@ class GoogleWorkspaceManager:
                     spreadsheetId=self.spreadsheet_id, 
                     body={'requests': [{'addSheet': {'properties': {'title': sheet_name}}}]}
                 ).execute()
-            except Exception: pass
+            except Exception as e:
+                if "already exists" not in str(e).lower():
+                    logger.debug(f"[reconciliation] addSheet notice: {e}")
 
             self.sheets_service.spreadsheets().values().update(
                 spreadsheetId=self.spreadsheet_id, range=f"'{sheet_name}'!A1",
@@ -2134,14 +2136,16 @@ class GoogleWorkspaceManager:
         try:
             try:
                 self.sheets_service.spreadsheets().batchUpdate(spreadsheetId=self.spreadsheet_id, body={'requests': [{'addSheet': {'properties': {'title': sheet_name}}}]}).execute()
-            except Exception: pass
+            except Exception as e:
+                if "already exists" not in str(e).lower():
+                    logger.debug(f"[update_dashboard] addSheet notice: {e}")
 
             existing_sheets = []
             try:
                 spreadsheet = self.sheets_service.spreadsheets().get(spreadsheetId=self.spreadsheet_id).execute()
                 existing_sheets = [s['properties']['title'] for s in spreadsheet.get('sheets', [])]
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[update_dashboard] Failed to get existing sheets: {e}")
 
             statement_sheets = [s for s in existing_sheets if s.startswith("สเตตเมนต์")]
             
@@ -3231,7 +3235,8 @@ class GoogleWorkspaceManager:
                                     fallback_amt = float(m_amt.group(1).replace(',', '').strip())
                                     if fallback_amt > 0:
                                         val = fallback_amt
-                                except: pass
+                                except (ValueError, TypeError):
+                                    pass
                 elif cleaner == "id":
                     val = clean_id(val)
                 elif cleaner == "branch":

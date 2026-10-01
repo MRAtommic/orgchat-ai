@@ -25,7 +25,10 @@ from dotenv import load_dotenv
 # ใช้ google-genai (SDK ใหม่) แทน google-generativeai (deprecated)
 from google import genai as _genai_client_factory
 import time
+import logging
 from datetime import datetime
+
+logger = logging.getLogger("OrgChatAI.RAG")
 
 try:
     import fitz # PyMuPDF
@@ -368,8 +371,8 @@ class PurePythonVectorStore:
                 try:
                     corrupted_path = self.persist_path.with_suffix(".corrupted_" + str(int(time.time())))
                     self.persist_path.rename(corrupted_path)
-                except:
-                    pass
+                except (OSError, IOError) as rename_err:
+                    logger.warning(f"Could not rename corrupted fallback vector store: {rename_err}")
                 self.data = []
 
     def save(self):
@@ -636,8 +639,8 @@ class KnowledgeBase:
                         client = chromadb.PersistentClient(path=str(CHROMA_DIR))
                         try:
                             client.delete_collection(f"org_knowledge_{self.provider}")
-                        except:
-                            pass
+                        except Exception as del_err:
+                            logger.debug(f"Collection recreate notice: {del_err}")
                         
                         # Re-init collection using current embedding function
                         self.collection = client.get_or_create_collection(
@@ -1492,8 +1495,8 @@ def sync_uploads():
                     db_check = _get_kb().collection.get(where={"file_id": fid}, limit=1)
                     if db_check and db_check.get("ids"):
                         in_db = True
-                except:
-                    pass
+                except Exception as e:
+                    logger.debug(f"[SYNC] Collection check notice for {file_path.name}: {e}")
 
                 if fid not in existing_hashes or not in_db:
                     print(f"[SYNC] Re-ingesting or Syncing file: {file_path.name}")

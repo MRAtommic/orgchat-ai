@@ -9,7 +9,33 @@ if hasattr(sys.stderr, 'reconfigure'):
 import sqlite3
 import json
 import os
+import re
+import random
+import time
+import threading
+import logging
+import secrets
+import uuid
+import hmac
+import hashlib
+import weakref
 from pathlib import Path
+from datetime import datetime, date, timedelta
+from functools import wraps
+from dotenv import load_dotenv
+
+# Backward-compatible aliases used across the codebase
+_j = json
+_json = json
+_re = re
+_dt = datetime
+_dt_mod = datetime
+_time_mod = time
+_t_mod = time
+
+logger = logging.getLogger("OrgChatAI.Database")
+load_dotenv(encoding="utf-8")
+
 try:
     import bcrypt
     BCRYPT_AVAILABLE = True
@@ -45,25 +71,6 @@ def check_password(password: str, stored: str) -> bool:
             return False
     # For security, we only allow bcrypt hashes for database accounts.
     return False
-
-import os
-import re
-import random
-import time
-from functools import wraps
-
-import os
-import re
-import random
-import time
-import threading
-import logging
-from functools import wraps
-
-logger = logging.getLogger("OrgChatAI.Database")
-
-from dotenv import load_dotenv
-load_dotenv(encoding="utf-8")
 
 # Determine DB_TYPE dynamically based on environment
 _db_url = os.environ.get("DATABASE_URL") or os.environ.get("POSTGRES_URL")
@@ -3024,12 +3031,12 @@ def get_pending_offline_uploads(limit=20):
                 d = dict(zip(columns, row))
                 if d.get("analysis_json"):
                     try: d["analysis"] = json.loads(d["analysis_json"])
-                    except: d["analysis"] = None
+                    except (ValueError, TypeError): d["analysis"] = None
                 else:
                     d["analysis"] = None
                 if d.get("extracted_data_json"):
                     try: d["extracted_data"] = json.loads(d["extracted_data_json"])
-                    except: d["extracted_data"] = None
+                    except (ValueError, TypeError): d["extracted_data"] = None
                 else:
                     d["extracted_data"] = None
                 items.append(d)
@@ -5162,12 +5169,16 @@ def get_app_setting(key, default=None):
     conn.close()
     return row[0] if row else default
 
+get_setting = get_app_setting
+
 def set_app_setting(key, value):
     conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)", (key, value))
     conn.commit()
     conn.close()
+
+set_setting = set_app_setting
 
 def get_all_app_settings():
     conn = _get_conn()
@@ -7018,8 +7029,6 @@ def add_expense_claim(line_user_id, username, vendor, amount, expense_date, file
 
 def get_line_config(org_id: int = None):
     """Returns LINE integration configuration from org_line_configs or app_settings with os.environ fallback."""
-    from database import get_app_setting
-    import os
     if org_id:
         org_cfg = get_org_line_config(org_id)
         if org_cfg and org_cfg.get("channel_access_token") and org_cfg.get("is_active"):
@@ -8073,10 +8082,9 @@ def quotation_list(org_id: int, status: str = None, type_: str = None) -> list:
     q += " ORDER BY created_at DESC"
     rows = [dict(r) for r in cur.execute(q, params).fetchall()]
     conn.close()
-    import json
     for r in rows:
         try: r['items'] = json.loads(r.get('items') or '[]')
-        except: r['items'] = []
+        except (ValueError, TypeError): r['items'] = []
     return rows
 
 def quotation_get(qid: int, org_id: int) -> dict | None:
@@ -8084,14 +8092,12 @@ def quotation_get(qid: int, org_id: int) -> dict | None:
     row = conn.execute("SELECT * FROM quotations WHERE id=? AND org_id=?", (qid, org_id)).fetchone()
     conn.close()
     if not row: return None
-    import json
     r = dict(row)
     try: r['items'] = json.loads(r.get('items') or '[]')
-    except: r['items'] = []
+    except (ValueError, TypeError): r['items'] = []
     return r
 
 def quotation_update(qid: int, org_id: int, data: dict) -> bool:
-    import json as _json
     conn = _get_conn(); cur = conn.cursor()
     items = data.get('items', [])
     cur.execute("""UPDATE quotations SET
@@ -8243,23 +8249,21 @@ def meeting_note_list(org_id: int) -> list:
     for r in rows:
         d = dict(r)
         try: d['action_items'] = _j.loads(d.get('action_items') or '[]')
-        except: d['action_items'] = []
+        except (ValueError, TypeError): d['action_items'] = []
         result.append(d)
     return result
 
 def meeting_note_get(mid: int, org_id: int) -> dict | None:
-    import json as _j
     conn = _get_conn(); conn.row_factory = sqlite3.Row
     row = conn.execute("SELECT * FROM meeting_notes WHERE id=? AND org_id=?", (mid, org_id)).fetchone()
     conn.close()
     if not row: return None
     d = dict(row)
     try: d['action_items'] = _j.loads(d.get('action_items') or '[]')
-    except: d['action_items'] = []
+    except (ValueError, TypeError): d['action_items'] = []
     return d
 
 def meeting_note_update(mid: int, org_id: int, data: dict) -> bool:
-    import json as _j
     conn = _get_conn(); cur = conn.cursor()
     cur.execute("""UPDATE meeting_notes SET title=?, transcript=?, summary=?, action_items=?, participants=?, meeting_date=?, wiki_page_id=?
                    WHERE id=? AND org_id=?""",
@@ -8504,7 +8508,6 @@ def is_account_locked(username: str) -> tuple[bool, int]:
     """
     if not username:
         return False, 0
-    from datetime import datetime
     conn = _get_conn()
     try:
         cursor = conn.cursor()
@@ -8519,8 +8522,8 @@ def is_account_locked(username: str) -> tuple[bool, int]:
             if locked_dt > now_dt:
                 remaining = int((locked_dt - now_dt).total_seconds())
                 return True, max(1, remaining)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[is_account_locked] Date parse error for user '{username}': {e}")
         return False, 0
     finally:
         conn.close()
@@ -8532,7 +8535,6 @@ def record_failed_login(username: str, max_attempts: int = 5, lock_minutes: int 
     """
     if not username:
         return {"locked": False, "attempts": 0}
-    from datetime import datetime, timedelta
     conn = _get_conn()
     try:
         cursor = conn.cursor()
@@ -8592,7 +8594,8 @@ def log_audit_event(username: str, event_type: str, action_detail: str = "", ip_
                 row = cursor.fetchone()
                 if row and row[0]:
                     department = row[0]
-            except Exception: pass
+            except Exception as e:
+                logger.debug(f"[log_audit_event] Failed fetching user department: {e}")
             
         if not department:
             department = "General"

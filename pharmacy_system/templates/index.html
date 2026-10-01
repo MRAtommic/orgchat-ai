@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="th" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PharmaCore — ระบบจัดการคลังยาและการตัดสต็อกคลินิก</title>
+    
+    <!-- Google Fonts: Plus Jakarta Sans & Prompt -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- FontAwesome 6 Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <!-- Enterprise Design System Stylesheet -->
+    <link rel="stylesheet" href="/static/css/medical_theme.css?v=5.0">
+
+    <!-- QR Code Generator Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    
+    <!-- HTML5 QR Code & Barcode Camera Scanner -->
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+</head>
+<body>
+
+    <!-- 🏥 Header Navigation (Enterprise Standard) -->
+    <header class="header-nav">
+        <a href="/" class="brand-badge">
+            <div class="brand-icon">
+                <i class="fas fa-prescription"></i>
+            </div>
+            <div>
+                <span class="brand-title">PharmaCore <span class="brand-version">RX-OS</span></span>
+            </div>
+        </a>
+
+        <div class="header-actions">
+            <!-- Google Drive & Sheets Sync Status Pill -->
+            <div id="sheetStatusBadge" class="status-pill" onclick="openGoogleSettingsModal()" title="คลิกเพื่อจัดการการเชื่อมต่อ Google Drive & Sheets">
+                <span class="status-dot active" id="sheetStatusDot"></span>
+                <span id="sheetStatusText">Google Synced</span>
+            </div>
+
+            <!-- Dark / Light Theme Toggle -->
+            <button class="btn btn-outline btn-icon" onclick="toggleTheme()" id="themeToggleBtn" title="สลับธีม สว่าง/มืด">
+                <i class="fas fa-moon" id="themeIcon"></i>
+            </button>
+
+            <!-- Quick Add Drug in Header (Desktop) -->
+            <button class="btn btn-primary" onclick="openAddDrugModal()" style="display: none; @media(min-width: 900px){display: inline-flex;}">
+                <i class="fas fa-plus"></i> เพิ่มยาใหม่
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="main-wrapper">
+
+        <!-- 📊 Compact 4-Metric Summary Strip -->
+        <section class="kpi-strip">
+            <div class="kpi-cell">
+                <div class="kpi-label"><i class="fas fa-layer-group"></i> รายการยาทั้งหมด</div>
+                <div class="kpi-value" id="statTotalDrugs">-</div>
+                <div class="kpi-subtext">รายการในคลัง</div>
+            </div>
+            <div class="kpi-cell">
+                <div class="kpi-label"><i class="fas fa-boxes-stacked"></i> สต็อกคงเหลือรวม</div>
+                <div class="kpi-value" id="statTotalUnits">-</div>
+                <div class="kpi-subtext">หน่วยคงคลังทั้งหมด</div>
+            </div>
+            <div class="kpi-cell">
+                <div class="kpi-label"><i class="fas fa-triangle-exclamation"></i> ใกล้หมดสต็อก</div>
+                <div class="kpi-value" id="statLowStock" style="color: var(--rose-600);">-</div>
+                <div class="kpi-subtext">ถึงจุดเตือนขั้นต่ำ</div>
+            </div>
+            <div class="kpi-cell">
+                <div class="kpi-label"><i class="fas fa-clipboard-check"></i> ตัดสต็อกวันนี้</div>
+                <div class="kpi-value" id="statTodayDispensed">-</div>
+                <div class="kpi-subtext">หน่วยที่จ่ายออกวันนี้</div>
+            </div>
+        </section>
+
+        <!-- 🗂️ Navigation Segmented Control -->
+        <div class="tabs-container">
+            <button class="tab-btn active" data-tab="inventory" onclick="switchTab('inventory')">
+                <i class="fas fa-tablets"></i> รายการยาในคลัง
+            </button>
+            <button class="tab-btn" data-tab="logs" onclick="switchTab('logs')">
+                <i class="fas fa-clock-rotate-left"></i> ประวัติการตัดสต็อก
+            </button>
+            <button class="tab-btn" data-tab="scanner" onclick="switchTab('scanner')">
+                <i class="fas fa-barcode"></i> สแกนเนอร์บาร์โค้ด
+            </button>
+        </div>
+
+        <!-- 💊 VIEW 1: DRUG INVENTORY CATALOG -->
+        <div id="view-inventory">
+            <!-- Filter & Action Toolbar -->
+            <div class="controls-bar">
+                <div class="controls-left">
+                    <div class="search-input-group">
+                        <i class="fas fa-search search-icon"></i>
+                        <input type="text" id="drugSearchInput" placeholder="ค้นหาชื่อยา, รหัสยา, หรือชื่อสามัญ...">
+                        <span class="search-shortcut-hint">/</span>
+                    </div>
+
+                    <select id="categoryFilter" class="form-select">
+                        <option value="all">ทุกหมวดหมู่ยา</option>
+                        <option value="ยาลดไข้ บรรเทาปวด">ยาลดไข้ บรรเทาปวด</option>
+                        <option value="ยาปฏิชีวนะ (ฆ่าเชื้อ)">ยาปฏิชีวนะ (ฆ่าเชื้อ)</option>
+                        <option value="ยาระบบทางเดินอาหาร">ยาระบบทางเดินอาหาร</option>
+                        <option value="ยาแก้แพ้ ลดน้ำมูก">ยาแก้แพ้ ลดน้ำมูก</option>
+                        <option value="ยาแก้ไอ ละลายเสมหะ">ยาแก้ไอ ละลายเสมหะ</option>
+                        <option value="วิตามินและอาหารเสริม">วิตามินและอาหารเสริม</option>
+                        <option value="เวชภัณฑ์และอุปกรณ์">เวชภัณฑ์และอุปกรณ์</option>
+                    </select>
+
+                    <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.8125rem; font-weight: 600; cursor: pointer; color: var(--text-secondary);">
+                        <input type="checkbox" id="lowStockCheckbox"> เฉพาะยาใกล้หมด
+                    </label>
+                </div>
+
+                <div class="controls-right">
+                    <button class="btn btn-outline" id="btnSyncSheet" onclick="syncWithGoogleSheet()" title="ซิงก์ข้อมูลคลังยาลง Google Sheet">
+                        <i class="fas fa-sync-alt"></i> ซิงก์ Sheet
+                    </button>
+
+                    <button class="btn btn-primary" onclick="openAddDrugModal()">
+                        <i class="fas fa-plus"></i> เพิ่มยาใหม่
+                    </button>
+                </div>
+            </div>
+
+            <!-- Drugs Table (Desktop Grid) -->
+            <div class="desktop-table-wrapper table-wrapper">
+                <table class="clinical-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 120px;">รหัสยา</th>
+                            <th>ชื่อทางการค้า / ชื่อสามัญ</th>
+                            <th style="width: 150px;">หมวดหมู่</th>
+                            <th style="width: 130px;">รูปแบบยา</th>
+                            <th style="width: 160px;">คงเหลือ</th>
+                            <th style="width: 130px;">ตำแหน่งเก็บ</th>
+                            <th style="width: 150px; text-align: right;">การจัดการ</th>
+                        </tr>
+                    </thead>
+                    <tbody id="drugsTableBody">
+                        <!-- Loaded via app.js -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Drugs Cards (Mobile Layout) -->
+            <div id="drugsMobileCards" class="mobile-cards-wrapper">
+                <!-- Loaded via app.js -->
+            </div>
+        </div>
+
+        <!-- 📋 VIEW 2: DISPENSING AUDIT LOGS -->
+        <div id="view-logs" style="display: none;">
+            <div class="controls-bar">
+                <div class="controls-left">
+                    <div>
+                        <label class="form-label">เลือกวันที่:</label>
+                        <input type="date" id="logDateFilter" class="form-input">
+                    </div>
+                    <div>
+                        <label class="form-label">ช่องทางตัดสต็อก:</label>
+                        <select id="logChannelFilter" class="form-select">
+                            <option value="all">ทุกช่องทาง</option>
+                            <option value="LINE">LINE Bot (ข้อความ & รูปถ่าย)</option>
+                            <option value="WEB">เว็บแอพ (หน้าเคาน์เตอร์)</option>
+                            <option value="QR">เครื่องสแกนบาร์โค้ด</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div style="font-size: 0.8125rem; color: var(--text-muted);">
+                    <i class="fas fa-shield-halved"></i> ทุกประวัติการจ่ายยาจะถูกบันทึกแถวใหม่ลง Google Sheet อัตโนมัติ
+                </div>
+            </div>
+
+            <!-- Logs Table (Desktop Grid) -->
+            <div class="desktop-table-wrapper table-wrapper">
+                <table class="clinical-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 160px;">วัน-เวลา</th>
+                            <th>รายการยา</th>
+                            <th style="width: 100px;">จำนวนจ่าย</th>
+                            <th style="width: 160px;">ยอดก่อน ➔ หลังจ่าย</th>
+                            <th style="width: 130px;">ช่องทาง</th>
+                            <th style="width: 140px;">ผู้จ่ายยา</th>
+                            <th style="width: 120px; text-align: right;">หลักฐาน</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logsTableBody">
+                        <!-- Loaded via app.js -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Logs Cards (Mobile Layout) -->
+            <div id="logsMobileCards" class="mobile-cards-wrapper">
+                <!-- Loaded via app.js -->
+            </div>
+        </div>
+
+        <!-- 📷 VIEW 3: BARCODE / QR CAMERA SCANNER -->
+        <div id="view-scanner" style="display: none;">
+            <div style="max-width: 540px; margin: 0 auto;">
+                <div class="table-wrapper" style="padding: 1.5rem; text-align: center;">
+                    <div style="display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-bottom: 0.35rem;">
+                        <i class="fas fa-barcode" style="color: var(--brand-500); font-size: 1.25rem;"></i>
+                        <h2 style="font-size: 1.15rem; font-weight: 700;">สแกนเนอร์บาร์โค้ดยา</h2>
+                    </div>
+                    <p style="font-size: 0.8125rem; color: var(--text-muted); margin-bottom: 1.25rem;">
+                        รองรับทั้งบาร์โค้ดแท่ง (1D Barcode) บนกล่องยา และ QR Code ฉลากยา
+                    </p>
+
+                    <!-- Camera Controls -->
+                    <div style="display: flex; justify-content: center; gap: 0.4rem; margin-bottom: 1rem; flex-wrap: wrap;">
+                        <select id="cameraSelectDropdown" class="form-select" style="max-width: 160px; font-size: 0.775rem; display: none;" onchange="onCameraSelectChange(event)"></select>
+                        <button class="btn btn-outline" id="btnFlipCamera" onclick="flipCamera()" title="สลับกล้อง">
+                            <i class="fas fa-camera-rotate"></i> สลับกล้อง
+                        </button>
+                        <button class="btn btn-outline" id="btnToggleTorch" onclick="toggleTorch()" title="ไฟฉาย">
+                            <i class="fas fa-lightbulb"></i> ไฟฉาย
+                        </button>
+                        <button class="btn btn-outline" onclick="stopScanner(); startScanner();" title="รีสตาร์ท">
+                            <i class="fas fa-arrows-rotate"></i> รีเฟรช
+                        </button>
+                    </div>
+
+                    <!-- Viewport -->
+                    <div id="qr-reader" class="scanner-viewport"></div>
+
+                    <!-- Status Indicator -->
+                    <div id="scannerActiveIndicator" style="display: none; margin-top: 0.75rem; font-size: 0.8125rem; color: var(--brand-500); font-weight: 600;">
+                        <i class="fas fa-circle-notch fa-spin"></i> กล้องพร้อมทำงาน... หันบาร์โค้ดเข้ามาในกรอบ
+                    </div>
+
+                    <div id="scannerErrorNotice" style="display: none; margin-top: 1rem; padding: 0.75rem; background: var(--amber-50); border: 1px solid var(--amber-100); border-radius: var(--radius-md); font-size: 0.8125rem; color: var(--amber-600); text-align: left;">
+                        <i class="fas fa-circle-exclamation"></i> ไม่สามารถเปิดกล้องได้ กรุณากดอนุญาตการเข้าถึงกล้อง หรือใช้วิธีพิมพ์รหัสด้านล่าง
+                    </div>
+
+                    <!-- Manual Input Field -->
+                    <div style="margin-top: 1.5rem; padding: 1rem; background: var(--bg-subtle); border-radius: var(--radius-md); border: 1px solid var(--border-default); text-align: left;">
+                        <label class="form-label">หรือพิมพ์รหัสยา / บาร์โค้ด:</label>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <input type="text" id="manualBarcodeInput" class="form-input" placeholder="เช่น MED-0001, 885..., หรือชื่อยา" style="font-family: var(--font-mono); flex: 1;" onkeydown="if(event.key==='Enter') submitManualBarcode()">
+                            <button class="btn btn-primary" onclick="submitManualBarcode()">
+                                ค้นหา
+                            </button>
+                        </div>
+                        <div style="margin-top: 0.65rem; display: flex; gap: 0.35rem; flex-wrap: wrap; align-items: center;">
+                            <span style="font-size: 0.7rem; color: var(--text-muted); font-weight: 600;">คลิกทดสอบ:</span>
+                            <button type="button" class="btn btn-outline" onclick="quickTestScan('MED-0001')" style="padding: 0.15rem 0.45rem; font-size: 0.7rem; height: 26px;">
+                                MED-0001 (พารา)
+                            </button>
+                            <button type="button" class="btn btn-outline" onclick="quickTestScan('MED-0002')" style="padding: 0.15rem 0.45rem; font-size: 0.7rem; height: 26px;">
+                                MED-0002 (Amox)
+                            </button>
+                            <button type="button" class="btn btn-outline" onclick="quickTestScan('8850029010012')" style="padding: 0.15rem 0.45rem; font-size: 0.7rem; height: 26px;">
+                                8850029010012 (บาร์โค้ดใหม่)
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Photo Upload OCR -->
+                    <div style="margin-top: 1.25rem; padding-top: 1rem; border-top: 1px dashed var(--border-default);">
+                        <input type="file" id="prescriptionFileInput" accept="image/*" style="display: none;" onchange="scanLocalImageFile(this)">
+                        <button class="btn btn-outline" id="btnUploadOcr" onclick="document.getElementById('prescriptionFileInput').click()" style="width: 100%;">
+                            <i class="fas fa-image"></i> อัปโหลดรูปภาพซองยา / ใบสั่งยา
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- 📱 Mobile Quick Floating Button (FAB) -->
+    <button class="mobile-fab" onclick="openAddDrugModal()" title="เพิ่มยาใหม่">
+        <i class="fas fa-plus"></i>
+    </button>
+
+    <!-- 📱 Mobile Bottom App Bar -->
+    <nav class="mobile-bottom-nav">
+        <button class="mobile-nav-item active" data-tab="inventory" onclick="switchTab('inventory'); updateMobileNav('inventory');">
+            <i class="fas fa-tablets"></i>
+            <span>คลังยา</span>
+        </button>
+        <button class="mobile-nav-item" data-tab="logs" onclick="switchTab('logs'); updateMobileNav('logs');">
+            <i class="fas fa-clock-rotate-left"></i>
+            <span>ประวัติ</span>
+        </button>
+        <button class="mobile-nav-item" data-tab="scanner" onclick="switchTab('scanner'); updateMobileNav('scanner');">
+            <i class="fas fa-barcode"></i>
+            <span>สแกนเนอร์</span>
+        </button>
+        <button class="mobile-nav-item" onclick="openGoogleSettingsModal()">
+            <i class="fab fa-google-drive"></i>
+            <span>Google</span>
+        </button>
+    </nav>
+
+    <!-- ─────────────────────────────────────────────────────────────
+         MODAL: ADD / EDIT DRUG (2-COLUMN ENTERPRISE DIALOG)
+         ───────────────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="drugModal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3 id="drugModalTitle">เพิ่มยาใหม่เข้าคลัง</h3>
+                <button class="btn btn-outline btn-icon" onclick="closeDrugModal()"><i class="fas fa-xmark"></i></button>
+            </div>
+            <form id="drugForm" onsubmit="saveDrug(event)">
+                <input type="hidden" id="drugFormId">
+                <div class="modal-body">
+                    <!-- SECTION 1: ข้อมูลพื้นฐานของยา -->
+                    <div class="modal-section-title">1. ข้อมูลพื้นฐานของยา (Basic Info)</div>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label class="form-label">รหัสยา / บาร์โค้ด (Code / Barcode) *</label>
+                            <input type="text" id="drugCodeInput" class="form-input" placeholder="เช่น MED-0011 หรือ Barcode 13 หลัก">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">ชื่อทางการค้า (Trade Name) *</label>
+                            <input type="text" id="drugNameInput" class="form-input" placeholder="เช่น Paracetamol 500 mg" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">ชื่อสามัญทางยา (Generic Name)</label>
+                            <input type="text" id="drugGenericInput" class="form-input" placeholder="เช่น Paracetamol">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">หมวดหมู่ยา</label>
+                            <select id="drugCategoryInput" class="form-select">
+                                <option value="ยาลดไข้ บรรเทาปวด">ยาลดไข้ บรรเทาปวด</option>
+                                <option value="ยาปฏิชีวนะ (ฆ่าเชื้อ)">ยาปฏิชีวนะ (ฆ่าเชื้อ)</option>
+                                <option value="ยาระบบทางเดินอาหาร">ยาระบบทางเดินอาหาร</option>
+                                <option value="ยาแก้แพ้ ลดน้ำมูก">ยาแก้แพ้ ลดน้ำมูก</option>
+                                <option value="ยาแก้ไอ ละลายเสมหะ">ยาแก้ไอ ละลายเสมหะ</option>
+                                <option value="วิตามินและอาหารเสริม">วิตามินและอาหารเสริม</option>
+                                <option value="เวชภัณฑ์และอุปกรณ์">เวชภัณฑ์และอุปกรณ์</option>
+                                <option value="ทั่วไป">ทั่วไป</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">รูปแบบยา (Dosage Form)</label>
+                            <input type="text" id="drugDosageInput" class="form-input" placeholder="เช่น เม็ด, แคปซูล, ยาน้ำ">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">ความแรงยา (Strength)</label>
+                            <input type="text" id="drugStrengthInput" class="form-input" placeholder="เช่น 500 mg, 10 mg">
+                        </div>
+                    </div>
+
+                    <!-- SECTION 2: คลังและการเงิน -->
+                    <div class="modal-section-title" style="margin-top: 1rem;">2. การจัดการสต็อกและราคา (Stock & Pricing)</div>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label class="form-label">จำนวนสต็อกเริ่มต้น *</label>
+                            <input type="number" id="drugStockInput" class="form-input" min="0" value="100" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">หน่วยนับ *</label>
+                            <input type="text" id="drugUnitInput" class="form-input" placeholder="เม็ด, แคปซูล, ขวด, แผง" value="เม็ด" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">จุดเตือนสต็อกขั้นต่ำ</label>
+                            <input type="number" id="drugMinInput" class="form-input" min="1" value="20">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">ราคาจำหน่ายต่อหน่วย (บาท)</label>
+                            <input type="number" id="drugPriceInput" class="form-input" step="0.25" value="5.0">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">ราคาทุนต่อหน่วย (บาท)</label>
+                            <input type="number" id="drugCostInput" class="form-input" step="0.25" value="0.0">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">วันหมดอายุ (Expiry Date)</label>
+                            <input type="date" id="drugExpiryInput" class="form-input">
+                        </div>
+                        <div class="form-group col-span-2">
+                            <label class="form-label">ตำแหน่งจัดเก็บ (Location)</label>
+                            <input type="text" id="drugLocationInput" class="form-input" placeholder="เช่น ตู้ A - ชั้น 1">
+                        </div>
+                    </div>
+
+                    <!-- SECTION 3: คำแนะนำการใช้ยา -->
+                    <div class="modal-section-title" style="margin-top: 1rem;">3. คำแนะนำการใช้ยา (Instructions)</div>
+                    <div class="form-group">
+                        <textarea id="drugInstructionsInput" class="form-textarea" rows="2" placeholder="เช่น รับประทานครั้งละ 1 เม็ด ทุก 4-6 ชั่วโมง หลังอาหาร"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline" onclick="closeDrugModal()">ยกเลิก</button>
+                    <button type="submit" class="btn btn-primary" id="btnSaveDrugSubmit">
+                        <i class="fas fa-check"></i> บันทึกรายการ
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ─────────────────────────────────────────────────────────────
+         MODAL: DISPENSE STOCK (ตัดสต็อกยา)
+         ───────────────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="dispenseModal">
+        <div class="modal-box" style="max-width: 440px;">
+            <div class="modal-header">
+                <h3 style="color: var(--rose-600);"><i class="fas fa-minus-circle"></i> ตัดจ่ายสต็อกยา</h3>
+                <button class="btn btn-outline btn-icon" onclick="closeDispenseModal()"><i class="fas fa-xmark"></i></button>
+            </div>
+            <form onsubmit="submitDispense(event)">
+                <div class="modal-body">
+                    <div style="background: var(--bg-subtle); border: 1px solid var(--border-default); padding: 0.85rem 1rem; border-radius: var(--radius-md); margin-bottom: 1rem;">
+                        <h4 id="dispenseDrugName" style="font-size: 1rem; font-weight: 700; color: var(--text-primary);">-</h4>
+                        <p id="dispenseDrugCode" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.15rem; font-family: var(--font-mono);">-</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">จำนวนที่ต้องการตัดจ่าย *</label>
+                        <div style="display: flex; gap: 0.5rem; align-items: center;">
+                            <input type="number" id="dispenseQtyInput" class="form-input" min="1" value="1" style="font-size: 1.25rem; font-weight: 700; text-align: center;" required>
+                            <span id="dispenseUnitLabel" style="font-weight: 600; color: var(--text-muted); min-width: 45px;">เม็ด</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">ชื่อผู้รับยา / คนไข้ (ไม่บังคับ)</label>
+                        <input type="text" id="dispensePatientInput" class="form-input" placeholder="เช่น คุณสมชาย (OPD)">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">ผู้จ่ายยา / เจ้าหน้าที่</label>
+                        <input type="text" id="dispenserNameInput" class="form-input" value="เภสัชกร/เจ้าหน้าที่" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">หมายเหตุการตัดจ่าย</label>
+                        <input type="text" id="dispenseNoteInput" class="form-input" placeholder="เช่น จ่ายตามใบสั่งแพทย์ หรือ เบิกทดแทน">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline" onclick="closeDispenseModal()">ยกเลิก</button>
+                    <button type="submit" class="btn btn-danger"><i class="fas fa-check"></i> ยืนยันการตัดจ่าย</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ─────────────────────────────────────────────────────────────
+         MODAL: QR CODE LABEL GENERATOR
+         ───────────────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="qrModal">
+        <div class="modal-box" style="max-width: 380px; text-align: center;">
+            <div class="modal-header">
+                <h3>ฉลาก QR Code ประจำตัวยา</h3>
+                <button class="btn btn-outline btn-icon" onclick="closeQrModal()"><i class="fas fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <div id="qrcodeContainer" style="display: flex; justify-content: center; margin: 0.5rem 0 1rem; padding: 1rem; background: #FFFFFF; border-radius: var(--radius-md); border: 1px solid var(--border-default);"></div>
+                <h4 id="qrDrugTitle" style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary);">-</h4>
+                <p id="qrDrugDetails" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.15rem;">-</p>
+            </div>
+            <div class="modal-footer" style="justify-content: center;">
+                <button type="button" class="btn btn-primary" onclick="printQrLabel()"><i class="fas fa-print"></i> พิมพ์สติกเกอร์</button>
+                <button type="button" class="btn btn-outline" onclick="closeQrModal()">ปิด</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ─────────────────────────────────────────────────────────────
+         MODAL: GOOGLE DRIVE & SHEETS SETTINGS (CLEAN & INTEGRATED)
+         ───────────────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="googleSettingsModal">
+        <div class="modal-box" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3>การเชื่อมต่อ Google Drive & Sheets</h3>
+                <button class="btn btn-outline btn-icon" onclick="closeGoogleSettingsModal()"><i class="fas fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <!-- 1-Click OAuth Box -->
+                <div id="googleOAuthCard" style="background: var(--bg-subtle); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 1.25rem; margin-bottom: 1rem; text-align: center;">
+                    <div style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.25rem;">
+                        เชื่อมต่ออัตโนมัติ (1-Click OAuth)
+                    </div>
+                    <p style="font-size: 0.8125rem; color: var(--text-muted); margin-bottom: 1rem; line-height: 1.4;">
+                        ระบบจะสร้างโฟลเดอร์ใน Google Drive และไฟล์ Google Sheet ให้อัตโนมัติทันที
+                    </p>
+                    <a href="/api/auth/google/login" class="btn btn-primary" style="background: #2563EB; border-color: #2563EB; text-decoration: none; width: 100%;">
+                        <i class="fab fa-google"></i> อนุญาตและเชื่อมต่อ Google
+                    </a>
+                </div>
+
+                <!-- Connected Account View -->
+                <div id="googleConnectedArea" style="display: none; background: var(--emerald-50); border: 1px solid var(--emerald-100); border-radius: var(--radius-md); padding: 1.25rem; margin-bottom: 1rem; text-align: center;">
+                    <div style="font-size: 0.875rem; font-weight: 700; color: var(--emerald-700); margin-bottom: 0.25rem;">
+                        <i class="fas fa-check-circle"></i> เชื่อมต่อ Google เรียบร้อยแล้ว
+                    </div>
+                    <div id="googleConnectedEmailText" style="font-size: 0.8125rem; color: var(--text-primary); margin-bottom: 0.85rem;">-</div>
+                    <div style="display: flex; gap: 0.4rem; justify-content: center; flex-wrap: wrap;">
+                        <a id="btnGoToSheet" href="#" target="_blank" class="btn btn-outline" style="font-size: 0.75rem; text-decoration: none; height: 32px;">
+                            <i class="fas fa-table"></i> เปิด Sheet
+                        </a>
+                        <a id="btnGoToDrive" href="#" target="_blank" class="btn btn-outline" style="font-size: 0.75rem; text-decoration: none; height: 32px;">
+                            <i class="fab fa-google-drive"></i> เปิด Drive
+                        </a>
+                        <button type="button" class="btn btn-outline" onclick="disconnectGoogleAccount()" style="font-size: 0.75rem; color: var(--rose-600); height: 32px;">
+                            <i class="fas fa-unlink"></i> ยกเลิกเชื่อมต่อ
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Manual Setup Accordion -->
+                <details style="border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 0.75rem; font-size: 0.8125rem;">
+                    <summary style="font-weight: 600; color: var(--text-muted); cursor: pointer;">
+                        ตั้งค่า Spreadsheet ID เอง (Manual)
+                    </summary>
+                    <form onsubmit="saveGoogleConfig(event)" style="margin-top: 0.85rem;">
+                        <div class="form-group">
+                            <label class="form-label">Spreadsheet ID</label>
+                            <input type="text" id="inputSpreadsheetId" class="form-input" placeholder="ID หรือลิงก์ Google Sheet">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Drive Folder ID</label>
+                            <input type="text" id="inputDriveFolderId" class="form-input" placeholder="ID หรือลิงก์ Drive Folder">
+                        </div>
+                        <div style="text-align: right;">
+                            <button type="submit" class="btn btn-primary" id="btnSaveGoogleConfig" style="height: 32px; font-size: 0.75rem;">
+                                บันทึก
+                            </button>
+                        </div>
+                    </form>
+                </details>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeGoogleSettingsModal()">ปิด</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ─────────────────────────────────────────────────────────────
+         MODAL: UNREGISTERED BARCODE SCANNED (NEW DRUG PROMPT)
+         ───────────────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="newBarcodeModal">
+        <div class="modal-box" style="max-width: 400px; text-align: center;">
+            <div class="modal-header">
+                <h3>พบบาร์โค้ดใหม่</h3>
+                <button class="btn btn-outline btn-icon" onclick="closeNewBarcodeModal()"><i class="fas fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.35rem;">รหัสบาร์โค้ด:</div>
+                <div id="newBarcodeDisplay" class="code-pill" style="font-size: 1.15rem; padding: 0.35rem 0.85rem; margin-bottom: 1rem; display: inline-block;">
+                    -
+                </div>
+                <p style="font-size: 0.8125rem; color: var(--text-secondary); line-height: 1.5;">
+                    ยังไม่พบรายการยานี้ในฐานข้อมูลคลัง<br>
+                    <strong>ต้องการเพิ่มเป็นรายการยาใหม่ด้วยรหัสนี้หรือไม่?</strong>
+                </p>
+            </div>
+            <div class="modal-footer" style="justify-content: center; gap: 0.5rem;">
+                <button type="button" class="btn btn-outline" onclick="closeNewBarcodeModal(); startScanner();">
+                    สแกนใหม่
+                </button>
+                <button type="button" class="btn btn-primary" onclick="proceedAddNewDrugWithBarcode()">
+                    <i class="fas fa-plus"></i> เพิ่มยานี้เข้าคลัง
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden Temporary Element for Client-Side File Scanning -->
+    <div id="qr-reader-file-temp" style="display: none;"></div>
+
+    <!-- App Script with Cache Busting -->
+    <script src="/static/js/app.js?v=5.0"></script>
+</body>
+</html>
