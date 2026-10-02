@@ -76,5 +76,18 @@ class TestRBAC(BaseTestCase):
         blocked, _ = database.is_ip_blacklisted(malicious_ip)
         self.assertFalse(blocked)
 
+    def test_org_quota_info(self):
+        """Test retrieving organization quota info and plan configuration."""
+        org_name = f"Quota Corp {uuid.uuid4().hex[:6]}"
+        org_id, _ = database.create_organization(name=org_name, owner_username="quota_owner")
+        
+        quota = database.get_org_quota_info(org_id)
+        self.assertTrue(quota.get("ok"))
+        self.assertEqual(quota.get("org_name"), org_name)
+        self.assertIn("plan", quota)
+        self.assertIn("max_users", quota)
+        self.assertIn("member_count", quota)
+
+
 if __name__ == "__main__":
     unittest.main()

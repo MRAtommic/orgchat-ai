@@ -62,6 +62,25 @@ def stripe_remove_event_claim(event_id: str) -> None:
     conn.close()
 
 
+def get_effective_plan(org_id: int) -> str:
+    """Convenience forwarder to top-level billing.get_effective_plan."""
+    try:
+        import billing
+        return billing.get_effective_plan(org_id)
+    except Exception:
+        return "free"
+
+
+def get_plan_config(plan_name: str) -> dict:
+    """Convenience forwarder to top-level billing.get_plan_config."""
+    try:
+        import billing
+        return billing.get_plan_config(plan_name)
+    except Exception:
+        return {}
+
+
+
 # ─── Org Membership Check (for session re-validation) ────────────────────────
 
 

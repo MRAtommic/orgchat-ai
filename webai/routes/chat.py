@@ -148,14 +148,24 @@ def _configure_gemini(api_key: str):
 @_limiter.limit("30 per minute")
 def text_to_speech_api():
     """Generates natural neural Thai speech audio from text using Edge-TTS."""
-    data = request.get_json(force=True)
+    try:
+        data = request.get_json(force=True) or {}
+    except Exception:
+        data = {}
     text = (data.get("text") or "").strip()
     if not text:
         return jsonify({"ok": False, "error": "No text provided"}), 400
+    cleaned = tts_engine.clean_text_for_tts(text)
+    if not cleaned:
+        return jsonify({"ok": False, "error": "No speakable text found after cleaning"}), 400
     voice = data.get("voice", tts_engine.DEFAULT_VOICE)
-    audio_bytes = tts_engine.synthesize_speech(text, voice=voice)
+    try:
+        audio_bytes = tts_engine.synthesize_speech(cleaned, voice=voice)
+    except Exception as e:
+        logger.warning(f"TTS synthesis exception: {e}")
+        audio_bytes = None
     if not audio_bytes:
-        return jsonify({"ok": False, "error": "TTS synthesis failed"}), 500
+        return jsonify({"ok": False, "error": "TTS synthesis temporarily unavailable"}), 503
     return send_file(
         io.BytesIO(audio_bytes),
         mimetype="audio/mpeg",

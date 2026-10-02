@@ -577,9 +577,13 @@ def transfer_org_ownership(org_id: int, current_owner: str, new_owner: str) -> t
 def get_org_quota_info(org_id: int) -> dict:
     """Returns organizational quota usage (members, storage, plan)."""
     try:
-        from . import billing
-    except (ImportError, ValueError):
-        import billing
+        import billing as app_billing
+    except ImportError:
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        import billing as app_billing
+
     conn = _get_conn()
     cur = conn.cursor()
     try:
@@ -595,8 +599,8 @@ def get_org_quota_info(org_id: int) -> dict:
         cur.execute("SELECT COUNT(*) FROM organization_members WHERE organization_id = ? AND role = 'admin'", (org_id,))
         admin_count = cur.fetchone()[0]
 
-        active_plan = billing.get_effective_plan(org_id)
-        plan_config = billing.get_plan_config(active_plan)
+        active_plan = app_billing.get_effective_plan(org_id)
+        plan_config = app_billing.get_plan_config(active_plan)
         limit_users = plan_config.get("limits", {}).get("max_users", org_max_users or 5)
         
         user_percent = 100 if limit_users == -1 else min(100, int((member_count / max(1, limit_users)) * 100))
