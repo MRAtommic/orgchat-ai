@@ -31,3 +31,4 @@ from .security import (
     _THAI_PHONE_PATTERN, _EMAIL_PATTERN
 )
 from .billing import *
+from .migrations import run_migrations, get_migration_history, MIGRATIONS

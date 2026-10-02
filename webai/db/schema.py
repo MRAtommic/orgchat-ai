@@ -1307,6 +1307,13 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_quotations_org_created ON quotations(org_id, created_at)")
 
     conn.commit()
+
+    try:
+        from .migrations import run_migrations
+        run_migrations(conn)
+    except Exception as e:
+        logger.warning(f"Database migration notice: {e}")
+
     conn.close()
 
 

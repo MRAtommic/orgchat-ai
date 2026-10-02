@@ -319,6 +319,9 @@ def add_expense_claim(line_user_id, username, vendor, amount, expense_date, file
         VALUES (?, ?, ?, ?, ?, ?)
     """, (line_user_id, username, vendor, amount, expense_date, file_link))
     claim_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return claim_id
 
 
 def search_drive_logs(query, limit=5):

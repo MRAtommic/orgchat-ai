@@ -263,6 +263,7 @@ def increment_user_session_version(username: str) -> int:
     conn = _get_conn()
     cur = conn.cursor()
     try:
+        cur.execute("INSERT OR IGNORE INTO user_settings (username) VALUES (?)", (username,))
         cur.execute("UPDATE user_settings SET session_version = COALESCE(session_version, 1) + 1 WHERE username = ? COLLATE NOCASE", (username,))
         conn.commit()
         cur.execute("SELECT session_version FROM user_settings WHERE username = ? COLLATE NOCASE", (username,))
