@@ -1051,13 +1051,13 @@ def reinit_kb():
         print(f"⚠️ org_id migration error: {e}")
 
 
-def ingest_file(file_path: Path, original_name: str, department: str = "General", category_id: int = None, org_id: int = 1) -> dict:
+def ingest_file(file_path: Path, original_name: str, department: str = "General", category_id: int = None, org_id: int = 1, force: bool = False) -> dict:
     """Parse file, chunk, embed, and store in ChromaDB. Returns metadata dict."""
     meta = _load_meta()
     fid = _file_hash(file_path)
 
     print(f"[INGEST] Ingesting: {original_name} ({fid}) | Dept: {department} | Org: {org_id}")
-    if fid in meta and meta[fid].get("status") == "ready":
+    if not force and fid in meta and meta[fid].get("status") == "ready":
         print(f"⏩ Duplicate file: {original_name}")
         return {"status": "duplicate", "file_id": fid, "name": original_name}
 
@@ -1263,6 +1263,51 @@ def rename_file(file_id: str, new_name: str, org_id: int = None) -> dict:
         print(f"⚠️ Warning: vector metadata rename update: {e}")
 
     return {"ok": True, "file_id": file_id, "name": new_name}
+
+
+def reprocess_file(file_id: str, org_id: int = None) -> dict:
+    """
+    Re-chunks and re-embeds a specific file in the Knowledge Base.
+    Useful for retrying files that failed due to temporary network/API errors.
+    """
+    meta = _load_meta()
+    if file_id not in meta:
+        return {"ok": False, "error": "ไม่พบไฟล์ที่ระบุในระบบ"}
+
+    info = meta[file_id]
+    if org_id is not None and info.get("organization_id") is not None and info.get("organization_id") != org_id:
+        return {"ok": False, "error": "คุณไม่มีสิทธิ์จัดการไฟล์ในองค์กรนี้"}
+
+    file_path = Path(info.get("path", ""))
+    if not file_path.exists() or not file_path.is_file():
+        actual_name = file_path.name
+        alt_path = UPLOAD_DIR / actual_name
+        if alt_path.exists() and alt_path.is_file():
+            file_path = alt_path
+        else:
+            return {"ok": False, "error": f"ไม่พบไฟล์ต้นฉบับในเซิร์ฟเวอร์ ({actual_name})"}
+
+    # Remove stale chunks from vector DB first
+    try:
+        _get_kb().delete_by_file_id(file_id)
+    except Exception as e:
+        print(f"⚠️ [Reprocess] Notice deleting old chunks for {file_id}: {e}")
+
+    meta[file_id]["status"] = "processing"
+    meta[file_id]["chunks"] = 0
+    meta[file_id].pop("error", None)
+    _save_meta(meta)
+
+    orig_name = info.get("name", file_path.name)
+    dept = info.get("department", "General")
+    cat_id = info.get("category_id")
+    file_org_id = info.get("organization_id", 1)
+
+    res = ingest_file(file_path, original_name=orig_name, department=dept, category_id=cat_id, org_id=file_org_id, force=True)
+    if res.get("status") == "error":
+        return {"ok": False, "error": res.get("error", "เกิดข้อผิดพลาดในการประมวลผล")}
+    
+    return {"ok": True, "file_id": file_id, "chunks": res.get("chunks", 0), "status": "ready"}
 
 
 def get_file_content(file_id: str) -> str:
@@ -1500,11 +1545,23 @@ def sync_uploads():
 
                 if fid not in existing_hashes or not in_db:
                     print(f"[SYNC] Re-ingesting or Syncing file: {file_path.name}")
-                    original_name = file_path.name
-                    if len(file_path.name) > 9 and file_path.name[8] == "_":
-                        original_name = file_path.name[9:]
+                    existing_info = meta.get(fid, {})
+                    original_name = existing_info.get("name")
+                    if not original_name:
+                        original_name = file_path.name
+                        if len(file_path.name) > 9 and file_path.name[8] == "_":
+                            original_name = file_path.name[9:]
                     
-                    res = ingest_file(file_path, original_name=original_name)
+                    dept = existing_info.get("department", "General")
+                    cat_id = existing_info.get("category_id")
+                    org_id = existing_info.get("organization_id", 1)
+
+                    try:
+                        _get_kb().delete_by_file_id(fid)
+                    except Exception:
+                        pass
+
+                    res = ingest_file(file_path, original_name=original_name, department=dept, category_id=cat_id, org_id=org_id, force=True)
                     results.append(res)
             except Exception as e:
                 print(f"⚠️ Error syncing {file_path.name}: {e}")

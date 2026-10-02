@@ -1379,6 +1379,9 @@ function renderFileList(files) {
                 <i data-lucide="scan-search" class="w-4 h-4"></i>
               </button>
               ${canEditKB() ? `
+                <button class="file-reprocess-btn p-1.5 ${isError ? 'text-rose-500 bg-rose-50 hover:bg-rose-100 dark:bg-rose-900/20 animate-pulse' : 'text-surface-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20'} transition-all rounded-xl" data-id="${f.file_id}" data-name="${safeName}" title="${isError ? 'ประมวลผลไฟล์ใหม่อีกครั้ง (Retry)' : 'ประมวลผลไฟล์ใหม่ (Re-index)'}">
+                  <i data-lucide="rotate-cw" class="w-4 h-4"></i>
+                </button>
                 <button class="file-rename-btn p-1.5 text-surface-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-all rounded-xl" data-id="${f.file_id}" data-name="${safeName}" title="เปลี่ยนชื่อไฟล์">
                   <i data-lucide="edit-3" class="w-4 h-4"></i>
                 </button>
@@ -1402,6 +1405,12 @@ function renderFileList(files) {
   }).join('');
 
   // Re-bind events
+  fileList.querySelectorAll('.file-reprocess-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      reprocessFile(btn.dataset.id, btn.dataset.name);
+    });
+  });
   fileList.querySelectorAll('.file-rename-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1531,6 +1540,32 @@ async function deleteFile(fileId) {
     if (item) item.classList.remove('opacity-30', 'grayscale');
     console.error('Delete failed:', e);
     toast('ลบไฟล์ไม่สำเร็จ: ' + e.message, 'error');
+  }
+}
+
+async function reprocessFile(fileId, fileName) {
+  if (!fileId) return;
+  const item = $(`file-${fileId}`);
+  if (item) {
+    item.classList.add('opacity-60');
+    const badge = item.querySelector('.text-\\[9px\\].uppercase');
+    if (badge) badge.textContent = 'Indexing...';
+  }
+  toast(`กำลังประมวลผลไฟล์ "${fileName || fileId}" ใหม่...`, 'info');
+  try {
+    const data = await apiFetch(`/api/files/${fileId}/reprocess`, { method: 'POST' });
+    if (data.ok) {
+      toast(`ประมวลผลไฟล์ "${fileName || fileId}" สำเร็จ (${data.chunks || 0} Chunks)`, 'success');
+      await loadFiles();
+      await loadStatus();
+    } else {
+      throw new Error(data.error || 'ไม่สามารถประมวลผลไฟล์ได้');
+    }
+  } catch (e) {
+    if (item) item.classList.remove('opacity-60');
+    console.error('Reprocess failed:', e);
+    toast('เกิดข้อผิดพลาด: ' + e.message, 'error');
+    await loadFiles();
   }
 }
 

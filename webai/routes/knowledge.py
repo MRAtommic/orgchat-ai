@@ -713,6 +713,21 @@ def sync_kb():
     return jsonify({"ok": True, "results": results})
 
 
+@knowledge_bp.route("/api/kb/reprocess/<file_id>", methods=["POST"])
+@login_required
+def kb_reprocess_route(file_id):
+    """Re-chunks and re-embeds a specific file in the Knowledge Base."""
+    if not can_edit_knowledge_base():
+        return jsonify({"ok": False, "error": "คุณไม่มีสิทธิ์ในการจัดการไฟล์ในคลังข้อมูล"}), 403
+    org_id = get_current_org_id()
+    res = rag_engine.reprocess_file(file_id, org_id=org_id)
+    if res.get("ok"):
+        user = session.get("user", "Admin")
+        database.log_event(f"Reprocessed file ID {file_id}", user=user, org_id=org_id)
+        return jsonify(res)
+    return jsonify(res), 400
+
+
 @knowledge_bp.route("/api/prune", methods=["POST"])
 @admin_required
 def prune_kb_route():

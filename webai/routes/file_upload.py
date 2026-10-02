@@ -269,6 +269,21 @@ def rename_file_route(file_id):
     return jsonify(res), 400
 
 
+@file_bp.route("/api/files/<file_id>/reprocess", methods=["POST"])
+@login_required
+def reprocess_file_route(file_id):
+    """Re-chunks and re-embeds a specific file in the Knowledge Base."""
+    if not can_edit_knowledge_base():
+        return jsonify({"ok": False, "error": "คุณไม่มีสิทธิ์ในการจัดการไฟล์ในคลังข้อมูล"}), 403
+
+    org_id = get_current_org_id()
+    res = rag_engine.reprocess_file(file_id, org_id=org_id)
+    if res.get("ok"):
+        user = session.get("user", "Admin")
+        database.log_event(f"Reprocessed file ID {file_id}", user=user, org_id=org_id)
+        return jsonify(res)
+    return jsonify(res), 400
+
 
 @file_bp.route("/api/files/download/<filename>")
 @login_required
