@@ -14,7 +14,6 @@ from routes.social import social_bp
 from routes.admin import admin_bp
 from routes.misc import misc_bp
 from routes.features import features_bp
-from routes.pharmacy_bp import pharmacy_bp
 
 ALL_BLUEPRINTS = [
     auth_bp,
@@ -27,6 +26,5 @@ ALL_BLUEPRINTS = [
     admin_bp,
     misc_bp,
     features_bp,
-    pharmacy_bp,
 ]
 
