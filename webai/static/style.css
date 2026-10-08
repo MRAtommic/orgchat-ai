@@ -3963,11 +3963,13 @@ button:active:not(:disabled),
 }
 
 /* ── 3. AI Chat Toolbar Touch Targets ─────────────── */
-@media (max-width: 1023px) {
+@media (min-width: 768px) and (max-width: 1023px) {
   #personaBtn,
   #chatAttachBtn,
   #autoSpeakBtn,
-  #voiceBtn {
+  #voiceBtn,
+  #browserAgentBtn,
+  #realTimeCallBtn {
     min-width: 40px !important;
     min-height: 40px !important;
     padding: 8px !important;
@@ -3978,7 +3980,9 @@ button:active:not(:disabled),
   #personaBtn i,
   #chatAttachBtn i,
   #autoSpeakBtn i,
-  #voiceBtn i {
+  #voiceBtn i,
+  #browserAgentBtn i,
+  #realTimeCallBtn i {
     width: 20px !important;
     height: 20px !important;
   }
@@ -3987,7 +3991,6 @@ button:active:not(:disabled),
   #view-chat .flex.items-end > button {
     margin-right: 2px !important;
   }
-  /* Send button also needs touch target */
   #sendBtn {
     min-width: 40px !important;
     min-height: 40px !important;
@@ -3996,6 +3999,41 @@ button:active:not(:disabled),
   #sendBtn i {
     width: 18px !important;
     height: 18px !important;
+  }
+}
+
+@media (max-width: 767px) {
+  /* Hide secondary feature buttons from the mobile input bar */
+  #personaBtnWrapper,
+  #personaBtn,
+  #browserAgentBtn,
+  #realTimeCallBtn,
+  #autoSpeakBtn {
+    display: none !important;
+  }
+  /* Primary buttons & mobile more button touch targets */
+  #mobileChatMoreBtn,
+  #chatAttachBtn,
+  #voiceBtn,
+  #sendBtn {
+    min-width: 36px !important;
+    min-height: 36px !important;
+    padding: 6px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
+  }
+  #mobileChatMoreBtn i,
+  #chatAttachBtn i,
+  #voiceBtn i,
+  #sendBtn i {
+    width: 18px !important;
+    height: 18px !important;
+  }
+  #msgInput {
+    font-size: 13px !important;
+    padding: 6px 4px !important;
   }
 }
 
@@ -4438,4 +4476,66 @@ button:active:not(:disabled), .nav-item:active, .btn-action:active {
   border-color: #6366f1 !important;
   z-index: 99999 !important;
   cursor: grabbing !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   📱 MOBILE CHAT INPUT BAR RESPONSIVE HARDENING
+   ═══════════════════════════════════════════════════════════════════ */
+@media (max-width: 767px) {
+  #chatInputContainer {
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+    margin-bottom: 0.5rem !important;
+  }
+  
+  #personaBtnWrapper,
+  #browserAgentBtn,
+  #realTimeCallBtn,
+  #autoSpeakBtn {
+    display: none !important;
+  }
+  
+  #mobileChatMoreBtn {
+    display: inline-flex !important;
+  }
+  
+  #msgInput {
+    min-width: 120px !important;
+    font-size: 0.875rem !important;
+    line-height: 1.35 !important;
+  }
+}
+
+@media (min-width: 768px) {
+  #mobileChatMoreBtn {
+    display: none !important;
+  }
+  #personaBtnWrapper {
+    display: inline-flex !important;
+  }
+  #browserAgentBtn,
+  #realTimeCallBtn,
+  #autoSpeakBtn {
+    display: inline-flex !important;
+  }
+}
+
+/* ── Eliminate Blue Focus Ring & Outline on Chat Input Bar ────── */
+#msgInput,
+#msgInput:focus,
+#msgInput:focus-visible,
+#msgInput:active,
+#groupChatInput,
+#groupChatInput:focus,
+#groupChatInput:focus-visible,
+#groupChatInput:active {
+  outline: none !important;
+  outline-style: none !important;
+  outline-width: 0 !important;
+  border: none !important;
+  border-width: 0 !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  -webkit-box-shadow: none !important;
+  -moz-box-shadow: none !important;
 }

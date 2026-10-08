@@ -416,7 +416,8 @@ def get_rag_filter(username, org_id=None):
     allowed_ids = []
     for c in cats:
         if c.get('id') is not None:
-            allowed_ids.append(c['id'])
+            # ChromaDB $in requires all values to be the same type.
+            # Metadata stores category_id as strings, so use str only.
             allowed_ids.append(str(c['id']))
 
     org_clause = {"organization_id": org_id} if org_id is not None else None

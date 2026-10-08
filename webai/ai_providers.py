@@ -51,15 +51,23 @@ CJ_STRAY_THAI_MAP = {
     '缺席': 'ขาดงาน',
     '準時': 'ตรงเวลา',
     '准时': 'ตรงเวลา',
+    '呢': '',
+    '吧': '',
+    '嗎': '',
+    '吗': '',
+    '的': '',
+    'контакты': 'รายชื่อผู้ติดต่อ',
 }
 _CJ_REGEX = re.compile('|'.join(re.escape(k) for k in sorted(CJ_STRAY_THAI_MAP.keys(), key=len, reverse=True)))
 
 def clean_stray_cjk(text: str) -> str:
-    """Replaces stray Chinese characters/words accidentally leaked by Chinese-based models (Qwen, DeepSeek) into Thai text."""
+    """Replaces stray Chinese/Cyrillic characters accidentally leaked by foreign base models into Thai text."""
     if not text or not isinstance(text, str):
         return "" if text is None else text
     if re.search(r'[\u0e00-\u0e7f]', text):
         text = _CJ_REGEX.sub(lambda m: CJ_STRAY_THAI_MAP[m.group(0)], text)
+        # Remove any stray Chinese characters inside Thai sentences
+        text = re.sub(r'[\u4e00-\u9fff]', '', text)
     return text
 
 def strip_think_tags(text: str) -> str:
@@ -175,11 +183,19 @@ class GeminiProvider(AIProvider):
     _cached_models = ["gemini-3.5-flash-lite", "gemini-flash-latest", "gemini-flash-lite-latest", "gemini-3.5-flash", "gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash"]
     _cache_time = time.time()
 
-    def __init__(self, api_key: str):
-        self.api_key = api_key
+    def __init__(self, api_key: str = None):
+        try:
+            from dotenv import load_dotenv
+            from pathlib import Path
+            _env_p = Path(__file__).parent / ".env"
+            if _env_p.exists():
+                load_dotenv(_env_p, override=True)
+        except Exception:
+            pass
+        self.api_key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY_BACKUP")
         # Collect ALL available API keys for rotation chain
-        self._all_keys = [api_key]
-        for env_name in ["GEMINI_API_KEY_BACKUP", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3", "GEMINI_API_KEY_4"]:
+        self._all_keys = [self.api_key] if self.api_key else []
+        for env_name in ["GEMINI_API_KEY", "GEMINI_API_KEY_BACKUP", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3", "GEMINI_API_KEY_4"]:
             k = (os.environ.get(env_name) or "").strip()
             if k and k not in self._all_keys:
                 self._all_keys.append(k)
@@ -225,7 +241,7 @@ class GeminiProvider(AIProvider):
         return []
 
     def chat_stream(self, question: str, history: list, system_prompt: str, 
-                    image_data: bytes = None, mime_type: str = "image/jpeg"):
+                    image_data: bytes = None, mime_type: str = "image/jpeg", is_fallback: bool = False):
         def _stream():
             # 🟢 New SDK Implementation (2026 Models)
             if HAS_NEW_SDK:
@@ -485,17 +501,17 @@ class GroqProvider(AIProvider):
                 if active_ids:
                     dynamic_models = []
                     patterns = [
-                        "llama-3.3-70b-versatile",
-                        "llama-3.3-70b",
-                        "llama-3.1-8b-instant",
-                        "llama-3.1-8b",
                         "openai/gpt-oss-120b",
                         "gpt-oss-120b",
+                        "qwen/qwen3.8-27b",
+                        "qwen3.8",
+                        "llama-3.3-70b-versatile",
+                        "llama-3.3-70b",
                         "openai/gpt-oss-20b",
                         "gpt-oss-20b",
-                        "qwen/qwen3.8-27b",
                         "qwen/qwen3.6-27b",
-                        "qwen3.6",
+                        "llama-3.1-8b-instant",
+                        "llama-3.1-8b",
                         "qwen",
                         "mixtral",
                         "llama"
@@ -526,12 +542,12 @@ class GroqProvider(AIProvider):
                 for model in models_to_try:
                     try:
                         print(f"🌀 Attempting Groq ({model}) with key {active_key[:10]}...", flush=True)
-                        payload = {"model": model, "messages": messages, "stream": True, "reasoning_format": "hidden"}
+                        payload = {"model": model, "messages": messages, "stream": True, "temperature": 0.6, "max_tokens": 2048, "reasoning_format": "hidden"}
                         response = requests.post(self.url, headers=headers, json=payload, stream=True, timeout=10)
 
                         # If model doesn't support reasoning_format parameter (400 Bad Request), retry without it
                         if response.status_code == 400 and ("reasoning_format" in response.text or "extra_forbidden" in response.text):
-                            payload = {"model": model, "messages": messages, "stream": True}
+                            payload = {"model": model, "messages": messages, "stream": True, "temperature": 0.6, "max_tokens": 2048}
                             response = requests.post(self.url, headers=headers, json=payload, stream=True, timeout=10)
                         
                         if response.status_code == 200:
@@ -677,9 +693,18 @@ RULES:
 8. If the document/image is NOT a financial transaction document (e.g. general photo, screenshot of software/web page, profile picture, non-invoice document), set category to "Other".""" + custom_rules_str
     
     # 🚀 Prioritize Gemini for Media Analysis
+    try:
+        from dotenv import load_dotenv
+        from pathlib import Path
+        _env_p = Path(__file__).parent / ".env"
+        if _env_p.exists():
+            load_dotenv(_env_p, override=True)
+    except Exception:
+        pass
+
     full_response = ""
     try:
-        gemini = GeminiProvider(os.environ.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY_BACKUP"))
+        gemini = GeminiProvider()
         # Using chat_stream which supports image/audio via Part.from_bytes
         for chunk in gemini.chat_stream(prompt, [], "You are a professional accounting AI.", image_data=content_data, mime_type=mime_type):
             full_response += chunk

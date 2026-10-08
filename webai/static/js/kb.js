@@ -87,13 +87,35 @@ function openFilePreview(name, url, type) {
   if (!filePreviewModal) return;
   previewFileName.textContent = name;
   previewContent.innerHTML = '';
-  filePreviewModal.classList.remove('hidden');
 
-  const isImage = type.startsWith('image/') || url.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+  const dlBtn = $('previewDownloadBtn');
+  if (dlBtn) {
+    dlBtn.href = url;
+    dlBtn.setAttribute('download', name);
+  }
+
+  const expandBtn = $('previewExpandBtn');
+  const isImage = (type && type.startsWith('image/')) || url.match(/\.(jpg|jpeg|png|gif|webp)$/i);
   const isPDF = type === 'application/pdf' || url.endsWith('.pdf');
 
+  if (expandBtn) {
+    if (isImage) {
+      window._currentPreviewImage = url;
+      window._currentPreviewName = name;
+      expandBtn.classList.remove('hidden');
+      expandBtn.classList.add('inline-flex');
+    } else {
+      window._currentPreviewImage = null;
+      window._currentPreviewName = null;
+      expandBtn.classList.add('hidden');
+      expandBtn.classList.remove('inline-flex');
+    }
+  }
+
+  filePreviewModal.classList.remove('hidden');
+
   if (isImage) {
-    previewContent.innerHTML = `<img src="${url}" class="max-w-full max-h-full object-contain rounded-2xl shadow-2xl animate-in zoom-in-95 duration-300">`;
+    previewContent.innerHTML = `<img src="${url}" class="max-w-full max-h-full object-contain rounded-2xl shadow-2xl animate-in zoom-in-95 duration-300 cursor-zoom-in" onclick="openLightbox('${url}', '${name}')" title="คลิกเพื่อดูขนาดเต็มและซูม">`;
   } else if (isPDF) {
     previewContent.innerHTML = `<iframe src="${url}" class="w-full h-full border-none rounded-2xl"></iframe>`;
   } else {
@@ -102,11 +124,13 @@ function openFilePreview(name, url, type) {
         <i data-lucide="file-text" class="w-20 h-20 text-surface-200 mx-auto mb-6"></i>
         <h3 class="text-xl font-bold mb-2">ไม่สามารถแสดงตัวอย่างไฟล์นี้ได้</h3>
         <p class="text-surface-400 mb-6 font-medium">กรุณาดาวน์โหลดเพื่อดูเนื้อหา</p>
-        <a href="${url}" download class="btn-primary px-8 py-3 rounded-2xl">ดาวน์โหลดไฟล์</a>
+        <a href="${url}" download="${name}" class="btn-primary px-8 py-3 rounded-2xl inline-flex items-center gap-2">
+          <i data-lucide="download" class="w-4 h-4"></i> ดาวน์โหลดไฟล์
+        </a>
       </div>
     `;
-    initIcons();
   }
+  initIcons();
 }
 
 if (closePreviewBtn) {

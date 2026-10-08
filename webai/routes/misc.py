@@ -27,7 +27,7 @@ import notification_db
 import billing
 
 from routes.shared import (
-    VERSION, socketio, _limiter, login_required, admin_required,
+    VERSION, socketio, _limiter, login_required, admin_required, superadmin_required,
     send_push_notification, batch_send_push_notification,
     get_weather_context, THAI_HOLIDAYS_2026, get_current_time,
     VAPID_PUBLIC_KEY,
@@ -342,7 +342,7 @@ def serve_favicon():
 # ═══════════════════════════════════════════════════════════════
 
 @misc_bp.route("/api/security/audit-logs")
-@login_required
+@superadmin_required
 def get_security_audit_logs():
     org_id = get_current_org_id() or 1
     logs = database.get_audit_logs(org_id=org_id, limit=60)
@@ -350,7 +350,7 @@ def get_security_audit_logs():
 
 
 @misc_bp.route("/api/security/health-status")
-@login_required
+@superadmin_required
 def get_security_health():
     """Retrieve system security health score and defensive telemetry."""
     org_id = get_current_org_id() or 1
@@ -359,7 +359,7 @@ def get_security_health():
 
 
 @misc_bp.route("/api/security/export-report")
-@login_required
+@superadmin_required
 def export_security_report():
     """Generate and send downloadable Security Audit & Compliance PDF Report."""
     from flask import send_file
@@ -390,7 +390,7 @@ def export_security_report():
 
 
 @misc_bp.route("/api/security/verify-integrity", methods=["POST"])
-@login_required
+@superadmin_required
 def verify_system_file_integrity():
     """Verify integrity of uploaded files and KB documents."""
     from pathlib import Path
@@ -409,7 +409,7 @@ def verify_system_file_integrity():
 
 
 @misc_bp.route("/api/kb/anomalies")
-@login_required
+@superadmin_required
 def get_kb_anomalies():
     """Scan and detect duplicate documents, hash collisions, and file anomalies in knowledge base."""
     import rag_engine
@@ -419,7 +419,7 @@ def get_kb_anomalies():
 
 
 @misc_bp.route("/api/security/blacklist")
-@admin_required
+@superadmin_required
 def get_security_blacklist():
     """Retrieve list of blacklisted IP addresses and reasons."""
     blacklisted = database.get_blacklisted_ips()
@@ -427,7 +427,7 @@ def get_security_blacklist():
 
 
 @misc_bp.route("/api/security/unblock-ip", methods=["POST"])
-@admin_required
+@superadmin_required
 def unblock_security_ip():
     """Admin endpoint to unban an IP address."""
     user = session.get("user", "Admin")
@@ -444,7 +444,7 @@ def unblock_security_ip():
 
 
 @misc_bp.route("/api/security/mask-pii", methods=["POST"])
-@login_required
+@superadmin_required
 def test_mask_pii():
     """Test and preview PII data masking & anonymization on arbitrary text."""
     data = request.json or {}
@@ -460,7 +460,7 @@ def test_mask_pii():
 
 
 @misc_bp.route("/api/security/threat-intel")
-@admin_required
+@superadmin_required
 def get_security_threat_intel():
     """Retrieve SOC threat intelligence and live incident aggregation."""
     org_id = get_current_org_id() or 1
@@ -469,7 +469,7 @@ def get_security_threat_intel():
 
 
 @misc_bp.route("/api/security/analyze-behavior", methods=["POST"])
-@admin_required
+@superadmin_required
 def analyze_user_behavior_endpoint():
     """Analyze behavioral risk score for a specific user and IP."""
     data = request.json or {}

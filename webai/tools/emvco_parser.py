@@ -132,6 +132,20 @@ class EMVCoParser:
                 if "02" in sub_tags:
                     result["transaction_id"] = sub_tags["02"]
                     
+            # Check Tag 00 sub-tags for Thai Mini QR Slip Verification (Tag 00 = AID 000001, 01 = Bank, 02 = Ref)
+            if not result["transaction_id"] and "00" in raw_tags:
+                sub_tags = cls.parse_sub_tlv(raw_tags["00"])
+                if sub_tags.get("00") == "000001" or len(sub_tags) >= 2:
+                    if "01" in sub_tags:
+                        result["sending_bank_id"] = sub_tags["01"]
+                    if "02" in sub_tags:
+                        result["transaction_id"] = sub_tags["02"]
+                        # Often the transaction_id starts with YYYYMMDDHHMMSS e.g. 20261005112704...
+                        ref_val = sub_tags["02"]
+                        if len(ref_val) >= 14 and ref_val[:8].isdigit():
+                            result["date"] = f"{ref_val[6:8]}/{ref_val[4:6]}/{ref_val[:4]}"
+                            result["time"] = f"{ref_val[8:10]}:{ref_val[10:12]}"
+
             # Check Tag 29 as fallback for promptpay/domestic transfer
             if not result["transaction_id"] and "29" in raw_tags:
                 sub_tags = cls.parse_sub_tlv(raw_tags["29"])
@@ -157,12 +171,11 @@ class EMVCoParser:
 
 # Simple self test
 if __name__ == "__main__":
-    # Standard PromptPay QR with amount 150.00 THB
-    sample_qr = "00020101021130830016A00000067701011101130002010214202605291234565406150.0053037645802TH6304D1C4"
+    # Standard PromptPay QR with amount 150.00 THB (Tag 29: sub-tag 00 AID, sub-tag 01 Mobile)
+    sample_qr = "00020101021129370016A000000677010111011300668123456785406150.0053037645802TH6304A1B2"
     parser = EMVCoParser()
     res = parser.decode_slip_qr(sample_qr)
     print("Test decoding standard Thai QR slip code:")
     print(f"Is Valid EMVCo: {res['is_valid_emvco']}")
     print(f"Amount: {res['amount']}")
-    print(f"Transaction ID: {res['transaction_id']}")
-    print(f"Bank/Biller ID: {res['sending_bank_id']}")
+    print(f"Raw tags count: {len(res['raw_tags'])}")

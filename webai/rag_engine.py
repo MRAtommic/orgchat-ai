@@ -265,8 +265,8 @@ class OllamaEmbeddingFunction(embedding_functions.EmbeddingFunction):
         return all_embeddings
 
 class FastEmbedEmbeddingFunction(embedding_functions.EmbeddingFunction):
-    """Truly local embedding function using FastEmbed."""
-    def __init__(self, model_name="sentence-transformers/all-MiniLM-L6-v2"):
+    """Truly local multilingual embedding function using FastEmbed (supports Thai & 50+ languages)."""
+    def __init__(self, model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"):
         try:
             from fastembed import TextEmbedding
             # Define a local cache directory to avoid Windows Temp permission issues
@@ -762,18 +762,30 @@ class KnowledgeBase:
         # This is where the heavy lifting happens via Gemini Cloud (Fast)
         vector_results = self.query(question, n_results=n_results * 2, where=where)
         
-        # 2. Optimized Keyword Match
-        # We only check keywords within the vector results to avoid RAM overflow
-        keywords = [kw.lower() for kw in question.split() if len(kw) > 1]
+        # 2. Optimized Keyword Match with Thai Tokenization
+        keywords = []
+        try:
+            import pythainlp
+            tokens = pythainlp.word_tokenize(question, engine="newmm")
+            thai_stopwords = {
+                "ขอ", "ช่วย", "หน่อย", "ครับ", "ค่ะ", "นะคะ", "คะ", "จ้า", "พี่", "น้อง",
+                "มี", "ได้", "ให้", "ใน", "ที่", "และ", "หรือ", "ไหม", "อะไร", "บ้าง",
+                "สิ", "นะ", "อยาก", "รู้", "ด้วย", "นี้", "นั้น", "ใคร", "ไหน", "เท่าไหร่"
+            }
+            keywords = [t.lower().strip() for t in tokens if len(t.strip()) > 1 and t.strip() not in thai_stopwords]
+        except Exception:
+            keywords = [kw.lower() for kw in question.split() if len(kw) > 1]
+
         if not keywords:
-            return vector_results[:n_results]
+            keywords = [kw.lower() for kw in question.split() if len(kw) > 1]
         
-        for item in vector_results:
-            lower_text = item["text"].lower()
-            matches = [kw for kw in keywords if kw in lower_text]
-            if matches:
-                # Boost score if keywords found
-                item["score"] = min(1.0, item["score"] + (len(matches) / len(keywords)) * 0.3)
+        if keywords:
+            for item in vector_results:
+                lower_text = item["text"].lower()
+                matches = [kw for kw in keywords if kw in lower_text]
+                if matches:
+                    # Boost score if keywords found
+                    item["score"] = min(1.0, item["score"] + (len(matches) / len(keywords)) * 0.35)
         
         # 3. Final Sort and Trim
         final_list = sorted(vector_results, key=lambda x: x["score"], reverse=True)
@@ -1371,10 +1383,10 @@ def retrieve_context(question: str, where: dict = None) -> tuple[str, list[dict]
         
         # 2. Standard Hybrid Query (Semantic + Keyword)
         results = _get_kb().hybrid_query(question, where=where)
-        # Filter by score dynamically (keep only >= 0.42 AND within 0.15 of the top score to prune noisy documents)
+        # Filter by score dynamically (keep only >= 0.35 AND within 0.30 of the top score to prune noisy documents)
         if results:
             max_score = max(r.get("score", 0) for r in results)
-            results = [r for r in results if r.get("score", 0) >= 0.42 and r.get("score", 0) >= (max_score - 0.15)]
+            results = [r for r in results if r.get("score", 0) >= 0.35 and r.get("score", 0) >= (max_score - 0.30)]
         
         # Merge results, prioritize filename chunks
         seen_texts = set()
@@ -1386,7 +1398,9 @@ def retrieve_context(question: str, where: dict = None) -> tuple[str, list[dict]
                 
         print(f"✅ RAG query finished. Returned {len(final_results)} relevant chunks.")
     except Exception as e:
-        print(f"❌ RAG query error: {e}")
+        print(f"❌ RAG query error: {e} (filter={where})", flush=True)
+        import traceback
+        traceback.print_exc()
         return "", []
 
     if not final_results:

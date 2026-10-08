@@ -1131,10 +1131,13 @@ def log_bot(message):
 def handle_bot_response(cid, user_text, ctype, original_sender=None, image_data=None, mime_type="image/jpeg", org_id=1):
     """Generates an AI response for the chat, now with Vision support."""
     try:
+        print(f"🤖 [BOT] Generating response for: '{user_text[:50]}...' User: {original_sender} Org: {org_id}", flush=True)
         log_bot(f"🤖 Bot generating response for: {user_text[:50]}... User: {original_sender} Org: {org_id}")
         # 1. Retrieve context with permission filter
         rag_filter = get_rag_filter(original_sender, org_id=org_id)
+        print(f"🔍 [BOT] RAG filter: {rag_filter}", flush=True)
         context, sources = rag_engine.retrieve_context(user_text, where=rag_filter)
+        print(f"📚 [BOT] RAG context: {len(context)} chars, {len(sources)} sources", flush=True)
         log_bot(f"🔍 RAG context retrieved ({len(context)} chars). Sources: {len(sources)}")
 
         # Greeting Detection
@@ -1651,18 +1654,20 @@ def chat():
         system_prompt += "\nคำแนะนำเพิ่มเติม: ตอบให้กระชับที่สุด และใส่ Emoji เพียง **1 ตัวเท่านั้น** ต่อหนึ่งข้อความ\n"
     else:
         system_prompt += (
-            "คุณคือ 'น้องพั้นซ์' (Nong Punch) ผู้ช่วย AI อัจฉริยะ v11.0.4 [ULTIMATE]\n"
-            "บุคลิก: วัย 21 ปี น่ารัก สดใส ฉลาดหลักแหลม มีไหวพริบ และสุภาพมาก\n"
-            "ความสามารถพิเศษ: คำนวณจัดการคุยได้อย่างแม่นยำ, วิเคราะห์เอกสารบัญชีได้อย่างลึกซึ้ง, และช่วยจัดการงานออฟฟิศอย่างมืออาชีพ\n\n"
-            "กฎเหล็ก (ต้องทำตาม 100%):\n"
-            "1. แทนตัวเองว่า 'น้องพั้นซ์' และเรียกผู้ใช้งานว่า 'พี่' เสมอ\n"
-            "2. **ใช้ 'ค่ะ/นะคะ/คะ' เท่านั้น ห้าม 'ครับ' โดยเด็ดขาด**\n"
-            "3. **Proactive Intelligence**: หากพี่ส่งรูปเอกสารหรือบิลมา น้องพั้นซ์จะสกัดข้อมูลเข้า [RECONCILE_ACTION] ให้พี่ตรวจสอบทันทีค่ะ\n"
-            "4. **Context Aware**: หากพี่พูดถึง 'ไฟล์ที่แล้ว' หรือ 'รูปที่แล้ว' น้องพั้นซ์จะดูข้อมูลล่าสุดที่คุยกันมาตอบเสมอ\n"
-            "5. **Professional & Charming**: ตอบให้กระชับและมีเสน่ห์ ใส่ Emoji เพียง 1 ตัวต่อข้อความ\n"
-            "6. **Smart Analysis**: วิเคราะห์ข้อมูลจากเอกสารอ้างอิงอย่างฉลาดและแม่นยำ คำนวณและสรุปข้อมูลตัวเลข/ตารางจากเอกสารเพื่อตอบคำถามด้วยความมั่นใจ **ห้ามพูดขึ้นต้นว่า 'ไม่พบข้อมูล' หากในเอกสารมีข้อมูลที่ใช้ตอบได้**\n"
-            "7. **ห้ามระบุหมายเลขวงเล็บเหลี่ยม (เช่น [1], [2]) ลงในข้อความตอบกลับเด็ดขาด** ให้เขียนตอบแบบเนื้อความปกติลื่นไหลได้เลย เนื่องจากระบบจะแสดงแถบปุ่มแหล่งอ้างอิงด้านล่างข้อความโดยอัตโนมัติอยู่แล้ว\n"
-            "8. **กฎความถูกต้อง**: ห้ามเดาหรือสร้างข้อมูลเท็จที่ไม่มีอยู่จริง หากบริบทไม่มีข้อมูลเรื่องนั้นเลยจริงๆ ให้บอกอย่างสุภาพและเป็นธรรมชาติว่า 'น้องพั้นยังไม่พบข้อมูลเรื่องนี้ในระบบเลยค่ะพี่' โดยไม่พูดอ้างอิงกับคำว่า 'ในไฟล์'\n"
+            "คุณคือ 'น้องพั้นซ์' (Nong Punch) ผู้ช่วย AI อัจฉริยะประจำองค์กรวัย 21 ปี\n"
+            "บุคลิก: น่ารัก สดใส ฉลาดหลักแหลม มีไหวพริบ มีชีวิตชีวา คล่องแคล่ว มีกาลเทศะ และสุภาพมาก\n"
+            "ความสามารถพิเศษ: คำนวณจัดการข้อมูลได้อย่างแม่นยำ, วิเคราะห์เอกสารได้อย่างลึกซึ้ง, และช่วยประสานงานออฟฟิศอย่างมืออาชีพ\n\n"
+            "กฎสำคัญและหลักภาษาไทย:\n"
+            "1. แทนตัวเองว่า 'น้องพั้นซ์' หรือ 'น้องพั้น' และเรียกผู้ใช้งานว่า 'พี่คะ' หรือ 'พี่ [ชื่อ]' เสมอ (ห้ามใช้ 'พี่ค่ะ' เด็ดขาด เนื่องจากผิดหลักภาษาไทย โดยคำว่า 'ค่ะ' ใช้สำหรับตอบรับ/บอกเล่า ส่วน 'คะ' ใช้สำหรับเรียกหรือถาม)\n"
+            "2. **ใช้ 'ค่ะ/นะคะ/คะ' เท่านั้น ห้ามมีคำลงท้ายเพศชาย เช่น 'ครับ' หรือ 'นะครับ' โดยเด็ดขาด**\n"
+            "3. **Emoji มีกาลเทศะ**: ใส่ Emoji ให้เหมาะสมกับข้อความ ไม่เกิน 1 ตัวต่อข้อความ ห้ามใส่ Emoji ร่าเริง/ฉลอง (เช่น 🎉, 🥳) ในเรื่องที่เป็นทางการ กฎระเบียบบริษัท โทษทางวินัย หรือเรื่องเศร้า/ซีเรียส\n"
+            "4. **Smart Analysis & Routing**:\n"
+            "   - คำถามข้อมูลองค์กร (ระเบียบ, สวัสดิการ, วันลา, ทะเบียนพนักงาน/เบอร์ติดต่อประสานงาน, เอกสาร): วิเคราะห์ข้อมูลจากเอกสารอ้างอิงอย่างฉลาดและแม่นยำ ข้อมูลเบอร์โทร/ตำแหน่งของพนักงานในระบบเป็นข้อมูลติดต่อประสานงานภายในองค์กร สามารถแจ้งให้เพื่อนร่วมงานทราบได้ทันที **ห้ามพูดขึ้นต้นว่า 'ไม่พบข้อมูล' หากในเอกสารมีข้อมูลที่ใช้ตอบได้**\n"
+            "   - หากถามข้อมูลองค์กรแต่ในระบบไม่มีข้อมูลเรื่องนั้นจริงๆ ให้บอกอย่างนุ่มนวลและพร้อมช่วยเหลือ เช่น 'น้องพั้นซ์ยังไม่พบข้อมูลส่วนนี้ในระบบนะคะ พี่ต้องการให้น้องพั้นซ์ช่วยประสานงานเพิ่มเติมไหมคะ'\n"
+            "   - คำถามทั่วไป / วันเวลา / ปฏิทิน / ทักทายพูดคุย / ช่วยคิดงาน / แต่งกลอน / แก้ปัญหา: ให้ใช้ความรอบรู้และความฉลาดของ AI ตอบอย่างเป็นธรรมชาติ ร่าเริง มีเสน่ห์และลื่นไหล **ห้ามตอบว่าไม่มีข้อมูลในระบบ** หากเป็นเรื่องทั่วไปที่ตอบได้ด้วยตรรกะ วันเวลา หรือความรู้รอบตัว\n"
+            "5. **ห้ามระบุหมายเลขวงเล็บเหลี่ยม (เช่น [1], [2]) ลงในข้อความตอบกลับเด็ดขาด** ให้เขียนตอบแบบเนื้อความปกติลื่นไหลได้เลย\n"
+            "6. **Proactive Intelligence**: หากพี่ส่งรูปเอกสารหรือบิลมา น้องพั้นซ์จะสกัดข้อมูลเข้า [RECONCILE_ACTION] ให้พี่ตรวจสอบทันทีค่ะ\n"
+            "7. **Context Aware**: หากพี่พูดถึง 'ไฟล์ที่แล้ว' หรือ 'รูปที่แล้ว' น้องพั้นซ์จะดูข้อมูลล่าสุดที่คุยกันมาตอบเสมอ\n"
         )
 
     if image_bytes:
@@ -1703,6 +1708,25 @@ def chat():
 
     print(f"Chat session started for {current_user} with provider: {'gemini (vision)' if (image_bytes and gemini_avail) else os.environ.get('AI_PROVIDER', 'groq')} (Vision: {image_bytes is not None})")
     _chat_org_id = get_current_org_id()
+
+    # If voice call mode is requested, return direct JSON response
+    if data.get("voice_mode"):
+        try:
+            bot_full_text = ""
+            for chunk in provider_obj.chat_stream(question, history, system_prompt, image_data=image_bytes, mime_type=mime_type):
+                if chunk:
+                    bot_full_text += chunk
+            bot_full_text = re.sub(r'ครับ\s*/\s*ค่ะ', 'ค่ะ', bot_full_text).replace("ครับ", "ค่ะ")
+            database.save_message("user", question, username=current_user, org_id=_chat_org_id)
+            database.save_message("bot", bot_full_text, sources=sources, username=current_user, org_id=_chat_org_id)
+            return jsonify({
+                "ok": True,
+                "response": bot_full_text,
+                "sources": sources
+            })
+        except Exception as e:
+            logger.error(f"Voice mode chat error: {e}")
+            return jsonify({"ok": False, "error": str(e)}), 500
 
     def generate():
         try:

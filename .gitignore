@@ -65,4 +65,8 @@ export_pdf.ps1
 pdf_*.txt
 page_*.png
 ขยะ/
-
+fastembed_cache/
+extracted_*.txt
+test_*.txt
+desktop.ini
+Thumbs.db

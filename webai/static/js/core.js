@@ -512,6 +512,7 @@ function selectPersona(id) {
   if (typeof toast === 'function') {
     toast(p ? `สลับเป็นตัวตน: ${p.name}` : 'กลับสู่โหมดพื้นฐาน (Default)', 'info');
   }
+  if (typeof updateMobileFeaturesUI === 'function') updateMobileFeaturesUI();
 }
 window.selectPersona = selectPersona;
 

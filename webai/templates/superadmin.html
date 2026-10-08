@@ -190,6 +190,66 @@
     /* ── Page header ── */
     .page-title { font-size: 20px; font-weight: 800; color: var(--text); }
     .page-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+    /* ── Mobile Responsive Overrides ── */
+    @media (max-width: 768px) {
+      .layout-container { flex-direction: column !important; height: 100vh !important; }
+      aside#superadminSidebar {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        bottom: 0 !important;
+        width: 280px !important;
+        z-index: 50 !important;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5) !important;
+        transform: translateX(-100%) !important;
+        transition: transform 0.25s ease-in-out !important;
+      }
+      aside#superadminSidebar.open {
+        transform: translateX(0) !important;
+      }
+      .mobile-backdrop {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.6);
+        z-index: 40;
+      }
+      .mobile-backdrop.open { display: block; }
+      
+      .mobile-menu-btn { display: inline-flex !important; }
+      .main-content-pad { padding: 14px 12px !important; }
+      .topbar-pad { padding: 8px 12px !important; }
+      
+      /* Grid reflows */
+      div[style*="grid-template-columns:repeat(4,1fr)"],
+      div[style*="grid-template-columns: repeat(4, 1fr)"] {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 10px !important;
+      }
+      div[style*="grid-template-columns:repeat(3,1fr)"],
+      div[style*="grid-template-columns: repeat(3, 1fr)"] {
+        grid-template-columns: 1fr !important;
+        gap: 10px !important;
+      }
+      div[style*="grid-template-columns:1fr 1fr"],
+      div[style*="grid-template-columns: 1fr 1fr"] {
+        grid-template-columns: 1fr !important;
+        gap: 12px !important;
+      }
+      
+      .kpi { padding: 12px 14px !important; }
+      .kpi-val { font-size: 20px !important; }
+      .kpi-label { font-size: 9px !important; }
+      
+      .card { overflow-x: auto !important; }
+      .data-table { min-width: 500px !important; }
+    }
+    
+    @media (min-width: 769px) {
+      .mobile-menu-btn { display: none !important; }
+      .mobile-backdrop { display: none !important; }
+    }
   </style>
   <script>
     (function() {
@@ -223,13 +283,14 @@
 
 <div class="toast-zone" id="toastZone"></div>
 <div id="modalRoot"></div>
+<div class="mobile-backdrop" id="sidebarBackdrop" onclick="toggleMobileSidebar(false)"></div>
 
-<div style="display:flex; height:100vh; overflow:hidden;">
+<div class="layout-container" style="display:flex; height:100vh; overflow:hidden;">
 
   <!-- ══ SIDEBAR ══ -->
-  <aside style="width:220px; flex-shrink:0; background: var(--surface); border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden;">
+  <aside id="superadminSidebar" style="width:220px; flex-shrink:0; background: var(--surface); border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden;">
     <!-- Brand -->
-    <div style="padding:18px 14px 14px; border-bottom:1px solid var(--border);">
+    <div style="padding:18px 14px 14px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between;">
       <div style="display:flex; align-items:center; gap:10px;">
         <div style="width:34px; height:34px; background:linear-gradient(135deg,#4338ca,#7c3aed); border-radius:10px; display:flex; align-items:center; justify-content:center; font-weight:900; font-size:14px; color:white;">S</div>
         <div>
@@ -237,60 +298,67 @@
           <div style="font-size:9px; color: var(--muted); font-weight:700; letter-spacing:.1em; text-transform:uppercase;">OrgChat Console</div>
         </div>
       </div>
+      <button class="mobile-menu-btn" onclick="toggleMobileSidebar(false)" style="background:none; border:none; color:var(--muted); padding:4px; cursor:pointer;" title="ปิดเมนู">
+        <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
     </div>
 
     <!-- Nav -->
     <nav style="flex:1; padding:10px 8px; overflow-y:auto; display:flex; flex-direction:column; gap:1px;">
       <div class="nav-section">ระบบ</div>
-      <button class="nav-item active" data-tab="overview" onclick="showTab('overview')">
+      <button class="nav-item active" data-tab="overview" onclick="showTab('overview'); toggleMobileSidebar(false);">
         <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
         ภาพรวม
       </button>
-      <button class="nav-item" data-tab="billing" onclick="showTab('billing')">
+      <button class="nav-item" data-tab="billing" onclick="showTab('billing'); toggleMobileSidebar(false);">
         <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
         รายได้ & Billing
       </button>
-      <button class="nav-item" data-tab="analytics" onclick="showTab('analytics')">
+      <button class="nav-item" data-tab="analytics" onclick="showTab('analytics'); toggleMobileSidebar(false);">
         <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
         Analytics
       </button>
 
       <div class="nav-section" style="margin-top:8px;">จัดการ</div>
-      <button class="nav-item" data-tab="orgs" onclick="showTab('orgs')">
+      <button class="nav-item" data-tab="orgs" onclick="showTab('orgs'); toggleMobileSidebar(false);">
         <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
         องค์กร
         <span class="nav-badge" id="nb-orgs">—</span>
       </button>
-      <button class="nav-item" data-tab="users" onclick="showTab('users')">
+      <button class="nav-item" data-tab="users" onclick="showTab('users'); toggleMobileSidebar(false);">
         <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
         ผู้ใช้งาน
         <span class="nav-badge" id="nb-users">—</span>
       </button>
 
       <div class="nav-section" style="margin-top:8px;">เครื่องมือ</div>
-      <button class="nav-item" data-tab="broadcast" onclick="showTab('broadcast')">
+      <button class="nav-item" data-tab="broadcast" onclick="showTab('broadcast'); toggleMobileSidebar(false);">
         <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"/></svg>
         Broadcast
       </button>
-      <button class="nav-item" data-tab="maintenance" onclick="showTab('maintenance')">
+      <button class="nav-item" data-tab="maintenance" onclick="showTab('maintenance'); toggleMobileSidebar(false);">
         <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z"/></svg>
         Maintenance
       </button>
-      <button class="nav-item" data-tab="system" onclick="showTab('system')">
+      <button class="nav-item" data-tab="system" onclick="showTab('system'); toggleMobileSidebar(false);">
         <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3"/></svg>
         ระบบ & Config
       </button>
-      <button class="nav-item" data-tab="db" onclick="showTab('db')">
+      <button class="nav-item" data-tab="db" onclick="showTab('db'); toggleMobileSidebar(false);">
         <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/></svg>
         DB Explorer
       </button>
-      <button class="nav-item" data-tab="sql" onclick="showTab('sql')">
+      <button class="nav-item" data-tab="sql" onclick="showTab('sql'); toggleMobileSidebar(false);">
         <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
         SQL Console
       </button>
-      <button class="nav-item" data-tab="logs" onclick="showTab('logs')">
+      <button class="nav-item" data-tab="logs" onclick="showTab('logs'); toggleMobileSidebar(false);">
         <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
         Event Logs
+      </button>
+      <button class="nav-item" data-tab="security" onclick="showTab('security'); toggleMobileSidebar(false);" style="color:#10b981;">
+        <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+        ศูนย์ความปลอดภัย (FIM & Security)
       </button>
     </nav>
 
@@ -312,17 +380,18 @@
   <main style="flex:1; overflow-y:auto; display:flex; flex-direction:column;">
 
     <!-- Topbar -->
-    <div style="position:sticky; top:0; z-index:10; background: var(--surface); border-bottom:1px solid var(--border); padding:10px 24px; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;">
-      <div style="display:flex; align-items:center; gap:12px;">
+    <div class="topbar-pad" style="position:sticky; top:0; z-index:10; background: var(--surface); border-bottom:1px solid var(--border); padding:10px 24px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <button class="mobile-menu-btn" onclick="toggleMobileSidebar(true)" style="background:var(--surface2); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:8px; display:none; align-items:center; gap:6px; font-size:12px; font-weight:700; cursor:pointer;" title="เปิดเมนู">
+          <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+          เมนู
+        </button>
         <span class="mono" style="font-size:11px; color: var(--muted);" id="tb-version">—</span>
-        <span style="color: var(--border);">|</span>
-        <span style="font-size:11px; color: var(--muted);">Python <span class="mono" id="tb-python">—</span></span>
         <span style="color: var(--border);">|</span>
         <span style="font-size:11px; color: var(--muted);">Provider: <span style="color: var(--accent); font-weight:700;" id="tb-provider">—</span></span>
       </div>
 
       <div style="display:flex; align-items:center; gap:8px;">
-        <span style="font-size:11px; color: var(--muted);">Uptime: <span class="mono" style="color: var(--text);" id="tb-uptime">—</span></span>
         <button class="btn btn-ghost" onclick="refreshAll()" style="padding:5px 10px; font-size:11px;">
           <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
           Refresh
@@ -331,7 +400,7 @@
     </div>
 
     <!-- Content -->
-    <div style="padding:24px; flex:1;">
+    <div class="main-content-pad" style="padding:24px; flex:1;">
 
       <!-- ══ OVERVIEW ══ -->
       <div id="tab-overview" class="tab-pane active">
@@ -877,6 +946,139 @@
         </div>
       </div>
 
+      <!-- ══ SECURITY & FIM ══ -->
+      <div id="tab-security" class="tab-pane">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; flex-wrap:wrap; gap:12px;">
+          <div>
+            <div class="page-title">ศูนย์ความมั่นคงปลอดภัยองค์กร (Security & FIM Console)</div>
+            <div class="page-sub">ตรวจสอบสถานะ FIM, ความถูกต้องของ Log (HMAC), การตรวจจับความผิดปกติ และการโจมตีระดับ Server</div>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <a href="/api/security/export-report" download class="btn btn-primary" style="background:#059669; border-color:#059669; font-size:12px; display:inline-flex; align-items:center; gap:6px; text-decoration:none;">
+              <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+              ดาวน์โหลดรายงานความปลอดภัย (PDF)
+            </a>
+            <button class="btn btn-ghost btn-xs" onclick="loadSecurityConsole()" style="padding:6px 12px; font-size:12px;">
+              Refresh
+            </button>
+          </div>
+        </div>
+
+        <!-- 4 KPI Cards -->
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:14px; margin-bottom:20px;">
+          <div class="kpi">
+            <div class="kpi-label">Health Score</div>
+            <div class="kpi-val" id="sa-secScoreVal" style="color:#818cf8;">100%</div>
+            <div class="kpi-sub">สถานะ: สมบูรณ์สูงสุด</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Log Integrity</div>
+            <div class="kpi-val" id="sa-secLogIntegrityVal" style="color:#34d399;">100%</div>
+            <div class="kpi-sub">HMAC-SHA256 Signed</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">2FA / MFA Adoption</div>
+            <div class="kpi-val" id="sa-secMfaAdoptionVal" style="color:#38bdf8;">0%</div>
+            <div class="kpi-sub">Google Authenticator</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Failed Logins (24h)</div>
+            <div class="kpi-val" id="sa-secFailedLoginsVal" style="color:#fbbf24;">0</div>
+            <div class="kpi-sub">Brute-force Guard</div>
+          </div>
+        </div>
+
+        <!-- Security Tools Grid -->
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(400px, 1fr)); gap:16px; margin-bottom:20px;">
+          
+          <!-- FIM SHA-256 Card -->
+          <div class="card" style="padding:18px 20px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+              <div>
+                <div style="font-weight:700; font-size:13px; color:var(--text);">File Integrity Monitoring (FIM SHA-256)</div>
+                <div style="font-size:11px; color:var(--muted); margin-top:2px;">สแกนตรวจสอบการแอบดัดแปลงไฟล์ในระบบและคลังความรู้</div>
+              </div>
+              <button class="btn btn-primary" id="btnSaScanFim" onclick="runSaFimScan()" style="font-size:11px; padding:6px 12px; background:#4f46e5; border-color:#4f46e5;">
+                สแกนเดี๋ยวนี้
+              </button>
+            </div>
+            <div id="sa-fimStatusBox" style="padding:10px; border-radius:8px; background:var(--bg); border:1px solid var(--border); font-size:11px; color:var(--muted); font-family:monospace; display:none;">
+            </div>
+          </div>
+
+          <!-- KB Anomaly Detector Card -->
+          <div class="card" style="padding:18px 20px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+              <div>
+                <div style="font-weight:700; font-size:13px; color:var(--text);">ตรวจจับไฟล์ซ้ำซ้อนในคลัง (KB Anomaly Detector)</div>
+                <div style="font-size:11px; color:var(--muted); margin-top:2px;">ตรวจจับไฟล์เนื้อหาซ้ำเป๊ะ (SHA-256 Collision), ไฟล์ 0 Chunks, หรือไฟล์หายบนดิสก์</div>
+              </div>
+              <button class="btn btn-warning" id="btnSaScanKb" onclick="runSaKbScan()" style="font-size:11px; padding:6px 12px; background:#d97706; border-color:#d97706; color:white;">
+                ตรวจสอบคลังความรู้
+              </button>
+            </div>
+            <div id="sa-kbStatusBox" style="padding:10px; border-radius:8px; background:var(--bg); border:1px solid var(--border); font-size:11px; color:var(--muted); font-family:monospace; display:none;">
+            </div>
+          </div>
+
+          <!-- Automated IP Blacklist Card -->
+          <div class="card" style="padding:18px 20px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+              <div>
+                <div style="font-weight:700; font-size:13px; color:#f87171;">รายการระงับ IP อัตโนมัติ (Automated IP Blacklist)</div>
+                <div style="font-size:11px; color:var(--muted); margin-top:2px;">ระบบจะแบน IP ที่พยายามโจมตีหรือ Login ผิดเกินกำหนดโดยอัตโนมัติ</div>
+              </div>
+              <button class="btn btn-ghost btn-xs" onclick="loadSaBlacklist()">รีเฟรช</button>
+            </div>
+            <div id="sa-blacklistContainer" style="max-height:160px; overflow-y:auto; font-size:11px;">
+              <div style="text-align:center; padding:12px; color:var(--muted);">กำลังโหลดข้อมูล...</div>
+            </div>
+          </div>
+
+          <!-- Auto PII Data Masking Card -->
+          <div class="card" style="padding:18px 20px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+              <div>
+                <div style="font-weight:700; font-size:13px; color:#2dd4bf;">ตัวเซ็นเซอร์ข้อมูลส่วนบุคคลอัตโนมัติ (Auto PII Data Masking)</div>
+                <div style="font-size:11px; color:var(--muted); margin-top:2px;">คุ้มครองข้อมูล PDPA: เซ็นเซอร์เลขบัตรประชาชน 13 หลัก, บัตรเครดิต, เบอร์โทรศัพท์, อีเมล ก่อนส่งเข้า AI</div>
+              </div>
+              <span class="badge badge-pro">Active</span>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <input type="text" id="sa-testPiiInput" placeholder="ทดลองพิมพ์ข้อความ เช่น บัตร ปชช 1103701234567 เบอร์ 0812345678" class="inp" style="flex:1; font-size:11px; padding:6px 10px; background:var(--bg); border:1px solid var(--border); border-radius:8px; color:var(--text);">
+              <button class="btn btn-primary" onclick="testSaPiiMasking()" style="font-size:11px; padding:6px 12px; background:#0d9488; border-color:#0d9488;">ทดสอบ Mask</button>
+            </div>
+            <div id="sa-testPiiResultBox" style="margin-top:10px; padding:8px 10px; border-radius:8px; background:var(--bg); border:1px solid var(--border); font-size:11px; font-family:monospace; display:none;"></div>
+          </div>
+
+          <!-- AI Threat Intelligence Sentinel (UEBA & DLP) -->
+          <div class="card" style="padding:18px 20px; grid-column: 1 / -1;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+              <div>
+                <div style="font-weight:700; font-size:13px; color:#a78bfa;">AI Threat Intelligence Sentinel (UEBA & DLP)</div>
+                <div style="font-size:11px; color:var(--muted); margin-top:2px;">ตรวจจับพฤติกรรมผิดปกติ การยิงคำสั่งรัวผิดปกติ และการพยายามขโมยข้อมูล (Exfiltration)</div>
+              </div>
+              <button class="btn btn-primary" onclick="runSaUebaScan()" style="font-size:11px; padding:6px 12px; background:#6366f1; border-color:#6366f1;">วิเคราะห์พฤติกรรม UEBA</button>
+            </div>
+            <div id="sa-threatIntelBox" style="padding:12px; border-radius:8px; background:var(--bg); border:1px solid var(--border); font-size:11px; font-family:monospace;">
+              กำลังโหลดข้อมูลข่าวกรองภัยคุกคาม...
+            </div>
+          </div>
+
+          <!-- Tamper-Evident Audit Logs -->
+          <div class="card" style="padding:18px 20px; grid-column: 1 / -1;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+              <div style="font-weight:700; font-size:13px; color:var(--text);">บันทึกเหตุการณ์ความปลอดภัยล่าสุด (Tamper-Evident HMAC Logs)</div>
+              <span class="mono" style="font-size:10px; color:var(--muted);">HMAC-SHA256 Signed</span>
+            </div>
+            <div id="sa-secAuditLogList" style="max-height:220px; overflow-y:auto; font-size:11px; display:flex; flex-direction:column; gap:6px;">
+              <div style="text-align:center; padding:20px; color:var(--muted);">กำลังโหลดข้อมูล...</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
     </div><!-- /content -->
   </main>
 </div><!-- /layout -->
@@ -948,6 +1150,249 @@ function showTab(name) {
   if (name === 'maintenance') { loadHealth(); loadScheduler(); loadBackups(); }
   if (name === 'db')        loadDbTables();
   if (name === 'sql')       initSqlConsole();
+  if (name === 'security')  loadSecurityConsole();
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SECURITY & FIM CONSOLE
+   ═══════════════════════════════════════════════════════════ */
+async function loadSecurityConsole() {
+  try {
+    const res = await fetch('/api/security/health-status');
+    const data = await res.json();
+    if (data.ok && data.health) {
+      const h = data.health;
+      const scoreEl = document.getElementById('sa-secScoreVal');
+      const logIntEl = document.getElementById('sa-secLogIntegrityVal');
+      const mfaEl = document.getElementById('sa-secMfaAdoptionVal');
+      const failEl = document.getElementById('sa-secFailedLoginsVal');
+      if (scoreEl) scoreEl.innerText = `${h.overall_health_score}%`;
+      if (logIntEl) logIntEl.innerText = `${h.log_integrity_percent}%`;
+      if (mfaEl) mfaEl.innerText = `${h.mfa_adoption_percent || 0}%`;
+      if (failEl) failEl.innerText = `${h.failed_logins_24h}`;
+    }
+  } catch(e) {
+    console.warn('Failed to load security health:', e);
+  }
+
+  try {
+    const res = await fetch('/api/security/audit-logs');
+    const data = await res.json();
+    const listEl = document.getElementById('sa-secAuditLogList');
+    if (listEl && data.ok && Array.isArray(data.logs)) {
+      if (data.logs.length === 0) {
+        listEl.innerHTML = '<div style="text-align:center; padding:15px; color:var(--muted);">ยังไม่มีบันทึกเหตุการณ์</div>';
+      } else {
+        listEl.innerHTML = data.logs.slice(0, 15).map(l => {
+          const verifiedBadge = l.is_verified 
+            ? '<span class="badge badge-active">✓ Verified HMAC</span>' 
+            : '<span class="badge badge-suspended">⚠️ TAMPERED</span>';
+          return `
+            <div style="padding:8px 12px; border-radius:8px; background:var(--bg); border:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; gap:8px;">
+              <div style="min-width:0; flex:1;">
+                <div style="font-weight:700; color:var(--text);">${l.action} <span style="font-weight:400; font-size:10px; color:var(--muted);">(${l.username})</span></div>
+                <div style="font-size:10px; color:var(--muted);">${l.details || '-'} · IP: ${l.ip_address || '-'}</div>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+                ${verifiedBadge}
+                <span class="mono" style="font-size:10px; color:var(--muted);">${(l.timestamp || '').split(' ')[1] || ''}</span>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+    }
+  } catch(e) {
+    console.warn('Failed to load audit logs:', e);
+  }
+
+  loadSaBlacklist();
+  loadSaThreatIntel();
+}
+
+async function loadSaBlacklist() {
+  const container = document.getElementById('sa-blacklistContainer');
+  if (!container) return;
+  try {
+    const res = await fetch('/api/security/blacklist');
+    const data = await res.json();
+    if (data.ok && Array.isArray(data.blacklist)) {
+      if (data.blacklist.length === 0) {
+        container.innerHTML = '<div style="text-align:center; padding:10px; color:var(--muted);">ไม่มี IP ที่ถูกระงับในขณะนี้</div>';
+      } else {
+        container.innerHTML = data.blacklist.map(b => `
+          <div style="padding:6px 10px; border-radius:6px; background:var(--bg); border:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+            <div>
+              <span class="mono" style="font-weight:700; color:#f87171;">${b.ip_address}</span>
+              <span style="color:var(--muted); font-size:10px; margin-left:6px;">${b.reason} (${b.violation_count} ครั้ง)</span>
+            </div>
+            <button class="btn btn-xs btn-danger" onclick="unblockSaIp('${b.ip_address}')" style="padding:2px 8px; font-size:10px;">ปลดบล็อค</button>
+          </div>
+        `).join('');
+      }
+    }
+  } catch(e) {
+    console.warn(e);
+  }
+}
+
+async function unblockSaIp(ip) {
+  if (!confirm(`ยืนยันการปลดล็อค IP ${ip}?`)) return;
+  try {
+    const res = await fetch('/api/security/unblock-ip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ip_address: ip })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      toast('ปลดบล็อค IP เรียบร้อยแล้ว', 'success');
+      loadSaBlacklist();
+    } else {
+      toast(data.message || 'เกิดข้อผิดพลาด', 'error');
+    }
+  } catch(e) {
+    toast('เกิดข้อผิดพลาดในการปลดล็อค IP', 'error');
+  }
+}
+
+async function runSaFimScan() {
+  const btn = document.getElementById('btnSaScanFim');
+  const box = document.getElementById('sa-fimStatusBox');
+  if (!box) return;
+  box.style.display = 'block';
+  box.innerHTML = '🔄 กำลังประมวลผล SHA-256 Hash ตรวจสอบความถูกต้องของไฟล์...';
+  if (btn) btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/security/verify-integrity', { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      const issues = (data.files || []).filter(f => !f.valid);
+      if (issues.length === 0) {
+        box.innerHTML = `<span style="color:#34d399; font-weight:700;">✅ การตรวจสอบสมบูรณ์:</span> ตรวจสอบไฟล์ระบบและคลังความรู้ทั้งหมด ${data.total_scanned} ไฟล์ ทั้งหมดผ่านการตรวจสอบ SHA-256 ไม่พบการดัดแปลง`;
+      } else {
+        box.innerHTML = `<span style="color:#f87171; font-weight:700;">⚠️ ตรวจพบความผิดปกติ (${issues.length} ไฟล์):</span><br>` + issues.map(f => `${f.file}: ${f.status}`).join('<br>');
+      }
+    } else {
+      box.innerText = '❌ สแกนล้มเหลว: ' + (data.error || 'Server error');
+    }
+  } catch(e) {
+    box.innerText = '❌ เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function runSaKbScan() {
+  const btn = document.getElementById('btnSaScanKb');
+  const box = document.getElementById('sa-kbStatusBox');
+  if (!box) return;
+  box.style.display = 'block';
+  box.innerHTML = '🔍 กำลังวิเคราะห์คลังความรู้และค้นหา Hash Collision...';
+  if (btn) btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/kb/anomalies');
+    const data = await res.json();
+    if (data.ok) {
+      const count = data.duplicate_count || 0;
+      if (count === 0) {
+        box.innerHTML = `<span style="color:#34d399; font-weight:700;">✅ คลังข้อมูลสมบูรณ์:</span> ตรวจสอบเอกสารทั้งหมด ${data.total_files} ฉบับ ไม่พบไฟล์ซ้ำซ้อนหรือความผิดปกติของขนาด Chunks`;
+      } else {
+        box.innerHTML = `<span style="color:#fbbf24; font-weight:700;">⚠️ พบไฟล์ซ้ำ ${count} กลุ่ม:</span><br>` + (data.duplicates || []).map(d => `Hash: ${d.hash.substring(0, 12)}... (${d.files.join(', ')})`).join('<br>');
+      }
+    } else {
+      box.innerText = '❌ ตรวจสอบล้มเหลว: ' + (data.error || 'Server error');
+    }
+  } catch(e) {
+    box.innerText = '❌ เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function testSaPiiMasking() {
+  const inp = document.getElementById('sa-testPiiInput');
+  const box = document.getElementById('sa-testPiiResultBox');
+  if (!inp || !box) return;
+  const text = inp.value.trim();
+  if (!text) {
+    box.style.display = 'block';
+    box.innerHTML = '<span style="color:#fbbf24;">กรุณากรอกข้อความเพื่อทดสอบ</span>';
+    return;
+  }
+  try {
+    const res = await fetch('/api/security/mask-pii', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: text })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      box.style.display = 'block';
+      if (data.count === 0) {
+        box.innerHTML = `<span style="color:#34d399; font-weight:700;">✅ ปลอดภัย:</span> ไม่พบข้อมูลส่วนบุคคลอ่อนไหว (PII)<div style="color:var(--muted); margin-top:4px;">${data.masked_text}</div>`;
+      } else {
+        box.innerHTML = `
+          <div style="color:#f87171; font-weight:700;">🛡️ เซ็นเซอร์ข้อมูลอ่อนไหวแล้ว (${data.count} รายการ):</div>
+          <div style="padding:6px; border-radius:6px; background:var(--surface2); color:#2dd4bf; font-weight:700; margin:4px 0;">${data.masked_text}</div>
+          <div style="font-size:10px; color:var(--muted);">ตรวจพบ: ${data.detected_items.map(i => i.type).join(', ')}</div>
+        `;
+      }
+    }
+  } catch(e) {
+    box.style.display = 'block';
+    box.innerText = '❌ เกิดข้อผิดพลาดในการทดสอบ Mask';
+  }
+}
+
+async function loadSaThreatIntel() {
+  const box = document.getElementById('sa-threatIntelBox');
+  if (!box) return;
+  try {
+    const res = await fetch('/api/security/threat-intel');
+    const data = await res.json();
+    if (data.ok) {
+      const threatIps = (data.active_threat_ips || []).map(t => `<span class="badge badge-suspended">${t.ip} (${t.incidents} ครั้ง)</span>`).join(' ') || '<span style="color:#34d399;">ไม่มี IP ผิดปกติใน 24h</span>';
+      const actions = (data.top_flagged_actions || []).map(a => `<span class="badge">${a.action}: ${a.count}</span>`).join(' ') || '<span style="color:var(--muted);">ไม่มี Alert</span>';
+      
+      box.innerHTML = `
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; padding-bottom:6px; border-bottom:1px solid var(--border);">
+          <span style="font-weight:700; color:#818cf8;">🛡️ SOC Threat Telemetry</span>
+          <span style="font-size:10px; color:#34d399; font-weight:700;">● ${data.intel_engine_status}</span>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:6px; font-size:11px;">
+          <div><strong style="color:var(--text);">🚨 Top Flagged Threat IPs (24h):</strong> <div style="margin-top:3px; display:flex; flex-wrap:wrap; gap:4px;">${threatIps}</div></div>
+          <div><strong style="color:var(--text);">📊 Security Alert Actions (24h):</strong> <div style="margin-top:3px; display:flex; flex-wrap:wrap; gap:4px;">${actions}</div></div>
+        </div>
+      `;
+    }
+  } catch(e) {
+    console.warn(e);
+  }
+}
+
+async function runSaUebaScan() {
+  const box = document.getElementById('sa-threatIntelBox');
+  if (!box) return;
+  box.innerHTML = '🔄 กำลังวิเคราะห์พฤติกรรมผู้ใช้และคำสั่งที่ยิงเข้ามา (UEBA)...';
+  try {
+    const res = await fetch('/api/security/analyze-behavior', { method: 'POST' });
+    const data = await res.json();
+    if (data.ok && data.analysis) {
+      const an = data.analysis;
+      box.innerHTML = `
+        <div style="color:#34d399; font-weight:700; margin-bottom:4px;">✅ การวิเคราะห์พฤติกรรม UEBA สำเร็จ:</div>
+        <div>สถานะความเสี่ยง: <span class="badge ${an.risk_level === 'LOW' ? 'badge-active' : 'badge-suspended'}">${an.risk_level} (Score: ${an.risk_score}/100)</span></div>
+        <div style="margin-top:4px; color:var(--muted); font-size:10px;">${an.summary || 'ไม่พบพฤติกรรมที่เข้าข่ายการเจาะระบบหรือขโมยข้อมูล'}</div>
+      `;
+    } else {
+      loadSaThreatIntel();
+    }
+  } catch(e) {
+    loadSaThreatIntel();
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -2449,6 +2894,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 });
+
+function toggleMobileSidebar(open) {
+  const sidebar = document.getElementById('superadminSidebar');
+  const backdrop = document.getElementById('sidebarBackdrop');
+  if (!sidebar) return;
+  if (open) {
+    sidebar.classList.add('open');
+    if (backdrop) backdrop.classList.add('open');
+  } else {
+    sidebar.classList.remove('open');
+    if (backdrop) backdrop.classList.remove('open');
+  }
+}
+window.toggleMobileSidebar = toggleMobileSidebar;
 </script>
 </body>
 </html>

@@ -660,7 +660,7 @@ def register_line_group_api():
 @org_admin_required
 def list_line_groups_api():
     org_id = get_current_org_id()
-    groups = database.get_line_groups_for_org(org_id)
+    groups = database.get_line_groups_for_org(org_id, only_enabled=False)
     return jsonify({"ok": True, "groups": groups})
 
 
@@ -2983,9 +2983,13 @@ def api_leave_team_calendar():
         s_date = l.get("start_date") or ""
         e_date = l.get("end_date") or ""
         
-        # Filter by month if provided
+        # Filter by month if provided (checks if leave range overlaps this month)
         if month:
-            if not (s_date.startswith(month) or e_date.startswith(month)):
+            eff_end = e_date or s_date
+            if s_date and eff_end:
+                if s_date > f"{month}-31" or eff_end < f"{month}-01":
+                    continue
+            elif not (s_date.startswith(month) or e_date.startswith(month)):
                 continue
                 
         # Resolve display name for applicant

@@ -44,7 +44,7 @@
       };
     }
   </script>
-  <link rel="stylesheet" href="/static/style.css?v=4.0" />
+  <link rel="stylesheet" href="/static/style.css?v=4.3" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@300;400;500;600;700&family=Athiti:wght@300;400;500;600;700&family=Bai+Jamjuree:wght@300;400;500;600;700&family=Chakra+Petch:wght@400;600;700&family=Fahkwang:wght@300;400;500;600;700&family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700;800;900&family=K2D:wght@300;400;500;600;700&family=Kanit:wght@300;400;500;600;700&family=Krub:wght@300;400;500;600;700&family=Mali:wght@400;600;700&family=Mitr:wght@400;500;600&family=Niramit:wght@300;400;500;600;700&family=Noto+Sans+Thai:wght@300;400;500;600;700&family=Pridi:wght@300;400;500;600&family=Prompt:wght@300;400;500;600;700&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
@@ -72,7 +72,7 @@
       });
     }
   </script>
-  <link rel="stylesheet" href="/static/css/components.css?v=4.1" />
+  <link rel="stylesheet" href="/static/css/components.css?v=4.2" />
   <script>
     // Immediate Theme & Sidebar Check
     (function() {
@@ -417,24 +417,70 @@
     </div>
   </div>
 
-  <!-- Image Lightbox Modal -->
+  <!-- Image Lightbox Modal with Zoom & Download -->
   <div id="imageLightbox"
-    class="fixed inset-0 z-[100000] bg-black/90 backdrop-blur-xl flex items-center justify-center p-4 md:p-10 hidden animate-in fade-in duration-300">
-    <div class="absolute top-6 right-6 flex items-center gap-4 z-10">
-      <a id="lightboxDownload" href="#" download
-        class="p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors backdrop-blur-md border border-white/20 group"
-        title="ดาวน์โหลดรูปภาพ">
-        <i data-lucide="download" class="w-6 h-6 group-hover:scale-110 transition-transform"></i>
-      </a>
-      <button onclick="closeLightbox()"
-        class="p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors backdrop-blur-md border border-white/20 group"
-        title="ปิด">
-        <i data-lucide="x" class="w-6 h-6 group-hover:rotate-90 transition-transform"></i>
-      </button>
+    class="fixed inset-0 z-[100000] bg-black/95 backdrop-blur-2xl flex items-center justify-center p-2 md:p-6 hidden select-none animate-in fade-in duration-200">
+    <!-- Top Control Bar -->
+    <div class="absolute top-4 left-4 right-4 flex items-center justify-between z-20 pointer-events-none">
+      <!-- Image Title -->
+      <div class="pointer-events-auto flex items-center gap-2 px-4 py-2 bg-white/10 dark:bg-black/50 backdrop-blur-md rounded-2xl border border-white/15 text-white shadow-xl max-w-[40%] md:max-w-md truncate">
+        <i data-lucide="image" class="w-4 h-4 shrink-0 text-brand-400"></i>
+        <span id="lightboxTitle" class="text-xs md:text-sm font-bold truncate">รูปภาพ</span>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="pointer-events-auto flex items-center gap-2">
+        <!-- Zoom Out -->
+        <button onclick="lightboxZoom(-0.25)"
+          class="p-2.5 md:p-3 bg-white/10 hover:bg-white/25 active:scale-95 text-white rounded-2xl transition-all backdrop-blur-md border border-white/15 shadow-xl"
+          title="ซูมออก (-)">
+          <i data-lucide="zoom-out" class="w-5 h-5"></i>
+        </button>
+
+        <!-- Zoom Level Indicator / Reset -->
+        <button onclick="lightboxResetZoom()" id="lightboxZoomLevel"
+          class="px-3.5 py-2 md:py-2.5 bg-white/10 hover:bg-white/25 active:scale-95 text-white font-mono text-xs md:text-sm font-bold rounded-2xl transition-all backdrop-blur-md border border-white/15 shadow-xl min-w-[55px] text-center"
+          title="รีเซ็ตขนาด (100%)">
+          100%
+        </button>
+
+        <!-- Zoom In -->
+        <button onclick="lightboxZoom(0.25)"
+          class="p-2.5 md:p-3 bg-white/10 hover:bg-white/25 active:scale-95 text-white rounded-2xl transition-all backdrop-blur-md border border-white/15 shadow-xl"
+          title="ซูมเข้า (+)">
+          <i data-lucide="zoom-in" class="w-5 h-5"></i>
+        </button>
+
+        <!-- Download Button -->
+        <a id="lightboxDownload" href="#" download
+          class="p-2.5 md:p-3 bg-brand-600 hover:bg-brand-500 active:scale-95 text-white rounded-2xl transition-all backdrop-blur-md border border-brand-400/30 shadow-xl flex items-center gap-2 group"
+          title="ดาวน์โหลดรูปภาพ">
+          <i data-lucide="download" class="w-5 h-5 group-hover:scale-110 transition-transform"></i>
+          <span class="hidden md:inline text-xs font-bold pr-1">ดาวน์โหลด</span>
+        </a>
+
+        <!-- Close Button -->
+        <button onclick="closeLightbox()"
+          class="p-2.5 md:p-3 bg-white/10 hover:bg-red-500/80 active:scale-95 text-white rounded-2xl transition-all backdrop-blur-md border border-white/15 shadow-xl group"
+          title="ปิด (Esc)">
+          <i data-lucide="x" class="w-5 h-5 group-hover:rotate-90 transition-transform"></i>
+        </button>
+      </div>
     </div>
-    <div class="relative max-w-full max-h-full flex items-center justify-center">
+
+    <!-- Image Display Container -->
+    <div id="lightboxContainer" class="relative w-full h-full flex items-center justify-center overflow-hidden cursor-default" onclick="if (event.target === this) closeLightbox()">
       <img id="lightboxImage" src=""
-        class="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl animate-in zoom-in duration-500">
+        class="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl transition-transform duration-100 ease-out select-none will-change-transform">
+    </div>
+
+    <!-- Bottom Hint Bar -->
+    <div class="absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-1.5 bg-black/60 backdrop-blur-md rounded-full border border-white/15 text-white/80 text-[11px] font-medium pointer-events-none hidden md:flex items-center gap-3 shadow-xl">
+      <span>🖱️ หมุนล้อเมาส์เพื่อซูม</span>
+      <span>•</span>
+      <span>✋ ลากเพื่อเลื่อนรูป</span>
+      <span>•</span>
+      <span>⚡ ดับเบิลคลิกเพื่อสลับขนาด</span>
     </div>
   </div>
 
@@ -974,14 +1020,12 @@
           data-view="line-groups" id="nav-line-groups" onclick="showView('line-groups'); loadLineGroups(); loadGoogleFoldersForGroupRegister();">
           <i data-lucide="message-square" class="w-4 h-4"></i> <span>จัดการกลุ่ม LINE</span>
         </button>
-        <button class="nav-item w-full {{ '' if (is_org_admin or is_admin or is_superadmin) else 'hidden' }}"
-          id="nav-security-center" onclick="openSecurityDashboard()">
-          <i data-lucide="shield-check" class="w-4 h-4 text-emerald-500"></i> <span>ศูนย์ความปลอดภัย (Security)</span>
-        </button>
-        <button class="nav-item w-full {{ '' if is_superadmin else 'hidden' }}"
+        {% if is_superadmin %}
+        <button class="nav-item w-full"
           data-view="super-admin" id="nav-super-admin" onclick="showView('super-admin')">
           <i data-lucide="crown" class="w-4 h-4"></i> <span>Super Admin</span>
         </button>
+        {% endif %}
         {% endif %}
 
         <!-- Hidden items (activated programmatically) -->
@@ -1081,7 +1125,7 @@
               </button>
             </div>
             <div
-              class="relative bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl shadow-sm focus-within:ring-2 focus-within:ring-brand-600/20 transition-all">
+              class="relative bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl shadow-sm focus-within:border-surface-300 dark:focus-within:border-surface-700 transition-all">
               <div class="flex items-end px-3 py-1.5 flex-col">
                 <!-- AI Vision Image Preview -->
                 <div id="chatImagePreview" class="hidden w-full px-2 py-2 flex items-center gap-2 border-b border-surface-100 dark:border-surface-800">
@@ -1094,10 +1138,20 @@
                   <span class="text-[10px] text-surface-400 font-medium">แนบรูปภาพสำหรับ AI วิเคราะห์</span>
                 </div>
 
-                <div class="flex items-end w-full">
-                  <textarea id="msgInput" rows="1" placeholder="พิมพ์ข้อถามหรือสิ่งที่ต้องการค้นหา..."
-                    class="flex-1 bg-transparent border-none focus:ring-0 text-sm py-2 px-1 resize-none max-h-32 outline-none"></textarea>
-                  <div class="relative group mb-1 mr-1">
+                <div class="flex items-end w-full gap-1">
+                  <textarea id="msgInput" rows="1" placeholder="พิมพ์ข้อความหรือคำถาม..."
+                    class="flex-1 min-w-0 bg-transparent border-0 border-none outline-none focus:outline-none focus:ring-0 focus:border-transparent focus-visible:outline-none text-sm py-2 px-1 resize-none max-h-32 text-surface-900 dark:text-white placeholder-surface-400 shadow-none focus:shadow-none"></textarea>
+
+                  <!-- 📱 Mobile More Features Trigger Button (Visible on mobile only: md:hidden) -->
+                  <button type="button" id="mobileChatMoreBtn" onclick="toggleMobileChatFeatures()"
+                    class="md:hidden mb-1 p-2 text-surface-500 hover:text-brand-600 dark:text-surface-400 dark:hover:text-brand-400 hover:bg-surface-100 dark:hover:bg-surface-800 rounded-xl transition-all relative flex items-center justify-center flex-shrink-0"
+                    title="เครื่องมือและความสามารถ AI">
+                    <span id="mobileFeaturesIndicator" class="hidden absolute top-1 right-1 w-2 h-2 rounded-full bg-purple-500 ring-2 ring-white dark:ring-surface-900 animate-pulse"></span>
+                    <i data-lucide="sparkles" class="w-4 h-4 text-purple-500"></i>
+                  </button>
+
+                  <!-- 💻 Desktop-Only Secondary Features (Hidden on mobile: hidden md:inline-flex) -->
+                  <div id="personaBtnWrapper" class="relative group mb-1 mr-1 hidden md:inline-flex">
                     <button id="personaBtn"
                       class="p-2 text-surface-400 hover:text-brand-600 rounded-lg transition-all flex items-center gap-1.5"
                       title="เลือกตัวตน AI">
@@ -1113,17 +1167,13 @@
                       </div>
                     </div>
                   </div>
-                  <input type="file" id="chatImageInput" class="hidden" accept="image/*">
-                  <button id="chatAttachBtn"
-                    class="mb-1 p-2 mr-1 text-surface-400 hover:text-brand-600 rounded-lg transition-all"
-                    title="แนบรูปภาพภาพ"><i data-lucide="camera" class="w-4 h-4"></i></button>
                   <button id="browserAgentBtn"
-                    class="mb-1 p-2 mr-1 text-surface-400 hover:text-emerald-600 rounded-lg transition-all"
+                    class="hidden md:inline-flex mb-1 p-2 mr-1 text-surface-400 hover:text-emerald-600 rounded-lg transition-all flex-shrink-0"
                     title="🌐 Autonomous Browser Agent (สั่งท่องเว็บสด & ค้นหา)">
                     <i data-lucide="globe" class="w-4 h-4 text-emerald-500"></i>
                   </button>
                   <button id="realTimeCallBtn"
-                    class="mb-1 p-2 mr-1 text-surface-400 hover:text-indigo-600 rounded-lg transition-all relative group"
+                    class="hidden md:inline-flex mb-1 p-2 mr-1 text-surface-400 hover:text-indigo-600 rounded-lg transition-all relative group flex-shrink-0"
                     title="🎙️ โทรคุยเสียงสดกับน้องพั้น (Real-Time Voice Call)">
                     <span class="absolute -top-1 -right-1 flex h-2 w-2">
                       <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
@@ -1132,17 +1182,139 @@
                     <i data-lucide="phone-call" class="w-4 h-4 text-indigo-500 animate-pulse"></i>
                   </button>
                   <button id="autoSpeakBtn"
-                    class="mb-1 p-2 mr-1 text-surface-400 hover:text-brand-600 rounded-lg transition-all"
+                    class="hidden md:inline-flex mb-1 p-2 mr-1 text-surface-400 hover:text-brand-600 rounded-lg transition-all flex-shrink-0"
                     title="อ่านข้อความอัตโนมัติ (Auto-Speak)">
                     <i data-lucide="volume-2" class="w-4 h-4"></i>
                   </button>
+
+                  <!-- 🌟 Primary Features (Always Visible on Both Mobile & Desktop) -->
+                  <input type="file" id="chatImageInput" class="hidden" accept="image/*">
+                  <button id="chatAttachBtn"
+                    class="mb-1 p-2 mr-0.5 text-surface-400 hover:text-brand-600 rounded-lg transition-all flex-shrink-0"
+                    title="แนบรูปภาพสำหรับ AI"><i data-lucide="camera" class="w-4 h-4"></i></button>
                   <button id="voiceBtn"
-                    class="mb-1 p-2 mr-1 text-surface-400 hover:text-brand-600 rounded-lg transition-all"
+                    class="mb-1 p-2 mr-0.5 text-surface-400 hover:text-brand-600 rounded-lg transition-all flex-shrink-0"
                     title="สั่งงานด้วยเสียง"><i data-lucide="mic" class="w-4 h-4"></i></button>
                   <button id="sendBtn"
-                    class="mb-1 p-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 shadow-sm transition-colors disabled:opacity-50"><i
+                    class="mb-1 p-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 shadow-sm transition-colors disabled:opacity-50 flex-shrink-0"><i
                       data-lucide="send" class="w-4 h-4"></i></button>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 📱 Mobile Chat Features Popup / Bottom Sheet Modal -->
+          <div id="mobileChatFeaturesModal" class="fixed inset-0 z-[999] bg-black/60 backdrop-blur-sm hidden flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200" onclick="if(event.target === this) closeMobileChatFeatures()">
+            <div class="bg-white dark:bg-surface-900 border border-surface-200/80 dark:border-surface-800 rounded-t-[2rem] sm:rounded-3xl shadow-2xl w-full sm:max-w-md overflow-hidden transform transition-all animate-in slide-in-from-bottom duration-300">
+              <!-- Header -->
+              <div class="p-5 pb-3 border-b border-surface-100 dark:border-surface-800/80">
+                <div class="w-10 h-1 bg-surface-200 dark:bg-surface-700 rounded-full mx-auto mb-3 sm:hidden"></div>
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-xl bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400 flex items-center justify-center shadow-xs">
+                      <i data-lucide="sparkles" class="w-4 h-4"></i>
+                    </div>
+                    <div>
+                      <h3 class="text-sm font-bold text-surface-900 dark:text-white">เครื่องมือและฟีเจอร์ AI</h3>
+                      <p class="text-[11px] text-surface-500 dark:text-surface-400">เลือกฟังก์ชันเสริมที่ต้องการใช้งานในแชท</p>
+                    </div>
+                  </div>
+                  <button onclick="closeMobileChatFeatures()" class="p-1.5 text-surface-400 hover:text-surface-600 dark:hover:text-surface-200 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Features Body -->
+              <div class="p-4 space-y-2.5 max-h-[75vh] overflow-y-auto custom-scrollbar">
+                
+                <!-- Feature 1: AI Persona -->
+                <div class="p-3.5 bg-surface-50/80 dark:bg-surface-800/40 hover:bg-purple-50/60 dark:hover:bg-purple-950/30 border border-surface-100 dark:border-surface-800 rounded-2xl transition-all">
+                  <div class="flex items-center justify-between cursor-pointer" onclick="toggleMobilePersonaList()">
+                    <div class="flex items-center gap-3">
+                      <div class="w-10 h-10 rounded-xl bg-purple-500/15 text-purple-600 dark:text-purple-400 flex items-center justify-center flex-shrink-0">
+                        <i data-lucide="bot" class="w-5 h-5"></i>
+                      </div>
+                      <div>
+                        <div class="text-xs font-bold text-surface-900 dark:text-white flex items-center gap-1.5">
+                          <span>ตัวตน AI (Persona)</span>
+                          <span id="mobileActivePersonaBadge" class="text-[9px] font-black px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300">Default</span>
+                        </div>
+                        <p class="text-[11px] text-surface-500 dark:text-surface-400 mt-0.5">เปลี่ยนบุคลิกและบทบาทความเชี่ยวชาญของ AI</p>
+                      </div>
+                    </div>
+                    <i id="mobilePersonaChevron" data-lucide="chevron-down" class="w-4 h-4 text-surface-400 transition-transform"></i>
+                  </div>
+                  <!-- Persona List inside accordion -->
+                  <div id="mobilePersonaListContainer" class="hidden mt-3 pt-3 border-t border-surface-200/60 dark:border-surface-700/60 space-y-1.5 max-h-48 overflow-y-auto custom-scrollbar">
+                    <!-- Populated by JS -->
+                  </div>
+                </div>
+
+                <!-- Feature 2: Browser Agent -->
+                <div onclick="closeMobileChatFeatures(); openBrowserAgentModal();" class="p-3.5 bg-surface-50/80 dark:bg-surface-800/40 hover:bg-emerald-50/60 dark:hover:bg-emerald-950/30 border border-surface-100 dark:border-surface-800 rounded-2xl transition-all cursor-pointer flex items-center justify-between">
+                  <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center flex-shrink-0">
+                      <i data-lucide="globe" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                      <div class="text-xs font-bold text-surface-900 dark:text-white flex items-center gap-1.5">
+                        <span>ท่องเว็บสด & ค้นหา</span>
+                        <span class="text-[9px] font-black px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300">Live Agent</span>
+                      </div>
+                      <p class="text-[11px] text-surface-500 dark:text-surface-400 mt-0.5">สั่ง AI เข้าเว็บไซต์ ค้นหา และสรุปข้อมูลสด</p>
+                    </div>
+                  </div>
+                  <i data-lucide="arrow-right" class="w-4 h-4 text-surface-400"></i>
+                </div>
+
+                <!-- Feature 3: Real-Time Voice Call -->
+                <div onclick="closeMobileChatFeatures(); document.getElementById('realTimeCallBtn')?.click();" class="p-3.5 bg-surface-50/80 dark:bg-surface-800/40 hover:bg-indigo-50/60 dark:hover:bg-indigo-950/30 border border-surface-100 dark:border-surface-800 rounded-2xl transition-all cursor-pointer flex items-center justify-between">
+                  <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 flex items-center justify-center flex-shrink-0 relative">
+                      <span class="absolute -top-1 -right-1 flex h-2 w-2">
+                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+                      </span>
+                      <i data-lucide="phone-call" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                      <div class="text-xs font-bold text-surface-900 dark:text-white flex items-center gap-1.5">
+                        <span>โทรคุยเสียงสด (Voice Call)</span>
+                        <span class="text-[9px] font-black px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300">Hands-Free</span>
+                      </div>
+                      <p class="text-[11px] text-surface-500 dark:text-surface-400 mt-0.5">โทรคุยโต้ตอบกับน้องพั้นด้วยเสียงแบบเรียลไทม์</p>
+                    </div>
+                  </div>
+                  <i data-lucide="arrow-right" class="w-4 h-4 text-surface-400"></i>
+                </div>
+
+                <!-- Feature 4: Auto-Speak (TTS Toggle) -->
+                <div onclick="toggleMobileAutoSpeak()" class="p-3.5 bg-surface-50/80 dark:bg-surface-800/40 hover:bg-amber-50/60 dark:hover:bg-amber-950/30 border border-surface-100 dark:border-surface-800 rounded-2xl transition-all cursor-pointer flex items-center justify-between">
+                  <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center flex-shrink-0">
+                      <i data-lucide="volume-2" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                      <div class="text-xs font-bold text-surface-900 dark:text-white flex items-center gap-1.5">
+                        <span>อ่านออกเสียงอัตโนมัติ (Auto-Speak)</span>
+                        <span id="mobileAutoSpeakTextBadge" class="text-[9px] font-black px-2 py-0.5 rounded-full bg-surface-200 dark:bg-surface-700 text-surface-600 dark:text-surface-300">ปิดอยู่</span>
+                      </div>
+                      <p class="text-[11px] text-surface-500 dark:text-surface-400 mt-0.5">อ่านข้อความตอบกลับของ AI เป็นเสียงพูด</p>
+                    </div>
+                  </div>
+                  <div id="mobileAutoSpeakSwitch" class="w-11 h-6 bg-surface-200 dark:bg-surface-700 rounded-full transition-colors relative flex items-center p-0.5 flex-shrink-0">
+                    <div id="mobileAutoSpeakKnob" class="w-5 h-5 bg-white rounded-full shadow-sm transform transition-transform translate-x-0"></div>
+                  </div>
+                </div>
+
+              </div>
+
+              <!-- Quick Dismiss Footer -->
+              <div class="p-3 bg-surface-50/50 dark:bg-surface-800/20 border-t border-surface-100 dark:border-surface-800/60 text-center">
+                <button onclick="closeMobileChatFeatures()" class="text-xs font-bold text-surface-500 hover:text-surface-700 dark:text-surface-400 py-1">
+                  ปิดหน้าต่าง
+                </button>
               </div>
             </div>
           </div>
@@ -2921,8 +3093,8 @@
                   </div>
                 </div>
 
-                {% if is_org_admin or is_admin or is_superadmin %}
-                <!-- ทางลัดศูนย์ความปลอดภัยสำหรับ Admin -->
+                {% if is_superadmin %}
+                <!-- ทางลัดศูนย์ความปลอดภัยสำหรับ Super Admin -->
                 <div class="border-t border-surface-100 dark:border-surface-800 pt-5">
                   <div class="text-[10px] font-black uppercase tracking-widest text-surface-400 mb-2 flex items-center justify-between">
                     <div class="flex items-center gap-2">
@@ -4476,7 +4648,7 @@
                         </button>
                       </div>
                       
-                      <button onclick="refreshAdminLeaves()" class="p-2 hover:bg-surface-100 dark:hover:bg-surface-700 rounded-lg transition-colors text-surface-400" title="รีเฟรชข้อมูล">
+                      <button onclick="refreshAdminLeaves(); loadTeamLeaveCalendar();" class="p-2 hover:bg-surface-100 dark:hover:bg-surface-700 rounded-lg transition-colors text-surface-400" title="รีเฟรชข้อมูล">
                         <i data-lucide="refresh-cw" class="w-4 h-4"></i>
                       </button>
                     </div>
@@ -4510,7 +4682,7 @@
                         <button onclick="prevLeaveMonth()" class="p-2 hover:bg-surface-100 dark:hover:bg-surface-700 rounded-lg transition-colors border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300">
                           <i data-lucide="chevron-left" class="w-4 h-4"></i>
                         </button>
-                        <h4 id="calendarMonthYearLabel" class="text-sm font-bold text-surface-900 dark:text-white min-w-[140px] text-center">สิงหาคม 2569</h4>
+                        <h4 id="calendarMonthYearLabel" class="text-sm font-bold text-surface-900 dark:text-white min-w-[140px] text-center">ปฏิทินวันลา</h4>
                         <button onclick="nextLeaveMonth()" class="p-2 hover:bg-surface-100 dark:hover:bg-surface-700 rounded-lg transition-colors border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300">
                           <i data-lucide="chevron-right" class="w-4 h-4"></i>
                         </button>
@@ -9226,8 +9398,15 @@
       class="w-full h-full max-w-6xl bg-white dark:bg-surface-900 rounded-[40px] shadow-2xl relative overflow-hidden flex flex-col">
       <div
         class="px-8 py-6 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between shrink-0">
-        <h3 id="previewFileName" class="text-xl font-black text-surface-900 dark:text-white truncate max-w-md">Preview
-        </h3>
+        <h3 id="previewFileName" class="text-xl font-black text-surface-900 dark:text-white truncate max-w-md">Preview</h3>
+        <div class="flex items-center gap-2.5">
+          <button id="previewExpandBtn" onclick="if(window._currentPreviewImage) openLightbox(window._currentPreviewImage, window._currentPreviewName)" class="hidden items-center gap-2 px-4 py-2 bg-surface-100 dark:bg-surface-800 hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-800 dark:text-white font-bold rounded-xl text-xs transition-all border border-surface-200 dark:border-surface-700">
+            <i data-lucide="maximize-2" class="w-4 h-4"></i> ขยายเต็มจอ
+          </button>
+          <a id="previewDownloadBtn" href="#" download class="inline-flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white font-bold rounded-xl text-xs transition-all shadow-md active:scale-95">
+            <i data-lucide="download" class="w-4 h-4"></i> ดาวน์โหลด
+          </a>
+        </div>
       </div>
       <div id="previewContent"
         class="flex-1 bg-surface-50 dark:bg-surface-950 overflow-auto flex items-center justify-center p-8">
@@ -9467,8 +9646,8 @@
     </div>
   </div>
 
-  <script src="/static/js/core.js?v=4.1"></script>
-  <script src="/static/js/chat.js?v=4.1"></script>
+  <script src="/static/js/core.js?v=4.2"></script>
+  <script src="/static/js/chat.js?v=4.3"></script>
   <script src="/static/js/billing.js?v=4.0"></script>
   <script src="/static/js/kb.js?v=4.1"></script>
   <script src="/static/js/admin.js?v=4.0"></script>
@@ -9476,7 +9655,7 @@
   <script src="/static/js/line-groups-modal.js?v=4.1"></script>
   <script src="/static/js/plans-modal.js?v=4.1"></script>
   <script src="/static/js/sheets-reconcile.js?v=4.1"></script>
-  <script src="/static/js/financial-dashboard.js?v=4.1"></script>
+  <script src="/static/js/financial-dashboard.js?v=4.2"></script>
   <!-- 🌩️ Weather Detail Modal -->
   <div id="weatherDetailModal" class="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-xl hidden flex items-center justify-center animate-in fade-in duration-500 p-0 sm:p-4">
     <div class="bg-white dark:bg-surface-900 w-full h-full sm:w-[95%] sm:max-w-xl sm:h-auto flex flex-col sm:rounded-[3rem] shadow-[0_0_100px_rgba(0,0,0,0.5)] overflow-hidden border border-white/20">

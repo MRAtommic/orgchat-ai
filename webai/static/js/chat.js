@@ -3100,8 +3100,144 @@ if (_chatAutoSpeakBtn) {
       if (window.speechSynthesis) window.speechSynthesis.cancel();
       toast('ปิดโหมดอ่านออกเสียง', 'info');
     }
+    if (typeof updateMobileFeaturesUI === 'function') updateMobileFeaturesUI();
   });
 }
+
+// ─── 📱 Mobile Chat Features Popup Controller ────────────────
+function updateMobileFeaturesUI() {
+  const switchEl = $('mobileAutoSpeakSwitch');
+  const knobEl = $('mobileAutoSpeakKnob');
+  const badgeEl = $('mobileAutoSpeakTextBadge');
+  const indicatorEl = $('mobileFeaturesIndicator');
+  const personaBadgeEl = $('mobileActivePersonaBadge');
+  const activePersona = (window.state && state.activePersona && state.activePersona.name) ? state.activePersona.name : 'Default';
+
+  if (personaBadgeEl) personaBadgeEl.textContent = activePersona;
+
+  if (switchEl && knobEl && badgeEl) {
+    if (_isAutoSpeakEnabled) {
+      switchEl.classList.remove('bg-surface-200', 'dark:bg-surface-700');
+      switchEl.classList.add('bg-amber-500');
+      knobEl.classList.remove('translate-x-0');
+      knobEl.classList.add('translate-x-5');
+      badgeEl.textContent = 'เปิดอยู่';
+      badgeEl.className = 'text-[9px] font-black px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300';
+    } else {
+      switchEl.classList.remove('bg-amber-500');
+      switchEl.classList.add('bg-surface-200', 'dark:bg-surface-700');
+      knobEl.classList.remove('translate-x-5');
+      knobEl.classList.add('translate-x-0');
+      badgeEl.textContent = 'ปิดอยู่';
+      badgeEl.className = 'text-[9px] font-black px-2 py-0.5 rounded-full bg-surface-200 dark:bg-surface-700 text-surface-600 dark:text-surface-300';
+    }
+  }
+
+  // Show indicator dot on sparkle button if custom persona or auto-speak is enabled
+  if (indicatorEl) {
+    if (_isAutoSpeakEnabled || activePersona !== 'Default') {
+      indicatorEl.classList.remove('hidden');
+    } else {
+      indicatorEl.classList.add('hidden');
+    }
+  }
+}
+window.updateMobileFeaturesUI = updateMobileFeaturesUI;
+
+function openMobileChatFeatures() {
+  const modal = $('mobileChatFeaturesModal');
+  if (!modal) return;
+  modal.classList.remove('hidden');
+  updateMobileFeaturesUI();
+  if (window.lucide) lucide.createIcons();
+}
+window.openMobileChatFeatures = openMobileChatFeatures;
+
+function closeMobileChatFeatures() {
+  const modal = $('mobileChatFeaturesModal');
+  if (modal) modal.classList.add('hidden');
+  const personaContainer = $('mobilePersonaListContainer');
+  if (personaContainer) personaContainer.classList.add('hidden');
+  const chevron = $('mobilePersonaChevron');
+  if (chevron) chevron.style.transform = '';
+}
+window.closeMobileChatFeatures = closeMobileChatFeatures;
+
+function toggleMobileChatFeatures() {
+  const modal = $('mobileChatFeaturesModal');
+  if (modal && !modal.classList.contains('hidden')) {
+    closeMobileChatFeatures();
+  } else {
+    openMobileChatFeatures();
+  }
+}
+window.toggleMobileChatFeatures = toggleMobileChatFeatures;
+
+function toggleMobileAutoSpeak() {
+  const btn = $('autoSpeakBtn');
+  if (btn) {
+    btn.click();
+  } else {
+    _isAutoSpeakEnabled = !_isAutoSpeakEnabled;
+    localStorage.setItem('orgchat_auto_speak', _isAutoSpeakEnabled);
+    updateMobileFeaturesUI();
+  }
+}
+window.toggleMobileAutoSpeak = toggleMobileAutoSpeak;
+
+function toggleMobilePersonaList() {
+  const container = $('mobilePersonaListContainer');
+  const chevron = $('mobilePersonaChevron');
+  if (!container) return;
+
+  const isHidden = container.classList.contains('hidden');
+  if (isHidden) {
+    const personas = (window.state && Array.isArray(state.personas)) ? state.personas : [];
+    const activeId = (window.state && state.activePersona) ? state.activePersona.id : null;
+    
+    let html = `
+      <div onclick="selectMobilePersona(null)" class="flex items-center justify-between p-2.5 rounded-xl cursor-pointer ${!activeId ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 font-bold' : 'hover:bg-surface-100 dark:hover:bg-surface-700/50 text-surface-700 dark:text-surface-300'} transition-colors">
+        <div class="flex items-center gap-2">
+          <i data-lucide="bot" class="w-4 h-4"></i>
+          <span class="text-xs">Default (มาตรฐาน)</span>
+        </div>
+        ${!activeId ? '<i data-lucide="check" class="w-3.5 h-3.5 text-purple-600"></i>' : ''}
+      </div>
+    `;
+
+    personas.forEach(p => {
+      const isSelected = activeId === p.id;
+      html += `
+        <div onclick="selectMobilePersona('${p.id}')" class="flex items-center justify-between p-2.5 rounded-xl cursor-pointer ${isSelected ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 font-bold' : 'hover:bg-surface-100 dark:hover:bg-surface-700/50 text-surface-700 dark:text-surface-300'} transition-colors">
+          <div class="flex items-center gap-2">
+            <i data-lucide="sparkles" class="w-4 h-4 text-purple-500"></i>
+            <span class="text-xs">${p.name}</span>
+          </div>
+          ${isSelected ? '<i data-lucide="check" class="w-3.5 h-3.5 text-purple-600"></i>' : ''}
+        </div>
+      `;
+    });
+
+    container.innerHTML = html;
+    container.classList.remove('hidden');
+    if (chevron) chevron.style.transform = 'rotate(180deg)';
+    if (window.lucide) lucide.createIcons();
+  } else {
+    container.classList.add('hidden');
+    if (chevron) chevron.style.transform = '';
+  }
+}
+window.toggleMobilePersonaList = toggleMobilePersonaList;
+
+function selectMobilePersona(personaId) {
+  if (typeof selectPersona === 'function') {
+    selectPersona(personaId);
+  }
+  updateMobileFeaturesUI();
+  toggleMobilePersonaList(); // close accordion
+}
+window.selectMobilePersona = selectMobilePersona;
+
 
 /**
  * Speaks text out loud using high quality Edge-TTS with Web Speech fallback
@@ -3390,64 +3526,126 @@ function updateDynamicSuggestions(lastBotText = '', userQuery = '') {
 }
 
 // ─── Voice Interaction (STT / SpeechRecognition) ──────────────
-if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+function getSpeechRecognition() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  recognition = new SpeechRecognition();
-  recognition.lang = 'th-TH';
-  recognition.continuous = false;
-  recognition.interimResults = true;
+  if (!SpeechRecognition) return null;
+  
+  const rec = new SpeechRecognition();
+  rec.lang = 'th-TH';
+  rec.continuous = false;
+  rec.interimResults = true;
+  rec.maxAlternatives = 1;
 
-  recognition.onstart = () => {
-    voiceBtn.classList.add('voice-active');
-    voiceBtn.innerHTML = `
-      <div class="voice-wave-container">
-        <div class="voice-wave-bar"></div>
-        <div class="voice-wave-bar"></div>
-        <div class="voice-wave-bar"></div>
-        <div class="voice-wave-bar"></div>
-      </div>
-    `;
-    toast('กำลังฟังเสียงพูดของคุณ... (พูดเสร็จจะส่งอัตโนมัติ)', 'info');
+  rec.onstart = () => {
+    if (voiceBtn) {
+      voiceBtn.classList.add('voice-active');
+      voiceBtn.innerHTML = `
+        <div class="voice-wave-container">
+          <div class="voice-wave-bar"></div>
+          <div class="voice-wave-bar"></div>
+          <div class="voice-wave-bar"></div>
+          <div class="voice-wave-bar"></div>
+        </div>
+      `;
+    }
+    toast('กำลังฟังเสียงพูดของคุณ... (พูดเสร็จจะส่งคำถามให้อัตโนมัติ)', 'info');
   };
 
-  recognition.onend = () => {
-    voiceBtn.classList.remove('voice-active');
-    voiceBtn.innerHTML = '<i data-lucide="mic" class="w-4 h-4"></i>';
-    if (window.lucide) lucide.createIcons();
+  rec.onend = () => {
+    if (voiceBtn) {
+      voiceBtn.classList.remove('voice-active');
+      voiceBtn.innerHTML = '<i data-lucide="mic" class="w-4 h-4"></i>';
+      if (window.lucide) lucide.createIcons();
+    }
   };
 
-  recognition.onresult = (event) => {
+  rec.onresult = (event) => {
+    let interimTranscript = '';
     let finalTranscript = '';
     for (let i = event.resultIndex; i < event.results.length; ++i) {
       if (event.results[i].isFinal) {
         finalTranscript += event.results[i][0].transcript;
       } else {
-        msgInput.value = event.results[i][0].transcript;
-        autoResize();
+        interimTranscript += event.results[i][0].transcript;
       }
     }
 
-    if (finalTranscript) {
-      msgInput.value = finalTranscript;
-      autoResize();
-      setTimeout(() => {
-        const currentText = msgInput.value.trim();
-        if (currentText) {
-          msgInput.value = '';
-          autoResize();
-          sendMessage(currentText);
-        }
-      }, 600);
+    if (msgInput) {
+      if (interimTranscript && !finalTranscript) {
+        msgInput.value = interimTranscript;
+        autoResize();
+      } else if (finalTranscript) {
+        msgInput.value = finalTranscript;
+        autoResize();
+        setTimeout(() => {
+          const currentText = msgInput.value.trim();
+          if (currentText) {
+            msgInput.value = '';
+            autoResize();
+            sendMessage(currentText);
+          }
+        }, 500);
+      }
     }
   };
 
-  recognition.onerror = (e) => {
+  rec.onerror = (e) => {
     console.error('Speech Recognition Error:', e);
-    voiceBtn.classList.remove('voice-active');
-    voiceBtn.innerHTML = '<i data-lucide="mic" class="w-4 h-4"></i>';
-    if (window.lucide) lucide.createIcons();
-    if (e.error !== 'no-speech') {
-      toast('ไม่สามารถรับข้อมูลจากไมค์ได้: ' + e.error, 'error');
+    if (voiceBtn) {
+      voiceBtn.classList.remove('voice-active');
+      voiceBtn.innerHTML = '<i data-lucide="mic" class="w-4 h-4"></i>';
+      if (window.lucide) lucide.createIcons();
+    }
+    if (e.error === 'not-allowed' || e.error === 'permission-denied') {
+      toast('กรุณากดอนุญาตให้เว็บไซต์ใช้งานไมโครโฟนในเบราว์เซอร์ค่ะ', 'warning');
+    } else if (e.error !== 'no-speech' && e.error !== 'aborted') {
+      toast('ไม่สามารถรับข้อมูลจากไมค์ได้ (' + e.error + ')', 'error');
+    }
+  };
+
+  return rec;
+}
+
+if (voiceBtn) {
+  voiceBtn.onclick = async () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      toast('เบราว์เซอร์ของคุณไม่รองรับการสั่งงานด้วยเสียง กรุณาใช้ Google Chrome หรือ Microsoft Edge', 'error');
+      return;
+    }
+
+    // Request microphone permission via getUserMedia if not yet granted
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // Release stream right away so SpeechRecognition can take exclusive lock
+        stream.getTracks().forEach(track => track.stop());
+      } catch (err) {
+        console.warn('Microphone permission not granted:', err);
+        toast('กรุณากดอนุญาตให้เว็บไซต์เข้าถึงไมโครโฟน (Microphone Permission) ที่แถบ URL ด้านบนค่ะ', 'warning');
+        return;
+      }
+    }
+
+    try {
+      if (voiceBtn.classList.contains('voice-active')) {
+        if (recognition) recognition.stop();
+      } else {
+        if (!recognition) {
+          recognition = getSpeechRecognition();
+        }
+        if (recognition) {
+          recognition.start();
+        }
+      }
+    } catch (e) {
+      console.warn('Recognition start retry:', e);
+      try {
+        recognition = getSpeechRecognition();
+        if (recognition) recognition.start();
+      } catch (err) {
+        console.error('Failed to start voice recognition:', err);
+      }
     }
   };
 }
@@ -3598,10 +3796,7 @@ function startRealTimeCall() {
 
   if (realTimeVoiceModal) realTimeVoiceModal.classList.remove('hidden');
   if (voiceCallStatusText) voiceCallStatusText.innerText = 'กำลังฟังเสียงพูดของคุณ...';
-  if (voiceTranscriptText) voiceTranscriptText.innerText = '"สวัสดีค่ะ น้องพั้นพร้อมคุยแล้วค่ะ มีอะไรให้ช่วยเหลือบอกได้เลยนะคะ"';
-
-  // Play greeting
-  speakCallResponse("สวัสดีค่ะ น้องพั้นพร้อมคุยแล้วค่ะ มีเรื่องอะไรให้ช่วยเหลือบอกได้เลยนะคะ");
+  if (voiceTranscriptText) voiceTranscriptText.innerText = 'แตะหรือพูดคุยกับ AI ได้เลยค่ะ';
 
   // Start duration timer
   if (callTimerInterval) clearInterval(callTimerInterval);
@@ -3630,6 +3825,10 @@ function initCallRecognition() {
 
   callRecognition.onresult = (event) => {
     if (!callActive || callMuted) return;
+    // If AI is currently speaking, do not process microphone input to prevent self-loop echo
+    if (callSynth && callSynth.speaking) {
+      return;
+    }
 
     let interim = '';
     let finalStr = '';
@@ -3645,17 +3844,16 @@ function initCallRecognition() {
     if (interim && voiceTranscriptText) {
       voiceTranscriptText.innerText = `"${interim}"`;
       if (voiceCallStatusText) voiceCallStatusText.innerText = 'กำลังฟัง...';
-      // User is speaking: interrupt AI speech if currently speaking
-      if (callSynth && callSynth.speaking) {
-        callSynth.cancel();
-      }
     }
 
     if (finalStr.trim()) {
       const userText = finalStr.trim();
-      if (voiceTranscriptText) voiceTranscriptText.innerText = `"${userText}"`;
-      if (voiceCallStatusText) voiceCallStatusText.innerText = 'น้องพั้นกำลังคิดคำตอบ...';
-      handleCallTurn(userText);
+      // Ignore if user speech is just our own greetings or empty
+      if (userText.length > 1) {
+        if (voiceTranscriptText) voiceTranscriptText.innerText = `"${userText}"`;
+        if (voiceCallStatusText) voiceCallStatusText.innerText = 'AI กำลังคิดคำตอบ...';
+        handleCallTurn(userText);
+      }
     }
   };
 
@@ -3667,7 +3865,8 @@ function initCallRecognition() {
   };
 
   callRecognition.onend = () => {
-    if (callActive && !callMuted) {
+    // Only restart listening if call is active, not muted, and AI is NOT currently speaking
+    if (callActive && !callMuted && (!callSynth || !callSynth.speaking)) {
       try { callRecognition.start(); } catch (e) {}
     }
   };
@@ -3681,6 +3880,11 @@ function initCallRecognition() {
 
 async function handleCallTurn(userSpeech) {
   if (voiceWaveOrb) voiceWaveOrb.style.transform = 'scale(1.15)';
+  // Temporarily pause recognition while fetching & speaking
+  if (callRecognition) {
+    try { callRecognition.stop(); } catch (e) {}
+  }
+  
   try {
     const res = await fetch('/api/chat', {
       method: 'POST',
@@ -3697,20 +3901,26 @@ async function handleCallTurn(userSpeech) {
 
     const data = await res.json();
     if (data.ok && data.response) {
-      // Strip markdown asterisks and URLs for crisp voice delivery
       const spokenText = data.response
         .replace(/\*\*/g, '')
         .replace(/###/g, '')
         .replace(/https?:\/\/[^\s]+/g, 'ตามลิงก์ที่แสดง')
-        .slice(0, 350); // Keep voice answer concise
+        .slice(0, 300);
 
       if (voiceTranscriptText) voiceTranscriptText.innerText = `"${spokenText}"`;
-      if (voiceCallStatusText) voiceCallStatusText.innerText = 'น้องพั้นกำลังพูดตอบกลับ...';
+      if (voiceCallStatusText) voiceCallStatusText.innerText = 'AI กำลังพูดตอบกลับ...';
       speakCallResponse(spokenText);
+    } else {
+      if (callRecognition && callActive && !callMuted) {
+        try { callRecognition.start(); } catch (e) {}
+      }
     }
   } catch (err) {
     console.error('[Call Turn Error]', err);
     if (voiceCallStatusText) voiceCallStatusText.innerText = 'เกิดข้อผิดพลาดในการประมวลผลเสียง';
+    if (callRecognition && callActive && !callMuted) {
+      try { callRecognition.start(); } catch (e) {}
+    }
   } finally {
     if (voiceWaveOrb) voiceWaveOrb.style.transform = 'scale(1)';
   }
@@ -3728,14 +3938,33 @@ function speakCallResponse(text) {
 
     utterance.onstart = () => {
       if (voicePulseRing) voicePulseRing.classList.remove('hidden');
+      // Ensure microphone is stopped while speaker is outputting sound
+      if (callRecognition) {
+        try { callRecognition.stop(); } catch (e) {}
+      }
     };
     utterance.onend = () => {
       if (voicePulseRing) voicePulseRing.classList.add('hidden');
       if (callActive && voiceCallStatusText) voiceCallStatusText.innerText = 'กำลังฟังเสียงพูดของคุณ...';
+      // Restart microphone only AFTER speech synthesis has completely finished
+      setTimeout(() => {
+        if (callActive && !callMuted && callRecognition) {
+          try { callRecognition.start(); } catch (e) {}
+        }
+      }, 300);
+    };
+    utterance.onerror = () => {
+      if (voicePulseRing) voicePulseRing.classList.add('hidden');
+      if (callActive && !callMuted && callRecognition) {
+        try { callRecognition.start(); } catch (e) {}
+      }
     };
     callSynth.speak(utterance);
   } catch (e) {
     console.warn('[Speech synthesis error]', e);
+    if (callActive && !callMuted && callRecognition) {
+      try { callRecognition.start(); } catch (e) {}
+    }
   }
 }
 
@@ -3744,6 +3973,11 @@ function toggleMuteCall() {
   if (muteIcon) {
     muteIcon.setAttribute('data-lucide', callMuted ? 'mic-off' : 'mic');
     if (window.lucide) lucide.createIcons();
+  }
+  if (callMuted && callRecognition) {
+    try { callRecognition.stop(); } catch (e) {}
+  } else if (!callMuted && callRecognition && callActive) {
+    try { callRecognition.start(); } catch (e) {}
   }
   toast(callMuted ? 'ปิดไมค์แล้ว' : 'เปิดไมค์แล้ว', 'info');
 }
@@ -4023,21 +4257,31 @@ function renderPosts(posts) {
 
       if (isImg) {
         return `
-                <div class="relative group/att overflow-hidden rounded-xl border border-surface-100 dark:border-surface-800 aspect-video">
-                  <img src="${path}" class="w-full h-full object-cover transition-transform group-hover/att:scale-110 duration-500 cursor-pointer" onclick="openLightbox('${path}')">
-                  <button onclick="openFilePreview('${name}', '${path}', 'image/jpeg')" class="absolute inset-0 bg-black/40 opacity-0 group-hover/att:opacity-100 transition-opacity flex items-center justify-center text-white gap-2 text-[10px] font-bold">
-                    <i data-lucide="eye" class="w-4 h-4"></i> Quick Look
-                  </button>
+                <div class="relative group/att overflow-hidden rounded-xl border border-surface-100 dark:border-surface-800 aspect-video cursor-pointer" onclick="openLightbox('${path}', '${name}')">
+                  <img src="${path}" class="w-full h-full object-cover transition-transform group-hover/att:scale-105 duration-300" loading="lazy">
+                  <div class="absolute inset-0 bg-black/45 opacity-0 group-hover/att:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white">
+                    <button onclick="event.stopPropagation(); openLightbox('${path}', '${name}')" class="px-3 py-1.5 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-lg active:scale-95" title="ขยายรูป">
+                      <i data-lucide="zoom-in" class="w-3.5 h-3.5"></i> ขยายรูป
+                    </button>
+                    <a href="${path}" download="${name}" onclick="event.stopPropagation()" class="px-3 py-1.5 bg-brand-600 hover:bg-brand-500 backdrop-blur-md rounded-xl text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-lg active:scale-95" title="ดาวน์โหลด">
+                      <i data-lucide="download" class="w-3.5 h-3.5"></i> ดาวน์โหลด
+                    </a>
+                  </div>
                 </div>
               `;
       }
       return `
               <div class="flex items-center gap-2 p-3 bg-surface-50 dark:bg-surface-800/40 border border-surface-100 dark:border-surface-700 rounded-xl hover:border-brand-500 transition-all truncate group/file text-[10px] font-bold relative">
                 <i data-lucide="file-text" class="w-4 h-4 text-surface-400"></i>
-                <span class="truncate pr-8">${name}</span>
-                <button onclick="openFilePreview('${name}', '${path}', '${type}')" class="absolute right-2 p-1.5 bg-brand-500 text-white rounded-lg opacity-0 group-hover/file:opacity-100 transition-all">
-                   <i data-lucide="eye" class="w-3 h-3"></i>
-                </button>
+                <span class="truncate pr-16">${name}</span>
+                <div class="absolute right-2 flex items-center gap-1 opacity-0 group-hover/file:opacity-100 transition-all">
+                  <a href="${path}" download="${name}" class="p-1.5 bg-surface-200 dark:bg-surface-700 hover:bg-brand-500 hover:text-white text-surface-600 dark:text-surface-300 rounded-lg transition-all" title="ดาวน์โหลด">
+                    <i data-lucide="download" class="w-3 h-3"></i>
+                  </a>
+                  <button onclick="openFilePreview('${name}', '${path}', '${type}')" class="p-1.5 bg-brand-500 text-white rounded-lg transition-all" title="ดูตัวอย่าง">
+                     <i data-lucide="eye" class="w-3 h-3"></i>
+                  </button>
+                </div>
               </div>
             `;
     }).join('')}
@@ -7846,23 +8090,178 @@ function toggleChatFullscreen() {
   }
 }
 
-function openLightbox(url) {
+let lightboxState = {
+  zoom: 1.0,
+  minZoom: 0.5,
+  maxZoom: 5.0,
+  panX: 0,
+  panY: 0,
+  isDragging: false,
+  startX: 0,
+  startY: 0
+};
+
+function updateLightboxTransform() {
+  const img = $('lightboxImage');
+  const levelText = $('lightboxZoomLevel');
+  if (!img) return;
+  img.style.transform = `translate(${lightboxState.panX}px, ${lightboxState.panY}px) scale(${lightboxState.zoom})`;
+  img.style.cursor = lightboxState.zoom > 1 ? (lightboxState.isDragging ? 'grabbing' : 'grab') : 'zoom-in';
+  if (levelText) {
+    levelText.textContent = `${Math.round(lightboxState.zoom * 100)}%`;
+  }
+}
+
+function lightboxZoom(delta) {
+  let newZoom = Math.round((lightboxState.zoom + delta) * 100) / 100;
+  if (newZoom < lightboxState.minZoom) newZoom = lightboxState.minZoom;
+  if (newZoom > lightboxState.maxZoom) newZoom = lightboxState.maxZoom;
+  lightboxState.zoom = newZoom;
+  if (lightboxState.zoom <= 1) {
+    lightboxState.panX = 0;
+    lightboxState.panY = 0;
+  }
+  updateLightboxTransform();
+}
+
+function lightboxResetZoom() {
+  lightboxState.zoom = 1.0;
+  lightboxState.panX = 0;
+  lightboxState.panY = 0;
+  updateLightboxTransform();
+}
+
+function initLightboxEvents() {
+  const lightbox = $('imageLightbox');
+  const img = $('lightboxImage');
+  if (!lightbox || !img || lightbox._eventsInitialized) return;
+  lightbox._eventsInitialized = true;
+
+  // Wheel zoom
+  lightbox.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 0.2 : -0.2;
+    lightboxZoom(delta);
+  }, { passive: false });
+
+  // Double click to toggle 1x / 2.5x
+  img.addEventListener('dblclick', (e) => {
+    e.preventDefault();
+    if (lightboxState.zoom > 1.2) {
+      lightboxResetZoom();
+    } else {
+      lightboxState.zoom = 2.5;
+      updateLightboxTransform();
+    }
+  });
+
+  // Drag to pan
+  img.addEventListener('mousedown', (e) => {
+    if (lightboxState.zoom <= 1) return;
+    e.preventDefault();
+    lightboxState.isDragging = true;
+    lightboxState.startX = e.clientX - lightboxState.panX;
+    lightboxState.startY = e.clientY - lightboxState.panY;
+    updateLightboxTransform();
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!lightboxState.isDragging) return;
+    lightboxState.panX = e.clientX - lightboxState.startX;
+    lightboxState.panY = e.clientY - lightboxState.startY;
+    updateLightboxTransform();
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (lightboxState.isDragging) {
+      lightboxState.isDragging = false;
+      updateLightboxTransform();
+    }
+  });
+
+  // Keyboard navigation (Esc, +, -, 0)
+  window.addEventListener('keydown', (e) => {
+    if (!lightbox || lightbox.classList.contains('hidden')) return;
+    if (e.key === 'Escape') {
+      closeLightbox();
+    } else if (e.key === '+' || e.key === '=') {
+      lightboxZoom(0.25);
+    } else if (e.key === '-' || e.key === '_') {
+      lightboxZoom(-0.25);
+    } else if (e.key === '0') {
+      lightboxResetZoom();
+    }
+  });
+
+  // Touch pinch-to-zoom & touch drag for mobile devices
+  let initialPinchDist = 0;
+  let initialTouchZoom = 1;
+  lightbox.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 2) {
+      initialPinchDist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      initialTouchZoom = lightboxState.zoom;
+    } else if (e.touches.length === 1 && lightboxState.zoom > 1) {
+      lightboxState.isDragging = true;
+      lightboxState.startX = e.touches[0].clientX - lightboxState.panX;
+      lightboxState.startY = e.touches[0].clientY - lightboxState.panY;
+    }
+  }, { passive: true });
+
+  lightbox.addEventListener('touchmove', (e) => {
+    if (e.touches.length === 2 && initialPinchDist > 0) {
+      const dist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      const factor = dist / initialPinchDist;
+      let newZ = Math.min(Math.max(initialTouchZoom * factor, lightboxState.minZoom), lightboxState.maxZoom);
+      lightboxState.zoom = Math.round(newZ * 100) / 100;
+      updateLightboxTransform();
+    } else if (e.touches.length === 1 && lightboxState.isDragging) {
+      lightboxState.panX = e.touches[0].clientX - lightboxState.startX;
+      lightboxState.panY = e.touches[0].clientY - lightboxState.startY;
+      updateLightboxTransform();
+    }
+  }, { passive: true });
+
+  lightbox.addEventListener('touchend', () => {
+    lightboxState.isDragging = false;
+    initialPinchDist = 0;
+  }, { passive: true });
+}
+
+function openLightbox(url, name) {
   const lightbox = $('imageLightbox');
   const img = $('lightboxImage');
   const downloadBtn = $('lightboxDownload');
+  const titleEl = $('lightboxTitle');
   if (!lightbox || !img) return;
 
+  const fileName = name || (url ? url.split('/').pop().split('?')[0] : 'image.jpg');
   img.src = url;
-  downloadBtn.href = url;
+  if (downloadBtn) {
+    downloadBtn.href = url;
+    downloadBtn.setAttribute('download', fileName);
+  }
+  if (titleEl) {
+    titleEl.textContent = fileName;
+  }
+
+  lightboxResetZoom();
   lightbox.classList.remove('hidden');
   lightbox.classList.add('flex', 'items-center', 'justify-center');
   document.body.style.overflow = 'hidden';
+  initLightboxEvents();
   initIcons();
 }
 
 function closeLightbox() {
   const lightbox = $('imageLightbox');
   if (!lightbox) return;
+  lightboxResetZoom();
   lightbox.classList.add('hidden');
   lightbox.classList.remove('flex', 'items-center', 'justify-center');
   document.body.style.overflow = '';
@@ -9454,7 +9853,10 @@ function switchOrgTab(tab) {
   const scrollEl = document.querySelector('#view-org .overflow-y-auto');
   if (scrollEl) scrollEl.scrollTop = 0;
   if (tab === 'departments') loadOrgDepartments();
-  if (tab === 'leave') refreshAdminLeaves();
+  if (tab === 'leave') {
+    refreshAdminLeaves();
+    loadTeamLeaveCalendar();
+  }
   if (tab === 'google') loadOrgGoogleStatus();
   if (tab === 'business') loadOrgBusinessProfile();
   if (tab === 'peak') loadPeakSettingsStatus();
@@ -15236,37 +15638,57 @@ async function changeTeamCalendarMonth(delta) {
 }
 
 async function loadTeamLeaveCalendar() {
-  const grid = $('teamLeaveCalendarGrid');
-  const label = $('teamCalendarMonthLabel');
-  if (!grid || !label) return;
+  const teamGrid = $('teamLeaveCalendarGrid');
+  const teamLabel = $('teamCalendarMonthLabel');
+  const adminGrid = $('adminLeaveCalendarGrid');
+  const adminLabel = $('calendarMonthYearLabel');
+
+  if (!teamGrid && !adminGrid) return;
+
+  if (!_currentCalendarYear || !_currentCalendarMonth) {
+    const now = new Date();
+    _currentCalendarYear = now.getFullYear();
+    _currentCalendarMonth = now.getMonth() + 1;
+  }
 
   const monthStr = `${_currentCalendarYear}-${String(_currentCalendarMonth).padStart(2, '0')}`;
   const monthNamesTH = ["", "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
-  label.textContent = `${monthNamesTH[_currentCalendarMonth]} ${_currentCalendarYear + 543}`;
+  const labelText = `${monthNamesTH[_currentCalendarMonth] || ''} ${_currentCalendarYear + 543}`;
 
-  grid.innerHTML = `<div class="col-span-7 py-8 text-center text-xs text-surface-400">กำลังโหลดปฏิทินวันลา...</div>`;
+  if (teamLabel) teamLabel.textContent = labelText;
+  if (adminLabel) adminLabel.textContent = labelText;
+
+  const loadingHtml = `<div class="col-span-7 py-12 text-center text-xs text-surface-400"><i data-lucide="loader" class="w-4 h-4 animate-spin inline-block mr-1.5"></i>กำลังโหลดปฏิทินวันลา...</div>`;
+  if (teamGrid) teamGrid.innerHTML = loadingHtml;
+  if (adminGrid) adminGrid.innerHTML = loadingHtml;
+  if (typeof lucide !== 'undefined') lucide.createIcons();
 
   try {
     const res = await fetch(`/api/leave/team-calendar?month=${monthStr}`).then(r => r.json());
     if (!res.ok) {
-      grid.innerHTML = `<div class="col-span-7 py-8 text-center text-xs text-rose-500">ไม่สามารถโหลดปฏิทินได้</div>`;
+      const errHtml = `<div class="col-span-7 py-10 text-center text-xs text-rose-500">ไม่สามารถโหลดปฏิทินได้ (${escHtml(res.error || 'ข้อผิดพลาด')})</div>`;
+      if (teamGrid) teamGrid.innerHTML = errHtml;
+      if (adminGrid) adminGrid.innerHTML = errHtml;
       return;
     }
 
     const events = res.events || [];
-    
+
     // Build days of the current month
     const firstDay = new Date(_currentCalendarYear, _currentCalendarMonth - 1, 1).getDay(); // 0 = Sun
     const daysInMonth = new Date(_currentCalendarYear, _currentCalendarMonth, 0).getDate();
-    
-    let html = '';
-    
+
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+    let teamHtml = '';
+    let adminHtml = '';
+
     // Empty cells before day 1
     for (let i = 0; i < firstDay; i++) {
-      html += `<div class="min-h-[85px] p-1.5 bg-surface-50/50 dark:bg-surface-800/20 rounded-2xl border border-transparent"></div>`;
+      teamHtml += `<div class="min-h-[85px] p-1.5 bg-surface-50/50 dark:bg-surface-800/20 rounded-2xl border border-transparent"></div>`;
+      adminHtml += `<div class="min-h-[92px] p-2 bg-surface-50/30 dark:bg-surface-800/10 rounded-2xl border border-dashed border-surface-200/40 dark:border-surface-800/30 opacity-40"></div>`;
     }
-
-    const todayStr = new Date().toISOString().split('T')[0];
 
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = `${_currentCalendarYear}-${String(_currentCalendarMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -15274,50 +15696,109 @@ async function loadTeamLeaveCalendar() {
 
       // Find events spanning this date
       const dayEvents = events.filter(e => {
-        return dateStr >= e.start_date && dateStr <= e.end_date;
+        const s = e.start_date || '';
+        const end = e.end_date || s;
+        return dateStr >= s && dateStr <= end;
       });
 
-      let eventsHtml = dayEvents.map(e => {
-        let badgeColor = 'bg-purple-500/10 text-purple-600 border-purple-500/20';
+      // Employee View event tags
+      let teamEventsHtml = dayEvents.map(e => {
+        let badgeColor = 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20';
         let dotColor = 'bg-purple-500';
         const lType = (e.type || '').toLowerCase();
         if (lType.includes('ป่วย') || lType.includes('sick')) {
-          badgeColor = 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20';
+          badgeColor = 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20';
           dotColor = 'bg-emerald-500';
         } else if (lType.includes('กิจ') || lType.includes('personal')) {
-          badgeColor = 'bg-amber-500/10 text-amber-600 border-amber-500/20';
+          badgeColor = 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20';
           dotColor = 'bg-amber-500';
         } else if (lType.includes('พักร้อน') || lType.includes('vacation')) {
-          badgeColor = 'bg-blue-500/10 text-blue-600 border-blue-500/20';
+          badgeColor = 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20';
           dotColor = 'bg-blue-500';
         }
 
         const isPending = e.status === 'pending';
+        const safeName = escHtml(e.display_name || e.username || '');
+        const safeType = escHtml(e.type || '');
         return `
-          <div class="px-1.5 py-0.5 rounded-lg border text-[10px] font-bold flex items-center gap-1 truncate ${badgeColor} ${isPending ? 'opacity-70 border-dashed' : ''}" title="${e.display_name} (${e.type})${isPending ? ' - รออนุมัติ' : ''}">
+          <div onclick="openLeaveComments(${e.id})" class="px-1.5 py-0.5 rounded-lg border text-[10px] font-bold flex items-center gap-1 truncate cursor-pointer hover:opacity-80 transition ${badgeColor} ${isPending ? 'opacity-70 border-dashed' : ''}" title="${safeName} (${safeType})${isPending ? ' - รออนุมัติ' : ''}">
             <span class="w-1.5 h-1.5 rounded-full ${dotColor} flex-shrink-0"></span>
-            <span class="truncate">${e.display_name}</span>
+            <span class="truncate">${safeName}</span>
           </div>
         `;
       }).join('');
 
-      html += `
-        <div class="min-h-[85px] p-1.5 bg-white dark:bg-surface-800/40 rounded-2xl border ${isToday ? 'border-brand-500 shadow-sm shadow-brand-500/10' : 'border-surface-100 dark:border-surface-800'} flex flex-col justify-between transition hover:border-surface-300 dark:hover:border-surface-700">
+      teamHtml += `
+        <div class="min-h-[85px] p-1.5 bg-white dark:bg-surface-800/40 rounded-2xl border ${isToday ? 'border-brand-500 shadow-sm shadow-brand-500/10 ring-1 ring-brand-500/30' : 'border-surface-100 dark:border-surface-800'} flex flex-col justify-between transition hover:border-surface-300 dark:hover:border-surface-700">
           <div class="flex items-center justify-between mb-1">
-            <span class="text-[11px] font-bold ${isToday ? 'w-5 h-5 rounded-full bg-brand-600 text-white flex items-center justify-center' : 'text-surface-600 dark:text-surface-300'}">${day}</span>
-            ${dayEvents.length > 0 ? `<span class="text-[9px] font-bold text-surface-400">${dayEvents.length}</span>` : ''}
+            <span class="text-[11px] font-bold ${isToday ? 'w-5 h-5 rounded-full bg-brand-600 text-white flex items-center justify-center text-[10px]' : 'text-surface-600 dark:text-surface-300'}">${day}</span>
+            ${dayEvents.length > 0 ? `<span class="text-[9px] font-bold text-surface-400 px-1 rounded bg-surface-100 dark:bg-surface-700">${dayEvents.length}</span>` : ''}
           </div>
           <div class="space-y-1 overflow-y-auto max-h-[60px] no-scrollbar">
-            ${eventsHtml}
+            ${teamEventsHtml}
+          </div>
+        </div>
+      `;
+
+      // Admin View event tags (with approved/pending status styling matching the admin legend)
+      let adminEventsHtml = dayEvents.map(e => {
+        const isApproved = e.status === 'approved';
+        const isPending = e.status === 'pending';
+        let badgeColor = 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 border-surface-200 dark:border-surface-700';
+        let dotColor = 'bg-surface-400';
+        let statusText = 'อื่นๆ';
+
+        if (isApproved) {
+          badgeColor = 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/50';
+          dotColor = 'bg-emerald-500';
+          statusText = 'อนุมัติแล้ว (Approved)';
+        } else if (isPending) {
+          badgeColor = 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700/50 border-dashed';
+          dotColor = 'bg-amber-500';
+          statusText = 'รอดำเนินการ (Pending)';
+        } else if (e.status === 'rejected') {
+          badgeColor = 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800/50';
+          dotColor = 'bg-rose-500';
+          statusText = 'ปฏิเสธ (Rejected)';
+        }
+
+        const safeName = escHtml(e.display_name || e.username || '');
+        const safeType = escHtml(e.type || '');
+        const titleInfo = `${safeName} [${safeType}]\nสถานะ: ${statusText}\nวันที่: ${e.start_date} ถึง ${e.end_date}${e.reason ? '\nเหตุผล: ' + escHtml(e.reason) : ''}\n(คลิกเพื่อดูรายละเอียด / แชทคอมเมนต์)`;
+
+        return `
+          <div onclick="openLeaveComments(${e.id})" class="px-2 py-1 rounded-xl border text-[11px] font-bold flex items-center justify-between gap-1.5 cursor-pointer hover:shadow-sm hover:scale-[1.02] active:scale-95 transition-all ${badgeColor}" title="${titleInfo}">
+            <div class="flex items-center gap-1.5 min-w-0">
+              <span class="w-2 h-2 rounded-full ${dotColor} flex-shrink-0 ${isPending ? 'animate-pulse' : ''}"></span>
+              <span class="truncate font-bold">${safeName}</span>
+            </div>
+            <span class="text-[9px] opacity-75 font-normal shrink-0 truncate max-w-[50px]">${safeType}</span>
+          </div>
+        `;
+      }).join('');
+
+      adminHtml += `
+        <div class="min-h-[92px] p-2 bg-white dark:bg-surface-800/50 rounded-2xl border ${isToday ? 'border-brand-500 shadow-md shadow-brand-500/10 ring-2 ring-brand-500/20' : 'border-surface-200/70 dark:border-surface-800'} flex flex-col justify-between transition hover:border-surface-300 dark:hover:border-surface-700">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-xs font-black ${isToday ? 'w-6 h-6 rounded-full bg-brand-600 text-white flex items-center justify-center text-[11px] shadow-sm' : 'text-surface-700 dark:text-surface-200'}">${day}</span>
+            ${dayEvents.length > 0 ? `<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-surface-100 dark:bg-surface-700 text-surface-600 dark:text-surface-300">${dayEvents.length} คน</span>` : ''}
+          </div>
+          <div class="space-y-1.5 overflow-y-auto max-h-[75px] no-scrollbar">
+            ${adminEventsHtml}
           </div>
         </div>
       `;
     }
 
-    grid.innerHTML = html;
+    if (teamGrid) teamGrid.innerHTML = teamHtml;
+    if (adminGrid) adminGrid.innerHTML = adminHtml;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+
   } catch (err) {
     console.error('Failed to load team leave calendar:', err);
-    grid.innerHTML = `<div class="col-span-7 py-8 text-center text-xs text-rose-500">เกิดข้อผิดพลาดในการโหลดปฏิทิน</div>`;
+    const errHtml = `<div class="col-span-7 py-10 text-center text-xs text-rose-500">เกิดข้อผิดพลาดในการโหลดปฏิทิน</div>`;
+    if (teamGrid) teamGrid.innerHTML = errHtml;
+    if (adminGrid) adminGrid.innerHTML = errHtml;
   }
 }
 
@@ -15562,6 +16043,7 @@ async function adminSetLeaveStatus(id, status) {
         if (data.ok) {
             toast("ดำเนินการเรียบร้อยแล้ว", "success");
             refreshAdminLeaves();
+            loadTeamLeaveCalendar();
         } else {
             toast(data.error || "ไม่สามารถดำเนินการได้", "error");
         }
@@ -15703,6 +16185,12 @@ function prevLeaveMonth() {
 function nextLeaveMonth() {
     changeTeamCalendarMonth(1);
 }
+
+window.switchLeaveView = switchLeaveView;
+window.prevLeaveMonth = prevLeaveMonth;
+window.nextLeaveMonth = nextLeaveMonth;
+window.changeTeamCalendarMonth = changeTeamCalendarMonth;
+window.loadTeamLeaveCalendar = loadTeamLeaveCalendar;
 
 async function testMorningBriefing() {
     const btn = $('btnTestBriefing');

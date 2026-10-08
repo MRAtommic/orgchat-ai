@@ -106,9 +106,32 @@ const HCATS=[
 ];
 let _hc='ai';
 
-function openHelp(){document.getElementById('helpModal').style.display='flex';document.getElementById('helpSearch').value='';_hn();_hb(_hc);}
-function closeHelp(){document.getElementById('helpModal').style.display='none';}
-document.getElementById('helpModal').addEventListener('click',e=>{if(e.target===document.getElementById('helpModal'))closeHelp();});
+function _initHelpModal() {
+  const m = document.getElementById('helpModal');
+  if (m && !m._hasHelpListener) {
+    m._hasHelpListener = true;
+    m.addEventListener('click', e => { if (e.target === m) closeHelp(); });
+  }
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', _initHelpModal);
+} else {
+  _initHelpModal();
+}
+
+function openHelp(){
+  _initHelpModal();
+  const m = document.getElementById('helpModal');
+  if (m) m.style.display = 'flex';
+  const s = document.getElementById('helpSearch');
+  if (s) s.value = '';
+  _hn();
+  _hb(_hc);
+}
+function closeHelp(){
+  const m = document.getElementById('helpModal');
+  if (m) m.style.display = 'none';
+}
 
 function _hn(){
   document.getElementById('helpNav').innerHTML=
@@ -134,7 +157,7 @@ function filterHelp(q){
   body.innerHTML='<p style="font-size:11px;color:#94a3b8;margin-bottom:10px">พบ '+res.length+' ผลลัพธ์</p>'+res.map((it,i)=>'<div style="margin-bottom:4px"><div style="font-size:10px;color:#94a3b8;font-weight:700;margin-bottom:2px;display:flex;align-items:center;gap:4px"><span style="display:inline-flex">'+it.ico+'</span>'+it.lbl+'</div>'+_fq('sr'+i,it.q,it.a)+'</div>').join('');
 }
 
-window.addEventListener('keydown',e=>{if(e.shiftKey&&e.key==='?'&&!_ta)document.getElementById('helpModal').style.display==='flex'?closeHelp():openHelp();});
+window.addEventListener('keydown',e=>{if(e.shiftKey&&e.key==='?'&&!_ta){const m=document.getElementById('helpModal');if(m)m.style.display==='flex'?closeHelp():openHelp();}});
 
 // ─── Financial Dashboard & Reports UI ───
 /* ─── helpers ─── */

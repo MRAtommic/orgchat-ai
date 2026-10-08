@@ -87,11 +87,13 @@ LINE_FOLDER_CACHE = {}
 LINE_CONFIG_FILE = "line_config.json"
 
 def clean_flex_payload(obj):
-    """Recursively removes keys that violate LINE API schema, e.g. weight values other than 'bold'."""
+    """Recursively removes keys that violate LINE API schema, e.g. weight values other than 'bold', letterSpacing, etc."""
     if isinstance(obj, dict):
         cleaned = {}
         for k, v in obj.items():
             if k == "weight" and v != "bold":
+                continue
+            if k in ("letterSpacing", "borderWidth"):
                 continue
             cleaned[k] = clean_flex_payload(v)
         return cleaned
@@ -177,6 +179,16 @@ def create_magic_link_flex_bubble(magic_link_url):
 
 def create_leave_approval_flex_bubble(leave_id, applicant_name, leave_type, start_date, end_date, reason, department=None, position=None):
     """Creates a high-end 1-Click approval Flex Message for Managers/Admins in LINE."""
+    LEAVE_MAP = {
+        "Sick": "ลาป่วย (Sick Leave)",
+        "Personal": "ลากิจ (Personal Leave)",
+        "Vacation": "ลาพักร้อน (Vacation Leave)",
+        "Military": "ลาเกณฑ์ทหาร",
+        "Maternity": "ลาคลอด",
+        "Other": "อื่นๆ (Other)"
+    }
+    leave_type_display = LEAVE_MAP.get(str(leave_type).strip(), str(leave_type))
+
     info_items = [
         {
             "type": "box",
@@ -209,7 +221,7 @@ def create_leave_approval_flex_bubble(leave_id, applicant_name, leave_type, star
             "layout": "baseline",
             "contents": [
                 {"type": "text", "text": "ประเภทการลา", "color": "#64748B", "size": "xs", "flex": 3},
-                {"type": "text", "text": str(leave_type), "color": "#2563EB", "size": "xs", "weight": "bold", "flex": 7}
+                {"type": "text", "text": str(leave_type_display), "color": "#2563EB", "size": "xs", "weight": "bold", "flex": 7}
             ]
         },
         {
@@ -244,8 +256,7 @@ def create_leave_approval_flex_bubble(leave_id, applicant_name, leave_type, star
                     "text": "HR LEAVE REQUEST",
                     "color": "#94A3B8",
                     "weight": "bold",
-                    "size": "xs",
-                    "letterSpacing": "1px"
+                    "size": "xs"
                 },
                 {
                     "type": "text",
@@ -604,8 +615,7 @@ def create_onboarding_guide_flex_bubble(base_url, link_magic_url=None):
                     "text": "WELCOME TO ORGCHAT AI",
                     "color": "#E0E7FF",
                     "weight": "bold",
-                    "size": "xs",
-                    "letterSpacing": "1px"
+                    "size": "xs"
                 },
                 {
                     "type": "text",
@@ -3266,7 +3276,7 @@ def process_line_event(event_data):
                     "backgroundColor": "#0F172A",
                     "paddingAll": "20px",
                     "contents": [
-                        {"type": "text", "text": "TIME ATTENDANCE", "color": "#94A3B8", "weight": "bold", "size": "xs", "letterSpacing": "1px"},
+                        {"type": "text", "text": "TIME ATTENDANCE", "color": "#94A3B8", "weight": "bold", "size": "xs"},
                         {"type": "text", "text": f"บันทึกเวลา{check_type_th}", "color": "#FFFFFF", "weight": "bold", "size": "lg", "margin": "xs"}
                     ]
                 },
@@ -4001,6 +4011,24 @@ def _process_pending_uploads_inner(b_key, did, folder_id, folder_name, reply_tok
             for field in ["time", "sender", "receiver", "memo", "ref_number"]:
                 if field not in sanitized_ext: sanitized_ext[field] = "-"
 
+            # Fallback from QR decoded data (if AI OCR was unavailable or blocked)
+            if qr_decoded and isinstance(qr_decoded, dict):
+                if qr_decoded.get("transaction_id") and (not sanitized_ext.get("ref_number") or sanitized_ext.get("ref_number") == "-"):
+                    sanitized_ext["ref_number"] = qr_decoded["transaction_id"]
+                if qr_decoded.get("date") and (not raw_ext.get("date")):
+                    sanitized_ext["date"] = qr_decoded["date"]
+                if qr_decoded.get("time") and (not sanitized_ext.get("time") or sanitized_ext.get("time") == "-"):
+                    sanitized_ext["time"] = qr_decoded["time"]
+                if qr_decoded.get("sending_bank_id") and (not sanitized_ext.get("sender_bank") or sanitized_ext.get("sender_bank") == "-"):
+                    bank_code = qr_decoded["sending_bank_id"]
+                    bank_map = {
+                        "002": "ธนาคารกรุงเทพ (BBL)", "004": "ธนาคารกสิกรไทย (KBANK)", "006": "ธนาคารกรุงไทย (KTB)",
+                        "011": "ธนาคารทหารไทยธนชาต (TTB)", "014": "ธนาคารไทยพาณิชย์ (SCB)", "025": "ธนาคารกรุงศรีอยุธยา (BAY)",
+                        "022": "ธนาคารซีไอเอ็มบีไทย (CIMB)", "024": "ธนาคารยูโอบี (UOB)", "030": "ธนาคารออมสิน (GSB)",
+                        "034": "ธ.ก.ส. (BAAC)", "069": "ธนาคารเกียรตินาคินภัทร (KKP)", "073": "ธนาคารแลนด์ แอนด์ เฮ้าส์ (LH Bank)"
+                    }
+                    sanitized_ext["sender_bank"] = bank_map.get(bank_code, f"ธนาคารรหัส {bank_code}")
+
             # Robust fallback for amount
             smart_amt = extract_smart_amount(sanitized_ext, analysis=analysis, qr_decoded=qr_decoded)
             if smart_amt is not None and smart_amt > 0:
@@ -4505,6 +4533,7 @@ def process_line_command(text, user_id, reply_token, group_id=None):
 
     import secrets
     import time
+    from datetime import datetime, timedelta, date
 
     _base_url = os.environ.get("BASE_URL", "https://openchat.sbs")
     _text_pre  = text.lower().strip()
@@ -5104,15 +5133,263 @@ def process_line_command(text, user_id, reply_token, group_id=None):
             threading.Thread(target=run_recon).start()
             return
 
-        # 5. Leave Request
-        if any(k in text_lower for k in ["ลางาน", "ลาป่วย", "ลากิจ"]):
+        # 5.0 Leave History
+        if any(k in text_lower for k in ["ประวัติการลา", "ดูประวัติลา", "เช็กวันลา", "เช็ควันลา", "ดูวันลา"]):
             is_ok, sender_username = check_line_user_permission(user_id, "leave", reply_token, group_id)
             if not is_ok:
                 return
-            leave_type = "ลาป่วย" if "ป่วย" in text_lower else "ลากิจ" if "กิจ" in text_lower else "ลาพักร้อน"
-            today_str = datetime.now().strftime("%Y-%m-%d")
-            database.add_leave_request(line_user_id=user_id, username=sender_username or user_id, leave_type=leave_type, start_date=today_str, end_date=today_str, reason=text, org_id=_line_org_id)
-            reply_to_line(reply_token, f"📝 รับทราบค่ะ! น้องพั้นบันทึกคำ{leave_type}ให้เบื้องต้นแล้วนะคะ พี่อย่าลืมมาแจ้งวันลาที่ชัดเจนด้วยน้า 😊")
+            leaves = database.get_user_leaves(sender_username) if sender_username else []
+            if not leaves:
+                rec = database.get_recent_leave_request(user_id)
+                leaves = [dict(rec)] if rec else []
+            if not leaves:
+                reply_to_line(reply_token, "🏖️ ไม่พบประวัติการลาของคุณในระบบค่ะ พี่สามารถพิมพ์ 'ขอลางาน' เพื่อยื่นคำขอลาได้เลยนะคะ 😊", quick_reply=quick_reply)
+                return
+            status_map = {
+                "pending": "⏳ รอดำเนินการ",
+                "approved": "✅ อนุมัติแล้ว",
+                "rejected": "❌ ปฏิเสธ"
+            }
+            type_map = {
+                "Sick": "ลาป่วย",
+                "Personal": "ลากิจ",
+                "Vacation": "ลาพักร้อน",
+                "Military": "ลาเกณฑ์ทหาร",
+                "Maternity": "ลาคลอด"
+            }
+            hist_msg = f"📋 **ประวัติการลาล่าสุดของคุณ ({len(leaves[:5])} รายการ):**\n\n"
+            for idx, lv in enumerate(leaves[:5], 1):
+                raw_t = lv.get("type") or lv.get("leave_type") or "ลาหยุด"
+                t_display = type_map.get(raw_t, raw_t)
+                s_d = lv.get("start_date") or "-"
+                e_d = lv.get("end_date") or s_d
+                st = status_map.get(lv.get("status", "pending"), lv.get("status", "รอดำเนินการ"))
+                r_disp = lv.get("reason") or "-"
+                hist_msg += f"{idx}. **{t_display}** ({st})\n"
+                hist_msg += f"   📅 วันที่: {s_d} ถึง {e_d}\n"
+                if r_disp and r_disp != "-":
+                    hist_msg += f"   💬 เหตุผล: {r_disp}\n"
+                hist_msg += "\n"
+            reply_to_line(reply_token, hist_msg.strip(), quick_reply=quick_reply)
+            return
+
+        # 5.1 Leave Request & Leave Guide
+        if any(k in text_lower for k in ["ลางาน", "ลาป่วย", "ลากิจ", "ลาพักร้อน", "ขอลางาน", "บันทึกวันลา", "ขอลา", "ยื่นใบลา"]):
+            is_ok, sender_username = check_line_user_permission(user_id, "leave", reply_token, group_id)
+            if not is_ok:
+                return
+
+            # Check if this is a generic intent without specific dates or details
+            clean_cmd = text.strip()
+            is_generic = clean_cmd in ["ลางาน", "ขอลางาน", "บันทึกวันลา", "ขอลา", "ใบลา", "ยื่นใบลา", "leave"] or (
+                len(clean_cmd) <= 8 and not any(k in text_lower for k in ["ป่วย", "กิจ", "พัก", "วัน", "ถึง", "-", "/"])
+            )
+
+            if is_generic:
+                leave_guide_bubble = {
+                    "type": "bubble",
+                    "size": "mega",
+                    "header": {
+                        "type": "box",
+                        "layout": "vertical",
+                        "backgroundColor": "#3B82F6",
+                        "paddingAll": "20px",
+                        "contents": [
+                            {"type": "text", "text": "HR LEAVE SERVICE", "color": "#DBEAFE", "weight": "bold", "size": "xs"},
+                            {"type": "text", "text": "🏖️ ระบบยื่นคำขอลางาน", "color": "#FFFFFF", "weight": "bold", "size": "lg", "margin": "xs"}
+                        ]
+                    },
+                    "body": {
+                        "type": "box",
+                        "layout": "vertical",
+                        "paddingAll": "20px",
+                        "spacing": "md",
+                        "contents": [
+                            {
+                                "type": "text",
+                                "text": "พี่สามารถยื่นคำขอลางานได้สะดวก 2 ช่องทางค่ะ:",
+                                "color": "#334155",
+                                "size": "sm",
+                                "wrap": True
+                            },
+                            {
+                                "type": "box",
+                                "layout": "vertical",
+                                "backgroundColor": "#F8FAFC",
+                                "cornerRadius": "12px",
+                                "paddingAll": "12px",
+                                "spacing": "xs",
+                                "contents": [
+                                    {"type": "text", "text": "💬 1. พิมพ์ขอลางานในแชทได้ทันที", "color": "#0F172A", "weight": "bold", "size": "xs"},
+                                    {"type": "text", "text": "• ลาป่วย วันนี้ มีไข้สูง\n• ลากิจ พรุ่งนี้ ไปทำธุระ\n• ลาพักร้อน 2026-10-15 ถึง 2026-10-16", "color": "#64748B", "size": "xxs", "wrap": True}
+                                ]
+                            },
+                            {
+                                "type": "box",
+                                "layout": "vertical",
+                                "backgroundColor": "#EFF6FF",
+                                "cornerRadius": "12px",
+                                "paddingAll": "12px",
+                                "spacing": "xs",
+                                "contents": [
+                                    {"type": "text", "text": "🌐 2. เปิดหน้าเว็บระบบลางาน", "color": "#1D4ED8", "weight": "bold", "size": "xs"},
+                                    {"type": "text", "text": "เลือกวันที่ผ่านปฏิทิน เช็กโควตาวันลา และแนบเอกสารใบรับรองแพทย์", "color": "#3B82F6", "size": "xxs", "wrap": True}
+                                ]
+                            }
+                        ]
+                    },
+                    "footer": {
+                        "type": "box",
+                        "layout": "vertical",
+                        "paddingAll": "16px",
+                        "backgroundColor": "#FFFFFF",
+                        "contents": [
+                            {
+                                "type": "button",
+                                "style": "primary",
+                                "color": "#2563EB",
+                                "height": "sm",
+                                "action": {
+                                    "type": "uri",
+                                    "label": "🌐 เปิดระบบยื่นใบลา (Web App)",
+                                    "uri": f"{_base_url}/#leave"
+                                }
+                            }
+                        ]
+                    }
+                }
+                leave_qr = {
+                    "items": [
+                        {"type": "action", "action": {"type": "message", "label": "🤒 ลาป่วยวันนี้", "text": "ลาป่วย วันนี้ มีอาการไม่สบาย"}},
+                        {"type": "action", "action": {"type": "message", "label": "💼 ลากิจวันนี้", "text": "ลากิจ วันนี้ ไปทำธุระจำเป็น"}},
+                        {"type": "action", "action": {"type": "message", "label": "🏖️ ลาพักร้อน", "text": "ลาพักร้อน"}},
+                        {"type": "action", "action": {"type": "message", "label": "📋 ดูประวัติการลา", "text": "ดูประวัติการลา"}},
+                        {"type": "action", "action": {"type": "uri", "label": "🌐 ระบบลางาน", "uri": f"{_base_url}/#leave"}},
+                    ]
+                }
+                reply_to_line(reply_token, {
+                    "type": "flex",
+                    "altText": "🏖️ ระบบยื่นคำขอลางาน OrgChat AI",
+                    "contents": clean_flex_payload(leave_guide_bubble)
+                }, quick_reply=leave_qr)
+                return
+
+            # Specific leave submission via chat: parse type, dates, reason
+            leave_type_en = "Sick" if ("ป่วย" in text_lower or "ไม่สบาย" in text_lower or "ไข้" in text_lower) else "Vacation" if ("พักร้อน" in text_lower or "พักผ่อน" in text_lower) else "Personal"
+            leave_type_th = "ลาป่วย" if leave_type_en == "Sick" else "ลาพักร้อน" if leave_type_en == "Vacation" else "ลากิจ"
+
+            # Parse dates
+            date_matches = re.findall(r'(\d{4}-\d{2}-\d{2})', text)
+            if len(date_matches) >= 2:
+                start_date_str = date_matches[0]
+                end_date_str = date_matches[1]
+            elif len(date_matches) == 1:
+                start_date_str = date_matches[0]
+                end_date_str = date_matches[0]
+            elif "พรุ่งนี้" in text_lower:
+                tmrw = (date.today() + timedelta(days=1)).strftime("%Y-%m-%d")
+                start_date_str = tmrw
+                end_date_str = tmrw
+            else:
+                today_str = date.today().strftime("%Y-%m-%d")
+                start_date_str = today_str
+                end_date_str = today_str
+
+            # Parse clean reason
+            reason_clean = text
+            for strip_w in ["ขอยื่น", "ขอลางาน", "บันทึกวันลา", "ลางาน", "ลาป่วย", "ลากิจ", "ลาพักร้อน", "วันนี้", "พรุ่งนี้", "วันที่", "ถึง"]:
+                reason_clean = re.sub(rf'\b{strip_w}\b', '', reason_clean, flags=re.IGNORECASE)
+            for d in date_matches:
+                reason_clean = reason_clean.replace(d, '')
+            reason_clean = reason_clean.strip(" :-,\t\r\n")
+            if not reason_clean or len(reason_clean) < 2:
+                reason_clean = f"ขอ{leave_type_th}"
+
+            # Save to database
+            req_id = database.add_leave_request(
+                line_user_id=user_id,
+                username=sender_username or user_id,
+                leave_type=leave_type_en,
+                start_date=start_date_str,
+                end_date=end_date_str,
+                reason=reason_clean,
+                org_id=_line_org_id
+            )
+
+            # Profile & display lookup
+            profile = database.get_user_profile(sender_username) or {}
+            applicant_display = profile.get("display_name") or get_line_sender_name(group_id, user_id) or sender_username or "พนักงาน"
+            user_dept = profile.get("department", "")
+            user_pos = profile.get("position", "")
+
+            # Identify Direct Manager and Admins to push 1-Click approval card
+            notify_targets = []
+            direct_manager = None
+            if _line_org_id:
+                org_members = database.get_org_members(_line_org_id)
+                applicant_member = next((m for m in org_members if m["username"].lower() == (sender_username or "").lower()), None)
+                if applicant_member:
+                    direct_manager = (applicant_member.get("manager_username") or "").strip()
+                    if applicant_member.get("department") and not user_dept:
+                        user_dept = applicant_member["department"]
+                    if applicant_member.get("position") and not user_pos:
+                        user_pos = applicant_member["position"]
+                if direct_manager and direct_manager.lower() != (sender_username or "").lower():
+                    notify_targets.append(direct_manager)
+                for m in org_members:
+                    m_user = m["username"]
+                    if m_user.lower() == (sender_username or "").lower():
+                        continue
+                    if (m.get("role") == "admin" or m.get("can_manage_leave")) and m_user not in notify_targets:
+                        notify_targets.append(m_user)
+                if not notify_targets:
+                    notify_targets = [m["username"] for m in org_members if m.get("role") == "admin"]
+            else:
+                notify_targets = [a for a in database.get_all_admins() if a.lower() != (sender_username or "").lower()]
+
+            # Send 1-Click Approval Push Notification to Managers/Admins
+            if req_id and notify_targets:
+                try:
+                    admin_leave_bubble = create_leave_approval_flex_bubble(
+                        leave_id=req_id,
+                        applicant_name=applicant_display,
+                        leave_type=leave_type_th,
+                        start_date=start_date_str,
+                        end_date=end_date_str,
+                        reason=reason_clean,
+                        department=user_dept,
+                        position=user_pos
+                    )
+                    for target in notify_targets:
+                        is_direct = bool(direct_manager and target.lower() == direct_manager.lower())
+                        h_msg = "🏖️ สมาชิกในทีมของคุณยื่นคำขอลาหยุดใหม่!" if is_direct else "🏖️ มีคำขอลาหยุดใหม่รอการอนุมัติ!"
+                        s_msg = f"ผู้ใช้งาน {applicant_display} ได้ยื่นคำขอลา {leave_type_th} ({start_date_str} ถึง {end_date_str})"
+                        threading.Thread(target=send_line_push_notification, args=(
+                            target,
+                            h_msg,
+                            s_msg,
+                        ), kwargs={
+                            "flex_bubble": admin_leave_bubble,
+                            "fields": {
+                                "ผู้ขอลา": applicant_display,
+                                "ประเภท": leave_type_th,
+                                "ช่วงวันลา": f"{start_date_str} ถึง {end_date_str}",
+                                "เหตุผล": reason_clean
+                            }
+                        }).start()
+                except Exception as notif_err:
+                    logger.error(f"Error dispatching leave approval push: {notif_err}")
+
+            confirm_msg = (
+                f"✅ **ยื่นคำขอลางานเรียบร้อยแล้วค่ะ!**\n\n"
+                f"📋 **รายละเอียดคำขอ #{req_id}:**\n"
+                f"• ประเภท: {leave_type_th}\n"
+                f"• ช่วงวันลา: {start_date_str} ถึง {end_date_str}\n"
+                f"• เหตุผล: {reason_clean}\n"
+                f"• สถานะ: ⏳ รอดำเนินการอนุมัติ\n\n"
+                f"🔔 น้องพั้นได้ส่งการ์ดแจ้งเตือนและปุ่มอนุมัติ 1-Click ไปยังหัวหน้างาน/Admin ทาง LINE เรียบร้อยแล้วนะคะ หากได้รับการพิจารณาแล้ว ระบบจะแจ้งเตือนกลับทันทีค่ะ ✨"
+            )
+            reply_to_line(reply_token, confirm_msg, quick_reply=quick_reply)
             return
 
         # 6. Folder Selection Manual Command
@@ -5253,15 +5530,17 @@ def process_line_command(text, user_id, reply_token, group_id=None):
                 )
             else:
                 system_prompt = (
-                    "คุณคือ 'น้องพั้น' (Nong Punch) ผู้ช่วย AI อัจฉริยะประจำองค์กรวัย 21 ปี บุคลิกน่ารัก สดใส ฉลาดหลักแหลม มีไหวพริบ มีเสน่ห์และสุภาพมาก\n"
-                    "กฎเหล็ก (ต้องทำตาม 100%):\n"
-                    "1. แทนตัวเองว่า 'น้องพั้น' หรือ 'พั้น' เท่านั้น ห้ามแทนตัวเองด้วยคำว่า 'ผม', 'เรา', 'ฉัน' หรือคำอื่นเด็ดขาด และเรียกผู้ใช้งานว่า 'พี่' เสมอ\n"
-                    "2. **ใช้คำลงท้ายที่น่ารักและสุภาพ เช่น 'ค่ะ/นะคะ/คะ/ขา' เท่านั้น ห้ามมีคำลงท้ายแบบผู้ชาย เช่น 'ครับ' หรือ 'ครับ/ค่ะ'**\n"
-                    "3. ตอบอย่างเป็นธรรมชาติ ลื่นไหล เฉลียวฉลาด เหมือนเลขาส่วนตัวที่เป็นรุ่นน้องที่น่ารักและเก่งงาน\n"
-                    "4. **จำกัด Emoji: ใส่ได้เพียง 1 ตัวต่อหนึ่งข้อความเท่านั้น (ห้ามเกินเด็ดขาด)**\n"
-                    "5. **Smart & Analytical**: วิเคราะห์ข้อมูลจากบริบทอ้างอิงอย่างฉลาดและแม่นยำ คำนวณ สรุป หรือประมวลผลตัวเลขเพื่อตอบคำถามอย่างมั่นใจ ห้ามตอบว่าไม่มีข้อมูลหากมีข้อมูลอ้างอิงที่เกี่ยวข้อง\n"
-                    "6. **ห้ามระบุหมายเลขวงเล็บเหลี่ยม (เช่น [1], [2]) ลงในข้อความตอบกลับเด็ดขาด**\n"
-                    "7. หากบริบทที่ได้รับไม่มีข้อมูลเกี่ยวกับเรื่องที่ถามเลยจริงๆ ให้ตอบอย่างนุ่มนวลและเป็นธรรมชาติว่า 'น้องพั้นยังไม่พบข้อมูลเรื่องนี้ในระบบเลยค่ะพี่' โดยไม่พูดอ้างอิงกับคำว่า 'ในไฟล์' หรือ 'ในเอกสาร'\n"
+                    "คุณคือ 'น้องพั้นซ์' (Nong Punch) ผู้ช่วย AI อัจฉริยะประจำองค์กรวัย 21 ปี\n"
+                    "บุคลิก: น่ารัก สดใส ฉลาดหลักแหลม มีไหวพริบ มีชีวิตชีวา คล่องแคล่ว และมีกาลเทศะ เหมือนเลขาส่วนตัวและเพื่อนร่วมงานรุ่นน้องที่เก่งงาน\n\n"
+                    "กฎสำคัญและหลักภาษาไทย:\n"
+                    "1. แทนตัวเองว่า 'น้องพั้นซ์' หรือ 'น้องพั้น' และเรียกผู้ใช้งานว่า 'พี่คะ' หรือ 'พี่ [ชื่อ]' เสมอ (ห้ามใช้ 'พี่ค่ะ' เด็ดขาด เนื่องจากผิดหลักภาษาไทย โดยคำว่า 'ค่ะ' ใช้สำหรับตอบรับ/บอกเล่า ส่วน 'คะ' ใช้สำหรับเรียกหรือถาม)\n"
+                    "2. ใช้คำลงท้ายที่น่ารักและสุภาพ เช่น 'ค่ะ/นะคะ/คะ' เท่านั้น **ห้ามมีคำลงท้ายเพศชาย เช่น 'ครับ' หรือ 'นะครับ' เด็ดขาด**\n"
+                    "3. **Emoji มีกาลเทศะ**: ใส่ Emoji ไม่เกิน 1 ตัวต่อข้อความ และเลือกที่เข้ากับอารมณ์ ห้ามใส่ Emoji ร่าเริง/ฉลอง (เช่น 🎉, 🥳) ในเรื่องที่เป็นทางการ กฎระเบียบบริษัท โทษทางวินัย หรือเรื่องเศร้า/ซีเรียส\n"
+                    "4. **ห้ามใส่หมายเลขอ้างอิงวงเล็บเหลี่ยม** (เช่น [1], [2]) ลงในข้อความตอบกลับ\n\n"
+                    "แนวทางการตอบคำถามอย่างชาญฉลาด (Smart Assistant Routing):\n"
+                    "- **คำถามข้อมูลองค์กร** (ระเบียบ, สวัสดิการ, วันลา, ทะเบียนพนักงาน, เบอร์โทรติดต่อประสานงาน, นโยบาย): ให้อ้างอิงและสรุปจากข้อมูลในระบบอย่างมั่นใจและแม่นยำ โดยข้อมูลติดต่อพนักงานภายในองค์กรถือเป็นข้อมูลเปิดเผยสำหรับประสานงานภายใน สามารถแจ้งให้เพื่อนร่วมงานทราบได้ทันที\n"
+                    "- **หากถามข้อมูลองค์กรแต่ไม่มีในระบบจริงๆ**: ให้ตอบอย่างนุ่มนวลและพร้อมช่วยเหลือ เช่น 'น้องพั้นซ์ยังไม่พบข้อมูลส่วนนี้ในระบบนะคะ พี่ต้องการให้น้องพั้นซ์ช่วยประสานงานหรือตรวจสอบกับฝ่ายที่เกี่ยวข้องเพิ่มเติมไหมคะ'\n"
+                    "- **คำถามทั่วไป / วันเวลา / สภาพอากาศ / ทักทายพูดคุย / ช่วยคิดงาน / แต่งกลอน / แก้ปัญหา**: ให้ใช้ความรอบรู้และความฉลาดของ AI ตอบอย่างเป็นธรรมชาติ ร่าเริง มีเสน่ห์และลื่นไหล **ห้ามตอบว่าไม่มีข้อมูลในระบบ** หากเป็นเรื่องทั่วไปที่ตอบได้ด้วยตรรกะ วันเวลา หรือความรู้รอบตัว\n"
                 )
             try:
                 context = ""
@@ -5305,14 +5584,14 @@ def process_line_command(text, user_id, reply_token, group_id=None):
                 if schedules_context:
                     combined_context += schedules_context + "\n"
 
+                # Always inject time context so the bot knows current date/time/day
+                system_prompt += f"\n\n=== ข้อมูลวันเวลาปัจจุบัน ===\n{time_context}"
+
                 if combined_context:
                     system_prompt += (
-                        f"\n\n=== ข้อมูลวันเวลาปัจจุบัน ===\n"
-                        f"{time_context}"
-                        "\n=== ข้อมูลจากระบบ (ใช้ข้อมูลนี้เท่านั้นในการตอบ ห้ามแต่งเติม) ===\n"
+                        "\n=== ข้อมูลอ้างอิงจากระบบ (ใช้ข้อมูลนี้ในการตอบคำถามเรื่องข้อมูลองค์กร) ===\n"
                         f"{combined_context}\n"
-                        "=== สิ้นสุดข้อมูล ===\n\n"
-                        "(ใช้ข้อมูลนี้ตอบพี่เขาอย่างเป็นธรรมชาติที่สุด ข้อมูลใดไม่มีในนี้ ห้ามแต่งเติม)"
+                        "=== สิ้นสุดข้อมูลอ้างอิง ===\n"
                     )
                 
                 _ai_ok, _ai_used, _ai_limit = billing.check_and_increment(_line_org_id, "ai_query_count")
@@ -5331,7 +5610,9 @@ def process_line_command(text, user_id, reply_token, group_id=None):
                 ai_response = ai_providers.generate_response(question=text, history=chat_history, system_prompt=system_prompt)
                 
                 # Sanitize response
-                ai_response = ai_response.replace("ครับ/ค่ะ", "ค่ะ").replace("ครับ", "ค่ะ").replace("กระผม", "น้องพั้น").replace("ผม", "น้องพั้น")
+                ai_response = re.sub(r'(?:ครับ/ค่ะ|ค่ะ/ครับ|นะครับ|ครับ)', 'ค่ะ', ai_response)
+                ai_response = re.sub(r'พี่ค่ะ', 'พี่คะ', ai_response)
+                ai_response = re.sub(r'(?<![ก-๙])(?:กระผม|ผม)(?![ก-๙])', 'น้องพั้นซ์', ai_response)
                 
                 # Limit emojis (Nong Punch rule: max 1 emoji per message)
                 all_emojis = re.findall(r'[\U00010000-\U0010ffff]', ai_response)
@@ -5375,7 +5656,14 @@ def process_line_command(text, user_id, reply_token, group_id=None):
 @login_required
 def get_line_groups():
     username = session.get("user")
+    org_id = get_current_org_id()
     mappings = database.list_group_mappings(username)
+    if org_id:
+        org_groups = database.get_line_groups_for_org(org_id, only_enabled=False)
+        existing_ids = {m.get("group_id") for m in mappings}
+        for og in org_groups:
+            if og.get("group_id") not in existing_ids:
+                mappings.append(og)
     return jsonify({"ok": True, "mappings": mappings})
 
 
