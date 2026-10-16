@@ -97,7 +97,7 @@
                     }
 
                     renderCategories(data.categories, data.total_expense);
-                    renderChart(data.categories);
+                    renderExpenseDoughnutChart(data.categories);
                     renderUnclearTable(unclearRows);
                 })
                 .catch(err => {
@@ -110,6 +110,12 @@
                     if (icon) icon.classList.remove('spinning');
                     if (data.ok) {
                         allExpenses = data.expenses || [];
+                        const totalCount = allExpenses.length;
+                        const paidCount = allExpenses.filter(e => e.status === 'จ่ายแล้ว').length;
+                        const countEl = document.getElementById('valExpenseCount');
+                        if (countEl) countEl.textContent = `${totalCount} รายการ`;
+                        const paidEl = document.getElementById('valPaidCount');
+                        if (paidEl) paidEl.textContent = `${paidCount}`;
                         populateFilters(allExpenses);
                         applyAllFilters();
                     }
@@ -120,32 +126,140 @@
                 });
         }
 
+        let expenseChartInstance = null;
+
+        function renderExpenseDoughnutChart(categories) {
+            const canvas = document.getElementById('mainChart');
+            if (!canvas) return;
+
+            if (expenseChartInstance) {
+                expenseChartInstance.destroy();
+                expenseChartInstance = null;
+            }
+
+            if (!categories || categories.length === 0) {
+                return;
+            }
+
+            const labels = categories.map(c => c.name || c.category || 'อื่นๆ');
+            const data = categories.map(c => Number(c.value || c.amount || 0));
+
+            const colorPalette = [
+                '#3b82f6', // blue
+                '#6366f1', // indigo
+                '#10b981', // emerald
+                '#f59e0b', // amber
+                '#ec4899', // pink
+                '#8b5cf6', // purple
+                '#14b8a6', // teal
+                '#f97316'  // orange
+            ];
+
+            const isDark = document.documentElement.classList.contains('dark');
+            const borderCol = isDark ? '#0f172a' : '#ffffff';
+
+            const ctx = canvas.getContext('2d');
+            expenseChartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: colorPalette.slice(0, data.length),
+                        borderWidth: 3,
+                        borderColor: borderCol,
+                        hoverOffset: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '72%',
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const val = context.parsed || 0;
+                                    return ' ' + context.label + ': ฿' + formatNum(val);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
         function renderCategories(categories, totalExpense) {
             const list = document.getElementById('catList');
             if (!list) return;
             
             if (!categories || categories.length === 0) {
-                list.innerHTML = '<div class="text-center py-8 text-surface-400 text-sm">ไม่มีข้อมูลหมวดหมู่</div>';
+                list.innerHTML = '<div class="text-center py-8 text-surface-400 text-xs">ไม่มีข้อมูลหมวดหมู่</div>';
                 return;
             }
+
+            const colorPalette = ['#3b82f6', '#6366f1', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#14b8a6', '#f97316'];
             
-            list.innerHTML = categories.map(cat => {
+            list.innerHTML = categories.map((cat, idx) => {
                 const name = cat.name || cat.category || 'อื่นๆ';
                 const amount = cat.value || cat.amount || 0;
                 const pct = totalExpense > 0 ? ((amount / totalExpense) * 100).toFixed(1) : '0.0';
+                const barColor = colorPalette[idx % colorPalette.length];
                 
                 return `
-                    <div class="space-y-1.5 p-3 rounded-2xl bg-surface-50/50 dark:bg-surface-800/20 border border-surface-100 dark:border-surface-800/30 hover:border-brand-500/30 transition-all">
+                    <div class="space-y-2 p-3.5 rounded-xl bg-surface-50/70 dark:bg-surface-800/40 border border-surface-200/70 dark:border-surface-700/60 hover:border-brand-500/40 transition-all">
                         <div class="flex items-center justify-between text-xs">
-                            <span class="font-bold text-surface-700 dark:text-surface-300">${escHtml(name)}</span>
                             <div class="flex items-center gap-2">
-                                <span class="font-black text-surface-900 dark:text-white">฿${formatNum(amount)}</span>
-                                <span class="text-[10px] text-brand-600 font-bold bg-brand-50 dark:bg-brand-950/40 px-1.5 py-0.5 rounded">${pct}%</span>
+                                <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background-color: ${barColor}"></span>
+                                <span class="font-semibold text-surface-900 dark:text-white">${escHtml(name)}</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="font-bold text-surface-900 dark:text-white tabular-nums">฿${formatNum(amount)}</span>
+                                <span class="text-[10px] text-surface-600 dark:text-surface-300 font-bold bg-surface-200/60 dark:bg-surface-700 px-2 py-0.5 rounded-md">${pct}%</span>
                             </div>
                         </div>
-                        <div class="w-full h-2 bg-surface-100 dark:bg-surface-800 rounded-full overflow-hidden">
-                            <div class="h-full bg-brand-600 rounded-full" style="width: ${pct}%"></div>
+                        <div class="w-full h-1.5 bg-surface-200/80 dark:bg-surface-700/80 rounded-full overflow-hidden">
+                            <div class="h-full rounded-full transition-all duration-500" style="width: ${pct}%; background-color: ${barColor}"></div>
                         </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderMonthlySummary(groups) {
+            const list = document.getElementById('monthlySummaryList');
+            if (!list) return;
+
+            const groupKeys = Object.keys(groups).sort((a, b) => {
+                if (a === 'unknown') return 1;
+                if (b === 'unknown') return -1;
+                return b.localeCompare(a);
+            });
+
+            if (groupKeys.length === 0) {
+                list.innerHTML = '<div class="text-center py-8 text-surface-400 text-xs">ไม่มีข้อมูลสรุปรายเดือน</div>';
+                return;
+            }
+
+            list.innerHTML = groupKeys.map(k => {
+                const title = formatGroupNameTH(k);
+                const items = groups[k] || [];
+                const total = items.reduce((sum, item) => sum + (item.net_amount || 0), 0);
+                const isUnknown = k === 'unknown';
+
+                return `
+                    <div class="flex items-center justify-between p-3 rounded-xl bg-surface-50/70 dark:bg-surface-800/40 border border-surface-200/70 dark:border-surface-700/60 hover:bg-surface-100/60 dark:hover:bg-surface-700/40 transition-all text-xs">
+                        <div class="flex items-center gap-2.5">
+                            <span class="w-2 h-2 rounded-full ${isUnknown ? 'bg-amber-400' : 'bg-brand-500'}"></span>
+                            <div>
+                                <span class="font-semibold text-surface-900 dark:text-white">${escHtml(title)}</span>
+                                <span class="text-[10px] text-surface-400 dark:text-surface-500 ml-1.5">(${items.length} รายการ)</span>
+                            </div>
+                        </div>
+                        <span class="font-bold text-surface-900 dark:text-white tabular-nums">฿${formatNum(total)}</span>
                     </div>
                 `;
             }).join('');
@@ -395,8 +509,15 @@
                 groups[groupName].push(e);
             });
 
-            // Get month groups sorted chronologically
-            const groupKeys = Object.keys(groups).sort((a, b) => b.localeCompare(a)); // simple alpha-desc works for format YYYY-MM
+            // Get month groups sorted chronologically, with 'unknown' always last
+            const groupKeys = Object.keys(groups).sort((a, b) => {
+                if (a === 'unknown') return 1;
+                if (b === 'unknown') return -1;
+                return b.localeCompare(a);
+            });
+
+            // Render monthly summary card at top
+            renderMonthlySummary(groups);
 
             container.innerHTML = groupKeys.map(k => {
                 const monthNameTH = formatGroupNameTH(k);
@@ -404,73 +525,83 @@
                 const monthTotal = items.reduce((acc, cur) => acc + (cur.net_amount || 0), 0);
 
                 const rowsHtml = items.map(item => {
-                    const statusBadgeClass = item.status === 'จ่ายแล้ว' ? 'badge-emerald' : 'badge-amber';
-                    const docTypeClass = item.sheet_name === 'สลิปโอนเงิน' ? 'text-indigo-600 bg-indigo-50 border border-indigo-200' : 'text-emerald-700 bg-emerald-50 border border-emerald-200';
+                    const statusBadgeClass = item.status === 'จ่ายแล้ว' 
+                        ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200/60 dark:border-emerald-800/60' 
+                        : 'text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/50 border border-amber-200/60 dark:border-amber-800/60';
+                    const docTypeClass = item.sheet_name === 'สลิปโอนเงิน' 
+                        ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200/60 dark:border-indigo-800/60' 
+                        : 'text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/50 border border-brand-200/60 dark:border-brand-800/60';
                     
+                    const merchantDisplay = item.merchant && item.merchant !== '-' ? escHtml(item.merchant) : '<span class="text-surface-400">—</span>';
+                    const detailsDisplay = item.details && item.details !== '-' ? escHtml(item.details) : '<span class="text-surface-400">—</span>';
+                    const dateDisplay = item.date && item.date !== '-' ? escHtml(item.date) : '<span class="text-surface-400">—</span>';
+
                     return `
-                    <tr class="table-row-hover transition cursor-pointer" onclick="openEditModalFromRow(${JSON.stringify(item).replace(/"/g, '&quot;')})">
-                        <td class="w-10 px-3 py-4 text-center" onclick="event.stopPropagation()">
-                            <input type="checkbox" class="pv-checkbox w-4 h-4 rounded text-brand-600 border-slate-300 focus:ring-brand-500 cursor-pointer" data-item="${escAttr(JSON.stringify(item))}" onchange="updatePVBatchButton()">
+                    <tr class="hover:bg-surface-50/70 dark:hover:bg-surface-800/40 transition-colors cursor-pointer border-b border-surface-100 dark:border-surface-800/60" onclick="openEditModalFromRow(${JSON.stringify(item).replace(/"/g, '&quot;')})">
+                        <td class="w-10 px-3 py-3.5 text-center" onclick="event.stopPropagation()">
+                            <input type="checkbox" class="pv-checkbox w-4 h-4 rounded text-brand-600 border-surface-300 dark:border-surface-600 dark:bg-surface-800 focus:ring-brand-500 cursor-pointer" data-item="${escAttr(JSON.stringify(item))}" onchange="updatePVBatchButton()">
                         </td>
-                        <td class="px-6 py-4 text-xs text-slate-500 whitespace-nowrap">${escHtml(item.date)}</td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <span class="px-2.5 py-0.5 rounded text-[10px] font-bold ${docTypeClass}">${escHtml(item.sheet_name)}</span>
+                        <td class="px-5 py-3.5 text-xs text-surface-500 dark:text-surface-400 whitespace-nowrap font-medium">${dateDisplay}</td>
+                        <td class="px-5 py-3.5 whitespace-nowrap">
+                            <span class="px-2.5 py-0.5 rounded-md text-[10px] font-semibold ${docTypeClass}">${escHtml(item.sheet_name)}</span>
                         </td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <p class="text-xs font-bold text-slate-800 truncate max-w-[180px]">${escHtml(item.merchant)}</p>
+                        <td class="px-5 py-3.5 whitespace-nowrap">
+                            <p class="text-xs font-semibold text-surface-900 dark:text-white truncate max-w-[180px]">${merchantDisplay}</p>
                         </td>
-                        <td class="px-6 py-4">
-                            <p class="text-xs text-slate-600 truncate max-w-[240px]">${escHtml(item.details)}</p>
+                        <td class="px-5 py-3.5">
+                            <p class="text-xs text-surface-600 dark:text-surface-300 truncate max-w-[260px]">${detailsDisplay}</p>
                         </td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <p class="text-xs text-slate-700 font-semibold">${escHtml(item.line_sender_name || 'ไม่ระบุ')}</p>
+                        <td class="px-5 py-3.5 whitespace-nowrap">
+                            <span class="text-xs text-surface-700 dark:text-surface-300 font-medium">${escHtml(item.line_sender_name || 'ไม่ระบุ')}</span>
                         </td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${statusBadgeClass}">${escHtml(item.status)}</span>
+                        <td class="px-5 py-3.5 whitespace-nowrap">
+                            <span class="px-2 py-0.5 rounded-md text-[10px] font-semibold ${statusBadgeClass}">${escHtml(item.status)}</span>
                         </td>
-                        <td class="px-6 py-4 text-xs font-extrabold text-slate-900 whitespace-nowrap tabular-nums">฿${formatNum(item.net_amount)}</td>
-                        <td class="px-6 py-4 text-right whitespace-nowrap" onclick="event.stopPropagation()">
-                            <button onclick="openEditModalFromRow(${JSON.stringify(item).replace(/"/g, '&quot;')})" class="p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition mr-1.5" title="ดูรายละเอียด/แก้ไข">
-                                <i data-lucide="edit-3" class="w-4.5 h-4.5"></i>
-                            </button>
-                            <button onclick="deleteRowDirect('${escAttr(item.sheet_name)}', ${item.row_index})" class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition">
-                                <i data-lucide="trash-2" class="w-4.5 h-4.5"></i>
-                            </button>
-                            <button onclick="openReplacementFromExpense(${JSON.stringify(item).replace(/"/g, '&quot;')})" class="p-1.5 text-amber-400 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition ml-1" title="สร้างใบแทนใบเสร็จ">
-                                <i data-lucide="receipt" class="w-4.5 h-4.5"></i>
-                            </button>
+                        <td class="px-5 py-3.5 text-xs font-bold text-surface-900 dark:text-white whitespace-nowrap tabular-nums">฿${formatNum(item.net_amount)}</td>
+                        <td class="px-5 py-3.5 text-right whitespace-nowrap" onclick="event.stopPropagation()">
+                            <div class="flex items-center justify-end gap-1">
+                                <button onclick="openEditModalFromRow(${JSON.stringify(item).replace(/"/g, '&quot;')})" class="p-1.5 text-surface-400 hover:text-surface-900 dark:hover:text-white hover:bg-surface-100 dark:hover:bg-surface-800 rounded-lg transition" title="ดูรายละเอียด/แก้ไข">
+                                    <i data-lucide="edit-3" class="w-4 h-4"></i>
+                                </button>
+                                <button onclick="deleteRowDirect('${escAttr(item.sheet_name)}', ${item.row_index})" class="p-1.5 text-surface-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition" title="ลบรายการ">
+                                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                </button>
+                                <button onclick="openReplacementFromExpense(${JSON.stringify(item).replace(/"/g, '&quot;')})" class="p-1.5 text-surface-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-lg transition" title="สร้างใบแทนใบเสร็จ">
+                                    <i data-lucide="receipt" class="w-4 h-4"></i>
+                                </button>
+                            </div>
                         </td>
                     </tr>`;
                 }).join('');
 
                 return `
                 <div class="pt-6 first:pt-0">
-                    <div class="flex items-center justify-between mb-3 px-2">
-                        <div class="flex items-center gap-2">
-                            <h4 class="text-xs font-extrabold text-slate-950 uppercase tracking-wide">${monthNameTH}</h4>
-                            <span class="badge-slate px-2 py-0.5 rounded-full text-[9px] font-bold">${items.length} รายการ</span>
-                            <button id="batchPVBtn" onclick="createBatchPaymentVoucher()" class="hidden ml-2 px-3 py-1 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm">
+                    <div class="flex items-center justify-between mb-3 px-1">
+                        <div class="flex items-center gap-2.5">
+                            <h4 class="text-xs font-bold text-surface-900 dark:text-white uppercase tracking-wider">${monthNameTH}</h4>
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400">${items.length} รายการ</span>
+                            <button id="batchPVBtn" onclick="createBatchPaymentVoucher()" class="hidden ml-2 px-3 py-1 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5 shadow-xs">
                                 <i data-lucide="file-text" class="w-3.5 h-3.5"></i> ออกใบสำคัญจ่ายกลุ่ม (Payment Voucher)
                             </button>
                         </div>
-                        <span class="text-xs font-bold text-slate-800">ยอดรวม ฿${formatNum(monthTotal)}</span>
+                        <span class="text-xs font-semibold text-surface-700 dark:text-surface-300">ยอดรวม <span class="font-bold text-surface-900 dark:text-white tabular-nums">฿${formatNum(monthTotal)}</span></span>
                     </div>
-                    <div class="overflow-x-auto border border-slate-100 rounded-xl">
+                    <div class="overflow-x-auto border border-surface-200/80 dark:border-surface-800 rounded-xl bg-white dark:bg-surface-900 shadow-xs">
                         <table class="w-full text-left">
                             <thead>
-                                <tr class="bg-slate-50 border-b border-slate-100">
-                                    <th class="w-10 px-3 py-3 text-center"><input type="checkbox" class="w-4 h-4 rounded text-brand-600 border-slate-300 focus:ring-brand-500 cursor-pointer" onchange="toggleSelectAllPV(this)"></th>
-                                    <th class="px-6 py-3 text-[9px] font-bold text-slate-400 uppercase tracking-wider">วันที่</th>
-                                    <th class="px-6 py-3 text-[9px] font-bold text-slate-400 uppercase tracking-wider">ประเภทเอกสาร</th>
-                                    <th class="px-6 py-3 text-[9px] font-bold text-slate-400 uppercase tracking-wider">ร้านค้า</th>
-                                    <th class="px-6 py-3 text-[9px] font-bold text-slate-400 uppercase tracking-wider">รายละเอียด</th>
-                                    <th class="px-6 py-3 text-[9px] font-bold text-slate-400 uppercase tracking-wider">ผู้ขออนุญาตเบิกจ่าย</th>
-                                    <th class="px-6 py-3 text-[9px] font-bold text-slate-400 uppercase tracking-wider">สถานะการจ่าย</th>
-                                    <th class="px-6 py-3 text-[9px] font-bold text-slate-400 uppercase tracking-wider">ยอดชำระ</th>
-                                    <th class="px-6 py-3 text-[9px] font-bold text-slate-400 uppercase tracking-wider text-right">จัดการ</th>
+                                <tr class="bg-surface-50 dark:bg-surface-800/60 border-b border-surface-200/80 dark:border-surface-800">
+                                    <th class="w-10 px-3 py-3 text-center"><input type="checkbox" class="w-4 h-4 rounded text-brand-600 border-surface-300 dark:border-surface-600 dark:bg-surface-800 focus:ring-brand-500 cursor-pointer" onchange="toggleSelectAllPV(this)"></th>
+                                    <th class="px-5 py-3 text-[10px] font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider">วันที่</th>
+                                    <th class="px-5 py-3 text-[10px] font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider">ประเภทเอกสาร</th>
+                                    <th class="px-5 py-3 text-[10px] font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider">ร้านค้า</th>
+                                    <th class="px-5 py-3 text-[10px] font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider">รายละเอียด</th>
+                                    <th class="px-5 py-3 text-[10px] font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider">ผู้ขอเบิกจ่าย</th>
+                                    <th class="px-5 py-3 text-[10px] font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider">สถานะการจ่าย</th>
+                                    <th class="px-5 py-3 text-[10px] font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider">ยอดชำระ</th>
+                                    <th class="px-5 py-3 text-[10px] font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider text-right">จัดการ</th>
                                 </tr>
                             </thead>
-                            <tbody class="divide-y divide-slate-50 bg-white">
+                            <tbody class="divide-y divide-surface-100 dark:divide-surface-800/60 bg-white dark:bg-surface-900">
                                 ${rowsHtml}
                             </tbody>
                         </table>
@@ -481,18 +612,25 @@
             lucide.createIcons();
         }
 
-        // Helper to extract sorting group key "YYYY-MM"
+        // Helper to extract sorting group key "YYYY-MM" (normalized to Gregorian for sorting)
         function getMonthGroupName(dateStr) {
             if (!dateStr || dateStr === '-') return 'unknown';
-            const clean = dateStr.replace(/\//g, '-').trim(); // handle both DD-MM-YYYY and YYYY-MM-DD
+            const clean = dateStr.replace(/\//g, '-').trim();
             const parts = clean.split('-');
             if (parts.length === 3) {
-                // If it looks like DD-MM-YYYY
+                let y = 0;
+                let m = '01';
                 if (parts[2].length === 4) {
-                    return `${parts[2]}-${parts[1]}`;
+                    y = parseInt(parts[2], 10);
+                    m = parts[1].padStart(2, '0');
+                } else if (parts[0].length === 4) {
+                    y = parseInt(parts[0], 10);
+                    m = parts[1].padStart(2, '0');
                 }
-                // If YYYY-MM-DD
-                return `${parts[0]}-${parts[1]}`;
+                if (y > 0) {
+                    const gregorianYear = y > 2400 ? y - 543 : y;
+                    return `${gregorianYear}-${m}`;
+                }
             }
             return 'unknown';
         }
@@ -503,9 +641,10 @@
             '09': 'กันยายน', '10': 'ตุลาคม', '11': 'พฤศจิกายน', '12': 'ธันวาคม'
         };
         function formatGroupNameTH(key) {
-            if (key === 'unknown') return 'ไม่ระบุเดือน/ไม่พบวันที่';
+            if (key === 'unknown') return 'ไม่ระบุเดือน / ไม่มีวันที่ในเอกสาร';
             const parts = key.split('-');
-            const yearTH = parseInt(parts[0]) + 543;
+            let y = parseInt(parts[0], 10) || 0;
+            const yearTH = y > 2400 ? y : y + 543;
             const monthName = MONTH_TH[parts[1]] || 'ไม่ระบุ';
             return `${monthName} ${yearTH}`;
         }

@@ -1070,10 +1070,12 @@ if (loginPasswordToggle) {
   });
 }
 
-changeKeyBtn.addEventListener('click', () => {
-  apiKeyInput.value = '';
-  showApiModal();
-});
+if (changeKeyBtn) {
+  changeKeyBtn.addEventListener('click', () => {
+    if (apiKeyInput) apiKeyInput.value = '';
+    showApiModal();
+  });
+}
 
 const _IMG_EXTS = new Set(['png','jpg','jpeg','webp','bmp']);
 

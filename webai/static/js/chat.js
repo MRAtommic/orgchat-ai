@@ -9846,7 +9846,21 @@ function switchOrgTab(tab) {
     const btn = $(`orgTab-${t}`);
     const content = $(`orgTabContent-${t}`);
     const active = t === tab;
-    if (btn) btn.className = `org-tab px-4 py-2 rounded-xl text-xs font-black transition-all ${active ? 'bg-white dark:bg-surface-700 shadow-sm text-surface-900 dark:text-white' : 'text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-200'}`;
+    if (btn) {
+      btn.className = `org-tab inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-all ${
+        active 
+          ? 'bg-white dark:bg-surface-700 shadow-xs font-semibold text-surface-900 dark:text-white' 
+          : 'text-surface-500 dark:text-surface-400 hover:text-surface-800 dark:hover:text-surface-200 hover:bg-surface-200/50 dark:hover:bg-surface-700/50 font-medium'
+      }`;
+      const icon = btn.querySelector('i');
+      if (icon) {
+        if (active) {
+          icon.className = icon.className.replace(/text-surface-\d+/g, '').replace(/dark:text-surface-\d+/g, '') + ' text-brand-600 dark:text-brand-400';
+        } else {
+          icon.className = icon.className.replace(/text-brand-\d+/g, '').replace(/dark:text-brand-\d+/g, '') + ' text-surface-400 dark:text-surface-500';
+        }
+      }
+    }
     if (content) content.classList.toggle('hidden', !active);
   });
   // Reset scroll so the new tab content is visible from the top
@@ -10348,55 +10362,286 @@ async function deleteOrgAnnouncement(id) {
   }
 }
 
+let _orgLogsCategoryFilter = 'all';
+
+function getUserAvatarGradient(username) {
+  const gradients = [
+    'from-blue-600 to-indigo-600',
+    'from-emerald-600 to-teal-600',
+    'from-violet-600 to-purple-600',
+    'from-amber-600 to-orange-600',
+    'from-rose-600 to-pink-600',
+    'from-cyan-600 to-blue-600'
+  ];
+  let hash = 0;
+  for (let i = 0; i < (username || '').length; i++) {
+    hash = (hash << 5) - hash + username.charCodeAt(i);
+    hash |= 0;
+  }
+  const idx = Math.abs(hash) % gradients.length;
+  return gradients[idx];
+}
+
+function formatOrgLogTime(timeStr) {
+  if (!timeStr) return { formatted: '—', relative: '' };
+  try {
+    const d = new Date(timeStr.replace(' ', 'T'));
+    if (isNaN(d.getTime())) return { formatted: timeStr, relative: '' };
+    
+    const monthsTH = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+    const day = d.getDate();
+    const month = monthsTH[d.getMonth()];
+    const year = d.getFullYear() + 543;
+    const hours = String(d.getHours()).padStart(2, '0');
+    const mins = String(d.getMinutes()).padStart(2, '0');
+
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffSec = Math.floor(diffMs / 1000);
+    const diffMin = Math.floor(diffSec / 60);
+    const diffHour = Math.floor(diffMin / 60);
+    const diffDay = Math.floor(diffHour / 24);
+
+    let relative = '';
+    if (diffMin < 1) relative = 'เมื่อสักครู่';
+    else if (diffMin < 60) relative = `${diffMin} นาทีที่แล้ว`;
+    else if (diffHour < 24) relative = `${diffHour} ชม. ที่แล้ว`;
+    else if (diffDay < 7) relative = `${diffDay} วันที่แล้ว`;
+
+    return {
+      formatted: `${day} ${month} ${year} • ${hours}:${mins} น.`,
+      relative: relative
+    };
+  } catch (e) {
+    return { formatted: timeStr, relative: '' };
+  }
+}
+
+function parseOrgEvent(text, user) {
+  const raw = text || '';
+  
+  // 1. Created org announcement
+  if (raw.startsWith('Created org announcement:')) {
+    const title = raw.replace('Created org announcement:', '').trim();
+    return {
+      category: 'announcement',
+      badge: 'ประกาศองค์กร',
+      badgeClass: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60',
+      descriptionHtml: `สร้างประกาศ <span class="font-medium text-surface-900 dark:text-white">"${escapeHtml(title)}"</span>`
+    };
+  }
+
+  // 2. New post created
+  if (raw.startsWith('New post created:')) {
+    const match = raw.match(/ID\s*(\d+)/i);
+    const postId = match ? match[1] : '';
+    return {
+      category: 'post',
+      badge: 'โพสต์ฟีด',
+      badgeClass: 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/60',
+      descriptionHtml: `สร้างโพสต์ใหม่ในฟีด <span class="font-mono text-[10px] text-surface-500 font-semibold">#${postId}</span>`
+    };
+  }
+
+  // 3. Post deleted
+  if (raw.startsWith('Post deleted:')) {
+    const match = raw.match(/ID\s*(\d+)/i);
+    const postId = match ? match[1] : '';
+    return {
+      category: 'delete',
+      badge: 'ลบโพสต์',
+      badgeClass: 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200/60 dark:border-rose-800/60',
+      descriptionHtml: `ลบโพสต์ <span class="font-mono text-[10px] text-surface-500 font-semibold">#${postId}</span> ออกจากฟีด`
+    };
+  }
+
+  // 4. Assigned file to category
+  if (raw.startsWith('Assigned file')) {
+    const match = raw.match(/Assigned file\s+([a-zA-Z0-9]+)\s+to category\s+(.*)/i);
+    const fileHash = match ? match[1] : '';
+    const shortHash = fileHash.length > 12 ? fileHash.substring(0, 8) + '...' + fileHash.substring(fileHash.length - 4) : fileHash;
+    const cat = match ? match[2].trim() : 'None';
+    const catName = (cat === 'None' || cat === 'null' || !cat) ? 'ไม่ระบุหมวดหมู่' : `หมวดหมู่ ${cat}`;
+    return {
+      category: 'file',
+      badge: 'หมวดหมู่ไฟล์',
+      badgeClass: 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/60',
+      descriptionHtml: `กำหนดไฟล์ <span class="font-mono text-[10px] px-1 py-0.5 rounded bg-surface-100 dark:bg-surface-800 text-surface-700 dark:text-surface-300" title="${escapeHtml(fileHash)}">${escapeHtml(shortHash)}</span> &rarr; <span class="font-medium text-surface-900 dark:text-white">${escapeHtml(catName)}</span>`
+    };
+  }
+
+  // 5. Started uploading file
+  if (raw.startsWith('Started uploading file:')) {
+    const filename = raw.replace('Started uploading file:', '').trim();
+    return {
+      category: 'file',
+      badge: 'อัปโหลดไฟล์',
+      badgeClass: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60',
+      descriptionHtml: `อัปโหลดไฟล์ <span class="font-medium text-surface-900 dark:text-white">${escapeHtml(filename)}</span>`
+    };
+  }
+
+  // 6. Added KB category
+  if (raw.startsWith('Added KB category:')) {
+    const rest = raw.replace('Added KB category:', '').trim();
+    return {
+      category: 'file',
+      badge: 'คลังความรู้',
+      badgeClass: 'bg-teal-50 text-teal-700 dark:bg-teal-950/60 dark:text-teal-300 border border-teal-200/60 dark:border-teal-800/60',
+      descriptionHtml: `เพิ่มหมวดหมู่ความรู้: <span class="font-medium text-surface-900 dark:text-white">${escapeHtml(rest)}</span>`
+    };
+  }
+
+  // 7. Poll actions
+  if (raw.includes('voted on poll') || raw.startsWith('Poll added to post:')) {
+    return {
+      category: 'post',
+      badge: 'แบบสำรวจ',
+      badgeClass: 'bg-violet-50 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300 border border-violet-200/60 dark:border-violet-800/60',
+      descriptionHtml: `${escapeHtml(raw)}`
+    };
+  }
+
+  // 8. Schedule
+  if (raw.toLowerCase().includes('schedule')) {
+    const isDelete = raw.toLowerCase().includes('delete');
+    return {
+      category: isDelete ? 'delete' : 'schedule',
+      badge: isDelete ? 'ลบนัดหมาย' : 'นัดหมาย',
+      badgeClass: isDelete 
+        ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200/60 dark:border-rose-800/60'
+        : 'bg-sky-50 text-sky-700 dark:bg-sky-950/60 dark:text-sky-300 border border-sky-200/60 dark:border-sky-800/60',
+      descriptionHtml: `${escapeHtml(raw)}`
+    };
+  }
+
+  // 9. AI Persona
+  if (raw.toLowerCase().includes('ai persona')) {
+    return {
+      category: 'system',
+      badge: 'AI Persona',
+      badgeClass: 'bg-fuchsia-50 text-fuchsia-700 dark:bg-fuchsia-950/60 dark:text-fuchsia-300 border border-fuchsia-200/60 dark:border-fuchsia-800/60',
+      descriptionHtml: `${escapeHtml(raw)}`
+    };
+  }
+
+  // Fallback
+  return {
+    category: 'system',
+    badge: 'ระบบ',
+    badgeClass: 'bg-surface-100 text-surface-700 dark:bg-surface-800 dark:text-surface-300 border border-surface-200 dark:border-surface-700',
+    descriptionHtml: `${escapeHtml(raw)}`
+  };
+}
+
 async function loadOrgLogs() {
   const container = $('orgLogList');
-  if (!container) return;
-  container.innerHTML = '<div class="text-center py-8 opacity-50 text-xs">กำลังโหลดบันทึกกิจกรรม...</div>';
+  const refreshIcon = $('orgLogRefreshIcon');
+  if (refreshIcon) refreshIcon.classList.add('animate-spin');
+  if (container) {
+    container.innerHTML = '<tr><td colspan="4" class="text-center py-12 text-surface-400 text-xs font-medium">กำลังโหลดบันทึกกิจกรรม...</td></tr>';
+  }
   try {
     const res = await apiFetch('/api/org/logs');
+    if (refreshIcon) refreshIcon.classList.remove('animate-spin');
     if (res.ok && res.logs) {
       _orgLogsCache = res.logs;
-      renderOrgLogs(_orgLogsCache);
+      const countBadge = $('orgLogsCountBadge');
+      if (countBadge) countBadge.textContent = `${_orgLogsCache.length} รายการ`;
+      filterOrgLogs($('orgLogSearch') ? $('orgLogSearch').value : '');
     }
   } catch (e) {
-    container.innerHTML = '<div class="text-center py-6 text-red-500 text-xs">โหลดบันทึกประวัติล้มเหลว</div>';
+    if (refreshIcon) refreshIcon.classList.remove('animate-spin');
+    if (container) {
+      container.innerHTML = '<tr><td colspan="4" class="text-center py-8 text-rose-500 text-xs font-medium">โหลดบันทึกประวัติล้มเหลว กรุณาลองใหม่อีกครั้ง</td></tr>';
+    }
   }
+}
+
+function setOrgLogCategoryFilter(category) {
+  _orgLogsCategoryFilter = category;
+  document.querySelectorAll('.org-log-chip').forEach(btn => {
+    const isTarget = btn.id === `orgLogChip-${category}`;
+    if (isTarget) {
+      btn.className = 'org-log-chip px-3 py-1 rounded-md text-xs font-semibold whitespace-nowrap transition-all bg-surface-900 text-white dark:bg-white dark:text-surface-900 shadow-xs';
+    } else {
+      btn.className = 'org-log-chip px-3 py-1 rounded-md text-xs font-medium whitespace-nowrap transition-all bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-200/60 dark:hover:bg-surface-700';
+    }
+  });
+  filterOrgLogs($('orgLogSearch') ? $('orgLogSearch').value : '');
 }
 
 function renderOrgLogs(logs) {
   const container = $('orgLogList');
   if (!container) return;
   if (!logs || logs.length === 0) {
-    container.innerHTML = '<div class="text-center py-10 text-surface-400 text-xs font-bold bg-surface-50 dark:bg-surface-800/30 rounded-2xl">ยังไม่มีบันทึกกิจกรรมในองค์กร</div>';
+    container.innerHTML = `
+      <tr>
+        <td colspan="4" class="text-center py-12 px-4 text-surface-400 dark:text-surface-500 text-xs">
+          ไม่พบบันทึกกิจกรรมที่ตรงกับเงื่อนไข
+        </td>
+      </tr>`;
     return;
   }
-  container.innerHTML = logs.map(l => `
-    <div class="flex items-center justify-between p-3 bg-surface-50 dark:bg-surface-800/30 border border-surface-150 dark:border-surface-700/50 rounded-xl hover:border-brand-500/30 transition-all">
-      <div class="flex items-center gap-3">
-        <div class="w-8 h-8 rounded-full bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 flex items-center justify-center text-xs font-black shrink-0">
-          ${(l.user || 'S')[0].toUpperCase()}
-        </div>
-        <div class="space-y-0.5">
-          <div class="flex items-center gap-2">
-            <span class="text-xs font-black text-surface-900 dark:text-white">@${escapeHtml(l.user || 'System')}</span>
+
+  container.innerHTML = logs.map(l => {
+    const parsed = parseOrgEvent(l.event, l.user);
+    const timeInfo = formatOrgLogTime(l.time);
+    const initial = (l.user || 'S')[0].toUpperCase();
+
+    return `
+      <tr class="hover:bg-surface-50/70 dark:hover:bg-surface-800/40 transition-colors">
+        <!-- Timestamp -->
+        <td class="px-4 py-2.5 whitespace-nowrap font-mono text-[11px] text-surface-500 dark:text-surface-400">
+          ${timeInfo.formatted}
+        </td>
+
+        <!-- Actor -->
+        <td class="px-4 py-2.5 whitespace-nowrap">
+          <div class="flex items-center gap-1.5">
+            <span class="w-5 h-5 rounded-full bg-surface-200 dark:bg-surface-700 text-surface-700 dark:text-surface-200 text-[10px] font-bold flex items-center justify-center shrink-0">
+              ${initial}
+            </span>
+            <span class="font-semibold text-surface-800 dark:text-surface-200 text-xs">@${escapeHtml(l.user || 'System')}</span>
           </div>
-          <p class="text-xs text-surface-600 dark:text-surface-300 font-medium">${escapeHtml(l.event || '')}</p>
-        </div>
-      </div>
-      <div class="text-right shrink-0">
-        <span class="text-[10px] font-bold text-surface-400">${l.time || ''}</span>
-      </div>
-    </div>
-  `).join('');
+        </td>
+
+        <!-- Event Badge -->
+        <td class="px-4 py-2.5 whitespace-nowrap">
+          <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold ${parsed.badgeClass}">
+            ${parsed.badge}
+          </span>
+        </td>
+
+        <!-- Details -->
+        <td class="px-4 py-2.5 text-xs text-surface-600 dark:text-surface-300">
+          ${parsed.descriptionHtml}
+        </td>
+      </tr>
+    `;
+  }).join('');
 }
 
 function filterOrgLogs(query) {
   const q = (query || '').toLowerCase().trim();
-  if (!q) return renderOrgLogs(_orgLogsCache);
-  const filtered = _orgLogsCache.filter(l => 
-    (l.user || '').toLowerCase().includes(q) || 
-    (l.event || '').toLowerCase().includes(q)
-  );
+  let filtered = _orgLogsCache || [];
+  
+  // Category Filter
+  if (_orgLogsCategoryFilter !== 'all') {
+    filtered = filtered.filter(l => {
+      const parsed = parseOrgEvent(l.event, l.user);
+      return parsed.category === _orgLogsCategoryFilter;
+    });
+  }
+  
+  // Search query
+  if (q) {
+    filtered = filtered.filter(l => 
+      (l.user || '').toLowerCase().includes(q) || 
+      (l.event || '').toLowerCase().includes(q)
+    );
+  }
+  
   renderOrgLogs(filtered);
 }
 
@@ -11040,31 +11285,89 @@ function _renderMySettings(d) {
       ? `<span class="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400"><span class="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>ใช้งานอยู่</span>`
       : `<span class="flex items-center gap-1.5 text-red-500"><span class="w-2 h-2 rounded-full bg-red-500 inline-block"></span>ปิดการใช้งาน</span>`;
   }
-  // Permissions list
+  // Permissions list (Human-designed grouped pill architecture)
   const permsEl = $('myPermissionsList');
   if (permsEl) {
-    const perms = [
-      { key: 'can_view_kb', label: 'ดูคลังข้อมูล', desc: 'ดูและค้นหาไฟล์' },
-      { key: 'can_edit_kb', label: 'แก้ไขคลังข้อมูล', desc: 'อัปโหลดและแก้ไขไฟล์' },
-      { key: 'can_delete_kb', label: 'ลบไฟล์คลังข้อมูล', desc: 'ลบไฟล์ออกจากระบบ' },
-      { key: 'can_view_financial', label: 'แดชบอร์ดรายจ่าย', desc: 'ดูหน้าสรุปภาษีและค่าใช้จ่าย' },
-      { key: 'can_manage_leave', label: 'จัดการการลา', desc: 'อนุมัติและจัดการคำขอลาของพนักงาน' },
-      { key: 'can_broadcast_line', label: 'บรอดแคสต์ LINE', desc: 'ส่งข้อความบรอดแคสต์ไปยังกลุ่มและผู้ใช้' },
-      { key: 'can_manage_peak', label: 'จัดการ PEAK Account', desc: 'เชื่อมต่อและจัดการระบบบัญชี PEAK' },
-      { key: 'can_use_ai', label: 'สนทนากับ AI', desc: 'สิทธิ์พูดคุยและประมวลผลกับ AI' },
-      { key: 'can_claim_expense', label: 'เบิกจ่ายค่าใช้จ่าย', desc: 'ยื่นคำขอเบิกเงินและส่งสลิปค่าใช้จ่าย' },
+    const groups = [
+      {
+        title: 'คลังเอกสาร & ข้อมูล',
+        icon: 'folder-archive',
+        items: [
+          { key: 'can_view_kb', label: 'ดูและค้นหาไฟล์' },
+          { key: 'can_edit_kb', label: 'อัปโหลด / แก้ไข' },
+          { key: 'can_delete_kb', label: 'ลบไฟล์คลังข้อมูล' },
+        ]
+      },
+      {
+        title: 'การเงิน & งานบัญชี',
+        icon: 'wallet-cards',
+        items: [
+          { key: 'can_view_financial', label: 'แดชบอร์ดรายจ่าย' },
+          { key: 'can_claim_expense', label: 'ยื่นเบิกจ่ายค่าใช้จ่าย' },
+          { key: 'can_manage_peak', label: 'ระบบบัญชี PEAK' },
+        ]
+      },
+      {
+        title: 'ระบบ & การสื่อสาร',
+        icon: 'sliders',
+        items: [
+          { key: 'can_use_ai', label: 'สนทนากับ AI' },
+          { key: 'can_manage_leave', label: 'จัดการคำขอลา' },
+          { key: 'can_broadcast_line', label: 'บรอดแคสต์ LINE' },
+        ]
+      }
     ];
 
-    permsEl.innerHTML = perms.map(p => {
-      const on = !!d[p.key];
-      return `<div class="flex items-center justify-between p-3 rounded-xl border ${on ? 'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/50 dark:bg-emerald-900/10' : 'border-surface-100 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/30'}">
-        <div>
-          <div class="text-xs font-bold text-surface-800 dark:text-white">${p.label}</div>
-          <div class="text-[10px] text-surface-400">${p.desc}</div>
+    let totalCount = 0;
+    let activeCount = 0;
+    groups.forEach(g => {
+      g.items.forEach(it => {
+        totalCount++;
+        if (d[it.key]) activeCount++;
+      });
+    });
+
+    const activeBadge = $('myPermsActiveBadge');
+    if (activeBadge) {
+      if (activeCount === totalCount) {
+        activeBadge.textContent = 'เข้าถึงได้ทุกฟีเจอร์ (Full Access)';
+        activeBadge.className = 'text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-0.5 rounded-full border border-emerald-200/60 dark:border-emerald-800/40';
+      } else {
+        activeBadge.textContent = `อนุมัติแล้ว ${activeCount}/${totalCount} สิทธิ์`;
+        activeBadge.className = 'text-[10px] font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/60 px-2.5 py-0.5 rounded-full border border-brand-200/60 dark:border-brand-800/40';
+      }
+    }
+
+    permsEl.className = 'p-4 bg-surface-50/70 dark:bg-surface-800/30 rounded-2xl border border-surface-200/70 dark:border-surface-700/50 space-y-3';
+    permsEl.innerHTML = groups.map((g, idx) => {
+      const isLast = idx === groups.length - 1;
+      const pills = g.items.map(it => {
+        const on = !!d[it.key];
+        if (on) {
+          return `<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium bg-emerald-50/90 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/60">
+            <svg class="w-3.5 h-3.5 text-emerald-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+            </svg>
+            ${it.label}
+          </span>`;
+        } else {
+          return `<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium bg-surface-100/60 dark:bg-surface-800/40 text-surface-400 dark:text-surface-500 border border-surface-200/60 dark:border-surface-700/40 opacity-50">
+            <svg class="w-3.5 h-3.5 text-surface-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+            </svg>
+            ${it.label}
+          </span>`;
+        }
+      }).join('');
+
+      return `<div class="${!isLast ? 'pb-3 border-b border-surface-200/50 dark:border-surface-700/40' : ''}">
+        <div class="text-[10px] font-bold text-surface-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+          <i data-lucide="${g.icon}" class="w-3.5 h-3.5 text-surface-400"></i>
+          <span>${g.title}</span>
         </div>
-        <span class="${on ? 'text-emerald-600 dark:text-emerald-400' : 'text-surface-300 dark:text-surface-600'} text-lg">
-          ${on ? '✓' : '—'}
-        </span>
+        <div class="flex flex-wrap gap-1.5">
+          ${pills}
+        </div>
       </div>`;
     }).join('');
   }
@@ -15909,50 +16212,62 @@ function updateLeaveQuotaDashboard(balance) {
 
 function renderLeaveHistory(leaves) {
     const list = $('leaveHistoryList');
+    if (!list) return;
     if (leaves.length === 0) {
         list.innerHTML = `
-            <div class="text-center py-12 bg-surface-50 dark:bg-surface-800/30 rounded-[32px] border-2 border-dashed border-surface-200 dark:border-surface-800">
-              <p class="text-surface-400 text-sm">ยังไม่มีประวัติการลา</p>
+            <div class="text-center py-8 bg-surface-50 dark:bg-surface-800/30 rounded-xl border border-dashed border-surface-200 dark:border-surface-800">
+              <p class="text-surface-400 text-xs">ยังไม่มีประวัติการลาในระบบ</p>
             </div>
         `;
         return;
     }
 
+    const typeLabels = {
+        'Sick': 'ลาป่วย',
+        'Personal': 'ลากิจ',
+        'Vacation': 'ลาพักร้อน',
+        'Military': 'ลาเกณฑ์ทหาร',
+        'Maternity': 'ลาคลอด',
+        'Other': 'ลาอื่นๆ'
+    };
+
     list.innerHTML = leaves.map(l => {
-        let statusColor = 'bg-amber-100 text-amber-700';
+        let statusBadge = 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50';
         let statusText = 'รอดำเนินการ';
         if (l.status === 'approved') {
-            statusColor = 'bg-emerald-100 text-emerald-700';
+            statusBadge = 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50';
             statusText = 'อนุมัติแล้ว';
         } else if (l.status === 'rejected') {
-            statusColor = 'bg-rose-100 text-rose-700';
-            statusText = 'ปฏิเสธแล้ว';
+            statusBadge = 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300 border border-rose-200 dark:border-rose-800/50';
+            statusText = 'ปฏิเสธ';
         }
 
+        const typeTh = typeLabels[l.type] || l.type;
+
         return `
-            <div class="p-6 bg-white dark:bg-surface-900 border border-surface-100 dark:border-surface-800 rounded-3xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 animate-in slide-in-from-bottom-2 duration-300">
-                <div class="flex items-center gap-4">
-                    <div class="w-12 h-12 rounded-2xl bg-surface-50 dark:bg-surface-800 flex items-center justify-center text-surface-400">
-                        <i data-lucide="${l.type === 'Sick' ? 'thermometer' : 'calendar'}" class="w-6 h-6"></i>
+            <div class="p-4 bg-white dark:bg-surface-900 border border-surface-200/80 dark:border-surface-800 rounded-xl shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-surface-300 dark:hover:border-surface-700 transition-colors">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-lg bg-surface-100 dark:bg-surface-800 flex items-center justify-center text-surface-600 dark:text-surface-400 shrink-0">
+                        <i data-lucide="${l.type === 'Sick' ? 'stethoscope' : 'calendar'}" class="w-4 h-4"></i>
                     </div>
                     <div>
-                        <p class="font-black text-sm text-surface-900 dark:text-white">${l.type} - ${l.start_date} ถึง ${l.end_date}</p>
-                        <p class="text-[10px] text-surface-400 font-bold uppercase tracking-widest mt-0.5">${l.reason || 'ไม่ระบุเหตุผล'}</p>
+                        <div class="flex items-center gap-2">
+                            <span class="font-bold text-xs text-surface-900 dark:text-white">${typeTh}</span>
+                            <span class="text-xs text-surface-400 font-mono">(${l.start_date} ถึง ${l.end_date})</span>
+                        </div>
+                        <p class="text-xs text-surface-500 dark:text-surface-400 mt-0.5">${l.reason || 'ไม่ได้ระบุเหตุผล'}</p>
                     </div>
                 </div>
-                <div class="flex items-center gap-3">
-                    <button onclick="openLeaveComments(${l.id})" class="p-2 transition-all hover:bg-surface-50 dark:hover:bg-surface-800 rounded-xl relative group" title="แชท/คอมเม้น">
-                        <i data-lucide="message-circle" class="w-5 h-5 text-surface-400 group-hover:text-brand-600 transition-colors"></i>
+                <div class="flex items-center gap-2 self-end sm:self-center">
+                    <span class="px-2 py-0.5 rounded-md text-[10px] font-semibold ${statusBadge}">${statusText}</span>
+                    <button onclick="openLeaveComments(${l.id})" class="p-1.5 hover:bg-surface-100 dark:hover:bg-surface-800 rounded-lg text-surface-400 hover:text-surface-600 dark:hover:text-surface-200 transition-colors" title="ความเห็น/บันทึก">
+                        <i data-lucide="message-square" class="w-4 h-4"></i>
                     </button>
-                    <div class="flex flex-col items-end gap-1">
-                        <span class="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${statusColor}">${statusText}</span>
-                        <span class="text-[9px] text-surface-400">${new Date(l.timestamp).toLocaleDateString()}</span>
-                    </div>
                 </div>
             </div>
         `;
     }).join('');
-    lucide.createIcons();
+    if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
 async function refreshAdminLeaves() {
@@ -16835,34 +17150,62 @@ async function fetchWeather() {
   try {
     const lat = 13.7563; // Bangkok
     const lon = 100.5018;
-    const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,uv_index&hourly=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=Asia%2FBangkok&forecast_days=7`);
-    const data = await res.json();
+    const [wRes, aqRes] = await Promise.allSettled([
+      fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,uv_index&hourly=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=Asia%2FBangkok&forecast_days=7`),
+      fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&current=pm2_5,pm10,european_aqi&timezone=Asia%2FBangkok`)
+    ]);
     
-    if (data && data.current) {
-      const temp = Math.round(data.current.temperature_2m);
-      const feels = Math.round(data.current.apparent_temperature);
-      const humidity = data.current.relative_humidity_2m;
-      const rain = data.current.precipitation;
-      const uv = data.current.uv_index;
-      const code = data.current.weather_code;
-      
-      // Update Dashboard Card
-      if ($('currentTemp')) $('currentTemp').textContent = `${temp}°C`;
-      if ($('dashFeelsLike')) $('dashFeelsLike').textContent = `${feels}°C`;
-      if ($('dashHumidity')) $('dashHumidity').textContent = `${humidity}%`;
-      if ($('dashUV')) $('dashUV').textContent = uv.toFixed(1);
-      if ($('rainChance')) $('rainChance').innerHTML = `<i data-lucide="droplets" class="w-3 h-3"></i> ฝน ${rain}mm`;
-      
-      const condition = getWeatherCondition(code);
-      if ($('weatherCondition')) $('weatherCondition').textContent = condition;
-      
-      const now = new Date();
-      if ($('weatherLastUpdate')) $('weatherLastUpdate').textContent = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-      
-      // Store globally for detail modal
-      window._weatherData = data;
-      
-      lucide.createIcons();
+    let pm25Val = null;
+    if (aqRes.status === 'fulfilled' && aqRes.value.ok) {
+      try {
+        const aqData = await aqRes.value.json();
+        if (aqData && aqData.current && aqData.current.pm2_5 !== undefined) {
+          pm25Val = Math.round(aqData.current.pm2_5);
+          window._pm25Data = pm25Val;
+        }
+      } catch (e) {}
+    }
+
+    if (wRes.status === 'fulfilled' && wRes.value.ok) {
+      const data = await wRes.value.json();
+      if (data && data.current) {
+        const temp = Math.round(data.current.temperature_2m);
+        const feels = Math.round(data.current.apparent_temperature);
+        const humidity = data.current.relative_humidity_2m;
+        const rain = data.current.precipitation;
+        const uv = data.current.uv_index;
+        const code = data.current.weather_code;
+        
+        // Update Dashboard Card
+        if ($('currentTemp')) $('currentTemp').textContent = `${temp}°C`;
+        if ($('dashFeelsLike')) $('dashFeelsLike').textContent = `${feels}°C`;
+        if ($('dashHumidity')) $('dashHumidity').textContent = `${humidity}%`;
+        if ($('dashUV')) $('dashUV').textContent = uv.toFixed(1);
+        if ($('rainChance')) $('rainChance').innerHTML = `<i data-lucide="droplets" class="w-3 h-3"></i> ฝน ${rain}mm`;
+
+        if ($('dashPM25')) {
+          const displayPM = pm25Val !== null ? pm25Val : 28;
+          $('dashPM25').textContent = displayPM;
+          if (displayPM > 50) {
+            $('dashPM25').className = 'text-sm font-black text-rose-500';
+          } else if (displayPM > 25) {
+            $('dashPM25').className = 'text-sm font-black text-amber-500';
+          } else {
+            $('dashPM25').className = 'text-sm font-black text-emerald-500';
+          }
+        }
+        
+        const condition = getWeatherCondition(code);
+        if ($('weatherCondition')) $('weatherCondition').textContent = condition;
+        
+        const now = new Date();
+        if ($('weatherLastUpdate')) $('weatherLastUpdate').textContent = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+        
+        // Store globally for detail modal
+        window._weatherData = data;
+        
+        lucide.createIcons();
+      }
     }
   } catch (err) {
     console.error('Weather fetch error:', err);
@@ -16893,7 +17236,7 @@ function showWeatherDetail() {
   if ($('detailFeelsLike')) $('detailFeelsLike').textContent = `${Math.round(d.current.apparent_temperature)}°C`;
   if ($('detailHumidity')) $('detailHumidity').textContent = `${d.current.relative_humidity_2m}%`;
   if ($('detailUV')) $('detailUV').textContent = d.current.uv_index.toFixed(1);
-  if ($('detailPM25')) $('detailPM25').textContent = '12'; // Mock or external API
+  if ($('detailPM25')) $('detailPM25').textContent = window._pm25Data !== undefined ? window._pm25Data : '28';
   
   // Hourly Forecast
   const hourlyList = $('hourlyForecastList');

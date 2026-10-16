@@ -161,12 +161,20 @@ def get_system_alerts():
     # Check Google Workspace auth error
     google_err = google_manager.get_auth_error(org_id)
     if google_err:
+        raw_msg = str(google_err.get("message", ""))
+        if "invalid_grant" in raw_msg or "JWT" in raw_msg:
+            clean_msg = "กุญแจ Service Account Key หมดอายุหรือไม่ถูกต้อง"
+        elif "quota" in raw_msg.lower():
+            clean_msg = "โควตาการเรียกใช้งาน Google API ชั่วคราวเต็ม"
+        else:
+            clean_msg = "ไม่สามารถยืนยันตัวตนกับ Google ได้"
+
         alerts.append({
             "id": "google_credential_error",
-            "level": "critical",
-            "title": "การเชื่อมต่อ Google Workspace ขัดข้อง",
-            "message": "ตรวจพบข้อผิดพลาดของ Google Service Account หรือ OAuth Key: " + str(google_err.get("message", "")),
-            "hint": "กรุณาตรวจสอบ Service Account Key ใน Google Cloud Console หรือเชื่อมต่อ Google OAuth ใหม่ในหน้าการตั้งค่า",
+            "level": "warning",
+            "title": "การเชื่อมต่อ Google Workspace",
+            "message": clean_msg,
+            "hint": "กรุณาอัปเดต Service Account Key ใหม่ หรือเชื่อมต่อ Google ในหน้าการตั้งค่าองค์กร",
             "timestamp": google_err.get("timestamp")
         })
 

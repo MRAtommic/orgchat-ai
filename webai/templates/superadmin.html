@@ -1484,28 +1484,29 @@ async function loadOverview() {
     const orgsD = await orgsR.json();
     if (!ov.ok) return;
 
-    // topbar
-    document.getElementById('tb-version').textContent = 'v' + ov.version;
-    document.getElementById('tb-python').textContent = (ov.python_version||'').split(' ')[0];
-    document.getElementById('tb-provider').textContent = ov.ai_provider || '—';
-    document.getElementById('tb-uptime').textContent = fmtUptime(ov.uptime_seconds);
-    document.getElementById('sb-uptime').textContent = fmtUptime(ov.uptime_seconds);
+    // topbar (safe setters)
+    const _setTxt = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    _setTxt('tb-version', 'v' + ov.version);
+    _setTxt('tb-python', (ov.python_version||'').split(' ')[0]);
+    _setTxt('tb-provider', ov.ai_provider || '—');
+    _setTxt('tb-uptime', fmtUptime(ov.uptime_seconds));
+    _setTxt('sb-uptime', fmtUptime(ov.uptime_seconds));
 
     // KPIs
-    document.getElementById('k-mrr').textContent = '฿' + (ov.mrr||0).toLocaleString();
-    document.getElementById('k-paying').textContent = ov.paying_orgs||0;
-    document.getElementById('k-paying-sub').textContent = `จาก ${ov.total_orgs||0} org`;
-    document.getElementById('k-ai-month').textContent = (ov.stats?.ai_queries_this_month||0).toLocaleString();
-    document.getElementById('k-ai-total').textContent = `รวม ${(ov.stats?.total_ai_queries||0).toLocaleString()} ครั้ง`;
-    document.getElementById('k-users').textContent = (ov.stats?.total_users||0).toLocaleString();
-    document.getElementById('k-orgs').textContent = (ov.total_orgs||0).toLocaleString();
-    document.getElementById('k-msgs').textContent = (ov.stats?.total_messages||0).toLocaleString();
-    document.getElementById('k-db').textContent = fmtBytes(ov.stats?.db_size_bytes||0);
-    document.getElementById('k-kb').textContent = (ov.stats?.kb_total_files||0).toLocaleString();
+    _setTxt('k-mrr', '฿' + (ov.mrr||0).toLocaleString());
+    _setTxt('k-paying', ov.paying_orgs||0);
+    _setTxt('k-paying-sub', `จาก ${ov.total_orgs||0} org`);
+    _setTxt('k-ai-month', (ov.stats?.ai_queries_this_month||0).toLocaleString());
+    _setTxt('k-ai-total', `รวม ${(ov.stats?.total_ai_queries||0).toLocaleString()} ครั้ง`);
+    _setTxt('k-users', (ov.stats?.total_users||0).toLocaleString());
+    _setTxt('k-orgs', (ov.total_orgs||0).toLocaleString());
+    _setTxt('k-msgs', (ov.stats?.total_messages||0).toLocaleString());
+    _setTxt('k-db', fmtBytes(ov.stats?.db_size_bytes||0));
+    _setTxt('k-kb', (ov.stats?.kb_total_files||0).toLocaleString());
 
     // nav badges
-    document.getElementById('nb-orgs').textContent = ov.total_orgs||0;
-    document.getElementById('nb-users').textContent = ov.stats?.total_users||0;
+    _setTxt('nb-orgs', ov.total_orgs||0);
+    _setTxt('nb-users', ov.stats?.total_users||0);
 
     // plan dist
     if (orgsD.ok) {
