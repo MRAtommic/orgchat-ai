@@ -161,20 +161,12 @@ def get_system_alerts():
     # Check Google Workspace auth error
     google_err = google_manager.get_auth_error(org_id)
     if google_err:
-        raw_msg = str(google_err.get("message", ""))
-        if "invalid_grant" in raw_msg or "JWT" in raw_msg:
-            clean_msg = "กุญแจ Service Account Key หมดอายุหรือไม่ถูกต้อง"
-        elif "quota" in raw_msg.lower():
-            clean_msg = "โควตาการเรียกใช้งาน Google API ชั่วคราวเต็ม"
-        else:
-            clean_msg = "ไม่สามารถยืนยันตัวตนกับ Google ได้"
-
         alerts.append({
             "id": "google_credential_error",
-            "level": "warning",
-            "title": "การเชื่อมต่อ Google Workspace",
-            "message": clean_msg,
-            "hint": "กรุณาอัปเดต Service Account Key ใหม่ หรือเชื่อมต่อ Google ในหน้าการตั้งค่าองค์กร",
+            "level": "critical",
+            "title": "การเชื่อมต่อ Google Workspace ขัดข้อง",
+            "message": "ตรวจพบข้อผิดพลาดของ Google Service Account หรือ OAuth Key: " + str(google_err.get("message", "")),
+            "hint": "กรุณาตรวจสอบ Service Account Key ใน Google Cloud Console หรือเชื่อมต่อ Google OAuth ใหม่ในหน้าการตั้งค่า",
             "timestamp": google_err.get("timestamp")
         })
 
@@ -2981,6 +2973,14 @@ def api_admin_leave_all():
 def api_leave_team_calendar():
     """Provides approved & pending team leave events for calendar visualization."""
     org_id = get_current_org_id()
+    me = session.get("user")
+    user_role = session.get("role") or ""
+    is_admin_user = (
+        user_role in ["admin", "superadmin"]
+        or session.get("org_role") == "admin"
+        or session.get("is_admin")
+        or (org_id and database.is_org_admin(org_id, me))
+    )
     month = request.args.get("month") # format YYYY-MM
     leaves = database.get_all_leaves(limit=500, org_id=org_id)
     
@@ -2988,6 +2988,10 @@ def api_leave_team_calendar():
     for l in leaves:
         if l.get("status") == "rejected":
             continue
+        # Non-admin users should only see their own leave requests
+        if not is_admin_user and l.get("username") != me:
+            continue
+
         s_date = l.get("start_date") or ""
         e_date = l.get("end_date") or ""
         
@@ -3017,7 +3021,7 @@ def api_leave_team_calendar():
             "reason": l.get("reason", "")
         })
         
-    return jsonify({"ok": True, "events": calendar_events})
+    return jsonify({"ok": True, "events": calendar_events, "is_admin": bool(is_admin_user), "current_user": me})
 
 
 
@@ -3384,6 +3388,7 @@ def update_admin_settings():
 
 
 @admin_bp.route("/admin/super")
+@admin_bp.route("/superadmin")
 @login_required
 def superadmin_page():
     user = session.get("user")
@@ -3401,7 +3406,8 @@ def superadmin_overview():
     plan_prices = {p: billing.PLANS[p]["price_thb"] for p in billing.PLANS}
     mrr = sum(plan_prices.get(o["plan"] or "free", 0) for o in orgs)
     paying = sum(1 for o in orgs if (o["plan"] or "free") != "free")
-    uptime_sec = int(time.time() - _APP_START_TIME)
+    uptime_sec = int(time.time() - _APP_START_TIME) if '_APP_START_TIME' in globals() else 0
+    import platform
     return jsonify({
         "ok": True,
         "stats": stats,
@@ -3409,6 +3415,7 @@ def superadmin_overview():
         "paying_orgs": paying,
         "total_orgs": len(orgs),
         "uptime_seconds": uptime_sec,
+        "python_version": platform.python_version(),
         "ai_provider": os.environ.get("AI_PROVIDER", "groq"),
         "version": VERSION,
     })

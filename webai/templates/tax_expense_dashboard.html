@@ -49,19 +49,27 @@
         /* Media Sidebar */
         #mediaSidebar {
             position: fixed;
-            top: 0; right: -420px;
+            top: 0; right: 0;
             width: 420px;
+            max-width: 100vw;
             height: 100vh;
             background: rgba(255,255,255,0.95);
             backdrop-filter: blur(20px);
             border-left: 1px solid #e2e8f0;
             box-shadow: -8px 0 32px rgba(15,23,42,0.12);
             z-index: 9999 !important;
-            transition: right 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            transform: translateX(100%);
+            transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
             display: flex;
             flex-direction: column;
+            pointer-events: none;
+            visibility: hidden;
         }
-        #mediaSidebar.open { right: 0; }
+        #mediaSidebar.open {
+            transform: translateX(0);
+            pointer-events: auto;
+            visibility: visible;
+        }
         #mediaSidebarOverlay {
             position: fixed; inset: 0;
             background: rgba(15,23,42,0.3);
@@ -254,43 +262,43 @@
         <!-- SUMMARY STAT CARDS -->
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <!-- Total Expense -->
-            <div class="stat-card p-5 flex gap-4 items-start">
-                <div class="accent-bar h-12 bg-brand-600 mt-0.5"></div>
-                <div class="min-w-0">
-                    <p class="text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1">ค่าใช้จ่ายปีนี้ 2026</p>
-                    <p id="valExpense" class="text-2xl font-extrabold text-surface-900 leading-none">0.00</p>
-                    <p class="text-[10px] text-surface-400 mt-1 font-medium">บาท (THB)</p>
+            <div class="stat-card p-5 bg-white dark:bg-surface-900/90 border border-slate-200/80 dark:border-surface-800 rounded-2xl flex flex-col justify-between shadow-xs hover:border-slate-300 dark:hover:border-surface-700 transition-colors">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-[11px] font-semibold text-surface-500 dark:text-surface-400 tracking-wide">ค่าใช้จ่ายปีนี้ 2026</span>
+                    <span class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300">THB</span>
                 </div>
+                <p id="valExpense" class="text-2xl font-bold text-surface-900 dark:text-white leading-none tracking-tight tabular-nums">0.00</p>
+                <p class="text-[11px] text-surface-400 dark:text-surface-500 mt-2 font-medium">ยอดรวมรายจ่ายทั้งหมด</p>
             </div>
 
             <!-- VAT -->
-            <div class="stat-card p-5 flex gap-4 items-start">
-                <div class="accent-bar h-12 bg-emerald-500 mt-0.5"></div>
-                <div class="min-w-0">
-                    <p class="text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1">VAT 7% รวม</p>
-                    <p id="valVat" class="text-2xl font-extrabold text-emerald-600 leading-none">0.00</p>
-                    <p class="text-[10px] text-surface-400 mt-1 font-medium">จากใบกำกับภาษี</p>
+            <div class="stat-card p-5 bg-white dark:bg-surface-900/90 border border-slate-200/80 dark:border-surface-800 rounded-2xl flex flex-col justify-between shadow-xs hover:border-slate-300 dark:hover:border-surface-700 transition-colors">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-[11px] font-semibold text-surface-500 dark:text-surface-400 tracking-wide">VAT 7% รวม</span>
+                    <span class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300">ภาษีซื้อ</span>
                 </div>
+                <p id="valVat" class="text-2xl font-bold text-surface-900 dark:text-white leading-none tracking-tight tabular-nums">0.00</p>
+                <p class="text-[11px] text-surface-400 dark:text-surface-500 mt-2 font-medium">จากใบกำกับภาษี</p>
             </div>
 
             <!-- WHT 3% -->
-            <div class="stat-card p-5 flex gap-4 items-start">
-                <div class="accent-bar h-12 bg-amber-500 mt-0.5"></div>
-                <div class="min-w-0">
-                    <p class="text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1">ภ.ง.ด.3</p>
-                    <p id="valWht3" class="text-2xl font-extrabold text-amber-600 leading-none">0.00</p>
-                    <p class="text-[10px] text-surface-400 mt-1 font-medium">หัก ณ ที่จ่าย (บุคคล)</p>
+            <div class="stat-card p-5 bg-white dark:bg-surface-900/90 border border-slate-200/80 dark:border-surface-800 rounded-2xl flex flex-col justify-between shadow-xs hover:border-slate-300 dark:hover:border-surface-700 transition-colors">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-[11px] font-semibold text-surface-500 dark:text-surface-400 tracking-wide">ภ.ง.ด.3</span>
+                    <span class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300">บุคคลธรรมดา</span>
                 </div>
+                <p id="valWht3" class="text-2xl font-bold text-surface-900 dark:text-white leading-none tracking-tight tabular-nums">0.00</p>
+                <p class="text-[11px] text-surface-400 dark:text-surface-500 mt-2 font-medium">หัก ณ ที่จ่าย (บุคคล)</p>
             </div>
 
             <!-- WHT 53% -->
-            <div class="stat-card p-5 flex gap-4 items-start">
-                <div class="accent-bar h-12 bg-rose-500 mt-0.5"></div>
-                <div class="min-w-0">
-                    <p class="text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1">ภ.ง.ด.53</p>
-                    <p id="valWht53" class="text-2xl font-extrabold text-rose-600 leading-none">0.00</p>
-                    <p class="text-[10px] text-surface-400 mt-1 font-medium">หัก ณ ที่จ่าย (นิติ)</p>
+            <div class="stat-card p-5 bg-white dark:bg-surface-900/90 border border-slate-200/80 dark:border-surface-800 rounded-2xl flex flex-col justify-between shadow-xs hover:border-slate-300 dark:hover:border-surface-700 transition-colors">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-[11px] font-semibold text-surface-500 dark:text-surface-400 tracking-wide">ภ.ง.ด.53</span>
+                    <span class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300">นิติบุคคล</span>
                 </div>
+                <p id="valWht53" class="text-2xl font-bold text-surface-900 dark:text-white leading-none tracking-tight tabular-nums">0.00</p>
+                <p class="text-[11px] text-surface-400 dark:text-surface-500 mt-2 font-medium">หัก ณ ที่จ่าย (นิติบุคคล)</p>
             </div>
         </div>
 
@@ -1293,29 +1301,29 @@
 
         function renderPndSummaryCards(data) {
             document.getElementById('pndSummaryCards').innerHTML = `
-                <div class="stat-card p-5 flex gap-4 items-start">
-                    <div class="accent-bar h-12 bg-amber-500 mt-0.5"></div>
-                    <div>
-                        <p class="text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1">ภ.ง.ด.3 (บุคคลธรรมดา)</p>
-                        <p class="text-2xl font-extrabold text-amber-600 leading-none">฿${formatNum(data.total_pnd3_wht)}</p>
-                        <p class="text-[10px] text-surface-400 mt-1">ภาษีหัก ณ ที่จ่าย ปี ${data.year}</p>
+                <div class="stat-card p-5 bg-white dark:bg-surface-900/90 border border-slate-200/80 dark:border-surface-800 rounded-2xl flex flex-col justify-between shadow-xs">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-[11px] font-semibold text-surface-500 dark:text-surface-400 tracking-wide">ภ.ง.ด.3 (บุคคลธรรมดา)</span>
+                        <span class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300">WHT บุคคล</span>
                     </div>
+                    <p class="text-2xl font-bold text-surface-900 dark:text-white leading-none tracking-tight tabular-nums">฿${formatNum(data.total_pnd3_wht)}</p>
+                    <p class="text-[11px] text-surface-400 dark:text-surface-500 mt-2 font-medium">ภาษีหัก ณ ที่จ่าย ปี ${data.year}</p>
                 </div>
-                <div class="stat-card p-5 flex gap-4 items-start">
-                    <div class="accent-bar h-12 bg-rose-500 mt-0.5"></div>
-                    <div>
-                        <p class="text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1">ภ.ง.ด.53 (นิติบุคคล)</p>
-                        <p class="text-2xl font-extrabold text-rose-600 leading-none">฿${formatNum(data.total_pnd53_wht)}</p>
-                        <p class="text-[10px] text-surface-400 mt-1">ภาษีหัก ณ ที่จ่าย ปี ${data.year}</p>
+                <div class="stat-card p-5 bg-white dark:bg-surface-900/90 border border-slate-200/80 dark:border-surface-800 rounded-2xl flex flex-col justify-between shadow-xs">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-[11px] font-semibold text-surface-500 dark:text-surface-400 tracking-wide">ภ.ง.ด.53 (นิติบุคคล)</span>
+                        <span class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300">WHT นิติ</span>
                     </div>
+                    <p class="text-2xl font-bold text-surface-900 dark:text-white leading-none tracking-tight tabular-nums">฿${formatNum(data.total_pnd53_wht)}</p>
+                    <p class="text-[11px] text-surface-400 dark:text-surface-500 mt-2 font-medium">ภาษีหัก ณ ที่จ่าย ปี ${data.year}</p>
                 </div>
-                <div class="stat-card p-5 flex gap-4 items-start">
-                    <div class="accent-bar h-12 bg-brand-600 mt-0.5"></div>
-                    <div>
-                        <p class="text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-1">รวมทั้งหมด</p>
-                        <p class="text-2xl font-extrabold text-brand-600 leading-none">฿${formatNum(data.total_wht_all)}</p>
-                        <p class="text-[10px] text-surface-400 mt-1">${data.entries.length} รายการที่มีการหัก WHT</p>
+                <div class="stat-card p-5 bg-white dark:bg-surface-900/90 border border-slate-200/80 dark:border-surface-800 rounded-2xl flex flex-col justify-between shadow-xs">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-[11px] font-semibold text-surface-500 dark:text-surface-400 tracking-wide">รวมทั้งหมด</span>
+                        <span class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300">Total WHT</span>
                     </div>
+                    <p class="text-2xl font-bold text-surface-900 dark:text-white leading-none tracking-tight tabular-nums">฿${formatNum(data.total_wht_all)}</p>
+                    <p class="text-[11px] text-surface-400 dark:text-surface-500 mt-2 font-medium">${data.entries.length} รายการที่มีการหัก WHT</p>
                 </div>`;
         }
 

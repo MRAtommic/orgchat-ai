@@ -267,10 +267,13 @@ def is_superadmin_user(username):
     if str(username).strip().lower() in sa_users:
         return True
         
-    # Check by email
+    # Check by email or DB role
     settings = database.get_user_setting(username)
-    if settings and settings.get("email") == AUTHORIZED_SUPERADMIN:
-        return True
+    if settings:
+        if settings.get("email") == AUTHORIZED_SUPERADMIN:
+            return True
+        if settings.get("role") == "superadmin":
+            return True
         
     return False
 

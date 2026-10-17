@@ -72,7 +72,15 @@ def _safe_filename(filename: str) -> bool:
 def serve_social_uploads(filename):
     if not _safe_filename(filename):
         abort(403)
-    return send_from_directory('uploads/social_feed', filename)
+    as_att = request.args.get('download') == '1'
+    clean_name = filename
+    if '_' in filename:
+        parts = filename.split('_', 1)
+        if parts[0].isdigit():
+            clean_name = parts[1]
+    res = send_from_directory('uploads/social_feed', filename, as_attachment=as_att, download_name=clean_name)
+    res.headers['Access-Control-Allow-Origin'] = '*'
+    return res
 
 
 @misc_bp.route('/uploads/receipts_backup/<path:filename>')
@@ -125,8 +133,8 @@ def index():
     is_org_admin = False
     if user:
         settings = database.get_user_setting(user)
-        is_admin = settings.get("role") == "admin"
-        is_superadmin = is_superadmin_user(user)
+        is_superadmin = bool(is_superadmin_user(user) or (settings and settings.get("role") == "superadmin"))
+        is_admin = bool((settings and settings.get("role") in ("admin", "superadmin")) or is_superadmin)
         # Check org_role from session first, fallback to DB check
         is_org_admin = session.get("org_role") == "admin"
         if not is_org_admin:

@@ -1651,47 +1651,11 @@ class GoogleWorkspaceManager:
                     raise
             existing_folders = results.get('files', [])
             
-            # 2. Define essential folders matching the luxury minimal structure
-            essential_folders = [
-                "เงินยืมกรรมการ",
-                "บัตรประชาชน",
-                "สลิปโอนเงิน",
-                "Petty Cash",
-                "ใบเสร็จ_ใบกำกับ",
-                "ใบหัก ณ ที่จ่าย",
-                "ใบเสนอราคา",
-                "statement",
-                "ทั่วไป",
-                "อื่นๆ"
-            ]
-            
-            # Dynamically ensure all essential folders exist in parent Drive folder (Self-Healing)
-            existing_folder_names = {}
-            for f in existing_folders:
-                if f.get('mimeType') == 'application/vnd.google-apps.folder':
-                    existing_folder_names[f['name']] = f
-                    
-            for folder_name in essential_folders:
-                if folder_name not in existing_folder_names:
-                    try:
-                        fid = self._get_or_create_folder(folder_name, p_id)
-                        new_f = {
-                            'id': fid, 
-                            'name': folder_name,
-                            'mimeType': 'application/vnd.google-apps.folder',
-                            'iconLink': '',
-                            'thumbnailLink': '',
-                            'webViewLink': ''
-                        }
-                        existing_folders.append(new_f)
-                        existing_folder_names[folder_name] = new_f
-                        logger.info(f"➕ Auto-created missing essential folder: {folder_name}")
-                    except Exception as ce:
-                        logger.error(f"Error creating essential folder {folder_name}: {ce}")
-                        
-            # Filter to keep folders first, then files
+            # Filter to keep folders first, then files (sorted alphabetically)
             folders_only = [f for f in existing_folders if f.get('mimeType') == 'application/vnd.google-apps.folder']
             files_only = [f for f in existing_folders if f.get('mimeType') != 'application/vnd.google-apps.folder']
+            folders_only.sort(key=lambda x: x.get('name', '').lower())
+            files_only.sort(key=lambda x: x.get('name', '').lower())
             ordered_list = folders_only + files_only
 
             # Store in cache before returning

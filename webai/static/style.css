@@ -204,11 +204,12 @@ body {
   }
 
   #navSidebar.open {
-    transform: translateX(0);
+    transform: translateX(0) !important;
   }
 
   /* The main content wrapper must take full width since sidebar is position:fixed */
-  .flex.h-full.relative.overflow-hidden > :not(#navSidebar):not(.sidebar-overlay) {
+  #mainContentWrapper,
+  .flex.h-full.relative.overflow-hidden > .flex-1 {
     width: 100% !important;
     max-width: 100% !important;
   }

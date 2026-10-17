@@ -474,6 +474,7 @@ async function apiFetch(url, options = {}) {
         const loginOverlay = document.getElementById('loginOverlay');
         if (loginOverlay) {
           loginOverlay.classList.remove('hidden');
+          loginOverlay.classList.add('flex', 'items-center', 'justify-center');
         }
       }
       throw new Error('Unauthorized');
@@ -686,19 +687,23 @@ async function fetchWeather() {
       const humidity = weatherData.current.relative_humidity_2m;
       const wCode = weatherData.current.weather_code;
       const uv = weatherData.current.uv_index;
-      const pm25 = aqData.current.pm2_5;
+      const pm25 = aqData?.current?.pm2_5;
       
       // Update UI
       currentTempEl.textContent = `${temp}°C`;
       if (dashFeelsLike) dashFeelsLike.textContent = `${feelsLike}°C`;
       if (dashHumidity) dashHumidity.textContent = `${humidity}%`;
       if (dashUV) {
-        dashUV.textContent = uv.toFixed(1);
+        dashUV.textContent = uv != null ? uv.toFixed(1) : '--';
         dashUV.className = `text-sm font-black ${uv > 6 ? 'text-rose-500' : uv > 3 ? 'text-amber-500' : 'text-emerald-500'}`;
       }
       if (dashPM25) {
-        dashPM25.textContent = pm25.toFixed(1);
-        dashPM25.className = `text-sm font-black ${pm25 > 50 ? 'text-rose-500' : pm25 > 25 ? 'text-amber-500' : 'text-emerald-500'}`;
+        if (pm25 != null && !isNaN(pm25)) {
+          dashPM25.textContent = Number(pm25).toFixed(1);
+          dashPM25.className = `text-sm font-black ${pm25 > 50 ? 'text-rose-500' : pm25 > 25 ? 'text-amber-500' : 'text-emerald-500'}`;
+        } else {
+          dashPM25.textContent = '--';
+        }
       }
       
       // Translate WMO Code

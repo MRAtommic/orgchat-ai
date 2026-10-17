@@ -33,6 +33,24 @@ def _user() -> str:
     return session.get("user", "")
 
 
+def _setup_pdf_fonts(pdf):
+    """Register Thai Unicode font (Tahoma) so FPDF can render Thai characters without crashing."""
+    font_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "fonts")
+    tahoma = os.path.join(font_dir, "tahoma.ttf")
+    tahomabd = os.path.join(font_dir, "tahomabd.ttf")
+
+    if not os.path.exists(tahoma):
+        tahoma = "C:/Windows/Fonts/tahoma.ttf"
+    if not os.path.exists(tahomabd):
+        tahomabd = "C:/Windows/Fonts/tahomabd.ttf"
+
+    if os.path.exists(tahoma):
+        pdf.add_font("ThaiFont", "", tahoma)
+        pdf.add_font("ThaiFont", "B", tahomabd if os.path.exists(tahomabd) else tahoma)
+        return "ThaiFont"
+    return "Helvetica"
+
+
 # ══════════════════════════════════════════════════════════════
 # QUOTATION / INVOICE
 # ══════════════════════════════════════════════════════════════
@@ -127,6 +145,7 @@ def quotation_pdf(qid):
     try:
         from fpdf import FPDF
         pdf = FPDF()
+        font_name = _setup_pdf_fonts(pdf)
         pdf.add_page()
         pdf.set_auto_page_break(auto=True, margin=15)
 
@@ -135,14 +154,14 @@ def quotation_pdf(qid):
         org_profile = database.get_org_profile(org_id) or {}
         org_name = org_profile.get("business_name_th") or org_profile.get("business_name_en") or "บริษัท"
 
-        pdf.set_font("Helvetica", "B", 16)
+        pdf.set_font(font_name, "B", 16)
         pdf.cell(0, 10, type_label, ln=True, align="C")
-        pdf.set_font("Helvetica", "", 10)
+        pdf.set_font(font_name, "", 10)
         pdf.cell(0, 6, org_name, ln=True, align="C")
         pdf.ln(4)
 
         # Quotation info
-        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_font(font_name, "B", 10)
         pdf.cell(95, 6, f"เลขที่: {q['quotation_no']}", ln=False)
         pdf.cell(95, 6, f"วันที่: {q.get('created_at','')[:10]}", ln=True)
         if q.get("valid_until"):
@@ -151,9 +170,9 @@ def quotation_pdf(qid):
         pdf.ln(4)
 
         # Customer
-        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_font(font_name, "B", 10)
         pdf.cell(0, 6, "ข้อมูลลูกค้า:", ln=True)
-        pdf.set_font("Helvetica", "", 9)
+        pdf.set_font(font_name, "", 9)
         pdf.cell(0, 5, f"ชื่อ: {q.get('customer_name','')} {q.get('customer_company','')}", ln=True)
         if q.get("customer_tax_id"):
             pdf.cell(0, 5, f"เลขประจำตัวผู้เสียภาษี: {q['customer_tax_id']}", ln=True)
@@ -162,14 +181,14 @@ def quotation_pdf(qid):
         pdf.ln(4)
 
         # Items table
-        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_font(font_name, "B", 9)
         col_w = [80, 20, 25, 30, 35]
         headers = ["รายการ", "จำนวน", "หน่วย", "ราคา/หน่วย", "รวม"]
         for i, h in enumerate(headers):
             pdf.cell(col_w[i], 7, h, border=1, align="C")
         pdf.ln()
 
-        pdf.set_font("Helvetica", "", 9)
+        pdf.set_font(font_name, "", 9)
         for item in q.get("items", []):
             name  = str(item.get("name", ""))[:40]
             qty   = item.get("qty", 1)
@@ -186,7 +205,7 @@ def quotation_pdf(qid):
         pdf.ln(3)
         # Summary
         def sum_row(label, value, bold=False):
-            pdf.set_font("Helvetica", "B" if bold else "", 9)
+            pdf.set_font(font_name, "B" if bold else "", 9)
             pdf.cell(155, 6, label, align="R")
             pdf.cell(35, 6, f"{value:,.2f}", align="R", border=1)
             pdf.ln()
@@ -202,9 +221,9 @@ def quotation_pdf(qid):
 
         if q.get("notes"):
             pdf.ln(4)
-            pdf.set_font("Helvetica", "B", 9)
+            pdf.set_font(font_name, "B", 9)
             pdf.cell(0, 5, "หมายเหตุ:", ln=True)
-            pdf.set_font("Helvetica", "", 9)
+            pdf.set_font(font_name, "", 9)
             pdf.multi_cell(0, 5, q["notes"])
 
         buf = io.BytesIO(pdf.output())
@@ -386,40 +405,41 @@ def wht_pdf():
 
         from fpdf import FPDF
         pdf = FPDF()
+        font_name = _setup_pdf_fonts(pdf)
         pdf.add_page()
         pdf.set_auto_page_break(True, 15)
 
         # Title
-        pdf.set_font("Helvetica", "B", 14)
+        pdf.set_font(font_name, "B", 14)
         pdf.cell(0, 10, "หนังสือรับรองการหักภาษี ณ ที่จ่าย", ln=True, align="C")
-        pdf.set_font("Helvetica", "", 10)
+        pdf.set_font(font_name, "", 10)
         pdf.cell(0, 6, "(ตามมาตรา 50 ทวิ แห่งประมวลรัษฎากร)", ln=True, align="C")
         pdf.ln(4)
 
         # Payer info
         biz_name = org_profile.get("business_name_th") or org_profile.get("business_name_en") or ""
         tax_id   = org_profile.get("tax_id") or ""
-        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_font(font_name, "B", 10)
         pdf.cell(40, 6, "ผู้มีหน้าที่หักภาษี:", ln=False)
-        pdf.set_font("Helvetica", "", 10)
+        pdf.set_font(font_name, "", 10)
         pdf.cell(0, 6, biz_name, ln=True)
-        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_font(font_name, "B", 10)
         pdf.cell(40, 6, "เลขประจำตัว:", ln=False)
-        pdf.set_font("Helvetica", "", 10)
+        pdf.set_font(font_name, "", 10)
         pdf.cell(0, 6, tax_id, ln=True)
         pdf.cell(40, 6, "เดือน/ปี:", ln=False)
         pdf.cell(0, 6, year_month, ln=True)
         pdf.ln(4)
 
         # Table header
-        pdf.set_font("Helvetica", "B", 8)
+        pdf.set_font(font_name, "B", 8)
         cols = [45, 30, 30, 25, 25, 35]
         hdrs = ["ชื่อผู้ถูกหัก", "เลขประจำตัว", "ประเภทรายได้", "จำนวนเงิน", "อัตรา%", "ภาษีที่หัก"]
         for i, h in enumerate(hdrs):
             pdf.cell(cols[i], 7, h, border=1, align="C")
         pdf.ln()
 
-        pdf.set_font("Helvetica", "", 8)
+        pdf.set_font(font_name, "", 8)
         total_wht = 0
         total_base = 0
         for item in items:
@@ -440,7 +460,7 @@ def wht_pdf():
             pdf.ln()
 
         # Total row
-        pdf.set_font("Helvetica", "B", 8)
+        pdf.set_font(font_name, "B", 8)
         pdf.cell(sum(cols[:3]), 7, "รวม", border=1, align="R")
         pdf.cell(cols[3], 7, f"{total_base:,.2f}", border=1, align="R")
         pdf.cell(cols[4], 7, "", border=1)
@@ -448,7 +468,7 @@ def wht_pdf():
         pdf.ln(10)
 
         # Signature
-        pdf.set_font("Helvetica", "", 9)
+        pdf.set_font(font_name, "", 9)
         pdf.cell(95, 5, f"ลงชื่อ .................................", ln=False)
         pdf.cell(95, 5, f"วันที่ {date.today().strftime('%d/%m/%Y')}", ln=True)
         pdf.cell(95, 5, f"({biz_name or 'ผู้มีหน้าที่หักภาษี'})", ln=True, align="C")

@@ -318,6 +318,14 @@ def get_drive_contents():
         username = session.get("user")
         org_id = session.get("org_id")
         google_manager.set_context(username, org_id)
+
+        # Fail fast if there is an active auth/credential error
+        google_err = google_manager.get_auth_error(org_id)
+        if google_err:
+            return jsonify({
+                "ok": False,
+                "error": f"การเชื่อมต่อ Google Workspace ขัดข้อง: {google_err.get('message', 'Authentication error')}"
+            }), 400
         
         if not google_manager.drive_service:
             return jsonify({

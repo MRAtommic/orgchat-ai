@@ -1962,15 +1962,19 @@ def api_me():
             pass
 
         org_role = session.get("org_role")
+        from routes.shared import is_superadmin_user
+        is_sa = bool(is_superadmin_user(user) or (user_settings and user_settings.get("role") == "superadmin"))
         return jsonify({
             "ok": True,
             "user": user,
             "has_org": org_id is not None,
             "org_id": org_id,
             "org_role": org_role,
+            "is_superadmin": is_sa,
             "profile": {
                 **profile,
                 "role": user_settings.get("role"),
+                "is_superadmin": is_sa,
                 "can_edit_kb": user_settings.get("can_edit_kb", False),
                 "is_active": user_settings.get("is_active", 1),
                 "active_plan": active_plan,
@@ -2674,15 +2678,37 @@ def invite_org_member():
     return jsonify({"ok": True, "username": invite_username, "role": role})
 
 
-def _make_invite_token(email: str, org_id: int) -> str:
-    """Generate a deterministic HMAC invite token for email+org pair."""
+def _make_invite_token(email: str, org_id: int, timestamp: int = None) -> str:
+    """Generate a timed HMAC invite token for email+org pair (valid for 7 days)."""
+    import time
+    if timestamp is None:
+        timestamp = int(time.time())
     secret = os.environ.get("SECRET_KEY", "orgchat-default-secret-change-me")
-    msg = f"invite:{email.lower()}:{org_id}"
-    return hmac.new(secret.encode(), msg.encode(), hashlib.sha256).hexdigest()[:48]
+    msg = f"invite:{email.lower()}:{org_id}:{timestamp}"
+    sig = hmac.new(secret.encode(), msg.encode(), hashlib.sha256).hexdigest()[:32]
+    return f"{timestamp}.{sig}"
 
-def _verify_invite_token(token: str, email: str, org_id: int) -> bool:
-    expected = _make_invite_token(email, org_id)
-    return hmac.compare_digest(token, expected)
+def _verify_invite_token(token: str, email: str, org_id: int, max_age_days: int = 7) -> bool:
+    import time
+    try:
+        if "." in token:
+            ts_str, sig = token.split(".", 1)
+            ts = int(ts_str)
+            now = int(time.time())
+            if now - ts > max_age_days * 86400 or ts > now + 300:
+                logger.warning(f"[InviteToken] Token expired: ts={ts}, now={now}")
+                return False
+            expected = _make_invite_token(email, org_id, timestamp=ts)
+            return hmac.compare_digest(token, expected)
+        else:
+            # Fallback legacy token check without timestamp
+            secret = os.environ.get("SECRET_KEY", "orgchat-default-secret-change-me")
+            msg = f"invite:{email.lower()}:{org_id}"
+            legacy_sig = hmac.new(secret.encode(), msg.encode(), hashlib.sha256).hexdigest()[:48]
+            return hmac.compare_digest(token, legacy_sig)
+    except Exception as e:
+        logger.error(f"[InviteToken] verify error: {e}")
+        return False
 
 
 def send_invitation_email(to_email: str, org_name: str, invited_by: str, org_id: int = None) -> tuple[bool, str]:
@@ -2823,7 +2849,7 @@ def invite_email_org_member():
                 conn = database._get_conn()
                 cursor = conn.cursor()
                 cursor.execute(
-                    "UPDATE organization_allowed_emails SET role = ?, added_by = ? WHERE organization_id = ? AND email = ?",
+                    "UPDATE organization_allowed_emails SET role = ?, added_by = ?, created_at = CURRENT_TIMESTAMP WHERE organization_id = ? AND email = ?",
                     (role, me, org_id, email)
                 )
                 conn.commit()
@@ -2858,12 +2884,12 @@ def invite_email_org_member():
     
     if email_sent:
         if already_exists:
-            message = f"อีเมล {email} ได้รับอนุมัติสิทธิ์อยู่แล้ว! ระบบทำการอัปเดตบทบาทสิทธิ์เป็น {role} และส่งอีเมลเชิญซ้ำให้เรียบร้อยแล้วครับ! 📧✨"
+            message = f"อีเมล {email} ได้รับอนุมัติสิทธิ์อยู่แล้ว! ระบบทำการอัปเดตบทบาทสิทธิ์เป็น {role} และต่ออายุคำเชิญ 7 วัน พร้อมส่งอีเมลเชิญซ้ำให้เรียบร้อยแล้วครับ! 📧✨"
         else:
-            message = f"เพิ่ม {email} เข้า Whitelist และส่งอีเมลเชิญไปยัง Gmail ของเขาเรียบร้อยแล้ว! 📧✨"
+            message = f"เพิ่ม {email} เข้า Whitelist และส่งอีเมลเชิญไปยัง Gmail ของเขาเรียบร้อยแล้ว! (คำเชิญมีอายุ 7 วัน) 📧✨"
     else:
         if email_err == "smtp_not_configured":
-            message = f"เพิ่ม {email} เข้า Whitelist สำเร็จ! 🟢 (หมายเหตุ: ระบบไม่ได้ส่งอีเมลจริงเนื่องจากยังไม่ได้ตั้งค่า SMTP ในไฟล์ .env ของเซิร์ฟเวอร์)"
+            message = f"เพิ่ม {email} เข้า Whitelist สำเร็จ! 🟢 (คำเชิญมีอายุ 7 วัน หมายเหตุ: ระบบไม่ได้ส่งอีเมลจริงเนื่องจากยังไม่ได้ตั้งค่า SMTP ในไฟล์ .env ของเซิร์ฟเวอร์)"
         else:
             message = f"เพิ่ม {email} เข้า Whitelist สำเร็จ! 🟢 (แต่การส่งอีเมลล้มเหลวเนื่องจาก: {email_err})"
             
@@ -2887,15 +2913,15 @@ def join_via_invite():
     except (ValueError, TypeError):
         return jsonify({"ok": False, "error": "ลิงก์เชิญไม่ถูกต้อง"}), 400
 
-    # Validate signed token
+    # Validate signed token (max 7 days)
     if not invite_token or not invited_email or not org_id:
         return jsonify({"ok": False, "error": "ลิงก์เชิญไม่ครบถ้วน"}), 400
-    if not _verify_invite_token(invite_token, invited_email, org_id):
-        return jsonify({"ok": False, "error": "ลิงก์เชิญไม่ถูกต้องหรือถูกดัดแปลง"}), 400
+    if not _verify_invite_token(invite_token, invited_email, org_id, max_age_days=7):
+        return jsonify({"ok": False, "error": "ลิงก์คำเชิญไม่ถูกต้องหรือหมดอายุแล้ว (คำเชิญมีอายุ 7 วัน) กรุณาขอคำเชิญใหม่จากผู้ดูแล"}), 400
 
-    # Email must still be whitelisted
-    if not database.is_email_allowed(org_id, invited_email):
-        return jsonify({"ok": False, "error": "สิทธิ์เชิญสำหรับอีเมลนี้ถูกยกเลิกแล้ว กรุณาติดต่อผู้ดูแลองค์กร"}), 403
+    # Email must still be whitelisted and not expired (> 7 days)
+    if not database.is_email_allowed(org_id, invited_email, max_age_days=7):
+        return jsonify({"ok": False, "error": "คำเชิญสำหรับอีเมลนี้หมดอายุแล้ว (เกิน 7 วัน) หรือถูกยกเลิก กรุณาขอคำเชิญใหม่จากผู้ดูแล"}), 403
 
     # Get role from whitelist record
     whitelist = database.get_whitelist_emails(org_id)
@@ -3518,6 +3544,17 @@ def update_my_profile():
 
     database.update_user_profile(username, display_name=display_name, avatar_url=avatar_url, background_url=background_url, department=department)
     profile = database.get_user_profile(username)
+    from routes.shared import is_superadmin_user
+    user_settings = database.get_user_setting(username) or {}
+    is_sa = bool(is_superadmin_user(username) or user_settings.get("role") == "superadmin")
+    org_id = get_current_org_id()
+    active_plan = billing.get_effective_plan(org_id)
+    plan_config = billing.get_plan_config(active_plan)
+    plan_name = plan_config.get("name_th", plan_config.get("name", "Free"))
+    profile["role"] = user_settings.get("role")
+    profile["is_superadmin"] = is_sa
+    profile["active_plan"] = active_plan
+    profile["plan_name"] = plan_name
     database.log_event(f"Profile updated by {username}", user=username, org_id=get_current_org_id())
     return jsonify({"ok": True, "profile": profile})
 

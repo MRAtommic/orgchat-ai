@@ -2678,7 +2678,7 @@ async function sendMessage(text) {
     removeTyping();
     let msg = e.message;
     if (msg.includes('429') || msg.toLowerCase().includes('quota')) {
-       msg = "🛑 โควต้า Gemini ของคุณหมดชั่วคราว (Free Tier Limit) กรุณารอประมาณ 1 นาทีแล้วลองใหม่อีกครั้งครับ";
+       msg = "โควต้า AI หมดชั่วคราว (Free Tier Limit) กรุณารอประมาณ 1 นาทีแล้วลองใหม่อีกครั้งครับ";
     }
     appendMessage('bot', `<div class="p-3 rounded-lg border border-red-200 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm font-medium">⚠️ ${msg}</div>`);
   } finally {
@@ -2698,25 +2698,25 @@ function renderCalendarActionUI(msgEl, data) {
   if (!panel) return;
 
   panel.classList.remove('hidden');
-  panel.className = "action-panel mt-4 p-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50 rounded-2xl animate-in slide-in-from-top-2 duration-500 shadow-sm";
+  panel.className = "action-panel mt-4 p-4 bg-brand-50/40 dark:bg-brand-950/20 border border-brand-200/60 dark:border-brand-800/40 rounded-2xl animate-in slide-in-from-top-2 duration-500 shadow-sm";
   panel.innerHTML = `
     <div class="flex items-start gap-4">
-      <div class="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center text-amber-600 flex-shrink-0">
+      <div class="w-10 h-10 rounded-xl bg-brand-100 dark:bg-brand-900/40 flex items-center justify-center text-brand-600 dark:text-brand-400 flex-shrink-0">
         <i data-lucide="calendar-plus" class="w-5 h-5"></i>
       </div>
       <div class="flex-1 min-w-0">
-        <div class="text-[10px] font-black uppercase tracking-widest text-amber-700 dark:text-amber-500 mb-1">AI ตรวจพบนัดหมายในข้อความนี้</div>
+        <div class="text-[10px] font-bold uppercase tracking-widest text-brand-600 dark:text-brand-400 mb-1">AI ตรวจพบนัดหมายในข้อความนี้</div>
         <div class="text-xs font-bold text-surface-900 dark:text-surface-100">${data.title}</div>
-        <div class="text-[10px] text-surface-500 font-medium flex items-center gap-2 mt-1">
-           <span class="flex items-center gap-1.5 px-2 py-0.5 bg-white/50 dark:bg-surface-800 rounded-md border border-amber-100/50 dark:border-amber-800/50">
-             <i data-lucide="clock" class="w-3.5 h-3.5"></i> ${data.date} @ ${data.time}
+        <div class="text-[10px] text-surface-500 font-medium flex items-center gap-2 mt-1.5">
+           <span class="flex items-center gap-1.5 px-2.5 py-1 bg-white/80 dark:bg-surface-800 rounded-lg border border-brand-100 dark:border-brand-900/40 text-surface-700 dark:text-surface-300">
+             <i data-lucide="clock" class="w-3.5 h-3.5 text-brand-500"></i> ${data.date} @ ${data.time}
            </span>
         </div>
-        <div class="flex gap-2 mt-3">
-          <button class="confirm-cal-btn px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold rounded-lg transition-all shadow-md shadow-amber-200/20 active:scale-95">
-            ยืนยันนัดหมาย
+        <div class="flex items-center gap-2 mt-3.5">
+          <button class="confirm-cal-btn px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-brand-500/20 active:scale-95 flex items-center gap-1.5">
+            <i data-lucide="check" class="w-3.5 h-3.5"></i> ยืนยันนัดหมาย
           </button>
-          <button class="cancel-cal-btn px-4 py-1.5 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-400 text-[11px] font-bold rounded-lg hover:bg-surface-50 transition-all">
+          <button class="cancel-cal-btn px-4 py-2 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 text-xs font-bold rounded-xl hover:bg-surface-50 dark:hover:bg-surface-700 transition-all">
             ละเว้น
           </button>
         </div>
@@ -3094,7 +3094,7 @@ if (_chatAutoSpeakBtn) {
     localStorage.setItem('orgchat_auto_speak', _isAutoSpeakEnabled);
     if (_isAutoSpeakEnabled) {
       _chatAutoSpeakBtn.classList.add('text-brand-600', 'bg-brand-50', 'dark:bg-brand-950/40');
-      toast('เปิดโหมดอ่านออกเสียงอัตโนมัติ 🔊', 'info');
+      toast('เปิดโหมดอ่านออกเสียงอัตโนมัติ', 'info');
     } else {
       _chatAutoSpeakBtn.classList.remove('text-brand-600', 'bg-brand-50', 'dark:bg-brand-950/40');
       if (window.speechSynthesis) window.speechSynthesis.cancel();
@@ -4247,8 +4247,13 @@ function renderPosts(posts) {
         }
       })()}
 
-      ${p.attachments && p.attachments.length ? `
-        <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+      ${p.attachments && p.attachments.length ? (() => {
+        const total = p.attachments.length;
+        const gridClass = total === 1
+          ? 'flex justify-center max-w-xl mx-auto w-full my-2'
+          : (total === 2 ? 'grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto w-full my-2 justify-center' : 'grid grid-cols-2 md:grid-cols-3 gap-3 my-2');
+        return `
+        <div class="${gridClass}">
           ${p.attachments.map(file => {
       const isImg = file.type?.startsWith('image/') || file.path.match(/\.(jpg|jpeg|png|gif|webp)$/i);
       const path = file.path;
@@ -4256,8 +4261,11 @@ function renderPosts(posts) {
       const type = file.type || '';
 
       if (isImg) {
+        const cardClass = total === 1
+          ? 'w-full max-w-lg relative group/att overflow-hidden rounded-2xl border border-surface-200/80 dark:border-surface-800 aspect-video cursor-pointer shadow-sm mx-auto'
+          : 'relative group/att overflow-hidden rounded-xl border border-surface-200/80 dark:border-surface-800 aspect-video cursor-pointer shadow-xs w-full';
         return `
-                <div class="relative group/att overflow-hidden rounded-xl border border-surface-100 dark:border-surface-800 aspect-video cursor-pointer" onclick="openLightbox('${path}', '${name}')">
+                <div class="${cardClass}" onclick="openLightbox('${path}', '${name}')">
                   <img src="${path}" class="w-full h-full object-cover transition-transform group-hover/att:scale-105 duration-300" loading="lazy">
                   <div class="absolute inset-0 bg-black/45 opacity-0 group-hover/att:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white">
                     <button onclick="event.stopPropagation(); openLightbox('${path}', '${name}')" class="px-3 py-1.5 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-lg active:scale-95" title="ขยายรูป">
@@ -4286,7 +4294,8 @@ function renderPosts(posts) {
             `;
     }).join('')}
         </div>
-      ` : ''}
+        `;
+      })() : ''}
 
       <div class="flex items-center pt-4 border-t border-surface-50 dark:border-surface-800 gap-2">
         <!-- Reaction Button with Picker -->
@@ -5197,7 +5206,7 @@ function initSocket() {
       // Message is for another chat or we are not looking at the chat modal
       if (data.sender !== currentUser) {
         if (data.text && data.text.includes('[RECONCILE_ACTION]')) {
-          toast('📢 มีค่าใช้จ่ายใหม่จาก LINE ให้ตรวจสอบค่ะ! กรุณาเปิดแอปเพื่อยืนยัน', 'info');
+          toast('มีค่าใช้จ่ายใหม่จาก LINE ให้ตรวจสอบ กรุณาเปิดแอปเพื่อยืนยัน', 'info');
         }
         console.log("🔔 New message in background, showing notification...");
         loadUnreadCounts();
@@ -6224,7 +6233,7 @@ saveScheduleBtn.onclick = async () => {
 
     if (res.ok) {
       toast(editingScheduleId ? 'แก้ไขนัดหมายสำเร็จ!' : 'เพิ่มนัดหมายสำเร็จ!', 'success');
-      if (res.warning) toast('⚠️ ' + res.warning, 'warning');
+      if (res.warning) toast(res.warning, 'warning');
       scheduleModal.classList.add('hidden');
       scheduleTitleInput.value = '';
       scheduleDescInput.value = '';
@@ -6987,7 +6996,8 @@ async function checkAuth() {
     if (data.ok && data.user) {
       state.user = data.user;
       state.username = data.user;
-      state.isAdmin = data.profile?.role === 'admin' || data.user === 'Admin';
+      state.isSuperAdmin = !!(data.is_superadmin || data.profile?.is_superadmin || data.profile?.role === 'superadmin');
+      state.isAdmin = data.profile?.role === 'admin' || data.profile?.role === 'superadmin' || state.isSuperAdmin || data.user === 'Admin';
       state.canEditKB = !!data.profile?.can_edit_kb;
       state.hasOrg = data.has_org === true;
       state.orgId = data.org_id ?? null;
@@ -7015,6 +7025,7 @@ async function checkAuth() {
     console.log('User not authed');
   }
   loginOverlay.classList.remove('hidden');
+  loginOverlay.classList.add('flex', 'items-center', 'justify-center');
   // ถ้า redirect มาจาก session timeout → บอก user ว่าทำไมต้อง login ใหม่
   const _spParam = new URLSearchParams(window.location.search);
   if (_spParam.get('session_expired') === '1') {
@@ -8559,7 +8570,6 @@ async function initAppContent() {
   const overlay = $('loginOverlay');
   if (overlay) {
     overlay.classList.add('hidden');
-    overlay.classList.remove('flex', 'items-center', 'justify-center');
   }
 
   try {
@@ -9846,21 +9856,9 @@ function switchOrgTab(tab) {
     const btn = $(`orgTab-${t}`);
     const content = $(`orgTabContent-${t}`);
     const active = t === tab;
-    if (btn) {
-      btn.className = `org-tab inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-all ${
-        active 
-          ? 'bg-white dark:bg-surface-700 shadow-xs font-semibold text-surface-900 dark:text-white' 
-          : 'text-surface-500 dark:text-surface-400 hover:text-surface-800 dark:hover:text-surface-200 hover:bg-surface-200/50 dark:hover:bg-surface-700/50 font-medium'
-      }`;
-      const icon = btn.querySelector('i');
-      if (icon) {
-        if (active) {
-          icon.className = icon.className.replace(/text-surface-\d+/g, '').replace(/dark:text-surface-\d+/g, '') + ' text-brand-600 dark:text-brand-400';
-        } else {
-          icon.className = icon.className.replace(/text-brand-\d+/g, '').replace(/dark:text-brand-\d+/g, '') + ' text-surface-400 dark:text-surface-500';
-        }
-      }
-    }
+    const activeClass = 'org-tab whitespace-nowrap shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all bg-white dark:bg-surface-700 shadow-xs text-surface-900 dark:text-white';
+    const inactiveClass = 'org-tab whitespace-nowrap shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white hover:bg-surface-200/50 dark:hover:bg-surface-700/40';
+    if (btn) btn.className = active ? activeClass : inactiveClass;
     if (content) content.classList.toggle('hidden', !active);
   });
   // Reset scroll so the new tab content is visible from the top
@@ -9903,7 +9901,7 @@ async function loadOrgDepartments() {
     const deptSelect = $('orgFilterDept');
     if (deptSelect) {
       const currentVal = deptSelect.value;
-      deptSelect.innerHTML = `<option value="">🏢 ทุกแผนก</option>` +
+      deptSelect.innerHTML = `<option value="">ทุกแผนก</option>` +
         _orgDepartmentsCache.map(d => `<option value="${escHtml(d.department_name)}">${escHtml(d.department_name)}</option>`).join('');
       deptSelect.value = currentVal;
     }
@@ -10292,13 +10290,13 @@ async function loadOrgAnnouncements() {
       }
       container.innerHTML = res.announcements.map(a => {
         let badgeClass = 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400';
-        let badgeText = '📢 ข่าวสารทั่วไป';
+        let badgeText = 'ข่าวสารทั่วไป';
         if (a.priority === 'important') {
           badgeClass = 'bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400 font-black';
-          badgeText = '📌 สำคัญมาก';
+          badgeText = 'สำคัญมาก';
         } else if (a.priority === 'update') {
           badgeClass = 'bg-purple-50 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400';
-          badgeText = '🚀 อัปเดตงาน';
+          badgeText = 'อัปเดตงาน';
         }
         return `
           <div class="p-4 bg-surface-50 dark:bg-surface-800/40 border border-surface-200 dark:border-surface-700/60 rounded-2xl space-y-2 relative group">
@@ -10362,286 +10360,55 @@ async function deleteOrgAnnouncement(id) {
   }
 }
 
-let _orgLogsCategoryFilter = 'all';
-
-function getUserAvatarGradient(username) {
-  const gradients = [
-    'from-blue-600 to-indigo-600',
-    'from-emerald-600 to-teal-600',
-    'from-violet-600 to-purple-600',
-    'from-amber-600 to-orange-600',
-    'from-rose-600 to-pink-600',
-    'from-cyan-600 to-blue-600'
-  ];
-  let hash = 0;
-  for (let i = 0; i < (username || '').length; i++) {
-    hash = (hash << 5) - hash + username.charCodeAt(i);
-    hash |= 0;
-  }
-  const idx = Math.abs(hash) % gradients.length;
-  return gradients[idx];
-}
-
-function formatOrgLogTime(timeStr) {
-  if (!timeStr) return { formatted: '—', relative: '' };
-  try {
-    const d = new Date(timeStr.replace(' ', 'T'));
-    if (isNaN(d.getTime())) return { formatted: timeStr, relative: '' };
-    
-    const monthsTH = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-    const day = d.getDate();
-    const month = monthsTH[d.getMonth()];
-    const year = d.getFullYear() + 543;
-    const hours = String(d.getHours()).padStart(2, '0');
-    const mins = String(d.getMinutes()).padStart(2, '0');
-
-    const now = new Date();
-    const diffMs = now.getTime() - d.getTime();
-    const diffSec = Math.floor(diffMs / 1000);
-    const diffMin = Math.floor(diffSec / 60);
-    const diffHour = Math.floor(diffMin / 60);
-    const diffDay = Math.floor(diffHour / 24);
-
-    let relative = '';
-    if (diffMin < 1) relative = 'เมื่อสักครู่';
-    else if (diffMin < 60) relative = `${diffMin} นาทีที่แล้ว`;
-    else if (diffHour < 24) relative = `${diffHour} ชม. ที่แล้ว`;
-    else if (diffDay < 7) relative = `${diffDay} วันที่แล้ว`;
-
-    return {
-      formatted: `${day} ${month} ${year} • ${hours}:${mins} น.`,
-      relative: relative
-    };
-  } catch (e) {
-    return { formatted: timeStr, relative: '' };
-  }
-}
-
-function parseOrgEvent(text, user) {
-  const raw = text || '';
-  
-  // 1. Created org announcement
-  if (raw.startsWith('Created org announcement:')) {
-    const title = raw.replace('Created org announcement:', '').trim();
-    return {
-      category: 'announcement',
-      badge: 'ประกาศองค์กร',
-      badgeClass: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60',
-      descriptionHtml: `สร้างประกาศ <span class="font-medium text-surface-900 dark:text-white">"${escapeHtml(title)}"</span>`
-    };
-  }
-
-  // 2. New post created
-  if (raw.startsWith('New post created:')) {
-    const match = raw.match(/ID\s*(\d+)/i);
-    const postId = match ? match[1] : '';
-    return {
-      category: 'post',
-      badge: 'โพสต์ฟีด',
-      badgeClass: 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/60',
-      descriptionHtml: `สร้างโพสต์ใหม่ในฟีด <span class="font-mono text-[10px] text-surface-500 font-semibold">#${postId}</span>`
-    };
-  }
-
-  // 3. Post deleted
-  if (raw.startsWith('Post deleted:')) {
-    const match = raw.match(/ID\s*(\d+)/i);
-    const postId = match ? match[1] : '';
-    return {
-      category: 'delete',
-      badge: 'ลบโพสต์',
-      badgeClass: 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200/60 dark:border-rose-800/60',
-      descriptionHtml: `ลบโพสต์ <span class="font-mono text-[10px] text-surface-500 font-semibold">#${postId}</span> ออกจากฟีด`
-    };
-  }
-
-  // 4. Assigned file to category
-  if (raw.startsWith('Assigned file')) {
-    const match = raw.match(/Assigned file\s+([a-zA-Z0-9]+)\s+to category\s+(.*)/i);
-    const fileHash = match ? match[1] : '';
-    const shortHash = fileHash.length > 12 ? fileHash.substring(0, 8) + '...' + fileHash.substring(fileHash.length - 4) : fileHash;
-    const cat = match ? match[2].trim() : 'None';
-    const catName = (cat === 'None' || cat === 'null' || !cat) ? 'ไม่ระบุหมวดหมู่' : `หมวดหมู่ ${cat}`;
-    return {
-      category: 'file',
-      badge: 'หมวดหมู่ไฟล์',
-      badgeClass: 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/60',
-      descriptionHtml: `กำหนดไฟล์ <span class="font-mono text-[10px] px-1 py-0.5 rounded bg-surface-100 dark:bg-surface-800 text-surface-700 dark:text-surface-300" title="${escapeHtml(fileHash)}">${escapeHtml(shortHash)}</span> &rarr; <span class="font-medium text-surface-900 dark:text-white">${escapeHtml(catName)}</span>`
-    };
-  }
-
-  // 5. Started uploading file
-  if (raw.startsWith('Started uploading file:')) {
-    const filename = raw.replace('Started uploading file:', '').trim();
-    return {
-      category: 'file',
-      badge: 'อัปโหลดไฟล์',
-      badgeClass: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60',
-      descriptionHtml: `อัปโหลดไฟล์ <span class="font-medium text-surface-900 dark:text-white">${escapeHtml(filename)}</span>`
-    };
-  }
-
-  // 6. Added KB category
-  if (raw.startsWith('Added KB category:')) {
-    const rest = raw.replace('Added KB category:', '').trim();
-    return {
-      category: 'file',
-      badge: 'คลังความรู้',
-      badgeClass: 'bg-teal-50 text-teal-700 dark:bg-teal-950/60 dark:text-teal-300 border border-teal-200/60 dark:border-teal-800/60',
-      descriptionHtml: `เพิ่มหมวดหมู่ความรู้: <span class="font-medium text-surface-900 dark:text-white">${escapeHtml(rest)}</span>`
-    };
-  }
-
-  // 7. Poll actions
-  if (raw.includes('voted on poll') || raw.startsWith('Poll added to post:')) {
-    return {
-      category: 'post',
-      badge: 'แบบสำรวจ',
-      badgeClass: 'bg-violet-50 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300 border border-violet-200/60 dark:border-violet-800/60',
-      descriptionHtml: `${escapeHtml(raw)}`
-    };
-  }
-
-  // 8. Schedule
-  if (raw.toLowerCase().includes('schedule')) {
-    const isDelete = raw.toLowerCase().includes('delete');
-    return {
-      category: isDelete ? 'delete' : 'schedule',
-      badge: isDelete ? 'ลบนัดหมาย' : 'นัดหมาย',
-      badgeClass: isDelete 
-        ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200/60 dark:border-rose-800/60'
-        : 'bg-sky-50 text-sky-700 dark:bg-sky-950/60 dark:text-sky-300 border border-sky-200/60 dark:border-sky-800/60',
-      descriptionHtml: `${escapeHtml(raw)}`
-    };
-  }
-
-  // 9. AI Persona
-  if (raw.toLowerCase().includes('ai persona')) {
-    return {
-      category: 'system',
-      badge: 'AI Persona',
-      badgeClass: 'bg-fuchsia-50 text-fuchsia-700 dark:bg-fuchsia-950/60 dark:text-fuchsia-300 border border-fuchsia-200/60 dark:border-fuchsia-800/60',
-      descriptionHtml: `${escapeHtml(raw)}`
-    };
-  }
-
-  // Fallback
-  return {
-    category: 'system',
-    badge: 'ระบบ',
-    badgeClass: 'bg-surface-100 text-surface-700 dark:bg-surface-800 dark:text-surface-300 border border-surface-200 dark:border-surface-700',
-    descriptionHtml: `${escapeHtml(raw)}`
-  };
-}
-
 async function loadOrgLogs() {
   const container = $('orgLogList');
-  const refreshIcon = $('orgLogRefreshIcon');
-  if (refreshIcon) refreshIcon.classList.add('animate-spin');
-  if (container) {
-    container.innerHTML = '<tr><td colspan="4" class="text-center py-12 text-surface-400 text-xs font-medium">กำลังโหลดบันทึกกิจกรรม...</td></tr>';
-  }
+  if (!container) return;
+  container.innerHTML = '<div class="text-center py-8 opacity-50 text-xs">กำลังโหลดบันทึกกิจกรรม...</div>';
   try {
     const res = await apiFetch('/api/org/logs');
-    if (refreshIcon) refreshIcon.classList.remove('animate-spin');
     if (res.ok && res.logs) {
       _orgLogsCache = res.logs;
-      const countBadge = $('orgLogsCountBadge');
-      if (countBadge) countBadge.textContent = `${_orgLogsCache.length} รายการ`;
-      filterOrgLogs($('orgLogSearch') ? $('orgLogSearch').value : '');
+      renderOrgLogs(_orgLogsCache);
     }
   } catch (e) {
-    if (refreshIcon) refreshIcon.classList.remove('animate-spin');
-    if (container) {
-      container.innerHTML = '<tr><td colspan="4" class="text-center py-8 text-rose-500 text-xs font-medium">โหลดบันทึกประวัติล้มเหลว กรุณาลองใหม่อีกครั้ง</td></tr>';
-    }
+    container.innerHTML = '<div class="text-center py-6 text-red-500 text-xs">โหลดบันทึกประวัติล้มเหลว</div>';
   }
-}
-
-function setOrgLogCategoryFilter(category) {
-  _orgLogsCategoryFilter = category;
-  document.querySelectorAll('.org-log-chip').forEach(btn => {
-    const isTarget = btn.id === `orgLogChip-${category}`;
-    if (isTarget) {
-      btn.className = 'org-log-chip px-3 py-1 rounded-md text-xs font-semibold whitespace-nowrap transition-all bg-surface-900 text-white dark:bg-white dark:text-surface-900 shadow-xs';
-    } else {
-      btn.className = 'org-log-chip px-3 py-1 rounded-md text-xs font-medium whitespace-nowrap transition-all bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-200/60 dark:hover:bg-surface-700';
-    }
-  });
-  filterOrgLogs($('orgLogSearch') ? $('orgLogSearch').value : '');
 }
 
 function renderOrgLogs(logs) {
   const container = $('orgLogList');
   if (!container) return;
   if (!logs || logs.length === 0) {
-    container.innerHTML = `
-      <tr>
-        <td colspan="4" class="text-center py-12 px-4 text-surface-400 dark:text-surface-500 text-xs">
-          ไม่พบบันทึกกิจกรรมที่ตรงกับเงื่อนไข
-        </td>
-      </tr>`;
+    container.innerHTML = '<div class="text-center py-10 text-surface-400 text-xs font-bold bg-surface-50 dark:bg-surface-800/30 rounded-2xl">ยังไม่มีบันทึกกิจกรรมในองค์กร</div>';
     return;
   }
-
-  container.innerHTML = logs.map(l => {
-    const parsed = parseOrgEvent(l.event, l.user);
-    const timeInfo = formatOrgLogTime(l.time);
-    const initial = (l.user || 'S')[0].toUpperCase();
-
-    return `
-      <tr class="hover:bg-surface-50/70 dark:hover:bg-surface-800/40 transition-colors">
-        <!-- Timestamp -->
-        <td class="px-4 py-2.5 whitespace-nowrap font-mono text-[11px] text-surface-500 dark:text-surface-400">
-          ${timeInfo.formatted}
-        </td>
-
-        <!-- Actor -->
-        <td class="px-4 py-2.5 whitespace-nowrap">
-          <div class="flex items-center gap-1.5">
-            <span class="w-5 h-5 rounded-full bg-surface-200 dark:bg-surface-700 text-surface-700 dark:text-surface-200 text-[10px] font-bold flex items-center justify-center shrink-0">
-              ${initial}
-            </span>
-            <span class="font-semibold text-surface-800 dark:text-surface-200 text-xs">@${escapeHtml(l.user || 'System')}</span>
+  container.innerHTML = logs.map(l => `
+    <div class="flex items-center justify-between p-3 bg-surface-50 dark:bg-surface-800/30 border border-surface-150 dark:border-surface-700/50 rounded-xl hover:border-brand-500/30 transition-all">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-full bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 flex items-center justify-center text-xs font-black shrink-0">
+          ${(l.user || 'S')[0].toUpperCase()}
+        </div>
+        <div class="space-y-0.5">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-black text-surface-900 dark:text-white">@${escapeHtml(l.user || 'System')}</span>
           </div>
-        </td>
-
-        <!-- Event Badge -->
-        <td class="px-4 py-2.5 whitespace-nowrap">
-          <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold ${parsed.badgeClass}">
-            ${parsed.badge}
-          </span>
-        </td>
-
-        <!-- Details -->
-        <td class="px-4 py-2.5 text-xs text-surface-600 dark:text-surface-300">
-          ${parsed.descriptionHtml}
-        </td>
-      </tr>
-    `;
-  }).join('');
+          <p class="text-xs text-surface-600 dark:text-surface-300 font-medium">${escapeHtml(l.event || '')}</p>
+        </div>
+      </div>
+      <div class="text-right shrink-0">
+        <span class="text-[10px] font-bold text-surface-400">${l.time || ''}</span>
+      </div>
+    </div>
+  `).join('');
 }
 
 function filterOrgLogs(query) {
   const q = (query || '').toLowerCase().trim();
-  let filtered = _orgLogsCache || [];
-  
-  // Category Filter
-  if (_orgLogsCategoryFilter !== 'all') {
-    filtered = filtered.filter(l => {
-      const parsed = parseOrgEvent(l.event, l.user);
-      return parsed.category === _orgLogsCategoryFilter;
-    });
-  }
-  
-  // Search query
-  if (q) {
-    filtered = filtered.filter(l => 
-      (l.user || '').toLowerCase().includes(q) || 
-      (l.event || '').toLowerCase().includes(q)
-    );
-  }
-  
+  if (!q) return renderOrgLogs(_orgLogsCache);
+  const filtered = _orgLogsCache.filter(l => 
+    (l.user || '').toLowerCase().includes(q) || 
+    (l.event || '').toLowerCase().includes(q)
+  );
   renderOrgLogs(filtered);
 }
 
@@ -10789,7 +10556,7 @@ async function loadOrgMembers() {
       if (deptSelect) {
         const currVal = deptSelect.value;
         const depts = Array.from(new Set(_orgMembersCache.map(m => (m.department || '').trim()).filter(Boolean))).sort();
-        deptSelect.innerHTML = '<option value="">🏢 ทุกแผนก</option>' + depts.map(d => `<option value="${escapeHtml(d)}">${escapeHtml(d)}</option>`).join('');
+        deptSelect.innerHTML = '<option value="">ทุกแผนก</option>' + depts.map(d => `<option value="${escapeHtml(d)}">${escapeHtml(d)}</option>`).join('');
         if (currVal && depts.includes(currVal)) deptSelect.value = currVal;
       }
 
@@ -10917,36 +10684,43 @@ function renderOrgMembers(members, canManage) {
   container.innerHTML = members.map(m => {
     const isMe = m.username === state.username;
     const isActive = m.is_active !== false;
+    const avatarFallback = (m.display_name || m.username).charAt(0).toUpperCase();
     const avatarHtml = m.avatar_url
-      ? `<img src="${m.avatar_url}" class="w-10 h-10 rounded-xl object-cover flex-shrink-0" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
-        + `<div class="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-400 to-indigo-500 items-center justify-center text-white text-sm font-black flex-shrink-0" style="display:none">${(m.display_name || m.username).charAt(0).toUpperCase()}</div>`
-      : `<div class="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-400 to-indigo-500 flex items-center justify-center text-white text-sm font-black flex-shrink-0">${(m.display_name || m.username).charAt(0).toUpperCase()}</div>`;
-    let roleBadge = `<span class="admin-role-badge user">Member</span>`;
+      ? `<img src="${m.avatar_url}" class="w-9 h-9 rounded-xl object-cover flex-shrink-0" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+        + `<div class="w-9 h-9 rounded-xl bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 items-center justify-center text-surface-700 dark:text-surface-200 text-xs font-bold flex-shrink-0" style="display:none">${avatarFallback}</div>`
+      : `<div class="w-9 h-9 rounded-xl bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 flex items-center justify-center text-surface-700 dark:text-surface-200 text-xs font-bold flex-shrink-0">${avatarFallback}</div>`;
+    
+    // Primary Role Badge (Consistent, clean, non-shouty)
+    let roleBadge = `<span class="inline-flex items-center px-2 py-0.5 text-[10px] font-medium text-surface-500 dark:text-surface-400 bg-surface-100 dark:bg-surface-800 border border-surface-200/80 dark:border-surface-700/80 rounded-md">Member</span>`;
     if (m.is_owner) {
-      roleBadge = `<span class="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-full shadow-sm flex items-center gap-1"><i data-lucide="crown" class="w-2.5 h-2.5"></i> Owner (Admin ใหญ่)</span>`;
+      roleBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-md"><i data-lucide="crown" class="w-2.5 h-2.5"></i>Owner</span>`;
     } else if (m.role === 'admin') {
-      roleBadge = `<span class="admin-role-badge admin">Admin</span>`;
+      roleBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold text-brand-600 dark:text-brand-400 bg-brand-500/10 border border-brand-500/20 rounded-md"><i data-lucide="shield" class="w-2.5 h-2.5"></i>Admin</span>`;
     }
-    const statusDot = `<span class="admin-status-dot" style="background:${isActive ? '#22c55e' : '#ef4444'}" title="${isActive ? 'ใช้งานอยู่' : 'ปิดใช้งาน'}"></span>`;
-    const financialBadge = m.can_view_financial
-      ? `<span class="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full">รายจ่าย</span>`
-      : '';
-    const leaveBadge = m.can_manage_leave
-      ? `<span class="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-full">อนุมัติลา</span>`
-      : '';
-    const kbBadge = (m.can_view_kb || m.can_edit_kb)
-      ? `<span class="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-full">คลังความรู้</span>`
-      : '';
-    const broadcastBadge = m.can_broadcast_line
-      ? `<span class="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full">LINE Broadcast</span>`
-      : '';
-    const peakBadge = m.can_manage_peak
-      ? `<span class="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full">PEAK</span>`
-      : '';
+
+    const statusDot = `<span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-white dark:ring-surface-900 ${isActive ? 'bg-emerald-500' : 'bg-surface-400'}" title="${isActive ? 'ใช้งานอยู่' : 'ปิดใช้งาน'}"></span>`;
+    
+    // Sub-permissions: Muted, cohesive tags (No rainbow neon confetti!)
+    const activePerms = [];
+    if (m.can_view_financial) activePerms.push('รายจ่าย');
+    if (m.can_manage_leave) activePerms.push('อนุมัติลา');
+    if (m.can_view_kb || m.can_edit_kb) activePerms.push('คลังความรู้');
+    if (m.can_broadcast_line) activePerms.push('LINE Broadcast');
+    if (m.can_manage_peak) activePerms.push('PEAK');
+
+    let permsHtml = '';
+    if (activePerms.length === 5) {
+      permsHtml = `<span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium text-surface-600 dark:text-surface-300 bg-surface-100 dark:bg-surface-800 border border-surface-200/80 dark:border-surface-700/80 rounded-md" title="มีสิทธิ์ครบทุกระบบ: รายจ่าย, อนุมัติลา, คลังความรู้, LINE Broadcast, PEAK"><i data-lucide="shield-check" class="w-3 h-3 text-emerald-500"></i>ทุกสิทธิ์เข้าถึง</span>`;
+    } else if (activePerms.length > 0) {
+      permsHtml = activePerms.map(p => 
+        `<span class="inline-flex items-center px-2 py-0.5 text-[10px] font-medium text-surface-600 dark:text-surface-300 bg-surface-100/80 dark:bg-surface-800/80 border border-surface-200/60 dark:border-surface-700/60 rounded-md">${p}</span>`
+      ).join('');
+    }
+
     const googleBadge = m.google_connected
-      ? `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold bg-white dark:bg-surface-700 border border-surface-200 dark:border-surface-600 text-surface-600 dark:text-surface-300 rounded-full" title="เชื่อมต่อ Google: ${m.google_email || ''}"><svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>Google</span>`
+      ? `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-medium bg-surface-100 dark:bg-surface-800 border border-surface-200/80 dark:border-surface-700/80 text-surface-600 dark:text-surface-300 rounded" title="เชื่อมต่อ Google: ${m.google_email || ''}"><svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>Google</span>`
       : '';
-    const meBadge = isMe ? `<span class="text-[9px] font-bold text-surface-400 bg-surface-100 dark:bg-surface-700 px-1.5 py-0.5 rounded-full">คุณ</span>` : '';
+    const meBadge = isMe ? `<span class="text-[9px] font-semibold text-brand-600 dark:text-brand-400 bg-brand-500/10 border border-brand-500/20 px-1.5 py-0.5 rounded">คุณ</span>` : '';
     const subInfo = [
       `@${m.username}`,
       m.google_email ? m.google_email : (m.email ? m.email : null),
@@ -10956,34 +10730,29 @@ function renderOrgMembers(members, canManage) {
     const actions = canManage ? `
       <div class="flex items-center gap-1.5 ml-auto flex-shrink-0">
         <button onclick="openOrgMemberEditModal('${m.username}')"
-          class="px-3 py-1.5 text-[10px] font-bold rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors">
+          class="px-3 py-1.5 text-xs font-semibold rounded-lg border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700/60 transition-colors">
           <i data-lucide="pencil" class="w-3 h-3 inline mr-1"></i>แก้ไข
         </button>
         ${!isMe && !m.is_owner ? `<button onclick="removeOrgMember('${m.username}')"
-          class="p-1.5 text-surface-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors" title="ลบออกจากองค์กร">
+          class="p-1.5 text-surface-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg transition-colors" title="ลบออกจากองค์กร">
           <i data-lucide="user-minus" class="w-4 h-4"></i>
         </button>` : ''}
       </div>` : '';
     return `
-      <div class="admin-user-row flex items-center gap-3 p-3.5 bg-white dark:bg-surface-800 border border-surface-100 dark:border-surface-700 rounded-2xl shadow-sm">
+      <div class="admin-user-row flex items-center gap-3 p-3 bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl shadow-xs">
         <div class="relative flex-shrink-0">
           ${avatarHtml}
           ${statusDot}
         </div>
         <div class="flex-1 min-w-0">
-          <div class="flex items-center gap-2 flex-wrap mb-0.5">
-            <span class="text-sm font-bold text-surface-900 dark:text-white truncate max-w-[160px]">${m.display_name || m.username}</span>
+          <div class="flex items-center gap-1.5 flex-wrap mb-1">
+            <span class="text-xs font-semibold text-surface-900 dark:text-white truncate max-w-[180px]">${m.display_name || m.username}</span>
             ${meBadge}
             ${roleBadge}
-            ${financialBadge}
-            ${leaveBadge}
-            ${kbBadge}
-            ${broadcastBadge}
-            ${peakBadge}
+            ${permsHtml}
             ${googleBadge}
           </div>
-
-          <div class="text-[10px] text-surface-400 font-mono truncate">${subInfo}</div>
+          <div class="text-[11px] text-surface-400 truncate">${subInfo}</div>
         </div>
         ${actions}
       </div>`;
@@ -11285,89 +11054,31 @@ function _renderMySettings(d) {
       ? `<span class="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400"><span class="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>ใช้งานอยู่</span>`
       : `<span class="flex items-center gap-1.5 text-red-500"><span class="w-2 h-2 rounded-full bg-red-500 inline-block"></span>ปิดการใช้งาน</span>`;
   }
-  // Permissions list (Human-designed grouped pill architecture)
+  // Permissions list
   const permsEl = $('myPermissionsList');
   if (permsEl) {
-    const groups = [
-      {
-        title: 'คลังเอกสาร & ข้อมูล',
-        icon: 'folder-archive',
-        items: [
-          { key: 'can_view_kb', label: 'ดูและค้นหาไฟล์' },
-          { key: 'can_edit_kb', label: 'อัปโหลด / แก้ไข' },
-          { key: 'can_delete_kb', label: 'ลบไฟล์คลังข้อมูล' },
-        ]
-      },
-      {
-        title: 'การเงิน & งานบัญชี',
-        icon: 'wallet-cards',
-        items: [
-          { key: 'can_view_financial', label: 'แดชบอร์ดรายจ่าย' },
-          { key: 'can_claim_expense', label: 'ยื่นเบิกจ่ายค่าใช้จ่าย' },
-          { key: 'can_manage_peak', label: 'ระบบบัญชี PEAK' },
-        ]
-      },
-      {
-        title: 'ระบบ & การสื่อสาร',
-        icon: 'sliders',
-        items: [
-          { key: 'can_use_ai', label: 'สนทนากับ AI' },
-          { key: 'can_manage_leave', label: 'จัดการคำขอลา' },
-          { key: 'can_broadcast_line', label: 'บรอดแคสต์ LINE' },
-        ]
-      }
+    const perms = [
+      { key: 'can_view_kb', label: 'ดูคลังข้อมูล', desc: 'ดูและค้นหาไฟล์' },
+      { key: 'can_edit_kb', label: 'แก้ไขคลังข้อมูล', desc: 'อัปโหลดและแก้ไขไฟล์' },
+      { key: 'can_delete_kb', label: 'ลบไฟล์คลังข้อมูล', desc: 'ลบไฟล์ออกจากระบบ' },
+      { key: 'can_view_financial', label: 'แดชบอร์ดรายจ่าย', desc: 'ดูหน้าสรุปภาษีและค่าใช้จ่าย' },
+      { key: 'can_manage_leave', label: 'จัดการการลา', desc: 'อนุมัติและจัดการคำขอลาของพนักงาน' },
+      { key: 'can_broadcast_line', label: 'บรอดแคสต์ LINE', desc: 'ส่งข้อความบรอดแคสต์ไปยังกลุ่มและผู้ใช้' },
+      { key: 'can_manage_peak', label: 'จัดการ PEAK Account', desc: 'เชื่อมต่อและจัดการระบบบัญชี PEAK' },
+      { key: 'can_use_ai', label: 'สนทนากับ AI', desc: 'สิทธิ์พูดคุยและประมวลผลกับ AI' },
+      { key: 'can_claim_expense', label: 'เบิกจ่ายค่าใช้จ่าย', desc: 'ยื่นคำขอเบิกเงินและส่งสลิปค่าใช้จ่าย' },
     ];
 
-    let totalCount = 0;
-    let activeCount = 0;
-    groups.forEach(g => {
-      g.items.forEach(it => {
-        totalCount++;
-        if (d[it.key]) activeCount++;
-      });
-    });
-
-    const activeBadge = $('myPermsActiveBadge');
-    if (activeBadge) {
-      if (activeCount === totalCount) {
-        activeBadge.textContent = 'เข้าถึงได้ทุกฟีเจอร์ (Full Access)';
-        activeBadge.className = 'text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-0.5 rounded-full border border-emerald-200/60 dark:border-emerald-800/40';
-      } else {
-        activeBadge.textContent = `อนุมัติแล้ว ${activeCount}/${totalCount} สิทธิ์`;
-        activeBadge.className = 'text-[10px] font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/60 px-2.5 py-0.5 rounded-full border border-brand-200/60 dark:border-brand-800/40';
-      }
-    }
-
-    permsEl.className = 'p-4 bg-surface-50/70 dark:bg-surface-800/30 rounded-2xl border border-surface-200/70 dark:border-surface-700/50 space-y-3';
-    permsEl.innerHTML = groups.map((g, idx) => {
-      const isLast = idx === groups.length - 1;
-      const pills = g.items.map(it => {
-        const on = !!d[it.key];
-        if (on) {
-          return `<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium bg-emerald-50/90 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/60">
-            <svg class="w-3.5 h-3.5 text-emerald-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
-            </svg>
-            ${it.label}
-          </span>`;
-        } else {
-          return `<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium bg-surface-100/60 dark:bg-surface-800/40 text-surface-400 dark:text-surface-500 border border-surface-200/60 dark:border-surface-700/40 opacity-50">
-            <svg class="w-3.5 h-3.5 text-surface-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
-            </svg>
-            ${it.label}
-          </span>`;
-        }
-      }).join('');
-
-      return `<div class="${!isLast ? 'pb-3 border-b border-surface-200/50 dark:border-surface-700/40' : ''}">
-        <div class="text-[10px] font-bold text-surface-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-          <i data-lucide="${g.icon}" class="w-3.5 h-3.5 text-surface-400"></i>
-          <span>${g.title}</span>
+    permsEl.innerHTML = perms.map(p => {
+      const on = !!d[p.key];
+      return `<div class="flex items-center justify-between p-3 rounded-xl border ${on ? 'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/50 dark:bg-emerald-900/10' : 'border-surface-100 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/30'}">
+        <div>
+          <div class="text-xs font-bold text-surface-800 dark:text-white">${p.label}</div>
+          <div class="text-[10px] text-surface-400">${p.desc}</div>
         </div>
-        <div class="flex flex-wrap gap-1.5">
-          ${pills}
-        </div>
+        <span class="${on ? 'text-emerald-600 dark:text-emerald-400' : 'text-surface-300 dark:text-surface-600'} text-lg">
+          ${on ? '✓' : '—'}
+        </span>
       </div>`;
     }).join('');
   }
@@ -11380,14 +11091,14 @@ function _renderMySettings(d) {
 
   if (myLineStatusText) {
     if (d.line_user_id) {
-      myLineStatusText.textContent = `🟢 เชื่อมต่อแล้ว (LINE ID: ${d.line_user_id.substring(0, 10)}...)`;
+      myLineStatusText.textContent = `เชื่อมต่อแล้ว (LINE ID: ${d.line_user_id.substring(0, 10)}...)`;
       myLineStatusText.className = "text-xs font-bold text-purple-600 dark:text-purple-400 font-extrabold";
       if (btnMyBindLine) btnMyBindLine.classList.add('hidden');
       if (btnMyUnbindLine) btnMyUnbindLine.classList.remove('hidden');
       if (myLineInstruction) myLineInstruction.classList.add('hidden');
       if (myLineBannerAlert) myLineBannerAlert.classList.add('hidden');
     } else {
-      myLineStatusText.textContent = '🔴 ยังไม่ได้เชื่อมต่อบัญชี LINE';
+      myLineStatusText.textContent = 'ยังไม่ได้เชื่อมต่อบัญชี LINE';
       myLineStatusText.className = "text-xs font-bold text-surface-600 dark:text-surface-300";
       if (btnMyBindLine) btnMyBindLine.classList.remove('hidden');
       if (btnMyUnbindLine) btnMyUnbindLine.classList.add('hidden');
@@ -11850,23 +11561,23 @@ function renderAdminUserList(users) {
 
     return `
       <div class="admin-user-row">
-        <div style="width:40px;height:40px;border-radius:12px;background:rgba(124,58,237,.1);color:#7c3aed;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;">
+        <div style="width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;" class="border border-surface-200 dark:border-surface-700 bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300">
           ${avatarContent}
         </div>
         <div style="flex:1;min-width:0;">
           <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:2px;">
-            <div style="font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;" class="dark:text-white">${user.display_name || user.username.charAt(0).toUpperCase() + user.username.slice(1)}</div>
+            <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;" class="dark:text-white">${user.display_name || user.username.charAt(0).toUpperCase() + user.username.slice(1)}</div>
             <div class="admin-status-dot" style="background:${activeColor};" title="${user.is_active ? 'ใช้งานปกติ' : 'ถูกระงับ'}"></div>
           </div>
           <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;">
-            <div style="font-size:11px;color:#94a3b8;font-family:monospace;">@${user.username}</div>
+            <div style="font-size:11px;color:#94a3b8;">@${user.username}</div>
             <span class="admin-role-badge ${roleClass}">${user.role}</span>
-            ${user.department ? `<span class="text-[9px] bg-blue-100/50 text-blue-700 dark:text-blue-400 px-1 py-0.5 rounded font-bold">${user.department.toUpperCase()}</span>` : ''}
-            ${user.can_edit_kb ? `<span class="text-[9px] bg-emerald-100/50 text-emerald-700 dark:text-emerald-400 px-1 py-0.5 rounded font-bold">KB EDIT</span>` : ''}
+            ${user.department ? `<span class="text-[10px] bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 px-1.5 py-0.5 rounded font-medium">${user.department.toUpperCase()}</span>` : ''}
+            ${user.can_edit_kb ? `<span class="text-[10px] bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 px-1.5 py-0.5 rounded font-medium">KB EDIT</span>` : ''}
           </div>
         </div>
         <div class="flex gap-2">
-          <button onclick="openEditUserModal('${user.username}')" style="padding:8px 14px;border-radius:10px;font-size:12px;font-weight:700;border:1px solid #e2e8f0;background:transparent;cursor:pointer;color:#475569;" class="dark:border-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors">
+          <button onclick="openEditUserModal('${user.username}')" style="padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;border:1px solid #e2e8f0;background:transparent;cursor:pointer;color:#475569;" class="dark:border-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors">
             แก้ไข
           </button>
           ${user.username !== 'Admin' ? `
@@ -11922,12 +11633,12 @@ function openEditUserModal(username) {
   const btnUnbindLine = $('btnUnbindLine');
   if (lineStatusEl && btnUnbindLine) {
     if (user.line_user_id) {
-      lineStatusEl.textContent = `🟢 เชื่อมต่อแล้ว (LINE ID: ${user.line_user_id.substring(0, 10)}...)`;
+      lineStatusEl.textContent = `เชื่อมต่อแล้ว (LINE ID: ${user.line_user_id.substring(0, 10)}...)`;
       lineStatusEl.classList.remove('text-surface-600', 'dark:text-surface-300');
       lineStatusEl.classList.add('text-purple-600', 'dark:text-purple-400');
       btnUnbindLine.classList.remove('hidden');
     } else {
-      lineStatusEl.textContent = '🔴 ยังไม่ได้เชื่อมต่อบัญชี LINE';
+      lineStatusEl.textContent = 'ยังไม่ได้เชื่อมต่อบัญชี LINE';
       lineStatusEl.classList.remove('text-purple-600', 'dark:text-purple-400');
       lineStatusEl.classList.add('text-surface-600', 'dark:text-surface-300');
       btnUnbindLine.classList.add('hidden');
@@ -11972,7 +11683,7 @@ async function unbindUserLine() {
       const lineStatusEl = $('editUserLineStatus');
       const btnUnbindLine = $('btnUnbindLine');
       if (lineStatusEl) {
-        lineStatusEl.textContent = '🔴 ยังไม่ได้เชื่อมต่อบัญชี LINE';
+        lineStatusEl.textContent = 'ยังไม่ได้เชื่อมต่อบัญชี LINE';
         lineStatusEl.classList.remove('text-purple-600', 'dark:text-purple-400');
         lineStatusEl.classList.add('text-surface-600', 'dark:text-surface-300');
       }
@@ -14058,80 +13769,322 @@ function escHtml(str) {
 // ─── Kanban/Wiki loaded via switchView above ─────────────────────────────
 // loadKanbanBoard() and loadWikiPages()/renderWikiContent() are defined in the Kanban & Wiki modules below.
 
-// ─── NOTIFICATIONS MODULE ──────────────────────────────────────────────────
-async function loadNotifications() {
+// ─── NOTIFICATIONS MODULE (Hallmark Anti-AI-Slop Revamp) ───────────────────
+let _notifCache = [];
+let _activeNotifFilter = 'all';
+
+function getNotifMeta(n) {
+  const type = (n.type || '').toLowerCase();
+  const title = (n.title || '');
+  const msg = (n.message || '');
+
+  // 1. Leave Requests / Approval / Comments
+  if (type.includes('leave') || title.includes('คำขอลา') || title.includes('ลาหยุด') || title.includes('อนุมัติลา')) {
+    return {
+      category: 'leave',
+      badge: 'คำขอลา',
+      badgeClass: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20',
+      icon: 'calendar-clock',
+      iconWrap: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+    };
+  }
+
+  // 2. Team Feed / Social Posts
+  if (type === 'post' || title.includes('โพสต์ใหม่') || title.includes('ฟีด')) {
+    return {
+      category: 'feed',
+      badge: 'ฟีดทีม',
+      badgeClass: 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20',
+      icon: 'message-square',
+      iconWrap: 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20'
+    };
+  }
+
+  // 3. Comments / Replies
+  if (type === 'comment' || title.includes('ความคิดเห็น') || title.includes('ตอบกลับ')) {
+    return {
+      category: 'feed',
+      badge: 'ความคิดเห็น',
+      badgeClass: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20',
+      icon: 'message-circle',
+      iconWrap: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20'
+    };
+  }
+
+  // 4. Likes
+  if (type === 'like' || title.includes('ถูกใจ')) {
+    return {
+      category: 'feed',
+      badge: 'ถูกใจ',
+      badgeClass: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20',
+      icon: 'heart',
+      iconWrap: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20'
+    };
+  }
+
+  // 5. Mentions
+  if (type === 'mention' || title.includes('แท็กคุณ') || title.includes('พูดถึงคุณ')) {
+    return {
+      category: 'feed',
+      badge: 'แท็กคุณ',
+      badgeClass: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20',
+      icon: 'at-sign',
+      iconWrap: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+    };
+  }
+
+  // 6. Broadcasts / Announcements
+  if (type === 'broadcast' || title.includes('ประกาศ')) {
+    return {
+      category: 'system',
+      badge: 'ประกาศ',
+      badgeClass: 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20',
+      icon: 'megaphone',
+      iconWrap: 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20'
+    };
+  }
+
+  // 7. Tasks / Kanban
+  if (type === 'kanban' || title.includes('งาน') || title.includes('บอร์ด')) {
+    return {
+      category: 'system',
+      badge: 'งานทีม',
+      badgeClass: 'bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20',
+      icon: 'kanban',
+      iconWrap: 'bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20'
+    };
+  }
+
+  // 8. Wiki / Knowledge Base
+  if (type === 'wiki' || title.includes('คลังความรู้')) {
+    return {
+      category: 'system',
+      badge: 'คลังความรู้',
+      badgeClass: 'bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20',
+      icon: 'book-open',
+      iconWrap: 'bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20'
+    };
+  }
+
+  // Default: System Notification
+  return {
+    category: 'system',
+    badge: 'ระบบ',
+    badgeClass: 'bg-surface-200 dark:bg-surface-800 text-surface-600 dark:text-surface-300 border border-surface-300 dark:border-surface-700',
+    icon: 'bell',
+    iconWrap: 'bg-surface-100 dark:bg-surface-800 text-surface-500 dark:text-surface-400 border border-surface-200 dark:border-surface-700'
+  };
+}
+
+function setNotificationFilter(filterKey) {
+  _activeNotifFilter = filterKey;
+  document.querySelectorAll('#notifFilterBar .notif-pill').forEach(btn => {
+    const isTarget = btn.getAttribute('data-filter') === filterKey;
+    btn.classList.toggle('active', isTarget);
+    if (isTarget) {
+      btn.className = 'notif-pill active px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-all bg-surface-900 dark:bg-blue-600 text-white border-surface-900 dark:border-blue-600 shadow-sm';
+    } else {
+      btn.className = 'notif-pill px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-all bg-white dark:bg-surface-900 border-surface-200 dark:border-surface-800 text-surface-600 dark:text-surface-400 hover:border-surface-300 dark:hover:border-surface-700';
+    }
+  });
+  renderNotificationsList();
+}
+
+function renderNotificationsList() {
   const container = $('notificationsContainer');
   if (!container) return;
 
+  const notifs = _notifCache || [];
+
+  // Filter items
+  let filtered = notifs;
+  if (_activeNotifFilter === 'unread') {
+    filtered = notifs.filter(n => !n.is_read);
+  } else if (_activeNotifFilter === 'leave') {
+    filtered = notifs.filter(n => getNotifMeta(n).category === 'leave');
+  } else if (_activeNotifFilter === 'feed') {
+    filtered = notifs.filter(n => getNotifMeta(n).category === 'feed');
+  } else if (_activeNotifFilter === 'system') {
+    filtered = notifs.filter(n => getNotifMeta(n).category === 'system');
+  }
+
+  // Update navbar & pill badges
+  const totalCount = notifs.length;
+  const unreadCount = notifs.filter(n => !n.is_read).length;
+
+  const totalEl = $('notifTotalBadge');
+  if (totalEl) {
+    totalEl.textContent = totalCount;
+    totalEl.classList.toggle('hidden', totalCount === 0);
+  }
+
+  const pAll = $('pillCountAll');
+  if (pAll) pAll.textContent = totalCount > 0 ? `(${totalCount})` : '';
+
+  const pUnread = $('pillCountUnread');
+  if (pUnread) pUnread.textContent = unreadCount > 0 ? `(${unreadCount})` : '';
+
+  // Empty state
+  if (!filtered || filtered.length === 0) {
+    const emptyMsg = _activeNotifFilter === 'unread'
+      ? 'คุณอ่านการแจ้งเตือนทั้งหมดแล้ว'
+      : 'ไม่พบรายการแจ้งเตือนในหมวดหมู่นี้';
+    container.innerHTML = `
+      <div class="flex flex-col items-center justify-center py-16 text-center animate-in fade-in duration-300">
+        <div class="w-14 h-14 rounded-2xl bg-surface-100 dark:bg-surface-800/60 border border-surface-200/80 dark:border-surface-700/80 flex items-center justify-center text-surface-400 mb-3 shadow-sm">
+          <i data-lucide="bell-off" class="w-6 h-6"></i>
+        </div>
+        <h4 class="text-sm font-bold text-surface-800 dark:text-surface-200 mb-1">${emptyMsg}</h4>
+        <p class="text-xs text-surface-400 max-w-xs">เมื่อมีกิจกรรมหรือข้อความใหม่ ระบบจะแจ้งเตือนให้ทราบที่นี่</p>
+      </div>
+    `;
+    if (typeof initIcons === 'function') initIcons();
+    return;
+  }
+
+  // Date grouping
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfYesterday = startOfToday - 86400000;
+
+  const groups = [
+    { title: 'วันนี้', items: [] },
+    { title: 'เมื่อวานนี้', items: [] },
+    { title: 'ก่อนหน้านี้', items: [] }
+  ];
+
+  filtered.forEach(n => {
+    let t = 0;
+    try { t = new Date(n.timestamp).getTime(); } catch(e){}
+    if (!t || isNaN(t)) t = 0;
+
+    if (t >= startOfToday) {
+      groups[0].items.push(n);
+    } else if (t >= startOfYesterday) {
+      groups[1].items.push(n);
+    } else {
+      groups[2].items.push(n);
+    }
+  });
+
+  let html = '';
+  groups.forEach(g => {
+    if (!g.items.length) return;
+
+    html += `
+      <div class="pt-2 first:pt-0">
+        <div class="text-[11px] font-bold text-surface-400 uppercase tracking-wider px-1 pb-2 flex items-center gap-1.5">
+          <span class="w-1.5 h-1.5 rounded-full bg-surface-300 dark:bg-surface-600"></span>
+          ${g.title}
+          <span class="text-[10px] text-surface-400 font-normal">(${g.items.length})</span>
+        </div>
+        <div class="space-y-2">
+    `;
+
+    g.items.forEach(n => {
+      const meta = getNotifMeta(n);
+      const isUnread = !n.is_read;
+      const cardBg = isUnread 
+        ? 'bg-white dark:bg-surface-900 border-surface-200 dark:border-surface-700/80 shadow-sm' 
+        : 'bg-surface-50/70 dark:bg-surface-950/40 border-surface-200/50 dark:border-surface-800/50 hover:bg-white dark:hover:bg-surface-900';
+
+      html += `
+        <div class="group relative flex items-start gap-3 p-3 sm:p-3.5 rounded-xl border ${cardBg} transition-all cursor-pointer" onclick="handleNotificationClick(${n.id}, '${escHtml(n.link || '')}', ${n.is_read})">
+          <!-- Icon Category Badge -->
+          <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${meta.iconWrap} mt-0.5">
+            <i data-lucide="${meta.icon}" class="w-4 h-4"></i>
+          </div>
+
+          <!-- Content Body -->
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-1.5 flex-wrap mb-0.5">
+              <span class="text-[9px] font-bold px-1.5 py-0.2 rounded ${meta.badgeClass}">
+                ${meta.badge}
+              </span>
+              <h4 class="text-xs sm:text-[13px] ${isUnread ? 'font-bold text-surface-900 dark:text-white' : 'font-medium text-surface-700 dark:text-surface-300'} truncate">
+                ${escHtml(n.title)}
+              </h4>
+              <span class="text-[11px] text-surface-400 ml-auto whitespace-nowrap">
+                ${formatRelativeTime(n.timestamp)}
+              </span>
+            </div>
+            <p class="text-xs text-surface-500 dark:text-surface-400 line-clamp-2 leading-relaxed">
+              ${escHtml(n.message)}
+            </p>
+          </div>
+
+          <!-- Actions & Unread Status -->
+          <div class="flex items-center gap-1.5 shrink-0 pt-1">
+            ${isUnread ? '<span class="w-2 h-2 rounded-full bg-blue-500 shadow-sm" title="ยังไม่อ่าน"></span>' : ''}
+            ${isUnread ? `
+              <button onclick="event.stopPropagation(); markNotificationRead(${n.id})" 
+                class="opacity-0 group-hover:opacity-100 p-1 text-surface-400 hover:text-surface-800 dark:hover:text-white hover:bg-surface-200/60 dark:hover:bg-surface-800 rounded transition-all" 
+                title="ทำเครื่องหมายว่าอ่านแล้ว">
+                <i data-lucide="check" class="w-3.5 h-3.5"></i>
+              </button>
+            ` : `
+              <button onclick="event.stopPropagation(); deleteNotificationSingle(${n.id})"
+                class="opacity-0 group-hover:opacity-100 p-1 text-surface-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded transition-all"
+                title="ลบการแจ้งเตือน">
+                <i data-lucide="x" class="w-3.5 h-3.5"></i>
+              </button>
+            `}
+          </div>
+        </div>
+      `;
+    });
+
+    html += `
+        </div>
+      </div>
+    `;
+  });
+
+  container.innerHTML = html;
+  if (typeof initIcons === 'function') initIcons();
+}
+
+async function loadNotifications() {
+  const container = $('notificationsContainer');
+  if (!container && !$('notificationsList')) return;
+
   try {
     const res = await apiFetch('/api/notifications');
+    _notifCache = res.notifications || [];
 
+    const unreadCount = res.unread_count !== undefined ? res.unread_count : _notifCache.filter(n => !n.is_read).length;
     const countBadge = $('navNotifBadge');
-    if (res.unread_count > 0) {
-      if (countBadge) {
-        countBadge.innerText = res.unread_count > 99 ? '99+' : res.unread_count;
-        countBadge.classList.remove('hidden');
+    const mobileBadge = $('mobileNotifBadge');
+    const headerBell = $('mobileHeaderNotifBadge');
+
+    [countBadge, mobileBadge].forEach(el => {
+      if (el) {
+        if (unreadCount > 0) {
+          el.innerText = unreadCount > 99 ? '99+' : unreadCount;
+          el.classList.remove('hidden');
+          el.classList.add('flex');
+        } else {
+          el.classList.add('hidden');
+          el.classList.remove('flex');
+        }
       }
-    } else {
-      if (countBadge) countBadge.classList.add('hidden');
-    }
+    });
+    if (headerBell) headerBell.classList.toggle('hidden', unreadCount === 0);
 
-    if (!res.notifications || res.notifications.length === 0) {
-      container.innerHTML = `
-        <div class="flex flex-col items-center justify-center min-h-[400px] w-full text-center animate-in fade-in zoom-in duration-500">
-          <div class="relative mb-6">
-            <div class="absolute inset-0 bg-brand-500/10 dark:bg-brand-500/5 blur-xl rounded-full animate-pulse"></div>
-            <div class="w-24 h-24 bg-gradient-to-br from-surface-100 to-surface-50 dark:from-surface-800 dark:to-surface-900 rounded-3xl flex items-center justify-center text-surface-300 dark:text-surface-600 shadow-inner relative border border-white/50 dark:border-surface-700/50">
-              <i data-lucide="bell" class="w-10 h-10"></i>
-            </div>
-          </div>
-          <h3 class="text-lg font-black text-surface-900 dark:text-white mb-2 tracking-tight">คุณตามทันแล้ว!</h3>
-          <p class="text-[13px] font-medium text-surface-500 dark:text-surface-400 max-w-xs leading-relaxed">ขณะนี้ยังไม่มีการแจ้งเตือนใหม่<br>เมื่อมีเรื่องสำคัญ ระบบจะแจ้งให้ทราบที่นี่ครับ</p>
-        </div>
-      `;
-      initIcons();
-      return;
-    }
-
-    const htmlStr = res.notifications.map(n => {
-      const typeIcons = {
-        'kanban': '<div class="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-100 to-blue-50 dark:from-indigo-900/40 dark:to-blue-900/20 flex items-center justify-center flex-shrink-0 border border-indigo-200/50 dark:border-indigo-800/50 shadow-sm"><i data-lucide="layout-dashboard" class="w-5 h-5 text-indigo-600 dark:text-indigo-400"></i></div>',
-        'wiki': '<div class="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-100 to-sky-50 dark:from-blue-900/40 dark:to-sky-900/20 flex items-center justify-center flex-shrink-0 border border-blue-200/50 dark:border-blue-800/50 shadow-sm"><i data-lucide="book-open" class="w-5 h-5 text-blue-600 dark:text-blue-400"></i></div>',
-        'mention': '<div class="w-10 h-10 rounded-2xl bg-gradient-to-br from-orange-100 to-amber-50 dark:from-orange-900/40 dark:to-amber-900/20 flex items-center justify-center flex-shrink-0 border border-orange-200/50 dark:border-orange-800/50 shadow-sm"><i data-lucide="at-sign" class="w-5 h-5 text-orange-600 dark:text-orange-400"></i></div>',
-        'system': '<div class="w-10 h-10 rounded-2xl bg-gradient-to-br from-brand-100 to-emerald-50 dark:from-brand-900/40 dark:to-emerald-900/20 flex items-center justify-center flex-shrink-0 border border-brand-200/50 dark:border-brand-800/50 shadow-sm"><i data-lucide="info" class="w-5 h-5 text-brand-600 dark:text-brand-400"></i></div>',
-      };
-      const iconHtml = typeIcons[n.type] || typeIcons.system;
-      const readClass = n.is_read ? 'opacity-70 bg-transparent border-transparent' : 'bg-white dark:bg-surface-800/80 border-surface-200/70 dark:border-surface-700/70 shadow-lg shadow-surface-200/20 dark:shadow-none';
-      const titleBold = n.is_read ? 'font-semibold text-surface-600 dark:text-surface-300' : 'font-black text-surface-900 dark:text-white';
-
-      return `
-        <div class="flex items-start gap-4 p-4 rounded-3xl border transition-all hover:bg-surface-100 dark:hover:bg-surface-800/80 ${readClass} relative overflow-hidden group cursor-pointer" onclick="handleNotificationClick(${n.id}, '${n.link || ''}', ${n.is_read})">
-          ${!n.is_read ? '<div class="absolute top-0 bottom-0 left-0 w-[5px] bg-orange-500"></div>' : ''}
-          ${iconHtml}
-          <div class="flex-1 min-w-0 pr-4">
-            <h4 class="text-sm ${titleBold} text-surface-900 dark:text-white leading-snug">${escHtml(n.title)}</h4>
-            <p class="text-xs text-surface-500 mt-1.5 line-clamp-2">${escHtml(n.message)}</p>
-            <span class="text-[10px] uppercase font-black tracking-widest text-surface-400 mt-2 block">${formatRelativeTime(n.timestamp)}</span>
-          </div>
-          ${!n.is_read ? `<button onclick="event.stopPropagation(); markNotificationRead(${n.id})" class="p-2 -mr-2 text-surface-300 hover:text-brand-600 hover:bg-brand-50 rounded-full" title="รับทราบ"><i data-lucide="check" class="w-4 h-4"></i></button>` : ''}
-        </div>
-      `;
-    }).join('');
-
-    container.innerHTML = htmlStr;
-    initIcons();
+    renderNotificationsList();
   } catch (err) {
     if (err && (err.status === 401 || (err.message && err.message.toLowerCase().includes('unauthorized')))) {
-      // User is not logged in / session expired; silently exit
       return;
     }
     console.error('Error load notifications:', err);
-    container.innerHTML = '<p class="text-red-500 text-sm text-center py-4 font-bold">ไม่สามารถดึงข้อมูลการแจ้งเตือนได้</p>';
+    if (container) {
+      container.innerHTML = '<p class="text-red-500 text-sm text-center py-4 font-medium">ไม่สามารถดึงข้อมูลการแจ้งเตือนได้</p>';
+    }
   }
 }
 
 async function handleNotificationClick(id, link, isRead) {
-  if (!isRead) await markNotificationRead(id, false);
+  if (!isRead) await markNotificationRead(id, true);
   if (link && link !== 'None' && link !== 'undefined') {
     if (link.startsWith('#')) {
       window.location.hash = link;
@@ -14146,7 +14099,10 @@ async function handleNotificationClick(id, link, isRead) {
 async function markNotificationRead(id, reload = true) {
   try {
     await apiFetch(`/api/notifications/${id}/read`, { method: 'POST' });
-    if (reload) loadNotifications();
+    const item = _notifCache.find(n => n.id === id);
+    if (item) item.is_read = 1;
+    if (typeof updateNotifBadge === 'function') updateNotifBadge(_notifCache);
+    if (reload) renderNotificationsList();
   } catch (e) {
     console.error(e);
   }
@@ -14155,7 +14111,20 @@ async function markNotificationRead(id, reload = true) {
 async function readAllNotifications() {
   try {
     await apiFetch('/api/notifications/read_all', { method: 'POST' });
-    loadNotifications();
+    _notifCache.forEach(n => n.is_read = 1);
+    if (typeof updateNotifBadge === 'function') updateNotifBadge(_notifCache);
+    renderNotificationsList();
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function deleteNotificationSingle(id) {
+  try {
+    await apiFetch(`/api/notifications/${id}`, { method: 'DELETE' });
+    _notifCache = _notifCache.filter(n => n.id !== id);
+    if (typeof updateNotifBadge === 'function') updateNotifBadge(_notifCache);
+    renderNotificationsList();
   } catch (e) {
     console.error(e);
   }
@@ -14165,7 +14134,9 @@ async function clearAllNotifications() {
   if (!confirm("คุณแน่ใจหรือไม่ว่าต้องการลบการแจ้งเตือนทั้งหมด?")) return;
   try {
     await apiFetch('/api/notifications/delete_all', { method: 'DELETE' });
-    loadNotifications();
+    _notifCache = [];
+    if (typeof updateNotifBadge === 'function') updateNotifBadge(_notifCache);
+    renderNotificationsList();
   } catch (e) {
     console.error(e);
   }
@@ -14986,7 +14957,7 @@ async function createPC() {
     if (pc.connectionState === 'connected') {
       startCallTimer();
       stopRingtone(); // STOP RINGING ON CONNECTION SUCCESS
-      toast('✅ เชื่อมต่อสำเร็จ!', 'success');
+      toast('เชื่อมต่อสำเร็จ!', 'success');
     } else if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) {
       handleCallEnded('ขาดการเชื่อมต่อ');
     }
@@ -15037,11 +15008,11 @@ async function getLocalMedia(withVideo = false) {
   } catch (err) {
     console.error('❌ Media error:', err);
     if (err.name === 'NotAllowedError') {
-      toast('❌ กรุณาอนุญาตการเข้าถึงไมโครโฟน/กล้องในเบราว์เซอร์', 'error');
+      toast('กรุณาอนุญาตการเข้าถึงไมโครโฟน/กล้องในเบราว์เซอร์', 'error');
     } else if (err.name === 'NotFoundError') {
-      toast('❌ ไม่พบไมโครโฟนหรือกล้องในอุปกรณ์นี้', 'error');
+      toast('ไม่พบไมโครโฟนหรือกล้องในอุปกรณ์นี้', 'error');
     } else {
-      toast(`❌ ไม่สามารถเข้าถึงสื่อได้: ${err.message}`, 'error');
+      toast(`ไม่สามารถเข้าถึงสื่อได้: ${err.message}`, 'error');
     }
     throw err;
   }
@@ -15051,11 +15022,11 @@ async function getLocalMedia(withVideo = false) {
 async function initiateCall(withVideo = false) {
   if (!state.currentChat || state.currentChat.type !== 'dm') {
     console.warn('⚠️ Not in a DM chat, currentChat:', state.currentChat);
-    toast('📞 สามารถโทรได้เฉพาะกับ Direct Message เท่านั้น', 'error');
+    toast('สามารถโทรได้เฉพาะกับ Direct Message เท่านั้น', 'error');
     return;
   }
   if (rtcState.pc) {
-    toast('⚠️ กำลังมีสายโทรอยู่แล้ว', 'error');
+    toast('กำลังมีสายโทรอยู่แล้ว', 'error');
     return;
   }
 
@@ -15065,12 +15036,12 @@ async function initiateCall(withVideo = false) {
   console.log('🎯 Target user identified:', targetUser, '| me:', myUsername);
 
   if (targetUser === 'ai-assistant') {
-    toast('❌ ไม่สามารถโทรหา AI Assistant ได้ค่ะ', 'error');
+    toast('ไม่สามารถโทรหา AI Assistant ได้', 'error');
     return;
   }
 
   if (!targetUser || targetUser === myUsername) {
-    toast('❌ ไม่พบผู้รับสาย หรือไม่สามารถโทรหาตัวเองได้', 'error');
+    toast('ไม่พบผู้รับสาย หรือไม่สามารถโทรหาตัวเองได้', 'error');
     return;
   }
 
@@ -15104,7 +15075,7 @@ async function initiateCall(withVideo = false) {
       callType: rtcState.callType
     });
 
-    toast(`📞 กำลังโทรหา ${targetUser}...`, 'info');
+    toast(`กำลังโทรหา ${targetUser}...`, 'info');
     console.log(`📞 Calling ${targetUser} (${rtcState.callType})`);
 
     // Timeout if no answer after 30s
@@ -15187,7 +15158,7 @@ async function acceptCall() {
       }); 
     }
   if (!rtcState.pendingOffer || !rtcState.remoteUser) {
-    toast('❌ ไม่พบข้อมูลสาย', 'error');
+    toast('ไม่พบข้อมูลสาย', 'error');
     return;
   }
 
@@ -15225,7 +15196,7 @@ async function acceptCall() {
 
   } catch (err) {
     console.error('❌ acceptCall error:', err);
-    toast('❌ ไม่สามารถรับสายได้: ' + err.message, 'error');
+    toast('ไม่สามารถรับสายได้: ' + err.message, 'error');
     cleanupCall();
   }
 }
@@ -15245,7 +15216,7 @@ function rejectCall() {
     });
   }
   cleanupCall();
-  toast('📵 ปฏิเสธสายแล้ว', 'info');
+  toast('ปฏิเสธสายแล้ว', 'info');
 }
 
 // ─── End Call ─────────────────────────────────────────────────
@@ -15368,7 +15339,7 @@ function toggleMic() {
     toggleMicBtn.querySelector('div').classList.toggle('bg-red-600', rtcState.isMicMuted);
     toggleMicBtn.querySelector('div').classList.toggle('bg-white/10', !rtcState.isMicMuted);
   }
-  toast(rtcState.isMicMuted ? '🔇 ปิดไมโครโฟน' : '🎙️ เปิดไมโครโฟน', 'info');
+  toast(rtcState.isMicMuted ? 'ปิดไมโครโฟน' : 'เปิดไมโครโฟน', 'info');
 }
 
 function toggleCam() {
@@ -15387,7 +15358,7 @@ function toggleCam() {
     toggleCamBtn.querySelector('div').classList.toggle('bg-red-600', rtcState.isCamOff);
     toggleCamBtn.querySelector('div').classList.toggle('bg-white/10', !rtcState.isCamOff);
   }
-  toast(rtcState.isCamOff ? '📵 ปิดกล้อง' : '📷 เปิดกล้อง', 'info');
+  toast(rtcState.isCamOff ? 'ปิดกล้อง' : 'เปิดกล้อง', 'info');
 }
 
 function toggleSpeaker() {
@@ -15404,7 +15375,7 @@ function toggleSpeaker() {
     btn.querySelector('div').classList.toggle('bg-red-600', rtcState.isSpeakerMuted);
     btn.querySelector('div').classList.toggle('bg-white/10', !rtcState.isSpeakerMuted);
   }
-  toast(rtcState.isSpeakerMuted ? '🔇 ปิดลำโพง' : '🔊 เปิดลำโพง', 'info');
+  toast(rtcState.isSpeakerMuted ? 'ปิดลำโพง' : 'เปิดลำโพง', 'info');
 }
 
 async function shareScreen() {
@@ -15434,12 +15405,12 @@ async function shareScreen() {
       const camTrack = rtcState.localStream.getVideoTracks()[0];
       if (sender && camTrack) await sender.replaceTrack(camTrack);
       if (localVideo) localVideo.srcObject = rtcState.localStream;
-      toast('🖥️ หยุดแชร์หน้าจอแล้ว', 'info');
+      toast('หยุดแชร์หน้าจอแล้ว', 'info');
     };
-    toast('🖥️ กำลังแชร์หน้าจอ', 'success');
+    toast('กำลังแชร์หน้าจอ', 'success');
   } catch (e) {
     if (e.name !== 'AbortError' && e.name !== 'NotAllowedError') {
-      toast('❌ ไม่สามารถแชร์หน้าจอได้', 'error');
+      toast('ไม่สามารถแชร์หน้าจอได้', 'error');
     }
   }
 }
@@ -15926,6 +15897,7 @@ async function loadLeaveData() {
   await loadMyLeaves();
   await loadTeamLeaveCalendar();
   initLeaveForm();
+  if (typeof initLeaveCalendarCollapse === 'function') initLeaveCalendarCollapse();
 }
 
 async function changeTeamCalendarMonth(delta) {
@@ -15976,6 +15948,17 @@ async function loadTeamLeaveCalendar() {
     }
 
     const events = res.events || [];
+    const isAdmin = !!res.is_admin;
+
+    // Update title according to role
+    const calTitle = $('leaveCalendarTitle');
+    const calSubtitle = $('leaveCalendarSubtitle');
+    if (calTitle) {
+      calTitle.textContent = isAdmin ? 'ปฏิทินวันลาของทีม (Team Leave Calendar)' : 'ปฏิทินวันลาของฉัน (My Leave Calendar)';
+    }
+    if (calSubtitle) {
+      calSubtitle.textContent = isAdmin ? 'ตรวจสอบวันลาและวางแผนงานร่วมกับเพื่อนร่วมทีม' : 'ตรวจสอบประวัติและสถานะวันลาของคุณ';
+    }
 
     // Build days of the current month
     const firstDay = new Date(_currentCalendarYear, _currentCalendarMonth - 1, 1).getDay(); // 0 = Sun
@@ -16021,12 +16004,15 @@ async function loadTeamLeaveCalendar() {
         }
 
         const isPending = e.status === 'pending';
+        const statusLabel = isPending ? 'รออนุมัติ' : 'อนุมัติแล้ว';
         const safeName = escHtml(e.display_name || e.username || '');
-        const safeType = escHtml(e.type || '');
+        const safeType = escHtml(e.type || 'ลางาน');
+        const displayLabel = isAdmin ? `${safeName}: ${safeType}` : `${safeType} (${statusLabel})`;
+
         return `
-          <div onclick="openLeaveComments(${e.id})" class="px-1.5 py-0.5 rounded-lg border text-[10px] font-bold flex items-center gap-1 truncate cursor-pointer hover:opacity-80 transition ${badgeColor} ${isPending ? 'opacity-70 border-dashed' : ''}" title="${safeName} (${safeType})${isPending ? ' - รออนุมัติ' : ''}">
+          <div onclick="openLeaveComments(${e.id})" class="px-1.5 py-0.5 rounded-lg border text-[10px] font-bold flex items-center gap-1 truncate cursor-pointer hover:opacity-80 transition ${badgeColor} ${isPending ? 'opacity-85 border-dashed border-amber-400 dark:border-amber-500' : 'border-emerald-500/30'}" title="${safeName} (${safeType}) - สถานะ: ${statusLabel}">
             <span class="w-1.5 h-1.5 rounded-full ${dotColor} flex-shrink-0"></span>
-            <span class="truncate">${safeName}</span>
+            <span class="truncate">${displayLabel}</span>
           </div>
         `;
       }).join('');
@@ -16212,62 +16198,50 @@ function updateLeaveQuotaDashboard(balance) {
 
 function renderLeaveHistory(leaves) {
     const list = $('leaveHistoryList');
-    if (!list) return;
     if (leaves.length === 0) {
         list.innerHTML = `
-            <div class="text-center py-8 bg-surface-50 dark:bg-surface-800/30 rounded-xl border border-dashed border-surface-200 dark:border-surface-800">
-              <p class="text-surface-400 text-xs">ยังไม่มีประวัติการลาในระบบ</p>
+            <div class="text-center py-12 bg-surface-50 dark:bg-surface-800/30 rounded-[32px] border-2 border-dashed border-surface-200 dark:border-surface-800">
+              <p class="text-surface-400 text-sm">ยังไม่มีประวัติการลา</p>
             </div>
         `;
         return;
     }
 
-    const typeLabels = {
-        'Sick': 'ลาป่วย',
-        'Personal': 'ลากิจ',
-        'Vacation': 'ลาพักร้อน',
-        'Military': 'ลาเกณฑ์ทหาร',
-        'Maternity': 'ลาคลอด',
-        'Other': 'ลาอื่นๆ'
-    };
-
     list.innerHTML = leaves.map(l => {
-        let statusBadge = 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50';
+        let statusColor = 'bg-amber-100 text-amber-700';
         let statusText = 'รอดำเนินการ';
         if (l.status === 'approved') {
-            statusBadge = 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50';
+            statusColor = 'bg-emerald-100 text-emerald-700';
             statusText = 'อนุมัติแล้ว';
         } else if (l.status === 'rejected') {
-            statusBadge = 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300 border border-rose-200 dark:border-rose-800/50';
-            statusText = 'ปฏิเสธ';
+            statusColor = 'bg-rose-100 text-rose-700';
+            statusText = 'ปฏิเสธแล้ว';
         }
 
-        const typeTh = typeLabels[l.type] || l.type;
-
         return `
-            <div class="p-4 bg-white dark:bg-surface-900 border border-surface-200/80 dark:border-surface-800 rounded-xl shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-surface-300 dark:hover:border-surface-700 transition-colors">
-                <div class="flex items-center gap-3">
-                    <div class="w-9 h-9 rounded-lg bg-surface-100 dark:bg-surface-800 flex items-center justify-center text-surface-600 dark:text-surface-400 shrink-0">
-                        <i data-lucide="${l.type === 'Sick' ? 'stethoscope' : 'calendar'}" class="w-4 h-4"></i>
+            <div class="p-6 bg-white dark:bg-surface-900 border border-surface-100 dark:border-surface-800 rounded-3xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 animate-in slide-in-from-bottom-2 duration-300">
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 rounded-2xl bg-surface-50 dark:bg-surface-800 flex items-center justify-center text-surface-400">
+                        <i data-lucide="${l.type === 'Sick' ? 'thermometer' : 'calendar'}" class="w-6 h-6"></i>
                     </div>
                     <div>
-                        <div class="flex items-center gap-2">
-                            <span class="font-bold text-xs text-surface-900 dark:text-white">${typeTh}</span>
-                            <span class="text-xs text-surface-400 font-mono">(${l.start_date} ถึง ${l.end_date})</span>
-                        </div>
-                        <p class="text-xs text-surface-500 dark:text-surface-400 mt-0.5">${l.reason || 'ไม่ได้ระบุเหตุผล'}</p>
+                        <p class="font-black text-sm text-surface-900 dark:text-white">${l.type} - ${l.start_date} ถึง ${l.end_date}</p>
+                        <p class="text-[10px] text-surface-400 font-bold uppercase tracking-widest mt-0.5">${l.reason || 'ไม่ระบุเหตุผล'}</p>
                     </div>
                 </div>
-                <div class="flex items-center gap-2 self-end sm:self-center">
-                    <span class="px-2 py-0.5 rounded-md text-[10px] font-semibold ${statusBadge}">${statusText}</span>
-                    <button onclick="openLeaveComments(${l.id})" class="p-1.5 hover:bg-surface-100 dark:hover:bg-surface-800 rounded-lg text-surface-400 hover:text-surface-600 dark:hover:text-surface-200 transition-colors" title="ความเห็น/บันทึก">
-                        <i data-lucide="message-square" class="w-4 h-4"></i>
+                <div class="flex items-center gap-3">
+                    <button onclick="openLeaveComments(${l.id})" class="p-2 transition-all hover:bg-surface-50 dark:hover:bg-surface-800 rounded-xl relative group" title="แชท/คอมเม้น">
+                        <i data-lucide="message-circle" class="w-5 h-5 text-surface-400 group-hover:text-brand-600 transition-colors"></i>
                     </button>
+                    <div class="flex flex-col items-end gap-1">
+                        <span class="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${statusColor}">${statusText}</span>
+                        <span class="text-[9px] text-surface-400">${new Date(l.timestamp).toLocaleDateString()}</span>
+                    </div>
                 </div>
             </div>
         `;
     }).join('');
-    if (typeof lucide !== 'undefined') lucide.createIcons();
+    lucide.createIcons();
 }
 
 async function refreshAdminLeaves() {
@@ -16501,6 +16475,49 @@ function nextLeaveMonth() {
     changeTeamCalendarMonth(1);
 }
 
+function toggleLeaveCalendar(forceState) {
+    const body = $('leaveCalendarBody');
+    const icon = $('leaveCalendarToggleIcon');
+    const text = $('leaveCalendarToggleText');
+    const nav = $('leaveCalendarMonthNav');
+    if (!body) return;
+
+    const isCurrentlyHidden = body.classList.contains('hidden');
+    const shouldHide = forceState !== undefined ? !forceState : !isCurrentlyHidden;
+
+    if (shouldHide) {
+        body.classList.add('hidden');
+        if (text) text.textContent = 'กางปฏิทิน';
+        if (icon) {
+            icon.setAttribute('data-lucide', 'chevron-down');
+            icon.classList.remove('rotate-0');
+            icon.classList.add('rotate-180');
+        }
+        if (nav) nav.classList.add('opacity-40', 'pointer-events-none');
+        localStorage.setItem('orgchat_leave_calendar_collapsed', 'true');
+    } else {
+        body.classList.remove('hidden');
+        if (text) text.textContent = 'หุบปฏิทิน';
+        if (icon) {
+            icon.setAttribute('data-lucide', 'chevron-up');
+            icon.classList.remove('rotate-180');
+            icon.classList.add('rotate-0');
+        }
+        if (nav) nav.classList.remove('opacity-40', 'pointer-events-none');
+        localStorage.setItem('orgchat_leave_calendar_collapsed', 'false');
+    }
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function initLeaveCalendarCollapse() {
+    const saved = localStorage.getItem('orgchat_leave_calendar_collapsed');
+    if (saved === 'true') {
+        toggleLeaveCalendar(false); // collapse
+    }
+}
+
+window.toggleLeaveCalendar = toggleLeaveCalendar;
+window.initLeaveCalendarCollapse = initLeaveCalendarCollapse;
 window.switchLeaveView = switchLeaveView;
 window.prevLeaveMonth = prevLeaveMonth;
 window.nextLeaveMonth = nextLeaveMonth;
@@ -16518,7 +16535,7 @@ async function testMorningBriefing() {
         const res = await fetch('/api/admin/briefing/trigger', { method: 'POST' });
         const data = await res.json();
         if (data.ok) {
-            toast('ส่ง Morning Briefing เข้า LINE เรียบร้อยแล้วค่ะ 🌅', 'success');
+            toast('ส่ง Morning Briefing เข้า LINE เรียบร้อยแล้ว', 'success');
         } else {
             toast(data.error || 'เกิดข้อผิดพลาดในการส่ง', 'error');
         }
@@ -16929,7 +16946,7 @@ async function loadDriveContents(folderId = 'root') {
   empty.classList.add('hidden');
 
   try {
-    const data = await apiFetch(`/api/drive/contents?folder_id=${folderId}`);
+    const data = await apiFetch(`/api/drive/contents?folder_id=${folderId}`, { _timeout: 8000 });
     if (data.ok) {
       state.drive.currentFolderId = folderId;
       
@@ -16956,10 +16973,35 @@ async function loadDriveContents(folderId = 'root') {
       }
     } else {
       toast(data.error || 'ไม่สามารถโหลดข้อมูล Google Drive ได้', 'error');
+      grid.innerHTML = `
+        <div class="col-span-full py-16 flex flex-col items-center justify-center text-center">
+          <div class="w-14 h-14 bg-amber-50 dark:bg-amber-950/40 text-amber-500 rounded-2xl flex items-center justify-center mb-3">
+            <i data-lucide="cloud-off" class="w-7 h-7"></i>
+          </div>
+          <p class="font-bold text-surface-800 dark:text-surface-100 mb-1">${escHtml(data.error || 'ไม่สามารถเชื่อมต่อ Google Drive ได้')}</p>
+          <p class="text-xs text-surface-400 max-w-md mb-4">ตรวจพบข้อผิดพลาดในการเชื่อมต่อ หรือ Google OAuth ขององค์กรอาจหมดอายุ</p>
+          <div class="flex items-center gap-2">
+            <button onclick="loadDriveContents(state.drive.currentFolderId)" class="px-4 py-2 bg-surface-100 dark:bg-surface-800 hover:bg-surface-200 text-surface-700 dark:text-surface-200 text-xs font-bold rounded-xl transition">ลองอีกครั้ง</button>
+            <a href="/#settings" class="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-xl shadow-sm transition">ไปที่หน้าตั้งค่า Google</a>
+          </div>
+        </div>
+      `;
+      if (typeof lucide !== 'undefined') lucide.createIcons();
     }
   } catch (e) {
     console.error('Drive Load Error:', e);
     toast(e.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อ Google Drive', 'error');
+    grid.innerHTML = `
+      <div class="col-span-full py-16 flex flex-col items-center justify-center text-center">
+        <div class="w-14 h-14 bg-rose-50 dark:bg-rose-950/40 text-rose-500 rounded-2xl flex items-center justify-center mb-3">
+          <i data-lucide="alert-circle" class="w-7 h-7"></i>
+        </div>
+        <p class="font-bold text-surface-800 dark:text-surface-100 mb-1">${escHtml(e.message || 'การเชื่อมต่อหมดเวลา')}</p>
+        <p class="text-xs text-surface-400 max-w-md mb-4">เซิร์ฟเวอร์ใช้เวลาตอบสนองนานเกินไป กรุณาตรวจสอบสถานะการเชื่อมต่อ</p>
+        <button onclick="loadDriveContents(state.drive.currentFolderId)" class="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-xl shadow-sm transition">ลองอีกครั้ง</button>
+      </div>
+    `;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
   } finally {
     loading.classList.add('hidden');
     state.drive.isLoading = false;
@@ -17150,62 +17192,69 @@ async function fetchWeather() {
   try {
     const lat = 13.7563; // Bangkok
     const lon = 100.5018;
-    const [wRes, aqRes] = await Promise.allSettled([
-      fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,uv_index&hourly=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=Asia%2FBangkok&forecast_days=7`),
-      fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&current=pm2_5,pm10,european_aqi&timezone=Asia%2FBangkok`)
-    ]);
     
-    let pm25Val = null;
+    const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,uv_index&hourly=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=Asia%2FBangkok&forecast_days=7`;
+    const aqUrl = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&current=pm2_5,us_aqi&timezone=Asia%2FBangkok`;
+
+    const [wRes, aqRes] = await Promise.allSettled([fetch(weatherUrl), fetch(aqUrl)]);
+    
+    let data = null;
+    if (wRes.status === 'fulfilled' && wRes.value.ok) {
+      data = await wRes.value.json();
+    }
+    
+    let aqData = null;
     if (aqRes.status === 'fulfilled' && aqRes.value.ok) {
       try {
-        const aqData = await aqRes.value.json();
-        if (aqData && aqData.current && aqData.current.pm2_5 !== undefined) {
-          pm25Val = Math.round(aqData.current.pm2_5);
-          window._pm25Data = pm25Val;
-        }
-      } catch (e) {}
+        aqData = await aqRes.value.json();
+      } catch (_) {}
     }
 
-    if (wRes.status === 'fulfilled' && wRes.value.ok) {
-      const data = await wRes.value.json();
-      if (data && data.current) {
-        const temp = Math.round(data.current.temperature_2m);
-        const feels = Math.round(data.current.apparent_temperature);
-        const humidity = data.current.relative_humidity_2m;
-        const rain = data.current.precipitation;
-        const uv = data.current.uv_index;
-        const code = data.current.weather_code;
-        
-        // Update Dashboard Card
-        if ($('currentTemp')) $('currentTemp').textContent = `${temp}°C`;
-        if ($('dashFeelsLike')) $('dashFeelsLike').textContent = `${feels}°C`;
-        if ($('dashHumidity')) $('dashHumidity').textContent = `${humidity}%`;
-        if ($('dashUV')) $('dashUV').textContent = uv.toFixed(1);
-        if ($('rainChance')) $('rainChance').innerHTML = `<i data-lucide="droplets" class="w-3 h-3"></i> ฝน ${rain}mm`;
-
-        if ($('dashPM25')) {
-          const displayPM = pm25Val !== null ? pm25Val : 28;
-          $('dashPM25').textContent = displayPM;
-          if (displayPM > 50) {
-            $('dashPM25').className = 'text-sm font-black text-rose-500';
-          } else if (displayPM > 25) {
-            $('dashPM25').className = 'text-sm font-black text-amber-500';
-          } else {
-            $('dashPM25').className = 'text-sm font-black text-emerald-500';
-          }
-        }
-        
-        const condition = getWeatherCondition(code);
-        if ($('weatherCondition')) $('weatherCondition').textContent = condition;
-        
-        const now = new Date();
-        if ($('weatherLastUpdate')) $('weatherLastUpdate').textContent = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-        
-        // Store globally for detail modal
-        window._weatherData = data;
-        
-        lucide.createIcons();
+    if (data && data.current) {
+      const temp = Math.round(data.current.temperature_2m);
+      const feels = Math.round(data.current.apparent_temperature);
+      const humidity = data.current.relative_humidity_2m;
+      const rain = data.current.precipitation;
+      const uv = data.current.uv_index;
+      const code = data.current.weather_code;
+      
+      // Update Dashboard Card
+      if ($('currentTemp')) $('currentTemp').textContent = `${temp}°C`;
+      if ($('dashFeelsLike')) $('dashFeelsLike').textContent = `${feels}°C`;
+      if ($('dashHumidity')) $('dashHumidity').textContent = `${humidity}%`;
+      if ($('dashUV')) {
+        $('dashUV').textContent = uv != null ? uv.toFixed(1) : '--';
+        $('dashUV').className = `text-sm font-black ${uv > 6 ? 'text-rose-500' : uv > 3 ? 'text-amber-500' : 'text-emerald-500'}`;
       }
+      if ($('rainChance')) $('rainChance').innerHTML = `<i data-lucide="droplets" class="w-3 h-3"></i> ฝน ${rain}mm`;
+      
+      // Update PM 2.5
+      const pm25El = $('dashPM25');
+      if (pm25El) {
+        const pmVal = aqData?.current?.pm2_5;
+        if (pmVal != null && !isNaN(pmVal)) {
+          pm25El.textContent = Number(pmVal).toFixed(1);
+          pm25El.className = `text-sm font-black ${pmVal > 50 ? 'text-rose-500' : pmVal > 25 ? 'text-amber-500' : 'text-emerald-500'}`;
+        } else {
+          pm25El.textContent = '--';
+        }
+      }
+      
+      const condition = getWeatherCondition(code);
+      if ($('weatherCondition')) $('weatherCondition').textContent = condition;
+      
+      const now = new Date();
+      if ($('weatherLastUpdate')) $('weatherLastUpdate').textContent = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+      
+      // Store globally for detail modal
+      window._weatherData = data;
+      window._airQualityData = aqData;
+      if (typeof state !== 'undefined') {
+        state.weather = data;
+        state.airQuality = aqData;
+      }
+      
+      if (typeof lucide !== 'undefined') lucide.createIcons();
     }
   } catch (err) {
     console.error('Weather fetch error:', err);
@@ -17229,14 +17278,23 @@ function showWeatherDetail() {
   if (!modal || !window._weatherData) return;
   
   const d = window._weatherData;
+  const aq = window._airQualityData;
   modal.classList.remove('hidden');
   modal.classList.add('flex', 'items-center', 'justify-center');
   
   // Update Header & Stats
   if ($('detailFeelsLike')) $('detailFeelsLike').textContent = `${Math.round(d.current.apparent_temperature)}°C`;
   if ($('detailHumidity')) $('detailHumidity').textContent = `${d.current.relative_humidity_2m}%`;
-  if ($('detailUV')) $('detailUV').textContent = d.current.uv_index.toFixed(1);
-  if ($('detailPM25')) $('detailPM25').textContent = window._pm25Data !== undefined ? window._pm25Data : '28';
+  if ($('detailUV')) $('detailUV').textContent = d.current.uv_index != null ? d.current.uv_index.toFixed(1) : '--';
+  if ($('detailPM25')) {
+    const pmVal = aq?.current?.pm2_5;
+    if (pmVal != null && !isNaN(pmVal)) {
+      $('detailPM25').textContent = Number(pmVal).toFixed(1);
+      $('detailPM25').className = `text-xl font-black ${pmVal > 50 ? 'text-rose-500' : pmVal > 25 ? 'text-amber-500' : 'text-emerald-500'}`;
+    } else {
+      $('detailPM25').textContent = '--';
+    }
+  }
   
   // Hourly Forecast
   const hourlyList = $('hourlyForecastList');
@@ -17611,7 +17669,7 @@ async function saveLineSettings() {
             body: JSON.stringify(payload)
         });
         if (data && data.ok) {
-            toast('บันทึกการตั้งค่า LINE เรียบร้อยแล้วค่ะ! 🎉', 'success');
+            toast('บันทึกการตั้งค่า LINE เรียบร้อยแล้ว', 'success');
             $('lineSettingsModal').classList.add('hidden');
         } else {
             toast(data.error || 'บันทึกไม่สำเร็จค่ะ', 'error');
@@ -17644,12 +17702,12 @@ async function testOrgLineConnection() {
             body: JSON.stringify({ channel_access_token: token })
         });
         if (res && res.ok) {
-            toast(res.message || '✅ เชื่อมต่อ LINE Bot สำเร็จเรียบร้อย!', 'success');
+            toast(res.message || 'เชื่อมต่อ LINE Bot สำเร็จเรียบร้อย!', 'success');
             if (res.bot_info?.basicId && !$('lineSettingsBotId').value) {
                 $('lineSettingsBotId').value = res.bot_info.basicId;
             }
         } else {
-            toast(res?.error || '❌ ไม่สามารถเชื่อมต่อกับ LINE API ได้ค่ะ', 'error');
+            toast(res?.error || 'ไม่สามารถเชื่อมต่อกับ LINE API ได้', 'error');
         }
     } catch (e) {
         toast('เกิดข้อผิดพลาดในการทดสอบค่ะ', 'error');
@@ -19147,7 +19205,7 @@ async function saveManagerChange() {
     });
 
     if (data.ok) {
-      toast("ปรับปรุงสายงานสำเร็จแล้วค่ะ! ✨", "success");
+      toast("ปรับปรุงสายงานสำเร็จแล้ว", "success");
       closeEditManagerModal();
       
       const targetUserLower = targetMember.toLowerCase();
@@ -19442,7 +19500,7 @@ async function generateAIDraft() {
     if (res && res.ok) {
       toast('ร่างข้อความสแกนจากคลังความรู้เรียบร้อยค่ะ', 'success');
       if (draftEl) draftEl.value = res.draft || '';
-      if (tipsEl) tipsEl.textContent = res.tips || '💡 พร้อมคัดลอกข้อความไปใช้งานได้ทันทีค่ะ';
+      if (tipsEl) tipsEl.textContent = res.tips || 'พร้อมคัดลอกข้อความไปใช้งานได้ทันที';
     } else {
       toast(res.error || 'เกิดข้อผิดพลาดในการร่างคำตอบ', 'error');
     }

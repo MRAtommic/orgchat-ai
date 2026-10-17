@@ -310,20 +310,65 @@ def manage_posts():
                             header_sub = "NEW FEED POST"
                             alt_prefix = "✨ โพสต์ใหม่"
 
-                        # 1) Parse Image Attachments
+                        # 1) Parse Attachments (Images and Documents/Files)
                         image_urls = []
+                        doc_files = []
                         if attachments:
                             for att in attachments:
                                 att_path = att.get("path", "")
                                 att_type = (att.get("type") or "").lower()
-                                att_name = (att.get("name") or "").lower()
+                                att_name = att.get("name") or ""
+                                att_name_lower = att_name.lower()
                                 is_img = (
                                     att_type.startswith("image/") or
-                                    att_name.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"))
+                                    att_name_lower.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"))
                                 )
-                                if is_img and att_path:
-                                    full_img_url = att_path if att_path.startswith("http") else f"{_base_url}{att_path}"
-                                    image_urls.append(full_img_url)
+                                if att_path:
+                                    full_url = att_path if att_path.startswith("http") else f"{_base_url}{att_path}"
+                                    if is_img:
+                                        image_urls.append(full_url)
+                                    else:
+                                        ext = att_name_lower.rsplit('.', 1)[-1] if '.' in att_name_lower else ''
+                                        if ext == 'pdf':
+                                            file_icon = "📄"
+                                            badge_label = "PDF"
+                                            badge_color = "#DC2626"
+                                            badge_bg = "#FEE2E2"
+                                        elif ext in ['doc', 'docx', 'txt', 'rtf', 'odt']:
+                                            file_icon = "📝"
+                                            badge_label = ext.upper() if ext else "DOC"
+                                            badge_color = "#2563EB"
+                                            badge_bg = "#DBEAFE"
+                                        elif ext in ['xls', 'xlsx', 'csv']:
+                                            file_icon = "📊"
+                                            badge_label = ext.upper() if ext else "SHEET"
+                                            badge_color = "#059669"
+                                            badge_bg = "#D1FAE5"
+                                        elif ext in ['ppt', 'pptx']:
+                                            file_icon = "📽️"
+                                            badge_label = ext.upper() if ext else "SLIDE"
+                                            badge_color = "#EA580C"
+                                            badge_bg = "#FFEDD5"
+                                        elif ext in ['zip', 'rar', '7z', 'tar', 'gz']:
+                                            file_icon = "📦"
+                                            badge_label = "ZIP"
+                                            badge_color = "#7C3AED"
+                                            badge_bg = "#EDE9FE"
+                                        else:
+                                            file_icon = "📎"
+                                            badge_label = (ext.upper() if ext else "FILE")[:5]
+                                            badge_color = "#475569"
+                                            badge_bg = "#F1F5F9"
+
+                                        doc_files.append({
+                                            "name": att_name or "ไฟล์แนบ",
+                                            "url": full_url,
+                                            "icon": file_icon,
+                                            "badge_label": badge_label,
+                                            "badge_color": badge_color,
+                                            "badge_bg": badge_bg,
+                                            "ext": ext
+                                        })
 
                         # 2) Parse Attached Link & Preview Metadata
                         clean_link = None
@@ -380,6 +425,18 @@ def manage_posts():
                         if not image_urls and link_image:
                             image_urls.append(link_image)
 
+                        # Determine display text
+                        raw_content = (content or "").strip()
+                        if not raw_content:
+                            if doc_files:
+                                display_text = f"📎 มีไฟล์แนบ {len(doc_files)} รายการ (แตะเพื่อเปิดดูหรือดาวน์โหลดได้ทันที)"
+                            elif image_urls:
+                                display_text = f"📷 มีรูปภาพแนบ {len(image_urls)} ภาพ"
+                            else:
+                                display_text = "ไม่มีเนื้อหา"
+                        else:
+                            display_text = raw_content[:300]
+
                         # 3) Build Body Contents
                         body_contents = [
                             {
@@ -404,7 +461,7 @@ def manage_posts():
                             },
                             {
                                 "type": "text",
-                                "text": (content or "ไม่มีเนื้อหา")[:300],
+                                "text": display_text,
                                 "wrap": True,
                                 "size": "sm",
                                 "color": "#374151",
@@ -452,6 +509,98 @@ def manage_posts():
                                 "cornerRadius": "12px",
                                 "margin": "lg"
                             })
+
+                        # Add Document File Cards if doc_files exist (Users can open/download directly from LINE)
+                        if doc_files:
+                            for df in doc_files[:3]:
+                                body_contents.append({
+                                    "type": "box",
+                                    "layout": "horizontal",
+                                    "contents": [
+                                        {
+                                            "type": "box",
+                                            "layout": "vertical",
+                                            "contents": [
+                                                {
+                                                    "type": "text",
+                                                    "text": df["icon"],
+                                                    "size": "md",
+                                                    "align": "center"
+                                                }
+                                            ],
+                                            "width": "36px",
+                                            "height": "36px",
+                                            "backgroundColor": df["badge_bg"],
+                                            "cornerRadius": "8px",
+                                            "justifyContent": "center",
+                                            "alignItems": "center",
+                                            "flex": 0
+                                        },
+                                        {
+                                            "type": "box",
+                                            "layout": "vertical",
+                                            "contents": [
+                                                {
+                                                    "type": "text",
+                                                    "text": df["name"][:55],
+                                                    "size": "xs",
+                                                    "weight": "bold",
+                                                    "color": "#1E293B",
+                                                    "wrap": True,
+                                                    "maxLines": 2
+                                                },
+                                                {
+                                                    "type": "box",
+                                                    "layout": "horizontal",
+                                                    "contents": [
+                                                        {
+                                                            "type": "text",
+                                                            "text": df["badge_label"],
+                                                            "size": "xxs",
+                                                            "color": df["badge_color"],
+                                                            "weight": "bold",
+                                                            "flex": 0
+                                                        },
+                                                        {
+                                                            "type": "text",
+                                                            "text": "• แตะเพื่อเปิดดูไฟล์",
+                                                            "size": "xxs",
+                                                            "color": "#2563EB",
+                                                            "margin": "xs",
+                                                            "flex": 1
+                                                        }
+                                                    ],
+                                                    "margin": "xs",
+                                                    "alignItems": "center"
+                                                }
+                                            ],
+                                            "paddingStart": "10px",
+                                            "flex": 1,
+                                            "justifyContent": "center"
+                                        }
+                                    ],
+                                    "backgroundColor": "#F8FAFC",
+                                    "cornerRadius": "10px",
+                                    "borderWidth": "1px",
+                                    "borderColor": "#E2E8F0",
+                                    "paddingAll": "10px",
+                                    "margin": "md",
+                                    "alignItems": "center",
+                                    "action": {
+                                        "type": "uri",
+                                        "label": "เปิดดูไฟล์",
+                                        "uri": df["url"]
+                                    }
+                                })
+                            if len(doc_files) > 3:
+                                body_contents.append({
+                                    "type": "text",
+                                    "text": f"📎 มีไฟล์แนบอีก {len(doc_files) - 3} รายการ (เปิดดูในระบบ)",
+                                    "size": "xxs",
+                                    "color": "#64748B",
+                                    "align": "center",
+                                    "margin": "xs"
+                                })
 
                         # Add Link Preview Card Box if link exists
                         if clean_link:
@@ -535,7 +684,41 @@ def manage_posts():
 
                         # 4) Build Footer Buttons
                         footer_contents = []
-                        if clean_link:
+                        if doc_files:
+                            # Primary button: Direct open file link from LINE!
+                            first_doc = doc_files[0]
+                            btn_label = f"📄 เปิดดูไฟล์ ({first_doc['badge_label']})"
+                            if len(btn_label) > 35:
+                                btn_label = "📄 เปิดดูไฟล์แนบ"
+                            footer_contents.append({
+                                "type": "button",
+                                "action": {
+                                    "type": "uri",
+                                    "label": btn_label,
+                                    "uri": first_doc["url"]
+                                },
+                                "style": "primary",
+                                "color": primary_color,
+                                "height": "sm"
+                            })
+                            # Secondary action
+                            if clean_link:
+                                footer_contents.append({
+                                    "type": "button",
+                                    "action": {"type": "uri", "label": "🌐 เปิดลิงก์ที่แนบ", "uri": clean_link},
+                                    "style": "secondary",
+                                    "height": "sm",
+                                    "margin": "sm"
+                                })
+                            else:
+                                footer_contents.append({
+                                    "type": "button",
+                                    "action": {"type": "uri", "label": "💬 ดูในระบบ OrgChat", "uri": portal_url},
+                                    "style": "secondary",
+                                    "height": "sm",
+                                    "margin": "sm"
+                                })
+                        elif clean_link:
                             # Primary button: Open attached link directly in LINE In-App Browser
                             footer_contents.append({
                                 "type": "button",
@@ -582,12 +765,14 @@ def manage_posts():
 
                         # 5) Alt Text summary
                         extras = []
+                        if doc_files:
+                            extras.append(f"ไฟล์ {doc_files[0]['name']}")
                         if image_urls:
-                            extras.append("รูปภาพ")
+                            extras.append(f"รูปภาพ {len(image_urls)} รูป")
                         if clean_link:
                             extras.append("ลิงก์")
-                        extra_str = f" [แนบ{'+'.join(extras)}]" if extras else ""
-                        alt_text = f"{alt_prefix}: {category} — โดย {display_name}{extra_str}"
+                        extra_str = f" [แนบ{', '.join(extras)}]" if extras else ""
+                        alt_text = f"{alt_prefix}: {category} — โดย {display_name}{extra_str}"[:400]
 
                         flex_msg = {
                             "type": "flex",

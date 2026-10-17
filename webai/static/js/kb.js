@@ -328,7 +328,8 @@ function applyProfile(profile) {
   if (sidebarDisplayName) sidebarDisplayName.textContent = profile.display_name || profile.username;
   const sidebarUserRoleEl = $('sidebarUserRole');
   if (sidebarUserRoleEl) {
-    if (profile.is_superadmin) {
+    const isSuper = profile.is_superadmin || profile.role === 'superadmin' || (typeof state !== 'undefined' && state.isSuperAdmin);
+    if (isSuper) {
       sidebarUserRoleEl.textContent = 'Super Admin';
       sidebarUserRoleEl.className = 'text-[9px] text-amber-500 font-extrabold uppercase tracking-widest';
     } else if (profile.org_role === 'admin' || profile.role === 'admin') {

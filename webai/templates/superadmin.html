@@ -908,7 +908,7 @@
           
           <div class="card" id="sql-error-card" style="display:none; border-color:#7f1d1d; background:#450a0a11; margin-top: 10px;">
             <div style="padding:12px 18px; border-bottom:1px solid #7f1d1d44; color:#f87171; font-weight:800; font-size:11px;">
-              ⚠️ SQL QUERY ERROR
+              SQL QUERY ERROR
             </div>
             <pre class="mono" id="sql-error-text" style="margin:0; padding:16px; font-size:12px; color:#fca5a5; overflow-x:auto; white-space:pre-wrap;"></pre>
           </div>
@@ -1186,7 +1186,7 @@ async function loadSecurityConsole() {
         listEl.innerHTML = data.logs.slice(0, 15).map(l => {
           const verifiedBadge = l.is_verified 
             ? '<span class="badge badge-active">✓ Verified HMAC</span>' 
-            : '<span class="badge badge-suspended">⚠️ TAMPERED</span>';
+            : '<span class="badge badge-suspended">TAMPERED</span>';
           return `
             <div style="padding:8px 12px; border-radius:8px; background:var(--bg); border:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; gap:8px;">
               <div style="min-width:0; flex:1;">
@@ -1261,7 +1261,7 @@ async function runSaFimScan() {
   const box = document.getElementById('sa-fimStatusBox');
   if (!box) return;
   box.style.display = 'block';
-  box.innerHTML = '🔄 กำลังประมวลผล SHA-256 Hash ตรวจสอบความถูกต้องของไฟล์...';
+  box.innerHTML = 'กำลังประมวลผล SHA-256 Hash ตรวจสอบความถูกต้องของไฟล์...';
   if (btn) btn.disabled = true;
 
   try {
@@ -1270,15 +1270,15 @@ async function runSaFimScan() {
     if (data.ok) {
       const issues = (data.files || []).filter(f => !f.valid);
       if (issues.length === 0) {
-        box.innerHTML = `<span style="color:#34d399; font-weight:700;">✅ การตรวจสอบสมบูรณ์:</span> ตรวจสอบไฟล์ระบบและคลังความรู้ทั้งหมด ${data.total_scanned} ไฟล์ ทั้งหมดผ่านการตรวจสอบ SHA-256 ไม่พบการดัดแปลง`;
+        box.innerHTML = `<span style="color:#34d399; font-weight:700;">การตรวจสอบสมบูรณ์:</span> ตรวจสอบไฟล์ระบบและคลังความรู้ทั้งหมด ${data.total_scanned} ไฟล์ ทั้งหมดผ่านการตรวจสอบ SHA-256 ไม่พบการดัดแปลง`;
       } else {
-        box.innerHTML = `<span style="color:#f87171; font-weight:700;">⚠️ ตรวจพบความผิดปกติ (${issues.length} ไฟล์):</span><br>` + issues.map(f => `${f.file}: ${f.status}`).join('<br>');
+        box.innerHTML = `<span style="color:#f87171; font-weight:700;">ตรวจพบความผิดปกติ (${issues.length} ไฟล์):</span><br>` + issues.map(f => `${f.file}: ${f.status}`).join('<br>');
       }
     } else {
-      box.innerText = '❌ สแกนล้มเหลว: ' + (data.error || 'Server error');
+      box.innerText = 'สแกนล้มเหลว: ' + (data.error || 'Server error');
     }
   } catch(e) {
-    box.innerText = '❌ เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์';
+    box.innerText = 'เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์';
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -1289,7 +1289,7 @@ async function runSaKbScan() {
   const box = document.getElementById('sa-kbStatusBox');
   if (!box) return;
   box.style.display = 'block';
-  box.innerHTML = '🔍 กำลังวิเคราะห์คลังความรู้และค้นหา Hash Collision...';
+  box.innerHTML = 'กำลังวิเคราะห์คลังความรู้และค้นหา Hash Collision...';
   if (btn) btn.disabled = true;
 
   try {
@@ -1298,15 +1298,15 @@ async function runSaKbScan() {
     if (data.ok) {
       const count = data.duplicate_count || 0;
       if (count === 0) {
-        box.innerHTML = `<span style="color:#34d399; font-weight:700;">✅ คลังข้อมูลสมบูรณ์:</span> ตรวจสอบเอกสารทั้งหมด ${data.total_files} ฉบับ ไม่พบไฟล์ซ้ำซ้อนหรือความผิดปกติของขนาด Chunks`;
+        box.innerHTML = `<span style="color:#34d399; font-weight:700;">คลังข้อมูลสมบูรณ์:</span> ตรวจสอบเอกสารทั้งหมด ${data.total_files} ฉบับ ไม่พบไฟล์ซ้ำซ้อนหรือความผิดปกติของขนาด Chunks`;
       } else {
-        box.innerHTML = `<span style="color:#fbbf24; font-weight:700;">⚠️ พบไฟล์ซ้ำ ${count} กลุ่ม:</span><br>` + (data.duplicates || []).map(d => `Hash: ${d.hash.substring(0, 12)}... (${d.files.join(', ')})`).join('<br>');
+        box.innerHTML = `<span style="color:#fbbf24; font-weight:700;">พบไฟล์ซ้ำ ${count} กลุ่ม:</span><br>` + (data.duplicates || []).map(d => `Hash: ${d.hash.substring(0, 12)}... (${d.files.join(', ')})`).join('<br>');
       }
     } else {
-      box.innerText = '❌ ตรวจสอบล้มเหลว: ' + (data.error || 'Server error');
+      box.innerText = 'ตรวจสอบล้มเหลว: ' + (data.error || 'Server error');
     }
   } catch(e) {
-    box.innerText = '❌ เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์';
+    box.innerText = 'เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์';
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -1332,10 +1332,10 @@ async function testSaPiiMasking() {
     if (data.ok) {
       box.style.display = 'block';
       if (data.count === 0) {
-        box.innerHTML = `<span style="color:#34d399; font-weight:700;">✅ ปลอดภัย:</span> ไม่พบข้อมูลส่วนบุคคลอ่อนไหว (PII)<div style="color:var(--muted); margin-top:4px;">${data.masked_text}</div>`;
+        box.innerHTML = `<span style="color:#34d399; font-weight:700;">ปลอดภัย:</span> ไม่พบข้อมูลส่วนบุคคลอ่อนไหว (PII)<div style="color:var(--muted); margin-top:4px;">${data.masked_text}</div>`;
       } else {
         box.innerHTML = `
-          <div style="color:#f87171; font-weight:700;">🛡️ เซ็นเซอร์ข้อมูลอ่อนไหวแล้ว (${data.count} รายการ):</div>
+          <div style="color:#f87171; font-weight:700;">เซ็นเซอร์ข้อมูลอ่อนไหวแล้ว (${data.count} รายการ):</div>
           <div style="padding:6px; border-radius:6px; background:var(--surface2); color:#2dd4bf; font-weight:700; margin:4px 0;">${data.masked_text}</div>
           <div style="font-size:10px; color:var(--muted);">ตรวจพบ: ${data.detected_items.map(i => i.type).join(', ')}</div>
         `;
@@ -1343,7 +1343,7 @@ async function testSaPiiMasking() {
     }
   } catch(e) {
     box.style.display = 'block';
-    box.innerText = '❌ เกิดข้อผิดพลาดในการทดสอบ Mask';
+    box.innerText = 'เกิดข้อผิดพลาดในการทดสอบ Mask';
   }
 }
 
@@ -1359,12 +1359,12 @@ async function loadSaThreatIntel() {
       
       box.innerHTML = `
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; padding-bottom:6px; border-bottom:1px solid var(--border);">
-          <span style="font-weight:700; color:#818cf8;">🛡️ SOC Threat Telemetry</span>
+          <span style="font-weight:700; color:#818cf8;">SOC Threat Telemetry</span>
           <span style="font-size:10px; color:#34d399; font-weight:700;">● ${data.intel_engine_status}</span>
         </div>
         <div style="display:flex; flex-direction:column; gap:6px; font-size:11px;">
-          <div><strong style="color:var(--text);">🚨 Top Flagged Threat IPs (24h):</strong> <div style="margin-top:3px; display:flex; flex-wrap:wrap; gap:4px;">${threatIps}</div></div>
-          <div><strong style="color:var(--text);">📊 Security Alert Actions (24h):</strong> <div style="margin-top:3px; display:flex; flex-wrap:wrap; gap:4px;">${actions}</div></div>
+          <div><strong style="color:var(--text);">Top Flagged Threat IPs (24h):</strong> <div style="margin-top:3px; display:flex; flex-wrap:wrap; gap:4px;">${threatIps}</div></div>
+          <div><strong style="color:var(--text);">Security Alert Actions (24h):</strong> <div style="margin-top:3px; display:flex; flex-wrap:wrap; gap:4px;">${actions}</div></div>
         </div>
       `;
     }
@@ -1376,14 +1376,14 @@ async function loadSaThreatIntel() {
 async function runSaUebaScan() {
   const box = document.getElementById('sa-threatIntelBox');
   if (!box) return;
-  box.innerHTML = '🔄 กำลังวิเคราะห์พฤติกรรมผู้ใช้และคำสั่งที่ยิงเข้ามา (UEBA)...';
+  box.innerHTML = 'กำลังวิเคราะห์พฤติกรรมผู้ใช้และคำสั่งที่ยิงเข้ามา (UEBA)...';
   try {
     const res = await fetch('/api/security/analyze-behavior', { method: 'POST' });
     const data = await res.json();
     if (data.ok && data.analysis) {
       const an = data.analysis;
       box.innerHTML = `
-        <div style="color:#34d399; font-weight:700; margin-bottom:4px;">✅ การวิเคราะห์พฤติกรรม UEBA สำเร็จ:</div>
+        <div style="color:#34d399; font-weight:700; margin-bottom:4px;">การวิเคราะห์พฤติกรรม UEBA สำเร็จ:</div>
         <div>สถานะความเสี่ยง: <span class="badge ${an.risk_level === 'LOW' ? 'badge-active' : 'badge-suspended'}">${an.risk_level} (Score: ${an.risk_score}/100)</span></div>
         <div style="margin-top:4px; color:var(--muted); font-size:10px;">${an.summary || 'ไม่พบพฤติกรรมที่เข้าข่ายการเจาะระบบหรือขโมยข้อมูล'}</div>
       `;
@@ -1482,40 +1482,56 @@ async function loadOverview() {
     ]);
     const ov = await ovR.json();
     const orgsD = await orgsR.json();
-    if (!ov.ok) return;
+    if (!ov.ok) {
+      console.error('[loadOverview] Failed:', ov);
+      if (typeof toast === 'function') {
+        toast(ov.error || 'ไม่สามารถโหลดข้อมูลสถิติ Super Admin ได้', 'error');
+      }
+      return;
+    }
 
-    // topbar (safe setters)
-    const _setTxt = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-    _setTxt('tb-version', 'v' + ov.version);
-    _setTxt('tb-python', (ov.python_version||'').split(' ')[0]);
-    _setTxt('tb-provider', ov.ai_provider || '—');
-    _setTxt('tb-uptime', fmtUptime(ov.uptime_seconds));
-    _setTxt('sb-uptime', fmtUptime(ov.uptime_seconds));
+    function safeSet(id, val) {
+      document.querySelectorAll('#' + id).forEach(el => {
+        el.textContent = (val !== undefined && val !== null) ? val : '—';
+      });
+    }
+    function safeHtml(id, val) {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = val;
+    }
+
+    // topbar
+    safeSet('tb-version', 'v' + (ov.version || '1.0'));
+    safeSet('tb-python', String(ov.python_version || '3.11').split(' ')[0]);
+    safeSet('tb-provider', ov.ai_provider || '—');
+    safeSet('tb-uptime', fmtUptime(ov.uptime_seconds || 0));
+    safeSet('sb-uptime', fmtUptime(ov.uptime_seconds || 0));
 
     // KPIs
-    _setTxt('k-mrr', '฿' + (ov.mrr||0).toLocaleString());
-    _setTxt('k-paying', ov.paying_orgs||0);
-    _setTxt('k-paying-sub', `จาก ${ov.total_orgs||0} org`);
-    _setTxt('k-ai-month', (ov.stats?.ai_queries_this_month||0).toLocaleString());
-    _setTxt('k-ai-total', `รวม ${(ov.stats?.total_ai_queries||0).toLocaleString()} ครั้ง`);
-    _setTxt('k-users', (ov.stats?.total_users||0).toLocaleString());
-    _setTxt('k-orgs', (ov.total_orgs||0).toLocaleString());
-    _setTxt('k-msgs', (ov.stats?.total_messages||0).toLocaleString());
-    _setTxt('k-db', fmtBytes(ov.stats?.db_size_bytes||0));
-    _setTxt('k-kb', (ov.stats?.kb_total_files||0).toLocaleString());
+    safeSet('k-mrr', '฿' + (ov.mrr || 0).toLocaleString());
+    safeSet('k-paying', ov.paying_orgs || 0);
+    safeSet('k-paying-sub', `จาก ${ov.total_orgs || 0} org`);
+    safeSet('k-ai-month', (ov.stats?.ai_queries_this_month || 0).toLocaleString());
+    safeSet('k-ai-total', `รวม ${(ov.stats?.total_ai_queries || 0).toLocaleString()} ครั้ง`);
+    safeSet('k-users', (ov.stats?.total_users || 0).toLocaleString());
+    safeSet('k-orgs', (ov.total_orgs || 0).toLocaleString());
+    safeSet('k-msgs', (ov.stats?.total_messages || 0).toLocaleString());
+    safeSet('k-db', fmtBytes(ov.stats?.db_size_bytes || 0));
+    safeSet('k-kb', (ov.stats?.kb_total_files || 0).toLocaleString());
 
     // nav badges
-    _setTxt('nb-orgs', ov.total_orgs||0);
-    _setTxt('nb-users', ov.stats?.total_users||0);
+    const totalOrgsCount = (orgsD && orgsD.ok && Array.isArray(orgsD.orgs)) ? orgsD.orgs.length : (ov.total_orgs || 0);
+    safeSet('nb-orgs', totalOrgsCount);
+    safeSet('nb-users', ov.stats?.total_users || 0);
 
     // plan dist
-    if (orgsD.ok) {
+    if (orgsD.ok && orgsD.orgs) {
       _orgs = orgsD.orgs;
       const counts = {free:0, pro:0, business:0};
       orgsD.orgs.forEach(o => { const p=o.plan||'free'; counts[p]=(counts[p]||0)+1; });
       const total = orgsD.orgs.length || 1;
       const colors = {pro:'#34d399', business:'#a78bfa', free:'#334155'};
-      document.getElementById('plan-dist').innerHTML = ['pro','business','free'].map(p => {
+      safeHtml('plan-dist', ['pro','business','free'].map(p => {
         const pct = Math.round((counts[p]||0)/total*100);
         return `<div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
@@ -1524,11 +1540,11 @@ async function loadOverview() {
           </div>
           <div class="prog-track"><div class="prog-fill" style="width:${pct}%;background:${colors[p]};"></div></div>
         </div>`;
-      }).join('');
+      }).join(''));
     }
 
     // quick stats
-    document.getElementById('quick-stats').innerHTML = [
+    safeHtml('quick-stats', [
       statRow('องค์กรทั้งหมด', ov.total_orgs||0, '#60a5fa'),
       statRow('ผู้ใช้ทั้งหมด', ov.stats?.total_users||0, '#f472b6'),
       statRow('ข้อความทั้งหมด', (ov.stats?.total_messages||0).toLocaleString(), '#a78bfa'),
@@ -1537,9 +1553,9 @@ async function loadOverview() {
       statRow('MRR', '฿'+(ov.mrr||0).toLocaleString(), '#34d399'),
       statRow('AI Provider', `<span class="mono" style="font-size:11px;">${ov.ai_provider||'—'}</span>`, '#818cf8'),
       statRow('Version', `<span class="mono" style="font-size:11px;">v${ov.version}</span>`, '#94a3b8'),
-    ].join('');
+    ].join(''));
   } catch (e) {
-    console.error(e);
+    console.error('[loadOverview] Error:', e);
   }
 }
 
@@ -1802,7 +1818,7 @@ async function setPlan(orgId) {
 }
 
 async function confirmDeleteOrg(orgId, orgName) {
-  if (!confirm(`⚠️ ลบองค์กร "${orgName}" (ID: ${orgId}) ?\n\nสมาชิกจะถูกนำออกจากองค์กร (ตัว user ยังอยู่)\nไม่สามารถยกเลิกได้!`)) return;
+  if (!confirm(`ลบองค์กร "${orgName}" (ID: ${orgId}) ?\n\nสมาชิกจะถูกนำออกจากองค์กร (ตัว user ยังอยู่)\nไม่สามารถยกเลิกได้!`)) return;
   const r = await fetch(`/api/superadmin/org/${orgId}/delete`, { method: 'POST' });
   const d = await r.json();
   if (d.ok) { toast(`ลบ org "${orgName}" แล้ว`, 'success'); _orgs=[]; loadOrgs(); loadOverview(); }
@@ -1939,10 +1955,10 @@ function openUserModal(username) {
         ${u.role==='admin'?'↓ เปลี่ยนเป็น User':'↑ เปลี่ยนเป็น Admin'}
       </button>
       <button class="btn btn-ghost btn-xs" onclick="resetPw('${username}')">
-        🔑 Reset รหัสผ่าน
+        Reset รหัสผ่าน
       </button>
       <button class="btn btn-info btn-xs" onclick="impersonate('${username}')" title="Login as this user (ออกได้ตลอดเวลา)">
-        👤 Impersonate
+        Impersonate
       </button>
       ${username!=='Admin'?`<button class="btn btn-danger btn-xs" onclick="confirmDeleteUser('${username}')">🗑 ลบ User</button>`:''}
     </div>
@@ -1990,7 +2006,7 @@ async function resetPw(username) {
   else toast(d.error||'Error','error');
 }
 async function confirmDeleteUser(username) {
-  if (!confirm(`⚠️ ลบ user "@${username}" ทั้งหมด?\n\nข้อมูลทุกอย่างของ user นี้จะหายไป\nไม่สามารถยกเลิกได้!`)) return;
+  if (!confirm(`ลบ user "@${username}" ทั้งหมด?\n\nข้อมูลทุกอย่างของ user นี้จะหายไป\nไม่สามารถยกเลิกได้!`)) return;
   const r = await fetch(`/api/superadmin/user/${encodeURIComponent(username)}/delete`, { method:'POST' });
   const d = await r.json();
   if (d.ok) { toast(`ลบ @${username} เรียบร้อย`,'success'); closeModal(); _users=[]; loadUsers(); loadOverview(); }
@@ -2325,7 +2341,7 @@ async function sendExpiryReminders() {
    IMPERSONATE
    ═══════════════════════════════════════════════════════════ */
 async function impersonate(username) {
-  if (!confirm(`⚠️ Login เป็น @${username} ?\n\nการกระทำนี้จะถูกบันทึกใน audit log\nกลับมาได้ที่ /api/superadmin/exit-impersonate`)) return;
+  if (!confirm(`Login เป็น @${username} ?\n\nการกระทำนี้จะถูกบันทึกใน audit log\nกลับมาได้ที่ /api/superadmin/exit-impersonate`)) return;
   const r = await fetch(`/api/superadmin/impersonate/${encodeURIComponent(username)}`, { method:'POST' });
   const d = await r.json();
   if (d.ok) {
@@ -2440,7 +2456,7 @@ function renderCurrentTable() {
   // Header HTML (Columns + Action head)
   let headersHtml = dbState.columns.map(c => `
     <th class="mono" style="font-size:10px; color:${c.pk?'#fbbf24':'var(--muted)'};">
-      ${c.name} ${c.pk?'🔑':''}
+      ${c.name} ${c.pk?'(PK)':''}
       <span style="display:block; font-size:8px; font-weight:normal; text-transform:lowercase; color:var(--muted); opacity:0.7;">${c.type}</span>
     </th>
   `).join('');
@@ -2543,7 +2559,7 @@ async function submitAddRow() {
   
   const d = await r.json();
   if (d.ok) {
-    toast('เพิ่มข้อมูลเรียบร้อยแล้วค่ะ! ✨', 'success');
+    toast('เพิ่มข้อมูลเรียบร้อยแล้ว', 'success');
     closeModal();
     fetchTableData();
     loadDbTables(); // Refresh sidebar count
@@ -2601,7 +2617,7 @@ async function submitEditRow(rowEscaped) {
   
   const d = await r.json();
   if (d.ok) {
-    toast('อัปเดตข้อมูลเรียบร้อยแล้วค่ะ! ✨', 'success');
+    toast('อัปเดตข้อมูลเรียบร้อยแล้ว', 'success');
     closeModal();
     fetchTableData();
   } else {
@@ -2686,7 +2702,7 @@ async function runSqlQuery() {
   }
   
   sqlState.lastResult = d;
-  toast('รันคำสั่ง SQL สำเร็จเรียบร้อย! ✨', 'success');
+  toast('รันคำสั่ง SQL สำเร็จเรียบร้อย', 'success');
   
   if (d.is_select) {
     // Show select tables

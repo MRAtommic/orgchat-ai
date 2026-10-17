@@ -224,12 +224,31 @@ function renderQuotations() {
 }
 
 async function downloadQtPdf(id) {
-  const resp = await fetch(`/api/quotations/${id}/pdf`, {credentials:'same-origin'});
-  if (!resp.ok) { toast('สร้าง PDF ไม่สำเร็จ','error'); return; }
-  const blob = await resp.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href=url; a.download='quotation.pdf'; a.click();
-  URL.revokeObjectURL(url);
+  try {
+    toast('กำลังสร้างและดาวน์โหลดเอกสาร PDF...', 'info');
+    const resp = await fetch(`/api/quotations/${id}/pdf`, {credentials:'same-origin'});
+    if (!resp.ok) {
+      let errMsg = 'สร้าง PDF ไม่สำเร็จ';
+      try {
+        const errJson = await resp.json();
+        if (errJson && errJson.error) errMsg = errJson.error;
+      } catch(e) {}
+      toast(errMsg, 'error');
+      return;
+    }
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `quotation_${id}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast('ดาวน์โหลดเอกสารสำเร็จแล้ว', 'success');
+  } catch (err) {
+    toast('เกิดข้อผิดพลาดในการดาวน์โหลด: ' + err.message, 'error');
+  }
 }
 
 async function deleteQuotation(id) {
@@ -722,16 +741,35 @@ async function loadWhtSummary() {
 }
 
 async function downloadWhtPdf() {
-  const ym = document.getElementById('wht-ym')?.value || new Date().toISOString().substring(0,7);
-  const resp = await fetch('/api/wht/pdf', {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    credentials:'same-origin', body: JSON.stringify({year_month:ym})
-  });
-  if (!resp.ok) { toast('สร้าง PDF ไม่สำเร็จ','error'); return; }
-  const blob = await resp.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href=url; a.download=`WHT_${ym}.pdf`; a.click();
-  URL.revokeObjectURL(url);
+  try {
+    const ym = document.getElementById('wht-ym')?.value || new Date().toISOString().substring(0,7);
+    toast('กำลังสร้างเอกสาร 50 ทวิ...', 'info');
+    const resp = await fetch('/api/wht/pdf', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      credentials:'same-origin', body: JSON.stringify({year_month:ym})
+    });
+    if (!resp.ok) {
+      let errMsg = 'สร้าง PDF ไม่สำเร็จ';
+      try {
+        const errJson = await resp.json();
+        if (errJson && errJson.error) errMsg = errJson.error;
+      } catch(e) {}
+      toast(errMsg, 'error');
+      return;
+    }
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `WHT_${ym}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast('ดาวน์โหลดเอกสารสำเร็จแล้ว', 'success');
+  } catch(err) {
+    toast('เกิดข้อผิดพลาดในการดาวน์โหลด: ' + err.message, 'error');
+  }
 }
 
 /* ════════════════════════════════════════════════

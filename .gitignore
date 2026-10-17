@@ -70,7 +70,6 @@ extracted_*.txt
 test_*.txt
 desktop.ini
 Thumbs.db
-
 *.lock
-.env.bak
-*.env.bak
+.env*
+*.bak

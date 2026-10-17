@@ -199,30 +199,25 @@ async function checkSystemAlerts() {
 }
 
 function renderSystemAlertsBanner(alerts) {
-  if (!alerts || !alerts.length) return;
-  const alert = alerts[0];
-  const dismissedKey = 'dismissed_alert_' + (alert.id || 'general') + '_' + (alert.timestamp || '');
-  if (localStorage.getItem(dismissedKey) || sessionStorage.getItem('dismissed_google_alert')) {
-    return;
-  }
   let banner = $('systemAlertBanner');
   if (!banner) {
     banner = document.createElement('div');
     banner.id = 'systemAlertBanner';
-    banner.className = 'w-full bg-amber-500/10 border-b border-amber-500/20 text-amber-900 dark:text-amber-200 px-4 py-2 text-xs flex items-center justify-between z-50 backdrop-blur-xs transition-all';
+    banner.className = 'w-full bg-amber-500/10 border-b border-amber-500/30 text-amber-900 dark:text-amber-200 px-4 py-2.5 text-xs flex items-center justify-between z-50';
     document.body.prepend(banner);
   }
   banner.classList.remove('hidden');
+  const alert = alerts[0];
   banner.innerHTML = `
-    <div class="flex items-center gap-2.5 max-w-4xl mx-auto flex-1">
-      <span class="inline-flex items-center justify-center w-5 h-5 bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-md font-bold text-xs shrink-0">⚠️</span>
-      <div class="flex flex-wrap items-center gap-x-2 text-xs">
-        <span class="font-bold text-surface-900 dark:text-white">${alert.title}:</span>
-        <span class="text-surface-700 dark:text-surface-300 font-medium">${alert.message}</span>
-        ${alert.hint ? `<span class="text-surface-500 dark:text-surface-400 text-[11px]">(${alert.hint})</span>` : ''}
+    <div class="flex items-center gap-2">
+      <span class="inline-block p-1 bg-amber-500 text-white rounded-md">⚠️</span>
+      <div>
+        <span class="font-bold">${alert.title}:</span>
+        <span class="opacity-90 ml-1">${alert.message}</span>
+        ${alert.hint ? `<span class="block text-[11px] opacity-75 mt-0.5">${alert.hint}</span>` : ''}
       </div>
     </div>
-    <button onclick="localStorage.setItem('${dismissedKey}', '1'); sessionStorage.setItem('dismissed_google_alert', '1'); document.getElementById('systemAlertBanner')?.remove()" class="text-surface-400 hover:text-surface-700 dark:hover:text-surface-200 p-1 font-bold text-xs rounded transition" title="ปิดการแจ้งเตือนนี้">✕</button>
+    <button onclick="document.getElementById('systemAlertBanner').classList.add('hidden')" class="text-amber-700 dark:text-amber-300 hover:opacity-100 opacity-60 p-1">✕</button>
   `;
 }
 

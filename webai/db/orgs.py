@@ -1130,14 +1130,38 @@ def delete_org_department(dept_id: int, org_id: int, fallback_dept: str = "") ->
 def get_whitelist_emails(org_id: int) -> list:
     conn = _get_conn()
     cursor = conn.cursor()
+    from datetime import datetime
+    now_utc = datetime.utcnow()
     try:
         cursor.execute("SELECT email, added_by, created_at, role FROM organization_allowed_emails WHERE organization_id = ? ORDER BY created_at DESC", (org_id,))
         rows = cursor.fetchall()
-        emails = [{"email": r[0], "added_by": r[1], "created_at": r[2], "role": r[3] or "member"} for r in rows]
+        emails = []
+        for r in rows:
+            created_at = r[2]
+            is_expired = False
+            if created_at:
+                try:
+                    dt = datetime.fromisoformat(str(created_at).replace('Z', ''))
+                    if (now_utc - dt).total_seconds() > 7 * 86400:
+                        is_expired = True
+                except Exception:
+                    pass
+            emails.append({"email": r[0], "added_by": r[1], "created_at": r[2], "role": r[3] or "member", "is_expired": is_expired})
     except Exception:
         cursor.execute("SELECT email, added_by, created_at FROM organization_allowed_emails WHERE organization_id = ? ORDER BY created_at DESC", (org_id,))
         rows = cursor.fetchall()
-        emails = [{"email": r[0], "added_by": r[1], "created_at": r[2], "role": "member"} for r in rows]
+        emails = []
+        for r in rows:
+            created_at = r[2]
+            is_expired = False
+            if created_at:
+                try:
+                    dt = datetime.fromisoformat(str(created_at).replace('Z', ''))
+                    if (now_utc - dt).total_seconds() > 7 * 86400:
+                        is_expired = True
+                except Exception:
+                    pass
+            emails.append({"email": r[0], "added_by": r[1], "created_at": r[2], "role": "member", "is_expired": is_expired})
     conn.close()
     return emails
 
@@ -1166,25 +1190,39 @@ def remove_whitelist_email(org_id: int, email: str) -> bool:
     conn.close()
     return affected > 0
 
-def get_email_whitelisted_organizations(email: str) -> list:
+def get_email_whitelisted_organizations(email: str, max_age_days: int = 7) -> list:
     conn = _get_conn()
     cursor = conn.cursor()
     try:
-        cursor.execute("SELECT organization_id, added_by, created_at, role FROM organization_allowed_emails WHERE email = ? COLLATE NOCASE", (email,))
+        cursor.execute("""
+            SELECT organization_id, added_by, created_at, role 
+            FROM organization_allowed_emails 
+            WHERE email = ? COLLATE NOCASE 
+              AND (created_at IS NOT NULL AND datetime(created_at, '+' || ? || ' days') >= datetime('now'))
+        """, (email, max_age_days))
         rows = cursor.fetchall()
         orgs = [{"organization_id": r[0], "added_by": r[1], "created_at": r[2], "role": r[3] or "member"} for r in rows]
     except Exception:
         # Fallback if role doesn't exist
-        cursor.execute("SELECT organization_id, added_by, created_at FROM organization_allowed_emails WHERE email = ? COLLATE NOCASE", (email,))
+        cursor.execute("""
+            SELECT organization_id, added_by, created_at 
+            FROM organization_allowed_emails 
+            WHERE email = ? COLLATE NOCASE
+              AND (created_at IS NOT NULL AND datetime(created_at, '+' || ? || ' days') >= datetime('now'))
+        """, (email, max_age_days))
         rows = cursor.fetchall()
         orgs = [{"organization_id": r[0], "added_by": r[1], "created_at": r[2], "role": "member"} for r in rows]
     conn.close()
     return orgs
 
-def is_email_allowed(org_id: int, email: str) -> bool:
+def is_email_allowed(org_id: int, email: str, max_age_days: int = 7) -> bool:
     conn = _get_conn()
     cursor = conn.cursor()
-    cursor.execute("SELECT 1 FROM organization_allowed_emails WHERE organization_id = ? AND email = ?", (org_id, email))
+    cursor.execute("""
+        SELECT 1 FROM organization_allowed_emails 
+        WHERE organization_id = ? AND email = ? COLLATE NOCASE
+          AND (created_at IS NOT NULL AND datetime(created_at, '+' || ? || ' days') >= datetime('now'))
+    """, (org_id, email, max_age_days))
     row = cursor.fetchone()
     conn.close()
     return row is not None

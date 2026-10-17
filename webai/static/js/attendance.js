@@ -8,30 +8,6 @@ let currentAttendanceState = null;
 let attendanceTimerInterval = null;
 let userCurrentCoords = null;
 
-/**
- * Human-friendly distance formatting (meters/km)
- */
-function formatDistance(meters) {
-  if (meters == null || isNaN(meters)) return '-';
-  const m = Math.round(meters);
-  if (m < 1000) return `${m.toLocaleString()} ม.`;
-  const km = (m / 1000).toFixed(1);
-  return `${km} กม.`;
-}
-
-/**
- * Human-friendly work duration formatting
- */
-function formatWorkHours(hoursFloat) {
-  if (!hoursFloat || hoursFloat <= 0) return '-';
-  const totalMins = Math.round(hoursFloat * 60);
-  const h = Math.floor(totalMins / 60);
-  const m = totalMins % 60;
-  if (h === 0) return `${m} นาที`;
-  if (m === 0) return `${h} ชม.`;
-  return `${h} ชม. ${m} นาที`;
-}
-
 // Initialize on load / view activation
 document.addEventListener('DOMContentLoaded', () => {
   if (typeof window.initAttendanceSystem === 'undefined') {
@@ -160,13 +136,13 @@ async function loadAttendanceToday() {
       if (checkInBadgeEl) {
         checkInBadgeEl.classList.remove('hidden');
         if (cin.status === 'on_time') {
-          checkInBadgeEl.className = 'px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50';
+          checkInBadgeEl.className = 'px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800';
           checkInBadgeEl.textContent = 'ตรงเวลา';
         } else if (cin.status === 'late') {
-          checkInBadgeEl.className = 'px-2 py-0.5 rounded-md text-[10px] font-semibold bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300 border border-rose-200 dark:border-rose-800/50';
+          checkInBadgeEl.className = 'px-2 py-0.5 rounded text-[11px] font-bold bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800';
           checkInBadgeEl.textContent = 'เข้างานสาย';
         } else {
-          checkInBadgeEl.className = 'px-2 py-0.5 rounded-md text-[10px] font-semibold bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50';
+          checkInBadgeEl.className = 'px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800';
           checkInBadgeEl.textContent = 'นอกพื้นที่';
         }
       }
@@ -181,11 +157,11 @@ async function loadAttendanceToday() {
       if (checkOutBadgeEl) {
         checkOutBadgeEl.classList.remove('hidden');
         if (cout.status === 'outside_geofence') {
-          checkOutBadgeEl.className = 'px-2 py-0.5 rounded-md text-[10px] font-semibold bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50';
+          checkOutBadgeEl.className = 'px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800';
           checkOutBadgeEl.textContent = 'นอกพื้นที่';
         } else {
-          checkOutBadgeEl.className = 'px-2 py-0.5 rounded-md text-[10px] font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 border border-blue-200 dark:border-blue-800/50';
-          checkOutBadgeEl.textContent = 'เลิกงานแล้ว';
+          checkOutBadgeEl.className = 'px-2 py-0.5 rounded text-[11px] font-bold bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-800';
+          checkOutBadgeEl.textContent = 'เลิกงานเรียบร้อย';
         }
       }
     } else {
@@ -193,55 +169,26 @@ async function loadAttendanceToday() {
       if (checkOutBadgeEl) checkOutBadgeEl.classList.add('hidden');
     }
 
-    // Configure Action Button
+    // Configure Big Action Button
     if (clockBtn && clockBtnText && clockBtnIcon) {
       if (!data.check_in) {
         // Ready to Check-in
-        clockBtn.className = 'w-full py-4 px-5 rounded-xl font-bold text-white shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center gap-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] group';
+        clockBtn.className = 'w-full py-5 px-6 rounded-3xl font-bold text-white shadow-xl transition-all duration-300 flex items-center justify-center gap-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 hover:shadow-emerald-500/25 active:scale-[0.98] group';
         clockBtnText.textContent = 'บันทึกเวลาเข้างาน (Check-In)';
-        if (clockBtnSub) clockBtnSub.textContent = 'แตะเพื่อแชร์พิกัด GPS และลงเวลา';
+        if (clockBtnSub) clockBtnSub.textContent = 'แตะเพื่อแชร์พิกัด GPS และลงเวลาเข้างาน';
         clockBtnIcon.setAttribute('data-lucide', 'log-in');
       } else if (!data.check_out) {
         // Ready to Check-out
-        clockBtn.className = 'w-full py-4 px-5 rounded-xl font-bold text-white shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center gap-3.5 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] group';
+        clockBtn.className = 'w-full py-5 px-6 rounded-3xl font-bold text-white shadow-xl transition-all duration-300 flex items-center justify-center gap-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 hover:shadow-blue-500/25 active:scale-[0.98] group';
         clockBtnText.textContent = 'บันทึกเวลาเลิกงาน (Check-Out)';
         if (clockBtnSub) clockBtnSub.textContent = 'แตะเพื่อแชร์พิกัด GPS และลงเวลาเลิกงาน';
         clockBtnIcon.setAttribute('data-lucide', 'log-out');
       } else {
         // Already checked out, can update
-        clockBtn.className = 'w-full py-4 px-5 rounded-xl font-bold text-surface-700 dark:text-surface-200 bg-surface-100 hover:bg-surface-200 dark:bg-surface-800 dark:hover:bg-surface-700 border border-surface-200 dark:border-surface-700 transition-all duration-200 flex items-center justify-center gap-3.5 active:scale-[0.99] group';
+        clockBtn.className = 'w-full py-5 px-6 rounded-3xl font-bold text-white shadow-xl transition-all duration-300 flex items-center justify-center gap-4 bg-gradient-to-r from-slate-700 to-surface-800 hover:from-slate-800 hover:to-surface-900 active:scale-[0.98] group';
         clockBtnText.textContent = 'บันทึกเวลาครบแล้ว (อัปเดตเลิกงาน)';
-        if (clockBtnSub) clockBtnSub.textContent = `เลิกงานล่าสุด: ${data.check_out.check_time.substring(0, 5)} น. (แตะเพื่ออัปเดต)`;
+        if (clockBtnSub) clockBtnSub.textContent = `เลิกงานล่าสุด: ${data.check_out.check_time.substring(0, 5)} น. (แตะเพื่ออัปเดตใหม่)`;
         clockBtnIcon.setAttribute('data-lucide', 'check-circle-2');
-      }
-      if (typeof lucide !== 'undefined') lucide.createIcons();
-    }
-
-    // Sync Home Dashboard Attendance Widget if present
-    const homeBadge = document.getElementById('homeAttStatusBadge');
-    const homeTitle = document.getElementById('homeAttStatusTitle');
-    const homeSub = document.getElementById('homeAttStatusSub');
-    const homeBtnText = document.getElementById('homeAttActionBtnText');
-
-    if (homeBadge && homeTitle) {
-      if (data.check_out) {
-        homeBadge.className = 'px-2 py-0.5 rounded-md text-[10px] font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 border border-blue-200 dark:border-blue-800/50';
-        homeBadge.textContent = 'เลิกงานแล้ว';
-        homeTitle.textContent = `บันทึกเวลาครบแล้ว (${data.check_in.check_time.substring(0, 5)} - ${data.check_out.check_time.substring(0, 5)} น.)`;
-        if (homeSub) homeSub.innerHTML = '<i data-lucide="check-circle" class="w-3.5 h-3.5 text-blue-600 flex-shrink-0"></i> บันทึกเวลาทำงานประจำวันเสร็จสมบูรณ์';
-        if (homeBtnText) homeBtnText.textContent = 'ดูประวัติลงเวลา';
-      } else if (data.check_in) {
-        homeBadge.className = 'px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50';
-        homeBadge.textContent = 'ลงเวลาเข้าแล้ว';
-        homeTitle.textContent = `เข้างานแล้วเวลา ${data.check_in.check_time.substring(0, 5)} น.`;
-        if (homeSub) homeSub.innerHTML = '<i data-lucide="clock" class="w-3.5 h-3.5 text-emerald-600 flex-shrink-0"></i> กำลังทำงาน • แตะเพื่อลงเวลาเลิกงานเมื่อเสร็จสิ้น';
-        if (homeBtnText) homeBtnText.textContent = 'ลงเวลาเลิกงาน';
-      } else {
-        homeBadge.className = 'px-2 py-0.5 rounded-md text-[10px] font-semibold bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50';
-        homeBadge.textContent = 'ยังไม่ลงเวลา';
-        homeTitle.textContent = 'ยังไม่ได้ลงเวลาเข้างานวันนี้';
-        if (homeSub) homeSub.innerHTML = '<i data-lucide="map-pin" class="w-3.5 h-3.5 text-emerald-600 flex-shrink-0"></i> บันทึกเวลาเข้า-ออกงานด้วยพิกัด GPS อัตโนมัติ';
-        if (homeBtnText) homeBtnText.textContent = 'ลงเวลาเข้างาน (GPS)';
       }
       if (typeof lucide !== 'undefined') lucide.createIcons();
     }
@@ -272,7 +219,7 @@ async function handleClockAction() {
 
   // Set loading state
   if (clockBtn) clockBtn.disabled = true;
-  if (clockBtnText) clockBtnText.textContent = '⏳ กำลังดึงพิกัดดาวเทียม GPS...';
+  if (clockBtnText) clockBtnText.textContent = 'กำลังดึงพิกัดดาวเทียม GPS...';
   if (clockBtnSub) clockBtnSub.textContent = 'กรุณารอสักครู่ ระบบกำลังคำนวณตำแหน่งและระยะห่าง';
 
   navigator.geolocation.getCurrentPosition(
@@ -284,7 +231,7 @@ async function handleClockAction() {
       updateGpsDisplay(lat, lng);
 
       try {
-        if (clockBtnText) clockBtnText.textContent = '⏳ กำลังบันทึกเวลาทำงาน...';
+        if (clockBtnText) clockBtnText.textContent = 'กำลังบันทึกเวลาทำงาน...';
         
         const csrfToken = window.csrf_token || (document.querySelector('meta[name="csrf-token"]') ? document.querySelector('meta[name="csrf-token"]').content : '');
         
@@ -353,21 +300,21 @@ function updateGpsDisplay(lat, lng) {
   const gpsStatusEl = document.getElementById('attGpsStatusBadge');
 
   if (gpsCoordEl) {
-    gpsCoordEl.textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+    gpsCoordEl.textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
   }
 
   if (attendanceOfficeConfig) {
     const dist = calculateDistance(lat, lng, attendanceOfficeConfig.latitude, attendanceOfficeConfig.longitude);
     if (gpsDistEl) {
-      gpsDistEl.textContent = formatDistance(dist);
+      gpsDistEl.textContent = `${dist.toLocaleString()} ม.`;
     }
     if (gpsStatusEl) {
       if (dist <= attendanceOfficeConfig.radius_meters) {
-        gpsStatusEl.className = 'px-2 py-0.5 rounded-md text-[11px] font-medium bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60';
-        gpsStatusEl.textContent = 'อยู่ในพื้นที่สำนักงาน';
+        gpsStatusEl.className = 'px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800';
+        gpsStatusEl.textContent = 'อยู่ในพื้นที่ลงเวลา';
       } else {
-        gpsStatusEl.className = 'px-2 py-0.5 rounded-md text-[11px] font-medium bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60';
-        gpsStatusEl.textContent = `อยู่นอกพื้นที่ (${formatDistance(dist)})`;
+        gpsStatusEl.className = 'px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800';
+        gpsStatusEl.textContent = `อยู่นอกพื้นที่ (${dist.toLocaleString()} ม.)`;
       }
     }
   }
@@ -425,7 +372,7 @@ function requestLocationPermissionPrompt() {
       console.warn('[requestLocationPermissionPrompt] Geolocation error:', err);
       if (err.code === err.PERMISSION_DENIED) {
         if (typeof showToast === 'function') {
-          showToast('เบราว์เซอร์บล็อกตำแหน่งอยู่ กรุณากดปลดบล็อกที่รูปแม่กุญแจ 🔒 ด้านบนแถบ URL ค่ะ', 'warning');
+          showToast('เบราว์เซอร์บล็อกตำแหน่งอยู่ กรุณากดปลดบล็อกที่ไอคอนตำแหน่งด้านบนแถบ URL ค่ะ', 'warning');
         }
         showLocationPermissionGuideModal();
       } else if (err.code === err.POSITION_UNAVAILABLE) {
@@ -464,25 +411,25 @@ function showAttendanceSuccessModal(data) {
   const distEl = document.getElementById('attModalDist');
 
   if (titleEl) {
-    titleEl.textContent = data.check_type === 'check_in' ? 'บันทึกเวลาเข้างานสำเร็จ' : 'บันทึกเวลาเลิกงานสำเร็จ';
+    titleEl.textContent = data.check_type === 'check_in' ? 'บันทึกเวลาเข้างานสำเร็จ!' : 'บันทึกเวลาเลิกงานสำเร็จ!';
   }
   if (timeEl && data.record) {
     timeEl.textContent = data.record.check_time ? data.record.check_time.substring(0, 5) + ' น.' : 'เรียบร้อย';
   }
   if (badgeEl) {
     if (data.status === 'on_time') {
-      badgeEl.className = 'px-2.5 py-0.5 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50';
+      badgeEl.className = 'px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300';
       badgeEl.textContent = 'ตรงเวลา';
     } else if (data.status === 'late') {
-      badgeEl.className = 'px-2.5 py-0.5 rounded-md text-xs font-semibold bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300 border border-rose-200 dark:border-rose-800/50';
+      badgeEl.className = 'px-3 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300';
       badgeEl.textContent = 'เข้างานสาย';
     } else {
-      badgeEl.className = 'px-2.5 py-0.5 rounded-md text-xs font-semibold bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50';
+      badgeEl.className = 'px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300';
       badgeEl.textContent = 'นอกพื้นที่';
     }
   }
   if (distEl) {
-    distEl.textContent = `ระยะห่างจากออฟฟิศ: ${formatDistance(data.distance_meters)}`;
+    distEl.textContent = `ระยะห่างจากออฟฟิศ: ${data.distance_meters.toLocaleString()} เมตร`;
   }
 
   if (modal) {
@@ -546,34 +493,27 @@ async function loadAttendanceHistory() {
     }
 
     let html = '';
-    const thaiShortMonths = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-    const thaiShortDays = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
-
     data.daily_summary.forEach(item => {
       const dParts = item.date.split('-');
-      const itemDate = new Date(parseInt(dParts[0]), parseInt(dParts[1]) - 1, parseInt(dParts[2]));
-      const dayOfWeek = thaiShortDays[itemDate.getDay()] || '';
-      const monthTh = thaiShortMonths[parseInt(dParts[1]) - 1] || '';
-      const yearTh = (parseInt(dParts[0]) + 543).toString().slice(-2);
-      const dateFormatted = `${parseInt(dParts[2])} ${monthTh} ${yearTh}`;
+      const dateFormatted = `${dParts[2]}/${dParts[1]}/${parseInt(dParts[0]) + 543}`;
       
       // In time & badge
       let inHtml = '<span class="text-surface-400 text-xs">-</span>';
       if (item.check_in) {
         const cin = item.check_in;
-        let badgeColor = 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50';
+        let badgeColor = 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300';
         let badgeText = 'ตรงเวลา';
         if (cin.status === 'late') {
-          badgeColor = 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300 border border-rose-200 dark:border-rose-800/50';
+          badgeColor = 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300';
           badgeText = 'สาย';
         } else if (cin.status === 'outside_geofence') {
-          badgeColor = 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50';
+          badgeColor = 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300';
           badgeText = 'นอกเขต';
         }
         inHtml = `
           <div class="flex items-center gap-2">
-            <span class="font-bold text-xs text-surface-900 dark:text-white">${cin.check_time.substring(0, 5)} น.</span>
-            <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded-md ${badgeColor}">${badgeText}</span>
+            <span class="font-bold text-xs">${cin.check_time.substring(0, 5)} น.</span>
+            <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded ${badgeColor}">${badgeText}</span>
           </div>
         `;
       }
@@ -581,38 +521,32 @@ async function loadAttendanceHistory() {
       // Out time
       let outHtml = '<span class="text-surface-400 text-xs">-</span>';
       if (item.check_out) {
-        outHtml = `<span class="font-bold text-xs text-surface-900 dark:text-white">${item.check_out.check_time.substring(0, 5)} น.</span>`;
+        outHtml = `<span class="font-bold text-xs">${item.check_out.check_time.substring(0, 5)} น.</span>`;
       }
 
       // Total hours
       const hoursHtml = item.total_hours > 0 
-        ? `<span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-surface-100 dark:bg-surface-800 text-surface-700 dark:text-surface-300">${formatWorkHours(item.total_hours)}</span>`
+        ? `<span class="font-bold text-xs text-brand-600 dark:text-brand-400">${item.total_hours} ชม.</span>`
         : '<span class="text-surface-400 text-xs">-</span>';
 
       // Distance
-      const isOutside = item.check_in && item.check_in.status === 'outside_geofence';
-      const dist = (item.check_in && item.check_in.distance_meters != null) ? formatDistance(item.check_in.distance_meters) : '-';
-      const distHtml = isOutside && dist !== '-'
-        ? `<span class="text-xs font-medium text-amber-600 dark:text-amber-400">${dist} (นอกเขต)</span>`
-        : `<span class="text-xs text-surface-500 font-medium">${dist}</span>`;
+      const dist = (item.check_in && item.check_in.distance_meters) ? `${Math.round(item.check_in.distance_meters)} ม.` : '-';
 
       html += `
-        <tr class="hover:bg-surface-50/80 dark:hover:bg-surface-800/40 transition-colors">
-          <td class="py-3 px-4 whitespace-nowrap">
-            <div class="flex items-center gap-2">
-              <span class="w-6 h-6 rounded-md bg-surface-100 dark:bg-surface-800 text-[10px] font-bold text-surface-600 dark:text-surface-300 flex items-center justify-center flex-shrink-0">${dayOfWeek}</span>
-              <span class="text-xs font-semibold text-surface-900 dark:text-white">${dateFormatted}</span>
-            </div>
+        <tr class="border-b border-surface-100 dark:border-surface-800/60 hover:bg-surface-50 dark:hover:bg-surface-800/40 transition-colors">
+          <td class="py-3 px-4 text-xs font-medium text-surface-900 dark:text-white whitespace-nowrap">
+            <span class="inline-flex items-center gap-1.5"><i data-lucide="calendar" class="w-3.5 h-3.5 text-surface-400"></i><span>${dateFormatted}</span></span>
           </td>
           <td class="py-3 px-4">${inHtml}</td>
           <td class="py-3 px-4">${outHtml}</td>
           <td class="py-3 px-4">${hoursHtml}</td>
-          <td class="py-3 px-4 whitespace-nowrap">${distHtml}</td>
+          <td class="py-3 px-4 text-xs text-surface-500 whitespace-nowrap">${dist}</td>
         </tr>
       `;
     });
 
     container.innerHTML = html;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
   } catch (err) {
     console.error('[loadAttendanceHistory] Error:', err);
     container.innerHTML = '<tr><td colspan="5" class="py-8 text-center text-rose-500 text-xs">เกิดข้อผิดพลาดในการโหลดประวัติ</td></tr>';
@@ -652,22 +586,19 @@ async function loadAttendanceOrgSummary() {
         let mHtml = '';
         data.records.forEach(r => {
           const typeTh = r.check_type === 'check_in' ? 'เข้างาน' : 'เลิกงาน';
-          const typeBadge = r.check_type === 'check_in' 
-            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50' 
-            : 'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 border border-blue-200 dark:border-blue-800/50';
-          const distStr = r.distance_meters != null ? formatDistance(r.distance_meters) : '-';
+          const typeBadge = r.check_type === 'check_in' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700';
           mHtml += `
-            <div class="flex items-center justify-between p-3 rounded-xl bg-surface-50 dark:bg-surface-800/40 border border-surface-200/60 dark:border-surface-700/50">
+            <div class="flex items-center justify-between p-3 rounded-2xl bg-surface-50 dark:bg-surface-800/50 border border-surface-100 dark:border-surface-700/60">
               <div class="flex items-center gap-3">
-                <div class="w-8 h-8 rounded-lg bg-brand-100 dark:bg-brand-900/40 text-brand-700 dark:text-brand-300 flex items-center justify-center font-bold text-xs">
+                <div class="w-8 h-8 rounded-full bg-brand-100 dark:bg-brand-900/40 text-brand-600 flex items-center justify-center font-bold text-xs">
                   ${(r.username || 'U').substring(0, 1).toUpperCase()}
                 </div>
                 <div>
                   <p class="text-xs font-bold text-surface-900 dark:text-white">${r.username}</p>
-                  <p class="text-[11px] text-surface-500 dark:text-surface-400 font-medium">${r.check_time.substring(0, 5)} น. <span class="text-surface-400">(${distStr})</span></p>
+                  <p class="text-[11px] text-surface-400">${r.check_time.substring(0, 5)} น. (${Math.round(r.distance_meters || 0)} ม.)</p>
                 </div>
               </div>
-              <span class="text-[10px] font-semibold px-2 py-0.5 rounded-md border ${typeBadge}">${typeTh}</span>
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded ${typeBadge}">${typeTh}</span>
             </div>
           `;
         });
