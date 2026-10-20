@@ -7120,6 +7120,7 @@ loginBtn.onclick = async () => {
 };
 
 async function handleGoogleLogin(response) {
+  window.handleGoogleLogin = handleGoogleLogin;
   if (!response.credential) return;
 
   loginBtn.disabled = true;
@@ -21043,3 +21044,5 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 
+
+window.handleGoogleLogin = handleGoogleLogin;
