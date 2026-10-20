@@ -291,12 +291,6 @@ def get_line_permissions(username: str) -> str:
         print(f"Error getting LINE permissions for {username}: {e}")
     return 'report,links,reconcile,search,folder,leave'
 
-
-
-    conn.commit()
-    conn.close()
-    return claim_id
-
 def get_line_config(org_id: int = None):
     """Returns LINE integration configuration from org_line_configs or app_settings with os.environ fallback."""
     if org_id:

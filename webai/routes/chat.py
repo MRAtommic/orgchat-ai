@@ -51,6 +51,7 @@ _typing_status = {}
 _limit_warn_cache = {}
 LINE_FOLDER_CACHE = {}
 LINE_CONFIG_FILE = "line_config.json"
+_kb_filenames_cache = {}
 
 from routes.shared import (
     VERSION, socketio, _limiter, login_required, admin_required,
@@ -1613,18 +1614,25 @@ def chat():
     weather_ctx = get_weather_context()
     schedules = database.get_schedules(current_user, org_id=get_current_org_id())
 
-    global _kb_filenames_cache, _kb_filenames_cache_ts
-    _cache_age = time.time() - _kb_filenames_cache_ts if '_kb_filenames_cache_ts' in globals() else 9999
-    if '_kb_filenames_cache' not in globals() or not _kb_filenames_cache or _cache_age > 120:
+    current_org_id = get_current_org_id()
+    now_ts = time.time()
+    org_kb_cache = _kb_filenames_cache.get(current_org_id, {})
+    cache_age = now_ts - org_kb_cache.get("ts", 0)
+    org_filenames = org_kb_cache.get("files", [])
+    if not org_filenames or cache_age > 120:
         try:
-            inv_data = rag_engine._kb.collection.get(include=['metadatas'], limit=100)
-            _kb_filenames_cache = sorted(list(set([m.get("source") for m in inv_data.get("metadatas", []) if m.get("source")])))
-            _kb_filenames_cache_ts = time.time()
+            where_filter = get_rag_filter(current_user, current_org_id)
+            if where_filter:
+                inv_data = rag_engine._kb.collection.get(where=where_filter, include=['metadatas'], limit=100)
+            else:
+                inv_data = rag_engine._kb.collection.get(include=['metadatas'], limit=100)
+            org_filenames = sorted(list(set([m.get("source") for m in inv_data.get("metadatas", []) if m.get("source")])))
+            _kb_filenames_cache[current_org_id] = {"files": org_filenames, "ts": now_ts}
         except Exception as e:
             logger.debug(f"[system_prompt] kb collection get notice: {e}")
-            _kb_filenames_cache = []
+            org_filenames = org_kb_cache.get("files", [])
     
-    kb_inventory = f"\n[คลังข้อมูล]: คุณมีสิทธิ์เข้าถึงไฟล์: {', '.join(_kb_filenames_cache)}\n" if _kb_filenames_cache else ""
+    kb_inventory = f"\n[คลังข้อมูล]: คุณมีสิทธิ์เข้าถึงไฟล์: {', '.join(org_filenames)}\n" if org_filenames else ""
 
     system_prompt = (
         f"คุณคือผู้ช่วยอัจฉริยะ {persona_name} ประจำองค์กร\n"

@@ -55,6 +55,8 @@ from routes.shared import (
     ALLOWED_EXTENSIONS,
     USERS,
 )
+import requests
+import routes.shared as shared
 
 logger = logging.getLogger("OrgChatAI.Admin")
 
@@ -1913,6 +1915,40 @@ def set_key():
     return jsonify({"ok": True})
 
 
+@admin_bp.route("/api/admin/reconcile/local-scan", methods=["POST"])
+@login_required
+def api_admin_reconcile_local_scan():
+    if not is_admin():
+        return jsonify({"ok": False, "error": "Admins only"}), 403
+    try:
+        org_id = get_current_org_id()
+        user = session.get("user")
+
+        def _bg_scan_and_reconcile():
+            try:
+                rag_engine.sync_uploads()
+                from google_drive_service import google_manager
+                google_manager.set_context(user, org_id)
+                google_manager.auto_reconcile_internal()
+            except Exception as e:
+                logger.error(f"[LocalScan] Background task failed: {e}")
+            finally:
+                try:
+                    from google_drive_service import google_manager
+                    google_manager.clear_context()
+                except Exception:
+                    pass
+
+        threading.Thread(target=_bg_scan_and_reconcile, daemon=True).start()
+        return jsonify({
+            "ok": True,
+            "message": "เริ่มสแกนโฟลเดอร์เอกสารและกระทบยอดในเบื้องหลังแล้วค่ะ ⏳"
+        })
+    except Exception as e:
+        logger.error(f"[LocalScan] Error starting scan: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @admin_bp.route("/api/reconciliation/process", methods=["POST"])
 @login_required
 @billing.require_plan("pro")
@@ -2964,6 +3000,25 @@ def api_leave_my():
 def api_admin_leave_all():
     org_id = get_current_org_id()
     leaves = database.get_all_leaves(org_id=org_id)
+    from datetime import datetime
+    for l in leaves:
+        u = l.get("username", "")
+        prof = database.get_user_profile(u) or {}
+        l["display_name"] = prof.get("display_name") or u
+        l["avatar_url"] = prof.get("avatar_url") or ""
+        l["department"] = prof.get("department") or "ทั่วไป"
+        
+        s_date = l.get("start_date")
+        e_date = l.get("end_date")
+        duration = 1
+        if s_date and e_date:
+            try:
+                d1 = datetime.strptime(s_date, "%Y-%m-%d")
+                d2 = datetime.strptime(e_date, "%Y-%m-%d")
+                duration = max(1, (d2 - d1).days + 1)
+            except Exception:
+                duration = 1
+        l["duration_days"] = duration
     return jsonify({"ok": True, "leaves": leaves})
 
 
@@ -3116,6 +3171,79 @@ def api_admin_leave_status():
                 logger.warning(f"[LINE Push Error] Leave status notification: {_lne}")
         return jsonify({"ok": True})
     return jsonify({"ok": False, "error": "ไม่พบคำขอลาที่ระบุ"}), 404
+
+
+@admin_bp.route("/api/admin/leave/batch-status", methods=["POST"])
+@login_required
+def api_admin_leave_batch_status():
+    admin_user = session.get("user")
+    data = request.get_json() or {}
+    leave_ids = data.get("ids", [])
+    status = data.get("status") # approved/rejected
+    note = data.get("note", "")
+
+    if not isinstance(leave_ids, list) or not leave_ids or status not in ["approved", "rejected"]:
+        return jsonify({"ok": False, "error": "ข้อมูลไม่ถูกต้องหรือครบถ้วนค่ะ"}), 400
+
+    success_ids = []
+    failed_reasons = []
+
+    for lid in leave_ids:
+        leave = database.get_leave_request(lid)
+        if not leave:
+            failed_reasons.append(f"ID {lid}: ไม่พบคำขอลา")
+            continue
+
+        applicant = leave.get("username", "")
+        if applicant.lower() == admin_user.lower():
+            failed_reasons.append(f"ID {lid}: ไม่สามารถอนุมัติคำขอลาของตนเองได้")
+            continue
+
+        org_id = leave.get("org_id") or leave.get("organization_id") or get_current_org_id()
+        is_authorized = False
+        if session.get("role") == "admin":
+            is_authorized = True
+        elif org_id and database.is_org_admin(org_id, admin_user):
+            is_authorized = True
+        else:
+            u_settings = database.get_user_setting(admin_user)
+            if u_settings and u_settings.get("can_manage_leave"):
+                is_authorized = True
+
+        if not is_authorized:
+            failed_reasons.append(f"ID {lid}: ไม่มีสิทธิ์ดำเนินการ")
+            continue
+
+        ok = database.update_leave_status(lid, status, admin_user, note)
+        if ok:
+            success_ids.append(lid)
+            status_text = "อนุมัติ" if status == "approved" else "ปฏิเสธ"
+            notification_db.add_notification(
+                applicant,
+                "leave_status",
+                f"คำขอลาของคุณได้รับการ{status_text}แล้วค่ะ",
+                f"คำขอลาตั้งแต่วันที่ {leave['start_date']} ถึง {leave['end_date']} ได้รับการ{status_text} โดย {admin_user}",
+                "/#leave"
+            )
+            try:
+                status_badge = "อนุมัติเรียบร้อยแล้ว" if status == "approved" else "ถูกปฏิเสธ"
+                threading.Thread(target=send_line_push_notification, args=(
+                    applicant,
+                    "อัปเดตผลการขออนุมัติการลา",
+                    f"คำขอลาของคุณตั้งแต่วันที่ {leave['start_date']} ถึง {leave['end_date']} ได้รับการ{status_text}แล้วค่ะ",
+                ), kwargs={
+                    "fields": {
+                        "ผลการอนุมัติ": status_badge,
+                        "ผู้อนุมัติ": admin_user,
+                        "ประเภทการลา": leave.get("type", "ทั่วไป"),
+                        "ช่วงวันลา": f"{leave['start_date']} ถึง {leave['end_date']}",
+                        "หมายเหตุ": note if note else "-"
+                    }
+                }).start()
+            except Exception as _lne:
+                logger.warning(f"[LINE Push Error] Batch leave notification: {_lne}")
+
+    return jsonify({"ok": True, "success_count": len(success_ids), "failed_count": len(failed_reasons), "failed_details": failed_reasons})
 
 
 @admin_bp.route("/api/leave/balance")

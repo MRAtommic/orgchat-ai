@@ -15948,6 +15948,7 @@ async function loadTeamLeaveCalendar() {
     }
 
     const events = res.events || [];
+    window._currentTeamCalendarEvents = events;
     const isAdmin = !!res.is_admin;
 
     // Update title according to role
@@ -16010,7 +16011,7 @@ async function loadTeamLeaveCalendar() {
         const displayLabel = isAdmin ? `${safeName}: ${safeType}` : `${safeType} (${statusLabel})`;
 
         return `
-          <div onclick="openLeaveComments(${e.id})" class="px-1.5 py-0.5 rounded-lg border text-[10px] font-bold flex items-center gap-1 truncate cursor-pointer hover:opacity-80 transition ${badgeColor} ${isPending ? 'opacity-85 border-dashed border-amber-400 dark:border-amber-500' : 'border-emerald-500/30'}" title="${safeName} (${safeType}) - สถานะ: ${statusLabel}">
+          <div onclick="event.stopPropagation(); openLeaveComments(${e.id})" class="px-1.5 py-0.5 rounded-lg border text-[10px] font-bold flex items-center gap-1 truncate cursor-pointer hover:opacity-80 transition ${badgeColor} ${isPending ? 'opacity-85 border-dashed border-amber-400 dark:border-amber-500' : 'border-emerald-500/30'}" title="${safeName} (${safeType}) - สถานะ: ${statusLabel}">
             <span class="w-1.5 h-1.5 rounded-full ${dotColor} flex-shrink-0"></span>
             <span class="truncate">${displayLabel}</span>
           </div>
@@ -16056,7 +16057,7 @@ async function loadTeamLeaveCalendar() {
         const titleInfo = `${safeName} [${safeType}]\nสถานะ: ${statusText}\nวันที่: ${e.start_date} ถึง ${e.end_date}${e.reason ? '\nเหตุผล: ' + escHtml(e.reason) : ''}\n(คลิกเพื่อดูรายละเอียด / แชทคอมเมนต์)`;
 
         return `
-          <div onclick="openLeaveComments(${e.id})" class="px-2 py-1 rounded-xl border text-[11px] font-bold flex items-center justify-between gap-1.5 cursor-pointer hover:shadow-sm hover:scale-[1.02] active:scale-95 transition-all ${badgeColor}" title="${titleInfo}">
+          <div onclick="event.stopPropagation(); openLeaveDayDetail('${dateStr}', ${e.id})" class="px-2 py-1 rounded-xl border text-[11px] font-bold flex items-center justify-between gap-1.5 cursor-pointer hover:shadow-xs hover:border-brand-500/40 transition-all ${badgeColor}" title="${titleInfo}">
             <div class="flex items-center gap-1.5 min-w-0">
               <span class="w-2 h-2 rounded-full ${dotColor} flex-shrink-0 ${isPending ? 'animate-pulse' : ''}"></span>
               <span class="truncate font-bold">${safeName}</span>
@@ -16067,10 +16068,10 @@ async function loadTeamLeaveCalendar() {
       }).join('');
 
       adminHtml += `
-        <div class="min-h-[92px] p-2 bg-white dark:bg-surface-800/50 rounded-2xl border ${isToday ? 'border-brand-500 shadow-md shadow-brand-500/10 ring-2 ring-brand-500/20' : 'border-surface-200/70 dark:border-surface-800'} flex flex-col justify-between transition hover:border-surface-300 dark:hover:border-surface-700">
+        <div onclick="openLeaveDayDetail('${dateStr}')" class="min-h-[92px] p-2 bg-white dark:bg-surface-800/50 rounded-2xl border ${isToday ? 'border-brand-500 shadow-md shadow-brand-500/10 ring-2 ring-brand-500/20' : 'border-surface-200/70 dark:border-surface-800'} flex flex-col justify-between transition hover:border-brand-400 dark:hover:border-brand-600 hover:shadow-xs cursor-pointer group">
           <div class="flex items-center justify-between mb-1.5">
-            <span class="text-xs font-black ${isToday ? 'w-6 h-6 rounded-full bg-brand-600 text-white flex items-center justify-center text-[11px] shadow-sm' : 'text-surface-700 dark:text-surface-200'}">${day}</span>
-            ${dayEvents.length > 0 ? `<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-surface-100 dark:bg-surface-700 text-surface-600 dark:text-surface-300">${dayEvents.length} คน</span>` : ''}
+            <span class="text-xs font-black ${isToday ? 'w-6 h-6 rounded-full bg-brand-600 text-white flex items-center justify-center text-[11px] shadow-sm' : 'text-surface-700 dark:text-surface-200 group-hover:text-brand-600 dark:group-hover:text-brand-400'}">${day}</span>
+            ${dayEvents.length > 0 ? `<span class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-surface-100 dark:bg-surface-700 text-surface-600 dark:text-surface-300">${dayEvents.length} คน</span>` : ''}
           </div>
           <div class="space-y-1.5 overflow-y-auto max-h-[75px] no-scrollbar">
             ${adminEventsHtml}
@@ -16244,71 +16245,184 @@ function renderLeaveHistory(leaves) {
     lucide.createIcons();
 }
 
+// ─── Admin Leave Management (Enterprise, Anti-AI-Slop) ────────────
+
+let _adminLeavesList = [];
+let _leaveStatusFilter = 'all';
+let _selectedLeaveIds = new Set();
+
 async function refreshAdminLeaves() {
     const tableBody = $('adminLeaveTableBody');
     if (!tableBody) return;
 
     try {
-        tableBody.innerHTML = '<tr><td colspan="6" class="px-6 py-12 text-center text-surface-400"><i data-lucide="loader" class="w-5 h-5 animate-spin inline-block mr-2"></i>กำลังโหลดข้อมูลคำขอลา...</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="7" class="px-6 py-12 text-center text-surface-400"><i data-lucide="loader" class="w-5 h-5 animate-spin inline-block mr-2"></i>กำลังโหลดข้อมูลคำขอลา...</td></tr>';
         if (typeof lucide !== 'undefined') lucide.createIcons();
 
         const res = await fetch('/api/admin/leave/all');
         const data = await res.json();
         if (data.ok) {
-            renderAdminLeaveTable(data.leaves);
+            _adminLeavesList = data.leaves || [];
+            
+            // Populate department filter options if available
+            const deptFilter = $('adminLeaveDeptFilter');
+            if (deptFilter) {
+                const depts = new Set();
+                _adminLeavesList.forEach(l => {
+                    const dept = l.department || l.dept_name || '';
+                    if (dept) depts.add(dept);
+                });
+                const currentDept = deptFilter.value || 'all';
+                deptFilter.innerHTML = '<option value="all">ทุกแผนก</option>' + 
+                    Array.from(depts).sort().map(d => `<option value="${escHtml(d)}" ${d === currentDept ? 'selected' : ''}>${escHtml(d)}</option>`).join('');
+            }
+
+            // Update pending count badge
+            const pendingCount = _adminLeavesList.filter(l => l.status === 'pending').length;
+            const badge = $('pendingLeaveCountBadge');
+            if (badge) {
+                if (pendingCount > 0) {
+                    badge.textContent = pendingCount;
+                    badge.classList.remove('hidden');
+                } else {
+                    badge.classList.add('hidden');
+                }
+            }
+
+            // Clear any lingering selection that might not exist anymore
+            clearLeaveSelection();
+            applyAdminLeaveFilters();
         } else {
-            tableBody.innerHTML = `<tr><td colspan="6" class="px-6 py-12 text-center text-rose-500">${escHtml(data.error || 'ไม่สามารถโหลดข้อมูลคำขอลาได้')}</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="7" class="px-6 py-12 text-center text-rose-500">${escHtml(data.error || 'ไม่สามารถโหลดข้อมูลคำขอลาได้')}</td></tr>`;
         }
     } catch (err) {
         console.error('refreshAdminLeaves error:', err);
-        tableBody.innerHTML = '<tr><td colspan="6" class="px-6 py-12 text-center text-rose-500">เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="7" class="px-6 py-12 text-center text-rose-500">เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์</td></tr>';
     }
+}
+
+function setLeaveStatusFilter(status) {
+    _leaveStatusFilter = status;
+    const buttons = ['all', 'pending', 'approved', 'rejected'];
+    buttons.forEach(b => {
+        const btn = $(`btnStatusFilter_${b}`);
+        if (!btn) return;
+        if (b === status) {
+            btn.className = 'px-2.5 py-1 rounded-lg text-xs font-bold transition-all bg-surface-900 text-white dark:bg-white dark:text-surface-900 shadow-xs flex items-center gap-1.5';
+        } else {
+            btn.className = 'px-2.5 py-1 rounded-lg text-xs font-bold transition-all text-surface-500 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800 flex items-center gap-1.5';
+        }
+    });
+    applyAdminLeaveFilters();
+}
+
+function applyAdminLeaveFilters() {
+    const searchVal = ($('adminLeaveSearchInput')?.value || '').trim().toLowerCase();
+    const typeVal = $('adminLeaveTypeFilter')?.value || 'all';
+    const deptVal = $('adminLeaveDeptFilter')?.value || 'all';
+
+    let filtered = _adminLeavesList.filter(l => {
+        // Status filter
+        if (_leaveStatusFilter !== 'all' && l.status !== _leaveStatusFilter) return false;
+        
+        // Type filter
+        if (typeVal !== 'all' && (l.type || '') !== typeVal) return false;
+
+        // Department filter
+        if (deptVal !== 'all') {
+            const d = l.department || l.dept_name || '';
+            if (d !== deptVal) return false;
+        }
+
+        // Search text
+        if (searchVal) {
+            const name = (l.display_name || l.username || '').toLowerCase();
+            const reason = (l.reason || '').toLowerCase();
+            const approver = (l.approved_by || '').toLowerCase();
+            if (!name.includes(searchVal) && !reason.includes(searchVal) && !approver.includes(searchVal)) {
+                return false;
+            }
+        }
+        return true;
+    });
+
+    renderAdminLeaveTable(filtered);
 }
 
 function renderAdminLeaveTable(leaves) {
     const tableBody = $('adminLeaveTableBody');
+    if (!tableBody) return;
+
     if (!leaves || leaves.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="6" class="px-6 py-12 text-center text-surface-400">ไม่มีคำขอลาในระบบ</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="7" class="px-6 py-12 text-center text-surface-400">ไม่พบข้อมูลคำขอลาตามเงื่อนไขที่เลือก</td></tr>';
         return;
     }
 
     tableBody.innerHTML = leaves.map(l => {
-        let statusHtml = `<span class="px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">Pending</span>`;
+        const isActionable = l.status === 'pending';
+        const isChecked = _selectedLeaveIds.has(l.id);
+
+        let statusHtml = `<span class="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">Pending</span>`;
         if (l.status === 'approved') {
-            statusHtml = `<div class="space-y-1">
-                <span class="inline-block px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">Approved</span>
-                ${l.approved_by ? `<div class="text-[10px] text-surface-500 dark:text-surface-400">ผู้อนุมัติ: <span class="font-bold text-surface-700 dark:text-surface-200">${escHtml(l.approved_by)}</span></div>` : ''}
+            statusHtml = `<div class="space-y-0.5">
+                <span class="inline-block px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">Approved</span>
+                ${l.approved_by ? `<div class="text-[10px] text-surface-400">ผู้อนุมัติ: <span class="font-semibold text-surface-600 dark:text-surface-300">${escHtml(l.approved_by)}</span></div>` : ''}
             </div>`;
         } else if (l.status === 'rejected') {
-            statusHtml = `<div class="space-y-1">
-                <span class="inline-block px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">Rejected</span>
-                ${l.approved_by ? `<div class="text-[10px] text-surface-500 dark:text-surface-400">ผู้ปฏิเสธ: <span class="font-bold text-surface-700 dark:text-surface-200">${escHtml(l.approved_by)}</span></div>` : ''}
+            statusHtml = `<div class="space-y-0.5">
+                <span class="inline-block px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">Rejected</span>
+                ${l.approved_by ? `<div class="text-[10px] text-surface-400">ผู้ปฏิเสธ: <span class="font-semibold text-surface-600 dark:text-surface-300">${escHtml(l.approved_by)}</span></div>` : ''}
             </div>`;
         }
 
-        const isActionable = l.status === 'pending';
+        const nameInitial = (l.display_name || l.username || '?').charAt(0).toUpperCase();
+        const durationText = l.duration_days ? `${l.duration_days} วัน` : '';
 
         return `
-            <tr class="hover:bg-surface-50 dark:hover:bg-surface-800/50 transition-colors">
-                <td class="px-6 py-4 font-bold text-surface-900 dark:text-white capitalize">${escHtml(l.username || '')}</td>
-                <td class="px-6 py-4 text-surface-500">${escHtml(l.type || '')}</td>
-                <td class="px-6 py-4">
-                    <div class="font-bold">${escHtml(l.start_date || '')}</div>
-                    <div class="text-[10px] text-surface-400">ถึง ${escHtml(l.end_date || '')}</div>
+            <tr class="hover:bg-surface-50 dark:hover:bg-surface-800/40 transition-colors ${isChecked ? 'bg-brand-50/40 dark:bg-brand-950/20' : ''}">
+                <td class="w-10 px-4 py-3.5 text-center">
+                    ${isActionable ? `
+                        <input type="checkbox" onchange="toggleSelectLeave(${l.id}, this.checked)" ${isChecked ? 'checked' : ''} class="rounded border-surface-300 dark:border-surface-700 text-brand-600 focus:ring-brand-500 cursor-pointer" />
+                    ` : `
+                        <span class="inline-block w-4 h-4 text-surface-300 dark:text-surface-600">—</span>
+                    `}
                 </td>
-                <td class="px-6 py-4 max-w-xs truncate text-surface-500" title="${escHtml(l.reason || '')}">${escHtml(l.reason || '')}</td>
-                <td class="px-6 py-4">${statusHtml}</td>
-                <td class="px-6 py-4 text-right">
-                    <div class="flex justify-end gap-2">
-                        <button onclick="openLeaveComments(${l.id})" class="p-2 bg-surface-50 dark:bg-surface-800 text-surface-500 hover:text-brand-600 rounded-lg transition-all" title="แชท/คอมเม้น">
+                <td class="px-4 py-3.5">
+                    <div class="flex items-center gap-2.5">
+                        <div class="w-7 h-7 rounded-full bg-surface-200 dark:bg-surface-700 text-surface-700 dark:text-surface-200 font-bold flex items-center justify-center text-xs shrink-0">
+                            ${escHtml(nameInitial)}
+                        </div>
+                        <div class="min-w-0">
+                            <div class="font-bold text-surface-900 dark:text-white truncate">${escHtml(l.display_name || l.username || '')}</div>
+                            <div class="text-[10px] text-surface-400 flex items-center gap-1.5">
+                                <span>@${escHtml(l.username || '')}</span>
+                                ${l.department ? `<span class="px-1.5 py-0.2 rounded bg-surface-100 dark:bg-surface-800 text-surface-500 font-medium">${escHtml(l.department)}</span>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                </td>
+                <td class="px-4 py-3.5">
+                    <span class="px-2 py-0.5 rounded-lg text-xs font-semibold bg-surface-100 dark:bg-surface-800 text-surface-700 dark:text-surface-200 border border-surface-200 dark:border-surface-700">${escHtml(l.type || 'ทั่วไป')}</span>
+                </td>
+                <td class="px-4 py-3.5">
+                    <div class="font-mono font-medium text-surface-900 dark:text-white">${escHtml(l.start_date || '')}</div>
+                    <div class="text-[10px] text-surface-400 font-mono">ถึง ${escHtml(l.end_date || '')} ${durationText ? `(${durationText})` : ''}</div>
+                </td>
+                <td class="px-4 py-3.5 max-w-xs truncate text-surface-500" title="${escHtml(l.reason || '-')}">${escHtml(l.reason || '-')}</td>
+                <td class="px-4 py-3.5">${statusHtml}</td>
+                <td class="px-4 py-3.5 text-right">
+                    <div class="flex justify-end items-center gap-1.5">
+                        <button type="button" onclick="openLeaveComments(${l.id})" class="p-1.5 text-surface-400 hover:text-brand-600 hover:bg-surface-100 dark:hover:bg-surface-700 rounded-lg transition-colors" title="ดูความคิดเห็นและประวัติ">
                             <i data-lucide="message-circle" class="w-4 h-4"></i>
                         </button>
                         ${isActionable ? `
-                            <button onclick="adminSetLeaveStatus(${l.id}, 'approved')" class="p-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-lg transition-all" title="อนุมัติ">
-                                <i data-lucide="check" class="w-4 h-4"></i>
+                            <button type="button" onclick="adminSetLeaveStatus(${l.id}, 'approved')" class="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-1 shadow-xs" title="อนุมัติ">
+                                <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                                <span class="hidden md:inline">อนุมัติ</span>
                             </button>
-                            <button onclick="adminSetLeaveStatus(${l.id}, 'rejected')" class="p-2 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-lg transition-all" title="ปฏิเสธ">
-                                <i data-lucide="x" class="w-4 h-4"></i>
+                            <button type="button" onclick="adminSetLeaveStatus(${l.id}, 'rejected')" class="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-1 shadow-xs" title="ปฏิเสธ">
+                                <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                                <span class="hidden md:inline">ปฏิเสธ</span>
                             </button>
                         ` : ''}
                     </div>
@@ -16316,11 +16430,98 @@ function renderAdminLeaveTable(leaves) {
             </tr>
         `;
     }).join('');
-    lucide.createIcons();
+
+    // Update master checkbox state
+    updateMasterCheckboxState();
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function toggleSelectLeave(id, checked) {
+    if (checked) {
+        _selectedLeaveIds.add(id);
+    } else {
+        _selectedLeaveIds.delete(id);
+    }
+    updateBatchBar();
+    updateMasterCheckboxState();
+}
+
+function toggleSelectAllLeaves(checked) {
+    const actionable = _adminLeavesList.filter(l => l.status === 'pending');
+    if (checked) {
+        actionable.forEach(l => _selectedLeaveIds.add(l.id));
+    } else {
+        _selectedLeaveIds.clear();
+    }
+    applyAdminLeaveFilters();
+    updateBatchBar();
+}
+
+function clearLeaveSelection() {
+    _selectedLeaveIds.clear();
+    const master = $('masterLeaveCheckbox');
+    if (master) master.checked = false;
+    updateBatchBar();
+}
+
+function updateMasterCheckboxState() {
+    const master = $('masterLeaveCheckbox');
+    if (!master) return;
+    const actionable = _adminLeavesList.filter(l => l.status === 'pending');
+    if (actionable.length === 0) {
+        master.checked = false;
+        master.disabled = true;
+    } else {
+        master.disabled = false;
+        master.checked = actionable.every(l => _selectedLeaveIds.has(l.id));
+    }
+}
+
+function updateBatchBar() {
+    const bar = $('adminLeaveBatchBar');
+    const countEl = $('selectedLeaveCount');
+    if (!bar || !countEl) return;
+
+    const count = _selectedLeaveIds.size;
+    countEl.textContent = count;
+    if (count > 0) {
+        bar.classList.remove('hidden');
+    } else {
+        bar.classList.add('hidden');
+    }
+}
+
+async function adminBatchSetLeaveStatus(status) {
+    const ids = Array.from(_selectedLeaveIds);
+    if (ids.length === 0) return;
+
+    const actionText = status === 'approved' ? 'อนุมัติ' : 'ปฏิเสธ';
+    if (!confirm(`คุณแน่ใจหรือไม่ว่าต้องการ ${actionText} คำขอลาที่เลือกจำนวน ${ids.length} รายการพร้อมกัน?`)) return;
+
+    try {
+        const res = await fetch('/api/admin/leave/batch-status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids, status })
+        });
+        const data = await res.json();
+        if (data.ok) {
+            toast(`ดำเนินการ ${actionText} เรียบร้อยแล้ว ${data.success_count} รายการ`, "success");
+            clearLeaveSelection();
+            refreshAdminLeaves();
+            loadTeamLeaveCalendar();
+        } else {
+            toast(data.error || "ไม่สามารถดำเนินการกลุ่มได้", "error");
+        }
+    } catch (err) {
+        console.error('adminBatchSetLeaveStatus error:', err);
+        toast("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์", "error");
+    }
 }
 
 async function adminSetLeaveStatus(id, status) {
-    if (!confirm(`คุณแน่ใจหรือไม่ว่าต้องการ ${status === 'approved' ? 'อนุมัติ' : 'ปฏิเสธ'} คำขอลานี้?`)) return;
+    const actionText = status === 'approved' ? 'อนุมัติ' : 'ปฏิเสธ';
+    if (!confirm(`คุณแน่ใจหรือไม่ว่าต้องการ ${actionText} คำขอลานี้?`)) return;
 
     try {
         const res = await fetch('/api/admin/leave/status', {
@@ -16333,12 +16534,169 @@ async function adminSetLeaveStatus(id, status) {
             toast("ดำเนินการเรียบร้อยแล้ว", "success");
             refreshAdminLeaves();
             loadTeamLeaveCalendar();
+            // If day modal is open, refresh it as well
+            if (!$('leaveDayDetailModal')?.classList.contains('hidden')) {
+                const title = $('leaveDayDetailTitle')?.getAttribute('data-date');
+                if (title) openLeaveDayDetail(title);
+            }
         } else {
             toast(data.error || "ไม่สามารถดำเนินการได้", "error");
         }
     } catch (err) {
-        console.error(err);
+        console.error('adminSetLeaveStatus error:', err);
+        toast("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์", "error");
     }
+}
+
+// ─── Day Detail Modal for Calendar ───────────────────────
+
+function openLeaveDayDetail(dateStr, highlightId = null) {
+    const modal = $('leaveDayDetailModal');
+    const titleEl = $('leaveDayDetailTitle');
+    const listEl = $('leaveDayDetailList');
+    const summaryEl = $('leaveDayDetailSummary');
+    if (!modal || !listEl) return;
+
+    // Format date in Thai
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dateObj = new Date(y, m - 1, d);
+    const thaiDateStr = dateObj.toLocaleDateString('th-TH', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    });
+
+    if (titleEl) {
+        titleEl.textContent = thaiDateStr;
+        titleEl.setAttribute('data-date', dateStr);
+    }
+
+    // Filter events spanning dateStr from window._currentTeamCalendarEvents or _adminLeavesList
+    const allEvents = window._currentTeamCalendarEvents || _adminLeavesList || [];
+    const dayEvents = allEvents.filter(e => {
+        const s = e.start_date || '';
+        const end = e.end_date || s;
+        return dateStr >= s && dateStr <= end;
+    });
+
+    if (summaryEl) {
+        summaryEl.textContent = `${dayEvents.length} รายการ`;
+    }
+
+    if (dayEvents.length === 0) {
+        listEl.innerHTML = `
+            <div class="py-12 text-center text-surface-400">
+                <i data-lucide="calendar-check" class="w-8 h-8 mx-auto mb-2 opacity-40"></i>
+                <p class="text-sm font-medium">ไม่มีรายการลาในวันที่เลือก</p>
+                <p class="text-xs text-surface-400 mt-1">ทุกคนในทีมพร้อมปฏิบัติงานตามปกติ</p>
+            </div>
+        `;
+    } else {
+        listEl.innerHTML = dayEvents.map(e => {
+            const isHighlight = highlightId && e.id === highlightId;
+            const isPending = e.status === 'pending';
+            const safeName = escHtml(e.display_name || e.username || '');
+            const safeType = escHtml(e.type || 'ลางาน');
+            const safeReason = escHtml(e.reason || '-');
+            const safeDates = `${e.start_date} ถึง ${e.end_date}`;
+
+            let statusBadge = `<span class="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">Pending</span>`;
+            if (e.status === 'approved') {
+                statusBadge = `<span class="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">Approved</span>`;
+            } else if (e.status === 'rejected') {
+                statusBadge = `<span class="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">Rejected</span>`;
+            }
+
+            return `
+                <div class="pt-3 first:pt-0 ${isHighlight ? 'p-3 bg-brand-50/50 dark:bg-brand-950/30 rounded-xl border border-brand-200 dark:border-brand-800' : ''}">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="flex items-start gap-3">
+                            <div class="w-8 h-8 rounded-full bg-surface-200 dark:bg-surface-700 text-surface-700 dark:text-surface-200 font-bold flex items-center justify-center text-xs shrink-0 mt-0.5">
+                                ${safeName.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                                <div class="font-bold text-sm text-surface-900 dark:text-white flex items-center gap-2">
+                                    <span>${safeName}</span>
+                                    <span class="text-xs font-normal text-surface-400">@${escHtml(e.username || '')}</span>
+                                </div>
+                                <div class="text-xs text-surface-600 dark:text-surface-300 mt-0.5 font-medium flex items-center gap-2">
+                                    <span class="px-1.5 py-0.2 rounded bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-[11px]">${safeType}</span>
+                                    <span class="font-mono text-surface-500">${safeDates}</span>
+                                </div>
+                                <div class="text-xs text-surface-500 mt-1 italic">
+                                    "${safeReason}"
+                                </div>
+                            </div>
+                        </div>
+                        <div class="shrink-0 flex flex-col items-end gap-2">
+                            ${statusBadge}
+                            <button type="button" onclick="openLeaveComments(${e.id})" class="p-1.5 text-surface-400 hover:text-brand-600 rounded-lg transition-colors text-xs flex items-center gap-1 font-semibold" title="เปิดห้องพูดคุย">
+                                <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
+                                <span>แชท</span>
+                            </button>
+                        </div>
+                    </div>
+                    ${isPending ? `
+                        <div class="mt-3 flex items-center justify-end gap-2 pt-2 border-t border-surface-100 dark:border-surface-800/60">
+                            <button type="button" onclick="adminSetLeaveStatus(${e.id}, 'approved')" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1 shadow-xs">
+                                <i data-lucide="check" class="w-3.5 h-3.5"></i> อนุมัติคำขอนี้
+                            </button>
+                            <button type="button" onclick="adminSetLeaveStatus(${e.id}, 'rejected')" class="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1 shadow-xs">
+                                <i data-lucide="x" class="w-3.5 h-3.5"></i> ปฏิเสธ
+                            </button>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }).join('');
+    }
+
+    modal.classList.remove('hidden');
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function closeLeaveDayDetailModal() {
+    const modal = $('leaveDayDetailModal');
+    if (modal) modal.classList.add('hidden');
+}
+
+// ─── Export CSV ───────────────────────────────────────────
+
+function exportAdminLeavesToCsv() {
+    if (!_adminLeavesList || _adminLeavesList.length === 0) {
+        toast("ไม่มีข้อมูลคำขอลาสำหรับส่งออก", "warning");
+        return;
+    }
+
+    const headers = ["ID", "ชื่อพนักงาน", "Username", "แผนก", "ประเภทการลา", "วันที่เริ่ม", "วันที่สิ้นสุด", "จำนวนวัน", "เหตุผล", "สถานะ", "ผู้อนุมัติ", "วันที่สร้างคำขอ"];
+    const rows = _adminLeavesList.map(l => [
+        l.id || "",
+        `"${(l.display_name || "").replace(/"/g, '""')}"`,
+        `"${(l.username || "").replace(/"/g, '""')}"`,
+        `"${(l.department || l.dept_name || "").replace(/"/g, '""')}"`,
+        `"${(l.type || "").replace(/"/g, '""')}"`,
+        l.start_date || "",
+        l.end_date || "",
+        l.duration_days || "",
+        `"${(l.reason || "").replace(/"/g, '""')}"`,
+        l.status || "",
+        `"${(l.approved_by || "").replace(/"/g, '""')}"`,
+        l.created_at || ""
+    ]);
+
+    const csvContent = "\uFEFF" + [headers.join(","), ...rows.map(e => e.join(","))].join("\r\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const today = new Date().toISOString().slice(0, 10);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `leave_records_${today}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast("ส่งออกไฟล์ CSV สำเร็จแล้วค่ะ", "success");
 }
 
 // ─── Leave Comment System ─────────────────────────────

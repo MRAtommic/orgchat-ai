@@ -66,7 +66,7 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.workerRegistration = navigator.serviceWorker.register('/sw.js?v=9')
+        navigator.workerRegistration = navigator.serviceWorker.register('/sw.js?v=10')
           .then(reg => console.log('PWA Service Worker registered:', reg.scope))
           .catch(err => console.error('PWA Service Worker registration failed:', err));
       });
@@ -4625,6 +4625,12 @@
                     </div>
                     
                     <div class="flex items-center gap-3">
+                      <!-- Export CSV Button -->
+                      <button onclick="exportAdminLeavesToCsv()" class="px-3 py-1.5 rounded-xl border border-surface-200 dark:border-surface-700 hover:bg-surface-100 dark:hover:bg-surface-800 text-xs font-bold text-surface-600 dark:text-surface-300 transition-colors flex items-center gap-1.5 shadow-xs" title="ส่งออกข้อมูลเป็น CSV สำหรับ HR/บัญชี">
+                        <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                        <span class="hidden sm:inline">ส่งออก CSV</span>
+                      </button>
+
                       <!-- Segmented Toggle View -->
                       <div class="flex items-center bg-surface-100 dark:bg-surface-800 p-0.5 rounded-xl border border-surface-200/50 dark:border-surface-700/50">
                         <button id="btnLeaveViewTable" onclick="switchLeaveView('table')" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-white dark:bg-surface-700 text-brand-600 dark:text-brand-400 shadow-sm">
@@ -4641,22 +4647,82 @@
                     </div>
                   </div>
 
+                  <!-- Filter & Search Toolbar (Enterprise, Anti-AI-Slop) -->
+                  <div class="px-6 py-3.5 border-b border-surface-100 dark:border-surface-800 bg-surface-50/40 dark:bg-surface-800/20 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+                    <!-- Left: Search Box & Dropdown Filters -->
+                    <div class="flex flex-1 flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                      <div class="relative flex-1 max-w-sm">
+                        <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-surface-400 pointer-events-none"></i>
+                        <input id="adminLeaveSearchInput" oninput="applyAdminLeaveFilters()" type="text" placeholder="ค้นหาชื่อพนักงาน หรือเหตุผล..." class="w-full pl-9 pr-3 py-1.5 rounded-xl text-xs bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 focus:outline-none focus:ring-1 focus:ring-brand-500 font-medium text-surface-900 dark:text-white" />
+                      </div>
+                      <select id="adminLeaveTypeFilter" onchange="applyAdminLeaveFilters()" class="text-xs py-1.5 px-3 rounded-xl bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-200 font-medium">
+                        <option value="all">ทุกประเภทการลา</option>
+                        <option value="ลาป่วย">ลาป่วย (Sick)</option>
+                        <option value="ลากิจ">ลากิจ (Personal)</option>
+                        <option value="ลาพักร้อน">ลาพักร้อน (Vacation)</option>
+                        <option value="อื่นๆ">อื่นๆ (Other)</option>
+                      </select>
+                      <select id="adminLeaveDeptFilter" onchange="applyAdminLeaveFilters()" class="text-xs py-1.5 px-3 rounded-xl bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-200 font-medium">
+                        <option value="all">ทุกแผนก</option>
+                      </select>
+                    </div>
+
+                    <!-- Right: Status Segmented Filter Pills -->
+                    <div class="flex items-center gap-1.5 self-start sm:self-auto overflow-x-auto no-scrollbar">
+                      <button type="button" onclick="setLeaveStatusFilter('all')" id="btnStatusFilter_all" class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all bg-surface-900 text-white dark:bg-white dark:text-surface-900 shadow-xs">
+                        ทั้งหมด
+                      </button>
+                      <button type="button" onclick="setLeaveStatusFilter('pending')" id="btnStatusFilter_pending" class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30 flex items-center gap-1.5">
+                        <span>รออนุมัติ</span>
+                        <span id="pendingLeaveCountBadge" class="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-500 text-white font-extrabold hidden">0</span>
+                      </button>
+                      <button type="button" onclick="setLeaveStatusFilter('approved')" id="btnStatusFilter_approved" class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all text-surface-500 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
+                        อนุมัติแล้ว
+                      </button>
+                      <button type="button" onclick="setLeaveStatusFilter('rejected')" id="btnStatusFilter_rejected" class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all text-surface-500 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
+                        ปฏิเสธ
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Batch Action Bar (Visible when 1+ checkboxes are checked) -->
+                  <div id="adminLeaveBatchBar" class="hidden px-6 py-2.5 bg-brand-50 dark:bg-brand-950/40 border-b border-brand-200 dark:border-brand-800/50 flex flex-wrap items-center justify-between gap-3 text-xs animate-in fade-in">
+                    <div class="flex items-center gap-2">
+                      <i data-lucide="check-square" class="w-4 h-4 text-brand-600 dark:text-brand-400"></i>
+                      <span class="font-bold text-brand-900 dark:text-brand-200">เลือกแล้ว <span id="selectedLeaveCount" class="font-mono text-sm">0</span> รายการ</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <button type="button" onclick="adminBatchSetLeaveStatus('approved')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold flex items-center gap-1.5 shadow-xs transition-all">
+                        <i data-lucide="check" class="w-3.5 h-3.5"></i> อนุมัติที่เลือกทั้งหมด
+                      </button>
+                      <button type="button" onclick="adminBatchSetLeaveStatus('rejected')" class="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold flex items-center gap-1.5 shadow-xs transition-all">
+                        <i data-lucide="x" class="w-3.5 h-3.5"></i> ปฏิเสธที่เลือก
+                      </button>
+                      <button type="button" onclick="clearLeaveSelection()" class="px-2.5 py-1.5 text-surface-500 hover:text-surface-700 dark:hover:text-surface-300 font-bold transition-colors">
+                        ยกเลิก
+                      </button>
+                    </div>
+                  </div>
+
                   <!-- View: Table List -->
                   <div id="adminLeaveTableView" class="p-0 overflow-x-auto">
                     <table class="w-full text-left text-xs">
                       <thead class="bg-surface-50 dark:bg-surface-800/30 text-surface-400 font-black uppercase tracking-widest border-b border-surface-100 dark:border-surface-800">
                         <tr>
-                          <th class="px-6 py-4">ผู้ขอลา</th>
-                          <th class="px-6 py-4">ประเภท</th>
-                          <th class="px-6 py-4">วันที่ลา</th>
-                          <th class="px-6 py-4">เหตุผล</th>
-                          <th class="px-6 py-4">สถานะ & ผู้อนุมัติ</th>
-                          <th class="px-6 py-4 text-right">จัดการ</th>
+                          <th class="w-10 px-4 py-4 text-center">
+                            <input type="checkbox" id="masterLeaveCheckbox" onchange="toggleSelectAllLeaves(this.checked)" class="rounded border-surface-300 dark:border-surface-700 text-brand-600 focus:ring-brand-500 cursor-pointer" title="เลือกคำขอที่รออนุมัติทั้งหมด" />
+                          </th>
+                          <th class="px-4 py-4">ผู้ขอลา</th>
+                          <th class="px-4 py-4">ประเภท</th>
+                          <th class="px-4 py-4">วันที่ลา & จำนวนวัน</th>
+                          <th class="px-4 py-4">เหตุผล</th>
+                          <th class="px-4 py-4">สถานะ & ผู้อนุมัติ</th>
+                          <th class="px-4 py-4 text-right">จัดการ</th>
                         </tr>
                       </thead>
                       <tbody id="adminLeaveTableBody" class="divide-y divide-surface-100 dark:divide-surface-800">
                         <tr>
-                          <td colspan="6" class="px-6 py-12 text-center text-surface-400">กำลังโหลดข้อมูลคำขอลา...</td>
+                          <td colspan="7" class="px-6 py-12 text-center text-surface-400">กำลังโหลดข้อมูลคำขอลา...</td>
                         </tr>
                       </tbody>
                     </table>
@@ -4669,7 +4735,7 @@
                         <button onclick="prevLeaveMonth()" class="p-2 hover:bg-surface-100 dark:hover:bg-surface-700 rounded-lg transition-colors border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300">
                           <i data-lucide="chevron-left" class="w-4 h-4"></i>
                         </button>
-                        <h4 id="calendarMonthYearLabel" class="text-sm font-bold text-surface-900 dark:text-white min-w-[140px] text-center">ปฏิทินวันลา</h4>
+                        <h4 id="calendarMonthYearLabel" class="text-sm font-bold text-surface-900 dark:text-white min-w-[140px] text-center font-mono">ปฏิทินวันลา</h4>
                         <button onclick="nextLeaveMonth()" class="p-2 hover:bg-surface-100 dark:hover:bg-surface-700 rounded-lg transition-colors border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300">
                           <i data-lucide="chevron-right" class="w-4 h-4"></i>
                         </button>
@@ -4683,6 +4749,7 @@
                           <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
                           <span class="text-surface-600 dark:text-surface-400 font-medium">รอดำเนินการ (Pending)</span>
                         </div>
+                        <span class="text-surface-400 text-[10px] italic">💡 คลิกที่ช่องวันเพื่อดูรายละเอียดและอนุมัติ</span>
                       </div>
                     </div>
                     <div class="p-6">
@@ -4700,6 +4767,30 @@
                       <div id="adminLeaveCalendarGrid" class="grid grid-cols-7 gap-2">
                         <!-- Dynamic calendar days will be injected here -->
                       </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Modal: Detailed Day Leaves Inspector (Clean Enterprise Drawer/Modal, Non-AI) -->
+                <div id="leaveDayDetailModal" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm hidden flex items-center justify-center p-4 animate-in fade-in duration-200" onclick="if(event.target === this) closeLeaveDayDetailModal()">
+                  <div class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200">
+                    <div class="px-6 py-4 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between bg-surface-50 dark:bg-surface-800/40">
+                      <div>
+                        <div class="text-[10px] font-black uppercase tracking-widest text-surface-400">บันทึกการลาประจำวัน</div>
+                        <h3 id="leaveDayDetailTitle" class="text-base font-bold text-surface-900 dark:text-white mt-0.5">--</h3>
+                      </div>
+                      <button onclick="closeLeaveDayDetailModal()" class="p-1.5 text-surface-400 hover:text-surface-600 dark:hover:text-surface-200 rounded-lg transition-colors">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                      </button>
+                    </div>
+                    <div id="leaveDayDetailList" class="p-6 overflow-y-auto space-y-3 custom-scrollbar">
+                      <!-- Dynamic content injected by JS -->
+                    </div>
+                    <div class="px-6 py-3.5 border-t border-surface-100 dark:border-surface-800 bg-surface-50 dark:bg-surface-800/20 flex justify-between items-center text-xs text-surface-400">
+                      <span id="leaveDayDetailSummary" class="font-medium">0 รายการ</span>
+                      <button onclick="closeLeaveDayDetailModal()" class="px-4 py-1.5 bg-surface-200 dark:bg-surface-700 hover:bg-surface-300 dark:hover:bg-surface-600 text-surface-700 dark:text-surface-200 rounded-xl font-bold transition-colors">
+                        ปิดหน้าต่าง
+                      </button>
                     </div>
                   </div>
                 </div>

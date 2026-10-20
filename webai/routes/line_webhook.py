@@ -5119,11 +5119,17 @@ def process_line_command(text, user_id, reply_token, group_id=None):
             def run_recon():
                 try:
                     try:
+                        mgr.set_context(sender_username or username, _line_org_id)
                         mgr.auto_reconcile_internal()
                         push_msg = f"✅ กระทบยอดข้อมูลเสร็จเรียบร้อยแล้วค่ะพี่!\n🌐 https://docs.google.com/spreadsheets/d/{mgr.spreadsheet_id}"
                     except Exception as r_err:
                         logger.error(f"Reconciliation error via chat command: {r_err}")
                         push_msg = f"❌ เกิดข้อผิดพลาดในการกระทบยอดค่ะ: {r_err}"
+                    finally:
+                        try:
+                            mgr.clear_context()
+                        except Exception:
+                            pass
                     
                     token = get_channel_access_token()
                     requests.post("https://api.line.me/v2/bot/message/push", 

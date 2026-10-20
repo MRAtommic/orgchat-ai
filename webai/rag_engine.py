@@ -581,10 +581,6 @@ class KnowledgeBase:
             api_key=api_key,
             model_name="models/gemini-embedding-001"
         )
-        if isinstance(self.collection, PgVectorStore):
-            self.collection.ef = ef
-            print("✅ [pgvector] KnowledgeBase API Key updated for Supabase pgvector store.")
-            return
         if self._ephemeral and isinstance(self.collection, PurePythonVectorStore):
             self.collection.ef = ef
             print("✅ [FALLBACK] KnowledgeBase API Key updated for pure Python store.")

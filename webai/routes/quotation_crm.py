@@ -307,7 +307,7 @@ def _sync_sheet_append_quotation(spreadsheet_id, tab_name, row_data, org_id=None
 @login_required
 def create_quotation():
     try:
-        username = session.get("user")
+        user = username = session.get("user")
         org_id = session.get("org_id")
         from google_drive_service import google_manager
         google_manager.set_context(username, org_id)
