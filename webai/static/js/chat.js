@@ -10374,7 +10374,6 @@ async function deleteOrgAnnouncement(id) {
   }
 }
 
-let _orgLogsCache = [];
 let _orgLogActiveCategory = 'all';
 
 async function loadOrgLogs() {
