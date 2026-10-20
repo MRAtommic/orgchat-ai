@@ -1819,7 +1819,20 @@ function switchView(viewId) {
     if (state.currentChat && state.currentChat.id) {
       console.log("👋 Leaving chat room:", state.currentChat.id);
       stopChatPolling();
+      state.lastActiveChat = { ...state.currentChat };
       state.currentChat = { type: null, id: null, name: null };
+    }
+  }
+
+  // 🔔 Restore previous active chat when returning to DM if no chat is currently selected
+  if (viewId === 'dm') {
+    if ((!state.currentChat || !state.currentChat.id) && state.lastActiveChat && state.lastActiveChat.id) {
+      const prev = state.lastActiveChat;
+      setTimeout(() => {
+        if (typeof switchChat === 'function') {
+          switchChat(prev.type, prev.id, prev.name, prev.avatarUrl);
+        }
+      }, 50);
     }
   }
 
@@ -10360,56 +10373,312 @@ async function deleteOrgAnnouncement(id) {
   }
 }
 
+let _orgLogsCache = [];
+let _orgLogActiveCategory = 'all';
+
 async function loadOrgLogs() {
   const container = $('orgLogList');
   if (!container) return;
-  container.innerHTML = '<div class="text-center py-8 opacity-50 text-xs">กำลังโหลดบันทึกกิจกรรม...</div>';
+  container.innerHTML = `
+    <div class="flex flex-col items-center justify-center py-16 gap-3 text-surface-400">
+      <div class="w-7 h-7 border-2 border-brand-500/30 border-t-brand-500 rounded-full animate-spin"></div>
+      <span class="text-xs font-medium">กำลังโหลดบันทึกกิจกรรม...</span>
+    </div>
+  `;
   try {
     const res = await apiFetch('/api/org/logs');
     if (res.ok && res.logs) {
       _orgLogsCache = res.logs;
-      renderOrgLogs(_orgLogsCache);
+      applyOrgLogFilters();
+    } else {
+      container.innerHTML = `<div class="text-center py-12 text-rose-500 text-xs font-semibold">${escapeHtml(res.error || 'โหลดบันทึกประวัติล้มเหลว')}</div>`;
     }
   } catch (e) {
-    container.innerHTML = '<div class="text-center py-6 text-red-500 text-xs">โหลดบันทึกประวัติล้มเหลว</div>';
+    container.innerHTML = '<div class="text-center py-12 text-rose-500 text-xs font-semibold">โหลดบันทึกประวัติล้มเหลว</div>';
   }
+}
+
+function clearOrgLogSearch() {
+  const input = $('orgLogSearch');
+  if (input) input.value = '';
+  const clearBtn = $('orgLogSearchClear');
+  if (clearBtn) clearBtn.classList.add('hidden');
+  applyOrgLogFilters();
+}
+
+function setOrgLogCategoryFilter(cat) {
+  _orgLogActiveCategory = cat;
+  document.querySelectorAll('.org-log-cat-btn').forEach(btn => {
+    const isCurrent = btn.getAttribute('data-cat') === cat;
+    if (isCurrent) {
+      btn.className = 'org-log-cat-btn px-3 py-1.5 rounded-xl text-xs font-bold transition-all bg-brand-600 text-white shadow-sm flex items-center gap-1.5 shrink-0';
+    } else {
+      btn.className = 'org-log-cat-btn px-3 py-1.5 rounded-xl text-xs font-medium transition-all bg-surface-100 hover:bg-surface-200 dark:bg-surface-800 dark:hover:bg-surface-700 text-surface-600 dark:text-surface-300 flex items-center gap-1.5 shrink-0';
+    }
+  });
+  applyOrgLogFilters();
+}
+
+function filterOrgLogs(query) {
+  const clearBtn = $('orgLogSearchClear');
+  if (clearBtn) {
+    if (query && query.trim()) clearBtn.classList.remove('hidden');
+    else clearBtn.classList.add('hidden');
+  }
+  applyOrgLogFilters();
+}
+
+function parseOrgLogEvent(rawText) {
+  const text = (rawText || '').trim();
+  let category = 'system';
+  let badgeText = 'ระบบ';
+  let badgeColor = 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 border-surface-200 dark:border-surface-700';
+  let icon = 'activity';
+  let formattedHtml = escapeHtml(text);
+
+  // 1. Files
+  const fileMatch = text.match(/Assigned file ([0-9a-fA-F]{24,64}) to category (.*)/i);
+  if (fileMatch) {
+    category = 'file';
+    badgeText = 'จัดการไฟล์';
+    badgeColor = 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20';
+    icon = 'file-text';
+    const hash = fileMatch[1];
+    const catName = fileMatch[2].trim();
+    const shortHash = hash.length > 12 ? `${hash.slice(0, 6)}…${hash.slice(-4)}` : hash;
+    const catLabel = catName.toLowerCase() === 'none' ? 'ทั่วไป (None)' : escapeHtml(catName);
+    formattedHtml = `จัดหมวดหมู่เอกสาร <code class="px-1.5 py-0.5 rounded bg-surface-100 dark:bg-surface-800 font-mono text-[11px] font-semibold text-brand-600 dark:text-brand-300 border border-surface-200 dark:border-surface-700" title="${hash}">${shortHash}</code> ไปยังหมวดหมู่ <span class="font-bold text-surface-900 dark:text-white">${catLabel}</span>`;
+  } else if (/uploaded file|deleted file|file category/i.test(text)) {
+    category = 'file';
+    badgeText = 'จัดการไฟล์';
+    badgeColor = 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20';
+    icon = 'file-text';
+  }
+  // 2. Announcements
+  else if (text.startsWith('Created org announcement:')) {
+    category = 'post';
+    badgeText = 'ประกาศองค์กร';
+    badgeColor = 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20';
+    icon = 'megaphone';
+    const title = text.replace('Created org announcement:', '').trim();
+    formattedHtml = `สร้างประกาศองค์กรใหม่: <span class="font-semibold text-surface-900 dark:text-white">“${escapeHtml(title)}”</span>`;
+  } else if (text.startsWith('Deleted org announcement')) {
+    category = 'post';
+    badgeText = 'ลบประกาศ';
+    badgeColor = 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20';
+    icon = 'trash-2';
+    formattedHtml = `ลบประกาศองค์กร <span class="font-mono text-[11px] px-1.5 py-0.5 rounded bg-surface-100 dark:bg-surface-800">${escapeHtml(text)}</span>`;
+  }
+  // 3. Posts
+  else if (text.startsWith('New post created:')) {
+    category = 'post';
+    badgeText = 'สร้างโพสต์';
+    badgeColor = 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20';
+    icon = 'plus-circle';
+    const match = text.match(/ID\s*(\d+)/i);
+    const id = match ? match[1] : '';
+    formattedHtml = `สร้างโพสต์ใหม่ในฟีด <code class="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-mono text-[11px] font-bold">#${id}</code>`;
+  } else if (text.startsWith('Post deleted:')) {
+    category = 'post';
+    badgeText = 'ลบโพสต์';
+    badgeColor = 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20';
+    icon = 'trash-2';
+    const match = text.match(/ID\s*(\d+)/i);
+    const id = match ? match[1] : '';
+    formattedHtml = `ลบโพสต์ออกจากฟีด <code class="px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400 font-mono text-[11px] font-bold">#${id}</code>`;
+  }
+  // 4. Knowledge Base (KB)
+  else if (text.startsWith('Added KB category:')) {
+    category = 'kb';
+    badgeText = 'คลังความรู้';
+    badgeColor = 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20';
+    icon = 'book-open';
+    const kbInfo = text.replace('Added KB category:', '').trim();
+    formattedHtml = `เพิ่มหมวดหมู่คลังความรู้: <span class="font-semibold text-surface-900 dark:text-white">${escapeHtml(kbInfo)}</span>`;
+  } else if (/kb|rag/i.test(text)) {
+    category = 'kb';
+    badgeText = 'คลังความรู้';
+    badgeColor = 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20';
+    icon = 'book-open';
+  }
+  // 5. Schedules
+  else if (/schedule/i.test(text)) {
+    category = 'post';
+    badgeText = 'ปฏิทินงาน';
+    badgeColor = 'bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20';
+    icon = 'calendar';
+  }
+  // 6. Organization Profile & Department
+  else if (text.includes('Updated business profile')) {
+    category = 'system';
+    badgeText = 'ข้อมูลธุรกิจ';
+    badgeColor = 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20';
+    icon = 'building-2';
+    formattedHtml = `อัปเดตข้อมูลและโปรไฟล์ธุรกิจขององค์กร`;
+  } else if (/department/i.test(text)) {
+    category = 'system';
+    badgeText = 'โครงสร้างองค์กร';
+    badgeColor = 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20';
+    icon = 'layers';
+  }
+  // 7. Security / User Role
+  else if (/password|role|user|ownership|line account/i.test(text)) {
+    category = 'system';
+    badgeText = 'ความปลอดภัย';
+    badgeColor = 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20';
+    icon = 'shield-check';
+  }
+
+  // Format any raw long hex hash if still untouched
+  formattedHtml = formattedHtml.replace(/([0-9a-fA-F]{32,64})/g, (m) => {
+    return `<code class="px-1.5 py-0.5 rounded bg-surface-100 dark:bg-surface-800 font-mono text-[11px] font-semibold text-brand-600 dark:text-brand-300 border border-surface-200 dark:border-surface-700" title="${m}">${m.slice(0, 6)}…${m.slice(-4)}</code>`;
+  });
+
+  return { category, badgeText, badgeColor, icon, formattedHtml };
+}
+
+function getOrgLogUserAvatar(username) {
+  const name = username || 'System';
+  const initial = name.replace(/^@/, '')[0]?.toUpperCase() || 'S';
+  const palettes = [
+    { bg: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 ring-blue-500/20' },
+    { bg: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 ring-emerald-500/20' },
+    { bg: 'bg-purple-500/15 text-purple-600 dark:text-purple-400 ring-purple-500/20' },
+    { bg: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 ring-amber-500/20' },
+    { bg: 'bg-teal-500/15 text-teal-600 dark:text-teal-400 ring-teal-500/20' },
+    { bg: 'bg-rose-500/15 text-rose-600 dark:text-rose-400 ring-rose-500/20' },
+    { bg: 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 ring-indigo-500/20' },
+  ];
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  const p = palettes[Math.abs(hash) % palettes.length];
+  return { initial, className: `${p.bg} ring-1` };
+}
+
+function formatOrgLogTime(timeStr) {
+  if (!timeStr) return { dateKey: 'ไม่ระบุวันที่', displayTime: '', dateHeader: 'ไม่ระบุวันที่', fullTime: '' };
+  
+  const parts = timeStr.trim().split(' ');
+  const datePart = parts[0] || '';
+  const timePart = parts[1] || '';
+  const displayTime = timePart.slice(0, 5) || timePart;
+
+  let dateHeader = datePart;
+  try {
+    const d = new Date(timeStr.replace(' ', 'T'));
+    if (!isNaN(d.getTime())) {
+      const today = new Date();
+      const isToday = d.toDateString() === today.toDateString();
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const isYesterday = d.toDateString() === yesterday.toDateString();
+
+      if (isToday) {
+        dateHeader = 'วันนี้ (Today)';
+      } else if (isYesterday) {
+        dateHeader = 'เมื่อวานนี้ (Yesterday)';
+      } else {
+        const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+        dateHeader = `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+      }
+    }
+  } catch (e) {}
+
+  return { dateKey: datePart, displayTime, dateHeader, fullTime: timeStr };
+}
+
+function applyOrgLogFilters() {
+  const query = ($('orgLogSearch')?.value || '').toLowerCase().trim();
+  const cat = _orgLogActiveCategory || 'all';
+
+  const filtered = _orgLogsCache.filter(l => {
+    const parsed = parseOrgLogEvent(l.event);
+    if (cat !== 'all' && parsed.category !== cat) return false;
+    if (query) {
+      const matchUser = (l.user || '').toLowerCase().includes(query);
+      const matchEvent = (l.event || '').toLowerCase().includes(query);
+      const matchBadge = parsed.badgeText.toLowerCase().includes(query);
+      if (!matchUser && !matchEvent && !matchBadge) return false;
+    }
+    return true;
+  });
+
+  const badge = $('orgLogCountBadge');
+  if (badge) badge.textContent = `${filtered.length} รายการ`;
+
+  renderOrgLogs(filtered);
 }
 
 function renderOrgLogs(logs) {
   const container = $('orgLogList');
   if (!container) return;
+
   if (!logs || logs.length === 0) {
-    container.innerHTML = '<div class="text-center py-10 text-surface-400 text-xs font-bold bg-surface-50 dark:bg-surface-800/30 rounded-2xl">ยังไม่มีบันทึกกิจกรรมในองค์กร</div>';
+    container.innerHTML = `
+      <div class="flex flex-col items-center justify-center py-16 px-4 text-center bg-surface-50/50 dark:bg-surface-800/20 rounded-2xl border border-dashed border-surface-200 dark:border-surface-800">
+        <div class="w-12 h-12 rounded-2xl bg-surface-100 dark:bg-surface-800 flex items-center justify-center text-surface-400 mb-3 shadow-inner">
+          <i data-lucide="inbox" class="w-6 h-6"></i>
+        </div>
+        <p class="text-xs font-bold text-surface-700 dark:text-surface-300">ไม่พบประวัติกิจกรรม</p>
+        <p class="text-[11px] text-surface-400 mt-0.5">ยังไม่มีกิจกรรมที่ตรงตามเงื่อนไขการค้นหาหรือตัวกรองนี้</p>
+      </div>
+    `;
+    if (window.lucide) lucide.createIcons();
     return;
   }
-  container.innerHTML = logs.map(l => `
-    <div class="flex items-center justify-between p-3 bg-surface-50 dark:bg-surface-800/30 border border-surface-150 dark:border-surface-700/50 rounded-xl hover:border-brand-500/30 transition-all">
-      <div class="flex items-center gap-3">
-        <div class="w-8 h-8 rounded-full bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 flex items-center justify-center text-xs font-black shrink-0">
-          ${(l.user || 'S')[0].toUpperCase()}
-        </div>
-        <div class="space-y-0.5">
-          <div class="flex items-center gap-2">
-            <span class="text-xs font-black text-surface-900 dark:text-white">@${escapeHtml(l.user || 'System')}</span>
-          </div>
-          <p class="text-xs text-surface-600 dark:text-surface-300 font-medium">${escapeHtml(l.event || '')}</p>
-        </div>
-      </div>
-      <div class="text-right shrink-0">
-        <span class="text-[10px] font-bold text-surface-400">${l.time || ''}</span>
-      </div>
-    </div>
-  `).join('');
-}
 
-function filterOrgLogs(query) {
-  const q = (query || '').toLowerCase().trim();
-  if (!q) return renderOrgLogs(_orgLogsCache);
-  const filtered = _orgLogsCache.filter(l => 
-    (l.user || '').toLowerCase().includes(q) || 
-    (l.event || '').toLowerCase().includes(q)
-  );
-  renderOrgLogs(filtered);
+  let html = '';
+  let lastDateHeader = '';
+
+  logs.forEach(l => {
+    const timeInfo = formatOrgLogTime(l.time);
+    const parsed = parseOrgLogEvent(l.event);
+    const avatar = getOrgLogUserAvatar(l.user);
+
+    // Timeline Date Divider
+    if (timeInfo.dateHeader !== lastDateHeader) {
+      lastDateHeader = timeInfo.dateHeader;
+      html += `
+        <div class="flex items-center gap-2 pt-3 pb-1">
+          <div class="h-[1px] flex-1 bg-surface-200 dark:bg-surface-800"></div>
+          <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-surface-100 dark:bg-surface-800 text-surface-500 dark:text-surface-400 border border-surface-200/60 dark:border-surface-700/60 tabular-nums">
+            ${lastDateHeader}
+          </span>
+          <div class="h-[1px] flex-1 bg-surface-200 dark:bg-surface-800"></div>
+        </div>
+      `;
+    }
+
+    html += `
+      <div class="group flex items-start justify-between gap-3 p-3 bg-white hover:bg-surface-50 dark:bg-surface-900/90 dark:hover:bg-surface-800/70 border border-surface-200/80 dark:border-surface-800 rounded-2xl transition-all duration-150 hover:border-brand-500/30 hover:shadow-sm">
+        <div class="flex items-start gap-3 min-w-0">
+          <div class="w-8 h-8 rounded-xl ${avatar.className} flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 select-none shadow-xs">
+            ${avatar.initial}
+          </div>
+          <div class="min-w-0 space-y-1">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-xs font-bold text-surface-900 dark:text-white">@${escapeHtml(l.user || 'System')}</span>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border ${parsed.badgeColor}">
+                <i data-lucide="${parsed.icon}" class="w-3 h-3"></i>
+                ${parsed.badgeText}
+              </span>
+            </div>
+            <p class="text-xs text-surface-600 dark:text-surface-300 leading-relaxed break-words font-medium">
+              ${parsed.formattedHtml}
+            </p>
+          </div>
+        </div>
+        <div class="shrink-0 text-right pl-2 pt-0.5">
+          <span class="text-[11px] font-mono font-medium text-surface-400 tabular-nums cursor-default" title="${timeInfo.fullTime}">
+            ${timeInfo.displayTime || timeInfo.fullTime}
+          </span>
+        </div>
+      </div>
+    `;
+  });
+
+  container.innerHTML = html;
+  if (window.lucide) lucide.createIcons();
 }
 
 async function loadOrgBusinessProfile() {

@@ -455,7 +455,7 @@ class GoogleWorkspaceManager:
         self._local.spreadsheet_id_override = None  # clear any post-creation override
         with self._creds_lock:
             self._cached_creds = None
-        logger.info(f"🎯 Switched thread context to user={username}, org={org_id}")
+        logger.debug(f"🎯 Switched thread context to user={username}, org={org_id}")
 
     def clear_context(self):
         """Resets all thread-local storage attributes at the end of a request or thread execution to prevent thread reuse pollution."""
@@ -466,7 +466,7 @@ class GoogleWorkspaceManager:
             self._local.sheets_service = None
             self._local.creds = None
             self._local.spreadsheet_id_override = None  # clear any post-creation override
-            logger.info("🧹 Cleared thread local Google Workspace context")
+            logger.debug("🧹 Cleared thread local Google Workspace context")
 
     @contextlib.contextmanager
     def secure_context(self, username=None, org_id=None):

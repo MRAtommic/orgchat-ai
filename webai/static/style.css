@@ -8,6 +8,17 @@
   max-width: 100% !important;
 }
 
+/* Hallmark Typography: tabular figures for metrics, timestamps, counters */
+.tabular-nums,
+[data-stat],
+.metric-val,
+.badge-count,
+.timestamp,
+.font-mono {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
 /* Meta-style Typing Indicator Animation */
 .meta-typing {
   display: flex;
@@ -151,7 +162,7 @@
 body {
   margin: 0;
   padding: 0;
-  font-family: 'Prompt', 'Anuphan', 'IBM Plex Sans Thai', 'Inter', system-ui, -apple-system, sans-serif;
+  font-family: var(--user-font-family, 'Prompt', 'Anuphan', 'IBM Plex Sans Thai', 'Inter', system-ui, -apple-system, sans-serif);
   background-color: var(--surface);
   color: #1e293b;
 }
@@ -1646,6 +1657,8 @@ tr:hover .delete-row-btn {
   align-items: center;
   justify-content: center;
   gap: 3px;
+  min-height: 48px;
+  min-width: 48px;
   padding: 6px 12px;
   border-radius: 14px;
   border: none;
@@ -4096,7 +4109,9 @@ button:active:not(:disabled),
 /* ── 5. Bottom Nav: Better Small Phone Fit ────────── */
 @media (max-width: 359px) {
   .mobile-nav-btn {
-    max-width: 48px !important;
+    min-height: 48px !important;
+    min-width: 48px !important;
+    max-width: 56px !important;
     padding: 8px 2px !important;
   }
   .mobile-nav-btn span {

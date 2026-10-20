@@ -790,8 +790,9 @@
               <label class="text-[10px] font-black uppercase tracking-widest text-surface-400 mb-1 block">ที่อยู่อีเมล Gmail</label>
               <input id="inviteEmailInput" type="email" placeholder="ระบุ email ของเขา เช่น target@gmail.com"
                 class="input-field w-full text-sm" />
-              <p class="text-[10px] text-surface-400 mt-1.5 leading-relaxed bg-brand-50/50 dark:bg-brand-950/20 p-2.5 rounded-lg border border-brand-100/30">
-                💡 เมื่อเชิญสำเร็จ ระบบจะอนุญาต Gmail นี้ผ่านทาง Whitelist ทันที ผู้ใช้สามารถคลิก <strong>Sign in with Google</strong> เพื่อแอดเข้าทีมโดยไม่ต้องสมัครสมาชิกเพิ่ม
+              <p class="text-[10px] text-surface-400 mt-1.5 leading-relaxed bg-surface-50 dark:bg-surface-800/60 p-2.5 rounded-lg border border-surface-200/50 dark:border-surface-700/50 flex items-start gap-2">
+                <i data-lucide="info" class="w-3.5 h-3.5 text-brand-500 shrink-0 mt-0.5"></i>
+                <span>เมื่อเชิญสำเร็จ ระบบจะอนุญาต Gmail นี้ผ่านทาง Whitelist ทันที ผู้ใช้สามารถคลิก <strong>Sign in with Google</strong> เพื่อเข้าทีมได้ทันที</span>
               </p>
             </div>
           </div>
@@ -1125,7 +1126,7 @@
               </button>
             </div>
             <div
-              class="relative bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl shadow-sm focus-within:border-surface-300 dark:focus-within:border-surface-700 transition-all">
+              class="relative bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl shadow-sm focus-within:border-brand-500 dark:focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/20 transition-all">
               <div class="flex items-end px-3 py-1.5 flex-col">
                 <!-- AI Vision Image Preview -->
                 <div id="chatImagePreview" class="hidden w-full px-2 py-2 flex items-center gap-2 border-b border-surface-100 dark:border-surface-800">
@@ -4740,16 +4741,19 @@
                           <i data-lucide="chevron-right" class="w-4 h-4"></i>
                         </button>
                       </div>
-                      <div class="flex flex-wrap items-center gap-4 text-[11px]">
-                        <div class="flex items-center gap-1.5">
-                          <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-                          <span class="text-surface-600 dark:text-surface-400 font-medium">อนุมัติแล้ว (Approved)</span>
+                      <div class="flex flex-wrap items-center gap-4 text-xs">
+                        <div class="flex items-center gap-2">
+                          <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                          <span class="text-surface-600 dark:text-surface-400 font-medium">อนุมัติแล้ว</span>
                         </div>
-                        <div class="flex items-center gap-1.5">
-                          <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
-                          <span class="text-surface-600 dark:text-surface-400 font-medium">รอดำเนินการ (Pending)</span>
+                        <div class="flex items-center gap-2">
+                          <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+                          <span class="text-surface-600 dark:text-surface-400 font-medium">รออนุมัติ</span>
                         </div>
-                        <span class="text-surface-400 text-[10px] italic">💡 คลิกที่ช่องวันเพื่อดูรายละเอียดและอนุมัติ</span>
+                        <div class="hidden sm:flex items-center gap-1.5 text-surface-400 text-[11px] pl-3 border-l border-surface-200 dark:border-surface-700">
+                          <i data-lucide="info" class="w-3.5 h-3.5"></i>
+                          <span>คลิกวันที่เพื่อดูรายละเอียดคำขอ</span>
+                        </div>
                       </div>
                     </div>
                     <div class="p-6">
@@ -5252,22 +5256,57 @@
               <!-- Tab: Audit Logs -->
               <div id="orgTabContent-logs" class="hidden space-y-4">
                 <div class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-3xl p-6 shadow-sm">
-                  <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
-                    <div>
-                      <h3 class="text-base font-bold text-surface-900 dark:text-white flex items-center gap-2">
-                        <i data-lucide="history" class="w-5 h-5 text-brand-600 dark:text-brand-400"></i>
-                        <span>บันทึกประวัติกิจกรรมองค์กร (Audit Trail)</span>
-                      </h3>
-                      <p class="text-xs text-surface-400 mt-0.5">ติดตามกิจกรรมย้อนหลัง การแก้ไขข้อมูล การเข้าสู่ระบบ และการจัดการไฟล์ในองค์กร</p>
+                  <!-- Header Row -->
+                  <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-surface-100 dark:border-surface-800/80">
+                    <div class="flex items-center gap-3">
+                      <div class="w-10 h-10 rounded-2xl bg-brand-500/10 text-brand-600 dark:text-brand-400 flex items-center justify-center shrink-0 border border-brand-500/20 shadow-sm">
+                        <i data-lucide="history" class="w-5 h-5"></i>
+                      </div>
+                      <div>
+                        <div class="flex items-center gap-2">
+                          <h3 class="text-base font-bold text-surface-900 dark:text-white">บันทึกประวัติกิจกรรมองค์กร (Audit Trail)</h3>
+                          <span id="orgLogCountBadge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 border border-surface-200 dark:border-surface-700 tabular-nums">0 รายการ</span>
+                        </div>
+                        <p class="text-xs text-surface-400 mt-0.5">ติดตามกิจกรรมย้อนหลัง การแก้ไขข้อมูล การเข้าสู่ระบบ และการจัดการไฟล์ในองค์กร</p>
+                      </div>
                     </div>
-                    <div class="relative w-full md:w-64">
-                      <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-surface-400"></i>
-                      <input id="orgLogSearch" type="text" placeholder="ค้นหาตามชื่อผู้ใช้ หรือกิจกรรม..." oninput="filterOrgLogs(this.value)" class="w-full pl-9 pr-4 py-2 bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl text-xs font-bold focus:ring-2 focus:ring-brand-500/20 outline-none transition-all dark:text-white">
+
+                    <div class="flex items-center gap-2">
+                      <div class="relative w-full sm:w-64">
+                        <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-surface-400"></i>
+                        <input id="orgLogSearch" type="text" placeholder="ค้นหาชื่อผู้ใช้ หรือกิจกรรม..." oninput="filterOrgLogs(this.value)" class="w-full pl-9 pr-8 py-2 bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl text-xs font-medium focus:ring-2 focus:ring-brand-500/20 outline-none transition-all dark:text-white placeholder:text-surface-400">
+                        <button type="button" id="orgLogSearchClear" onclick="clearOrgLogSearch()" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-600 dark:hover:text-surface-200">
+                          <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                        </button>
+                      </div>
+                      <button type="button" onclick="loadOrgLogs()" title="รีเฟรชประวัติกิจกรรม" class="p-2 rounded-xl bg-surface-50 hover:bg-surface-100 dark:bg-surface-800 dark:hover:bg-surface-700 border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 transition-colors shadow-sm shrink-0">
+                        <i data-lucide="rotate-cw" class="w-4 h-4"></i>
+                      </button>
                     </div>
                   </div>
 
-                  <div id="orgLogList" class="space-y-2 max-h-[600px] overflow-y-auto custom-scrollbar pr-1">
-                    <div class="text-center py-8 text-surface-400 text-xs">กำลังโหลดบันทึกประวัติกิจกรรม...</div>
+                  <!-- Quick Filter Pills -->
+                  <div class="flex items-center gap-1.5 pt-3 pb-1 overflow-x-auto no-scrollbar">
+                    <button type="button" onclick="setOrgLogCategoryFilter('all')" data-cat="all" class="org-log-cat-btn px-3 py-1.5 rounded-xl text-xs font-bold transition-all bg-brand-600 text-white shadow-sm flex items-center gap-1.5 shrink-0">
+                      <i data-lucide="layers" class="w-3.5 h-3.5"></i> ทั้งหมด
+                    </button>
+                    <button type="button" onclick="setOrgLogCategoryFilter('post')" data-cat="post" class="org-log-cat-btn px-3 py-1.5 rounded-xl text-xs font-medium transition-all bg-surface-100 hover:bg-surface-200 dark:bg-surface-800 dark:hover:bg-surface-700 text-surface-600 dark:text-surface-300 flex items-center gap-1.5 shrink-0">
+                      <i data-lucide="message-square" class="w-3.5 h-3.5"></i> โพสต์ & ประกาศ
+                    </button>
+                    <button type="button" onclick="setOrgLogCategoryFilter('file')" data-cat="file" class="org-log-cat-btn px-3 py-1.5 rounded-xl text-xs font-medium transition-all bg-surface-100 hover:bg-surface-200 dark:bg-surface-800 dark:hover:bg-surface-700 text-surface-600 dark:text-surface-300 flex items-center gap-1.5 shrink-0">
+                      <i data-lucide="file-text" class="w-3.5 h-3.5"></i> จัดการไฟล์
+                    </button>
+                    <button type="button" onclick="setOrgLogCategoryFilter('kb')" data-cat="kb" class="org-log-cat-btn px-3 py-1.5 rounded-xl text-xs font-medium transition-all bg-surface-100 hover:bg-surface-200 dark:bg-surface-800 dark:hover:bg-surface-750 text-surface-600 dark:text-surface-300 flex items-center gap-1.5 shrink-0">
+                      <i data-lucide="book-open" class="w-3.5 h-3.5"></i> คลังความรู้ (KB)
+                    </button>
+                    <button type="button" onclick="setOrgLogCategoryFilter('system')" data-cat="system" class="org-log-cat-btn px-3 py-1.5 rounded-xl text-xs font-medium transition-all bg-surface-100 hover:bg-surface-200 dark:bg-surface-800 dark:hover:bg-surface-750 text-surface-600 dark:text-surface-300 flex items-center gap-1.5 shrink-0">
+                      <i data-lucide="shield-check" class="w-3.5 h-3.5"></i> ความปลอดภัย & ระบบ
+                    </button>
+                  </div>
+
+                  <!-- Logs Stream / Timeline -->
+                  <div id="orgLogList" class="mt-4 space-y-2 max-h-[620px] overflow-y-auto custom-scrollbar pr-1">
+                    <div class="text-center py-12 text-surface-400 text-xs">กำลังโหลดบันทึกประวัติกิจกรรม...</div>
                   </div>
                 </div>
               </div>
@@ -5957,7 +5996,7 @@
                     <i data-lucide="lightbulb" class="w-4 h-4"></i>
                   </div>
                   <div class="flex-1">
-                    <p class="text-xs font-bold text-slate-800 dark:text-white mb-0.5">💡 คำแนะนำในการคุย (Sales Closure Guide)</p>
+                    <p class="text-xs font-bold text-slate-800 dark:text-white mb-0.5">คำแนะนำในการคุย (Sales Closure Guide)</p>
                     <p id="raTipsResult" class="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed">เลือกอ้างอิงเอกสาร โทนที่ต้องการ และใส่คำถามลูกค้าเพื่อสแกนและแนะนำแนวทางการปิดการขายค่ะ</p>
                   </div>
                 </div>
@@ -8599,7 +8638,7 @@
                   </button>
                </div>
                
-               <div class="flex-1 bg-surface-50 dark:bg-surface-800/80 rounded-[28px] px-5 py-3.5 border-2 border-transparent focus-within:border-brand-600/30 transition-all">
+               <div class="flex-1 bg-surface-50 dark:bg-surface-800/80 rounded-[28px] px-5 py-3.5 border-2 border-transparent focus-within:border-brand-500/60 focus-within:ring-2 focus-within:ring-brand-500/20 transition-all">
                   <textarea id="groupChatInput" rows="1" placeholder="พิมพ์ข้อความของคุณที่นี่..." 
                             class="w-full bg-transparent border-none focus:ring-0 text-sm p-0 resize-none max-h-40 outline-none leading-relaxed"></textarea>
                   
@@ -9757,7 +9796,7 @@
   </div>
 
   <script src="/static/js/core.js?v=4.3"></script>
-  <script src="/static/js/chat.js?v=7.3"></script>
+  <script src="/static/js/chat.js?v=7.4"></script>
   <script src="/static/js/billing.js?v=4.0"></script>
   <script src="/static/js/kb.js?v=4.2"></script>
   <script src="/static/js/admin.js?v=4.0"></script>
@@ -10695,7 +10734,7 @@
           <label class="font-bold text-xs text-surface-700 dark:text-surface-300">หัวข้อหรือปัญหาที่ต้องการให้บอร์ด AI ประชุมวิเคราะห์:</label>
           <div class="flex gap-2">
             <textarea id="debateTopicInput" rows="2" placeholder="เช่น 'บริษัทควรลงทุนพัฒนา AI Chatbot ประจำสาขาเอง หรือควรเช่าใช้งานแบบ SaaS และคุ้มทุนอย่างไร?'" class="flex-1 px-4 py-2.5 rounded-2xl border border-surface-200 dark:border-surface-700 text-xs bg-surface-50 dark:bg-surface-800 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
-            <button type="button" id="btnStartDebate" onclick="startAiDebate()" class="px-5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-2xl font-bold text-xs shadow-lg shadow-indigo-600/30 flex items-center gap-2 transition whitespace-nowrap">
+            <button type="button" id="btnStartDebate" onclick="startAiDebate()" class="px-5 bg-brand-600 hover:bg-brand-700 text-white rounded-2xl font-bold text-xs shadow-sm flex items-center gap-2 transition whitespace-nowrap">
               <i data-lucide="play" class="w-4 h-4"></i> เริ่มประชุมบอร์ด
             </button>
           </div>
@@ -10703,31 +10742,39 @@
 
         <!-- Personas Roster -->
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-          <div class="p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/40 text-center space-y-1">
-            <div class="text-2xl">💰</div>
-            <div class="font-bold text-xs text-emerald-900 dark:text-emerald-300">CFO (การเงิน)</div>
-            <div class="text-[10px] text-emerald-600/80 dark:text-emerald-400">ROI, Cash Flow, Budget</div>
+          <div class="p-3 rounded-2xl bg-surface-50 dark:bg-surface-800/60 border border-surface-200/80 dark:border-surface-700/80 text-center space-y-1">
+            <div class="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto">
+              <i data-lucide="coins" class="w-4 h-4"></i>
+            </div>
+            <div class="font-bold text-xs text-surface-900 dark:text-surface-100">CFO (การเงิน)</div>
+            <div class="text-[10px] text-surface-400">ROI, Cash Flow, Budget</div>
           </div>
-          <div class="p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 text-center space-y-1">
-            <div class="text-2xl">🚀</div>
-            <div class="font-bold text-xs text-amber-900 dark:text-amber-300">CMO (การตลาด)</div>
-            <div class="text-[10px] text-amber-600/80 dark:text-amber-400">Growth, Brand, Leads</div>
+          <div class="p-3 rounded-2xl bg-surface-50 dark:bg-surface-800/60 border border-surface-200/80 dark:border-surface-700/80 text-center space-y-1">
+            <div class="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto">
+              <i data-lucide="trending-up" class="w-4 h-4"></i>
+            </div>
+            <div class="font-bold text-xs text-surface-900 dark:text-surface-100">CMO (การตลาด)</div>
+            <div class="text-[10px] text-surface-400">Growth, Brand, Leads</div>
           </div>
-          <div class="p-3 rounded-2xl bg-cyan-50 dark:bg-cyan-950/30 border border-cyan-200 dark:border-cyan-900/40 text-center space-y-1">
-            <div class="text-2xl">💻</div>
-            <div class="font-bold text-xs text-cyan-900 dark:text-cyan-300">CTO (เทคโนโลยี)</div>
-            <div class="text-[10px] text-cyan-600/80 dark:text-cyan-400">Tech Debt, Scalability</div>
+          <div class="p-3 rounded-2xl bg-surface-50 dark:bg-surface-800/60 border border-surface-200/80 dark:border-surface-700/80 text-center space-y-1">
+            <div class="w-8 h-8 rounded-lg bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 flex items-center justify-center mx-auto">
+              <i data-lucide="cpu" class="w-4 h-4"></i>
+            </div>
+            <div class="font-bold text-xs text-surface-900 dark:text-surface-100">CTO (เทคโนโลยี)</div>
+            <div class="text-[10px] text-surface-400">Tech Debt, Scalability</div>
           </div>
-          <div class="p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/40 text-center space-y-1">
-            <div class="text-2xl">⚖️</div>
-            <div class="font-bold text-xs text-rose-900 dark:text-rose-300">Lawyer (กฎหมาย)</div>
-            <div class="text-[10px] text-rose-600/80 dark:text-rose-400">PDPA, Risk, Compliance</div>
+          <div class="p-3 rounded-2xl bg-surface-50 dark:bg-surface-800/60 border border-surface-200/80 dark:border-surface-700/80 text-center space-y-1">
+            <div class="w-8 h-8 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto">
+              <i data-lucide="scale" class="w-4 h-4"></i>
+            </div>
+            <div class="font-bold text-xs text-surface-900 dark:text-surface-100">Lawyer (กฎหมาย)</div>
+            <div class="text-[10px] text-surface-400">PDPA, Risk, Compliance</div>
           </div>
         </div>
 
         <!-- Loading Indicator -->
         <div id="debateLoadingBox" class="p-8 text-center space-y-3 bg-surface-50 dark:bg-surface-800/40 rounded-3xl border border-surface-200 dark:border-surface-700 hidden">
-          <div class="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <div class="w-8 h-8 border-3 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
           <div class="font-bold text-xs text-surface-900 dark:text-white">บอร์ดบริหารกำลังวิเคราะห์และแลกเปลี่ยนมุมมอง...</div>
           <div class="text-[10px] text-surface-400">CFO, CMO, CTO, Legal Counsel กำลังให้ความเห็นเชิงกลยุทธ์</div>
         </div>
@@ -10738,10 +10785,10 @@
           <div id="debateTranscriptsList" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
 
           <!-- Executive Consensus Card -->
-          <div class="p-5 rounded-3xl bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-surface-50 dark:to-surface-900 border-2 border-indigo-500/30 space-y-3">
+          <div class="p-5 rounded-2xl bg-surface-50 dark:bg-surface-800/70 border border-surface-200 dark:border-surface-700 space-y-3">
             <div class="flex items-center gap-2">
-              <span class="text-xl">🏆</span>
-              <h4 class="font-black text-sm text-indigo-900 dark:text-indigo-300">มติที่ประชุมและแผนยุทธศาสตร์ (Executive Board Consensus)</h4>
+              <i data-lucide="award" class="w-5 h-5 text-amber-500"></i>
+              <h4 class="font-black text-sm text-surface-900 dark:text-surface-100">มติที่ประชุมและแผนยุทธศาสตร์ (Executive Board Consensus)</h4>
             </div>
             <div id="debateConsensusContent" class="text-xs text-surface-700 dark:text-surface-200 space-y-2 prose dark:prose-invert max-w-none">
             </div>

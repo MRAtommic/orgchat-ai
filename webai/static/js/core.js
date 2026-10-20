@@ -419,10 +419,18 @@ function toast(msg, type = 'info') {
     info: 'bg-surface-800 text-white',
     success: 'bg-emerald-600 text-white',
     error: 'bg-red-600 text-white',
+    danger: 'bg-rose-600 text-white',
     warning: 'bg-amber-500 text-white'
   };
-  el.className = `${bgMap[type] || bgMap.info} px-6 py-3 rounded-xl shadow-xl text-xs font-semibold animate-in slide-in-from-right-10 duration-300 pointer-events-auto cursor-pointer`;
-  el.textContent = msg;
+  const iconMap = {
+    info: 'ℹ️ ',
+    success: '✅ ',
+    error: '❌ ',
+    danger: '❌ ',
+    warning: '⚠️ '
+  };
+  el.className = `${bgMap[type] || bgMap.info} px-5 py-3 rounded-xl shadow-xl text-xs font-semibold animate-in slide-in-from-right-10 duration-300 pointer-events-auto cursor-pointer flex items-center gap-2`;
+  el.textContent = `${iconMap[type] || ''}${msg}`;
   el.onclick = () => el.remove();
   container.appendChild(el);
   setTimeout(() => {
@@ -1507,35 +1515,11 @@ window.showAlert = function(title, message, options = {}) {
   });
 };
 
-// Global Toast Notification Helper
+// Global Toast Notification Helper — routed to unified toast system
 window.showToast = function (message, type = 'info') {
-  let container = document.getElementById('globalToastContainer');
-  if (!container) {
-    container = document.createElement('div');
-    container.id = 'globalToastContainer';
-    container.className = 'fixed bottom-5 right-5 z-[10000] flex flex-col gap-2 pointer-events-none';
-    document.body.appendChild(container);
+  if (typeof toast === 'function') {
+    return toast(message, type);
   }
-
-  const toast = document.createElement('div');
-  const bgClass = type === 'error' || type === 'danger' ? 'bg-rose-600 text-white' : type === 'success' ? 'bg-emerald-600 text-white' : 'bg-slate-900 text-white dark:bg-surface-800';
-  const icon = type === 'error' || type === 'danger' ? '❌' : type === 'success' ? '✅' : 'ℹ️';
-
-  toast.className = `pointer-events-auto flex items-center gap-2 px-4 py-3 rounded-2xl shadow-xl text-xs font-bold transition-all duration-300 transform translate-y-4 opacity-0 ${bgClass}`;
-  toast.innerHTML = `<span>${icon}</span><span>${message}</span>`;
-
-  container.appendChild(toast);
-
-  requestAnimationFrame(() => {
-    toast.classList.remove('translate-y-4', 'opacity-0');
-  });
-
-  setTimeout(() => {
-    toast.classList.add('translate-y-4', 'opacity-0');
-    setTimeout(() => {
-      toast.remove();
-    }, 300);
-  }, 3500);
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -2111,4 +2095,4 @@ document.addEventListener('DOMContentLoaded', () => {
   window.pdpaConsent.init();
   window.sessionLock.init();
   window.digitalWatermark.init();
-});
+});

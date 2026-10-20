@@ -73,6 +73,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger("OrgChatAI")
 
+# Mute repetitive background noise from scheduler
+logging.getLogger("apscheduler").setLevel(logging.WARNING)
+logging.getLogger("apscheduler.executors.default").setLevel(logging.WARNING)
+
+# Filter out repetitive heartbeat / polling endpoint logs from werkzeug
+class PollingLogFilter(logging.Filter):
+    def filter(self, record):
+        msg = record.getMessage()
+        if any(endpoint in msg for endpoint in ["/api/chat/unread", "/api/notifications"]):
+            return False
+        return True
+
+logging.getLogger("werkzeug").addFilter(PollingLogFilter())
+
 # ─── Sentry Initialization ───────────────────────────────────
 import sentry_sdk
 from sentry_sdk.integrations.flask import FlaskIntegration

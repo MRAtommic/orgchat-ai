@@ -71,7 +71,7 @@
 
 /* ─── Inline Style Block 2 ─── */
             /* Isolated Dashboard Styles */
-            body { font-family: 'Sarabun', 'Outfit', sans-serif; }
+            body { font-family: var(--user-font-family, 'Prompt', 'Anuphan', 'IBM Plex Sans Thai', 'Inter', system-ui, -apple-system, sans-serif); }
 
         ::-webkit-scrollbar { width: 5px; height: 5px; }
         ::-webkit-scrollbar-track { background: #f1f5f9; }
@@ -179,8 +179,8 @@
 
         input[type="text"]:focus, input[type="date"]:focus, input[type="number"]:focus, textarea:not(#msgInput):not(#groupChatInput):focus, select:focus { 
             outline: none; 
-            box-shadow: 0 0 0 3px rgba(15,23,42,0.1); 
-            border-color: #475569; 
+            box-shadow: 0 0 0 3px rgba(37,99,235,0.2); 
+            border-color: #2563eb; 
         }
 
         #msgInput, #msgInput:focus, #msgInput:focus-visible,
