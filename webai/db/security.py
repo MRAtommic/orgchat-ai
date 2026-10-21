@@ -383,12 +383,19 @@ _INJECTION_PATTERNS = [
     r"(?i)system\s+prompt",
     r"(?i)you\s+are\s+now\s+(DAN|unrestricted|jailbroken|an\s+evil|a\s+hacker)",
     r"(?i)reveal\s+(your\s+)?(instructions|secret|internal\s+prompt|api\s*key)",
-    r"(?i)show\s+me\s+your\s+(initial|system)\s+instructions",
+    r"(?i)show\s+me\s+your\s+(initial\s+)?(system\s+)?instructions",
     r"(?i)bypass\s+(content\s+filter|safety\s+filter|guardrail)",
     r"(?i)print\s+the\s+system\s+message",
+    r"(?i)\bjailbreak\b",
+    r"(?i)(tell|show|output|leak|share|print|repeat)\s+(me\s+)?(your\s+)?(hidden|secret|internal)?\s*(system\s*prompt|prompt|instructions|api\s*key)",
+    r"(?i)pretend\s+you\s+(are|have)\s+no\s+(rules|limits|restrictions|filters)",
+    r"(?i)act\s+as\s+(an?\s+)?(unfiltered|unrestricted|evil)",
     r"(?i)ลืมคำสั่ง(ก่อนหน้า|ทั้งหมด|เดิม)",
     r"(?i)แสดง\s*(system\s*prompt|คำสั่งระบบ|ความลับของระบบ|api\s*key)",
     r"(?i)ปลดล็อกกฎเกณฑ์ทั้งหมด",
+    r"(?i)ขอดู\s*(system\s*prompt|คำสั่งระบบ|คำสั่งเบื้องหลัง|api\s*key)",
+    r"(?i)บอก\s*(system\s*prompt|คำสั่งตั้งต้น|ความลับระบบ|api\s*key)",
+    r"(?i)(แกล้งทำเป็นว่า|สมมติว่า)\s*(ไม่มีกฎ|ไม่มีข้อห้าม|ปลดล็อก)",
 ]
 
 
