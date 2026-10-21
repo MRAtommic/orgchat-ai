@@ -643,8 +643,26 @@ def init_db():
     # Migration: Add is_archived to schedules
     try:
         cursor.execute("ALTER TABLE schedules ADD COLUMN is_archived INTEGER DEFAULT 0")
-        print("✅ Database migrated: Added is_archived column.")
     except sqlite3.OperationalError:
+        pass
+
+    # Migration: expense_claims columns for WHT & Multi-tenancy
+    for col_sql in [
+        "ALTER TABLE expense_claims ADD COLUMN org_id INTEGER DEFAULT 1",
+        "ALTER TABLE expense_claims ADD COLUMN vendor_name TEXT",
+        "ALTER TABLE expense_claims ADD COLUMN vendor_tax_id TEXT",
+        "ALTER TABLE expense_claims ADD COLUMN wht_type TEXT",
+        "ALTER TABLE expense_claims ADD COLUMN wht_rate REAL DEFAULT 0",
+        "ALTER TABLE expense_claims ADD COLUMN wht_amount REAL DEFAULT 0",
+        "ALTER TABLE expense_claims ADD COLUMN description TEXT",
+    ]:
+        try:
+            cursor.execute(col_sql)
+        except sqlite3.OperationalError:
+            pass
+    try:
+        cursor.execute("UPDATE expense_claims SET vendor_name = vendor WHERE (vendor_name IS NULL OR vendor_name = '') AND vendor IS NOT NULL")
+    except Exception:
         pass
 
     # Migration: Add reaction column to likes table
