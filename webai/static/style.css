@@ -167,7 +167,18 @@
   --brand-50: #eff6ff;
   --brand-100: #dbeafe;
   --brand-rgb: 37, 99, 235;
-  --surface: #f8fafc;
+  --surface: #f1f5f9;
+}
+
+html.dark,
+.dark {
+  --surface: #020617;
+}
+
+html.dark body,
+.dark body {
+  background-color: #020617;
+  color: #f8fafc;
 }
 
 /* Studio Technical Slate overrides: Flatten redundant glass nesting & glow */
