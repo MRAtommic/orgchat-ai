@@ -493,18 +493,18 @@ def get_leave_comments(leave_id):
 
 # ─── Time Attendance & GPS Clock-in Functions ──────────────────────
 
-def record_attendance(username, org_id, check_type, latitude, longitude, address, distance_meters, status):
-    """Records a time attendance event (check-in / check-out)."""
+def record_attendance(username, org_id, check_type, latitude=None, longitude=None, address=None, distance_meters=0.0, status='on_time', note='', custom_date=None, custom_time=None):
+    """Records a time attendance event (check-in / check-out). Supports custom_date/custom_time and note."""
     from datetime import datetime
     now = datetime.now()
-    check_date = now.strftime("%Y-%m-%d")
-    check_time = now.strftime("%H:%M:%S")
+    check_date = custom_date or now.strftime("%Y-%m-%d")
+    check_time = custom_time or now.strftime("%H:%M:%S")
     conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO time_attendance (username, org_id, check_date, check_time, check_type, latitude, longitude, address, distance_meters, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (username, org_id or 1, check_date, check_time, check_type, latitude, longitude, address, distance_meters, status))
+        INSERT INTO time_attendance (username, org_id, check_date, check_time, check_type, latitude, longitude, address, distance_meters, status, note)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (username, org_id or 1, check_date, check_time, check_type, latitude, longitude, address, distance_meters, status, note or ''))
     rec_id = cursor.lastrowid
     conn.commit()
     conn.close()
@@ -519,7 +519,8 @@ def record_attendance(username, org_id, check_type, latitude, longitude, address
         "longitude": longitude,
         "address": address,
         "distance_meters": distance_meters,
-        "status": status
+        "status": status,
+        "note": note or ''
     }
 
 
