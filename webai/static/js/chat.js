@@ -3935,7 +3935,7 @@ function renderPosts(posts) {
               <span class="font-bold text-sm select-none">${p.display_name || p.author}</span>
               <span class="px-2 py-0.5 bg-brand-50 dark:bg-brand-900/30 text-brand-600 text-[10px] font-bold rounded-full uppercase">${p.category}</span>
             </div>
-            <div class="text-[10px] text-surface-400 font-medium">${new Date(p.timestamp).toLocaleString('th-TH')}</div>
+            <div class="text-[11px] text-surface-500 dark:text-surface-400 font-medium">${new Date(p.timestamp).toLocaleString('th-TH')}</div>
           </div>
         </div>
 
@@ -4158,20 +4158,20 @@ function renderPosts(posts) {
         </div>
 
         <!-- Comment Button -->
-        <button class="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-surface-100 dark:border-surface-800 bg-surface-50/50 dark:bg-surface-900/50 hover:border-brand-200 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-all group/cbtn" onclick="toggleComments(${p.id})">
-          <i data-lucide="message-circle" class="w-4 h-4 text-surface-400 group-hover/cbtn:text-brand-500 transition-colors"></i>
-          <span class="text-xs font-bold text-surface-400 group-hover/cbtn:text-brand-500 transition-colors">${p.comments || 0}</span>
+        <button class="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-surface-200 dark:border-surface-800 bg-surface-50/70 dark:bg-surface-900/50 hover:border-brand-200 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-all group/cbtn" onclick="toggleComments(${p.id})">
+          <i data-lucide="message-circle" class="w-4 h-4 text-surface-500 dark:text-surface-400 group-hover/cbtn:text-brand-500 transition-colors"></i>
+          <span class="text-xs font-bold text-surface-600 dark:text-surface-300 group-hover/cbtn:text-brand-500 transition-colors">${p.comments || 0}</span>
         </button>
 
         <!-- Seen Receipts Badge -->
-        <div id="seen-receipts-${p.id}" class="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-surface-50/30 dark:bg-brand-900/10 cursor-help group/seen transition-all" onclick="showSeenByModal(${p.id})">
-           <i data-lucide="eye" class="w-3.5 h-3.5 text-surface-300"></i>
-           <span class="text-[10px] font-bold text-surface-400 group-hover/seen:text-brand-600 transition-colors" id="seen-count-${p.id}">0</span>
+        <div id="seen-receipts-${p.id}" class="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-surface-100/70 dark:bg-brand-900/10 cursor-help group/seen transition-all" onclick="showSeenByModal(${p.id})">
+           <i data-lucide="eye" class="w-3.5 h-3.5 text-surface-500 dark:text-surface-400"></i>
+           <span class="text-xs font-bold text-surface-600 dark:text-surface-300 group-hover/seen:text-brand-600 transition-colors" id="seen-count-${p.id}">0</span>
         </div>
 
-        <button class="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-surface-100 dark:border-surface-800 bg-surface-50/50 dark:bg-surface-900/50 hover:border-violet-200 hover:bg-violet-50 dark:hover:bg-violet-900/20 transition-all group/abtn ml-auto" onclick="summarizePost(${p.id}, this)">
-          <i data-lucide="wand-2" class="w-3.5 h-3.5 text-surface-400 group-hover/abtn:text-violet-500 transition-colors"></i>
-          <span class="text-[10px] font-black uppercase tracking-widest text-surface-400 group-hover/abtn:text-violet-500 transition-colors">AI สรุป</span>
+        <button class="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-surface-200 dark:border-surface-800 bg-surface-50/70 dark:bg-surface-900/50 hover:border-violet-200 hover:bg-violet-50 dark:hover:bg-violet-900/20 transition-all group/abtn ml-auto" onclick="summarizePost(${p.id}, this)">
+          <i data-lucide="wand-2" class="w-3.5 h-3.5 text-surface-500 dark:text-surface-400 group-hover/abtn:text-violet-500 transition-colors"></i>
+          <span class="text-[10px] font-black uppercase tracking-widest text-surface-600 dark:text-surface-400 group-hover/abtn:text-violet-500 transition-colors">AI สรุป</span>
         </button>
       </div>
 

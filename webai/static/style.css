@@ -151,23 +151,23 @@
 
 /* Hallmark · genre: modern-minimal · macrostructure: workbench · design-system: design.md · designed-as-app */
 :root {
-  --color-paper: oklch(0.14 0.01 250);
-  --color-paper-2: oklch(0.18 0.015 250);
-  --color-paper-3: oklch(0.22 0.018 250);
-  --color-ink: oklch(0.96 0.005 250);
-  --color-ink-2: oklch(0.68 0.01 250);
-  --color-rule: oklch(0.24 0.012 250);
-  --color-accent: oklch(0.68 0.16 160);
-  --color-accent-ink: #022c22;
-  --color-secondary-accent: oklch(0.72 0.13 220);
-  --color-focus: oklch(0.72 0.13 220);
+  --color-paper: #f5f4ef;
+  --color-paper-2: #eae8e1;
+  --color-paper-3: #dedbd2;
+  --color-ink: #1c1917;
+  --color-ink-2: #44403c;
+  --color-rule: #dedbd2;
+  --color-accent: #2563eb;
+  --color-accent-ink: #ffffff;
+  --color-secondary-accent: #3b82f6;
+  --color-focus: #3b82f6;
 
   --brand-600: #2563eb;
   --brand-700: #1d4ed8;
   --brand-50: #eff6ff;
   --brand-100: #dbeafe;
   --brand-rgb: 37, 99, 235;
-  --surface: #f1f5f9;
+  --surface: #f5f4ef;
 }
 
 html.dark,
