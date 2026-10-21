@@ -2160,22 +2160,22 @@ function appendMessage(role, html, sources = [], scroll = true, msgId = null) {
   const avatarClass = isUser ? 'bg-surface-800' : 'bg-brand-600';
   const name = isUser ? 'USER' : 'น้องพั้น (Nong Punch)';
   const bubbleClass = isUser
-    ? 'bubble-me bg-brand-600 dark:bg-[#27272a] text-white rounded-2xl rounded-tr-none'
-    : 'bubble-them bg-surface-100 dark:bg-surface-800 text-surface-900 dark:text-surface-100 rounded-2xl rounded-tl-none border border-surface-200 dark:border-surface-700';
+    ? 'bubble-me'
+    : 'bubble-them';
 
   let feedbackPanel = !isUser ? `
-    <div class="absolute -right-2 top-0 translate-x-full opacity-0 group-hover/msg:opacity-100 transition-opacity flex flex-col gap-1">
-      <button class="translate-msg-btn p-1.5 glass rounded-lg hover:text-brand-600 transition-colors" title="แปลภาษา (Translate)"><i data-lucide="languages" class="w-3.5 h-3.5"></i></button>
-      <button class="copy-msg-btn p-1.5 glass rounded-lg hover:text-brand-600 transition-colors" title="คัดลอก"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
-      <button class="speak-btn p-1.5 glass rounded-lg hover:text-brand-600 transition-colors" title="ฟังเสียง"><i data-lucide="volume-2" class="w-3.5 h-3.5"></i></button>
-      <button class="fb-btn p-1.5 glass rounded-lg hover:text-emerald-500 transition-colors" data-val="1"><i data-lucide="thumbs-up" class="w-3.5 h-3.5"></i></button>
-      <button class="fb-btn p-1.5 glass rounded-lg hover:text-red-500 transition-colors" data-val="-1"><i data-lucide="thumbs-down" class="w-3.5 h-3.5"></i></button>
-      ${msgId ? `<button class="del-msg-btn p-1.5 glass rounded-lg hover:text-red-500 transition-colors" title="ลบข้อความ"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>` : ''}
+    <div class="absolute -right-2 top-0 translate-x-full opacity-0 group-hover/msg:opacity-100 transition-opacity flex flex-col gap-1 p-0.5">
+      <button class="translate-msg-btn p-1.5 rounded-lg bg-white dark:bg-zinc-800 text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white border border-surface-200/80 dark:border-zinc-700 shadow-xs transition-colors" title="แปลภาษา"><i data-lucide="languages" class="w-3.5 h-3.5"></i></button>
+      <button class="copy-msg-btn p-1.5 rounded-lg bg-white dark:bg-zinc-800 text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white border border-surface-200/80 dark:border-zinc-700 shadow-xs transition-colors" title="คัดลอก"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
+      <button class="speak-btn p-1.5 rounded-lg bg-white dark:bg-zinc-800 text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white border border-surface-200/80 dark:border-zinc-700 shadow-xs transition-colors" title="ฟังเสียง"><i data-lucide="volume-2" class="w-3.5 h-3.5"></i></button>
+      <button class="fb-btn p-1.5 rounded-lg bg-white dark:bg-zinc-800 text-surface-500 dark:text-surface-400 hover:text-emerald-600 dark:hover:text-emerald-400 border border-surface-200/80 dark:border-zinc-700 shadow-xs transition-colors" data-val="1" title="มีประโยชน์"><i data-lucide="thumbs-up" class="w-3.5 h-3.5"></i></button>
+      <button class="fb-btn p-1.5 rounded-lg bg-white dark:bg-zinc-800 text-surface-500 dark:text-surface-400 hover:text-rose-600 dark:hover:text-rose-400 border border-surface-200/80 dark:border-zinc-700 shadow-xs transition-colors" data-val="-1" title="ต้องปรับปรุง"><i data-lucide="thumbs-down" class="w-3.5 h-3.5"></i></button>
+      ${msgId ? `<button class="del-msg-btn p-1.5 rounded-lg bg-white dark:bg-zinc-800 text-surface-500 dark:text-surface-400 hover:text-rose-600 dark:hover:text-rose-400 border border-surface-200/80 dark:border-zinc-700 shadow-xs transition-colors" title="ลบข้อความ"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>` : ''}
     </div>` : `
-    <div class="absolute -left-2 top-0 -translate-x-full opacity-0 group-hover/msg:opacity-100 transition-opacity flex flex-col gap-1">
-      <button class="translate-msg-btn p-1.5 glass rounded-lg hover:text-brand-600 transition-colors" title="แปลภาษา (Translate)"><i data-lucide="languages" class="w-3.5 h-3.5"></i></button>
-      <button class="copy-msg-btn p-1.5 glass rounded-lg hover:text-brand-600 transition-colors" title="คัดลอก"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
-      ${msgId ? `<button class="del-msg-btn p-1.5 glass rounded-lg hover:text-red-200 transition-colors" title="ลบข้อความ"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>` : ''}
+    <div class="absolute -left-2 top-0 -translate-x-full opacity-0 group-hover/msg:opacity-100 transition-opacity flex flex-col gap-1 p-0.5">
+      <button class="translate-msg-btn p-1.5 rounded-lg bg-white dark:bg-zinc-800 text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white border border-surface-200/80 dark:border-zinc-700 shadow-xs transition-colors" title="แปลภาษา"><i data-lucide="languages" class="w-3.5 h-3.5"></i></button>
+      <button class="copy-msg-btn p-1.5 rounded-lg bg-white dark:bg-zinc-800 text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white border border-surface-200/80 dark:border-zinc-700 shadow-xs transition-colors" title="คัดลอก"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
+      ${msgId ? `<button class="del-msg-btn p-1.5 rounded-lg bg-white dark:bg-zinc-800 text-surface-500 dark:text-surface-400 hover:text-rose-600 dark:hover:text-rose-400 border border-surface-200/80 dark:border-zinc-700 shadow-xs transition-colors" title="ลบข้อความ"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>` : ''}
     </div>`;
 
   const userImages = isUser ? (sources || []).filter(s => s.type === 'image') : [];
@@ -2228,10 +2228,10 @@ function appendMessage(role, html, sources = [], scroll = true, msgId = null) {
           const safeLoc = (s.location || '').replace(/'/g, "\\'");
           return `
             <button onclick="openPdfViewer('${s.file_id}', '${safeName}', '${safeLoc}')" 
-              class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white/50 dark:bg-surface-900/40 text-surface-600 dark:text-surface-300 text-[10px] font-bold border border-surface-200 dark:border-surface-700 hover:border-brand-500 hover:text-brand-600 dark:hover:text-brand-400 transition-all shadow-sm">
-              <i data-lucide="${FILE_LUCIDE[s.type] || 'file-text'}" class="w-3 h-3 text-brand-500"></i>
-              <span class="truncate max-w-[120px]">${s.name || s.source || 'Document'}</span>
-              ${s.location && s.location !== 'Document' ? `<span class="opacity-50 text-[9px]">#${s.location}</span>` : ''}
+              class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 text-[11px] font-medium border border-surface-200 dark:border-surface-700 hover:border-surface-400 dark:hover:border-surface-500 transition-colors">
+              <i data-lucide="${FILE_LUCIDE[s.type] || 'file-text'}" class="w-3 h-3 text-surface-500"></i>
+              <span class="truncate max-w-[130px]">${s.name || s.source || 'Document'}</span>
+              ${s.location && s.location !== 'Document' ? `<span class="opacity-50 text-[10px]">#${s.location}</span>` : ''}
             </button>
           `;
         }).join('')}
@@ -7739,8 +7739,8 @@ function renderChatMessages(shouldScroll = false) {
     const isLast = idx === state.groupChat.messages.length - 1;
 
     let bubbleClass = isMe
-      ? 'bg-brand-600 text-white rounded-br-none ml-auto'
-      : (isBot ? 'bg-surface-100 dark:bg-surface-800 border-l-4 border-brand-500 rounded-bl-none shadow-sm' : 'bg-surface-100 dark:bg-surface-800 rounded-bl-none shadow-sm');
+      ? 'bubble-me ml-auto'
+      : (isBot ? 'bubble-bot border-l-2 border-brand-500' : 'bubble-them');
 
     if (m.is_pinned && !isMe) bubbleClass += ' ring-1 ring-brand-500/30 bg-brand-50 dark:bg-brand-900/10';
 

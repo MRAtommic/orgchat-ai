@@ -1244,37 +1244,7 @@ tr:hover .delete-row-btn {
   }
 }
 
-/* Quick Action Chips */
-.quick-action-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.875rem;
-  background-color: #2563eb;
-  color: white;
-  border-radius: 0.75rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  white-space: nowrap;
-  transition: all 0.2s;
-  box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);
-  border: none;
-  cursor: pointer;
-}
-
-.quick-action-chip:hover {
-  background-color: #1d4ed8;
-  transform: translateY(-1px);
-  box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.3);
-}
-
-.quick-action-chip:active {
-  transform: scale(0.95);
-}
-
-.dark .quick-action-chip {
-  background-color: #1d4ed8;
-}
+/* Quick Action Chips defined in unified suggestions section below */
 
 /* --- Unified Chat Styling - Commented out to avoid styling the backdrop overlay as a card
 #groupChatModal {
@@ -1327,12 +1297,12 @@ tr:hover .delete-row-btn {
 .messenger-chat-item {
   display: flex !important;
   align-items: center !important;
-  gap: 12px;
-  padding: 10px 16px !important;
+  gap: 10px;
+  padding: 8px 12px !important;
   cursor: pointer;
-  transition: all 0.1s ease-out;
-  border-radius: 12px;
-  margin: 1px 8px;
+  transition: all 0.15s ease-out;
+  border-radius: 10px;
+  margin: 1px 6px;
   position: relative;
 }
 
@@ -1355,9 +1325,9 @@ tr:hover .delete-row-btn {
 }
 
 .messenger-avatar {
-  width: 56px !important;
-  height: 56px !important;
-  border-radius: 50% !important;
+  width: 42px !important;
+  height: 42px !important;
+  border-radius: 12px !important;
   overflow: hidden;
   background: #f1f5f9;
   display: flex !important;
@@ -1449,7 +1419,7 @@ tr:hover .delete-row-btn {
 .messenger-unread-dot {
   min-width: 18px;
   height: 18px;
-  background: #0084ff;
+  background: #1d5fbf;
   border-radius: 10px;
   flex-shrink: 0;
   margin-left: 8px;
@@ -2286,15 +2256,13 @@ tr:hover .delete-row-btn {
   width: -moz-fit-content !important;
   width: -webkit-fit-content !important;
   max-width: 85% !important;
-  /* Bubble itself takes up to 85% of row */
   min-width: 50px !important;
   height: auto !important;
   min-height: 0 !important;
   padding: 10px 16px !important;
-  border-radius: 18px !important;
-  font-size: 15px !important;
-  line-height: 1.5 !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+  border-radius: 14px !important;
+  font-size: 14px !important;
+  line-height: 1.55 !important;
   word-break: break-word !important;
   position: relative !important;
   margin: 0 !important;
@@ -2309,7 +2277,7 @@ tr:hover .delete-row-btn {
 .chat-bubble .prose p {
   margin: 0 !important;
   padding: 0 !important;
-  line-height: 1.5 !important;
+  line-height: 1.55 !important;
 }
 
 .chat-bubble .prose p:not(:last-child) {
@@ -2317,58 +2285,54 @@ tr:hover .delete-row-btn {
 }
 
 .bubble-me {
-  background: var(--brand-600, #2563eb);
-  color: white !important;
+  background: #18181b !important;
+  color: #ffffff !important;
   border-bottom-right-radius: 4px !important;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15) !important;
+  border: 1px solid #27272a !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06) !important;
 }
 
 .dark .bubble-me {
   background: #27272a !important;
   color: #f4f4f5 !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2) !important;
 }
 
+.bubble-me .prose,
+.bubble-me .prose p,
+.bubble-me .prose span,
+.bubble-me .prose strong,
 .dark .bubble-me .prose,
 .dark .bubble-me .prose p,
-.dark .bubble-me .prose span {
-  color: #f4f4f5 !important;
+.dark .bubble-me .prose span,
+.dark .bubble-me .prose strong {
+  color: #ffffff !important;
 }
 
-.bubble-them {
-  background: #f1f5f9 !important;
-  color: #1e293b !important;
+.bubble-them,
+.bubble-bot {
+  background: #f8fafc !important;
+  color: #0f172a !important;
   border-bottom-left-radius: 4px !important;
   border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02) !important;
 }
 
-.dark .bubble-them {
-  background: rgba(28, 35, 54, 0.45) !important;
-  color: #e2e8f0 !important;
-  border: 1px solid rgba(255, 255, 255, 0.06) !important;
-  backdrop-filter: blur(8px);
+.dark .bubble-them,
+.dark .bubble-bot {
+  background: #18181b !important;
+  color: #f1f5f9 !important;
+  border-bottom-left-radius: 4px !important;
+  border: 1px solid #27272a !important;
+  box-shadow: none !important;
+  backdrop-filter: none;
 }
 
 /* Feedback Panel Fixes */
 .chat-bubble [flex-col] {
   height: auto !important;
   justify-content: flex-start !important;
-}
-
-.bubble-bot {
-  background: #f1f5f9 !important;
-  color: #1e293b !important;
-  border-bottom-left-radius: 4px !important;
-  border: 1px solid #e2e8f0 !important;
-}
-
-.dark .bubble-bot {
-  background: rgba(28, 35, 54, 0.7) !important;
-  color: #e2e8f0 !important;
-  border: 1px solid rgba(59, 130, 246, 0.15) !important;
-  box-shadow: inset 0 0 12px rgba(59, 130, 246, 0.03) !important;
-  backdrop-filter: blur(8px);
 }
 
 /* 🎙️ Voice Message Styles */
@@ -4324,43 +4288,40 @@ button:active:not(:disabled), .nav-item:active, .btn-action:active {
   display: inline-flex;
   align-items: center;
   gap: 0.375rem;
-  padding: 0.35rem 0.75rem;
+  padding: 0.375rem 0.75rem;
   border-radius: 9999px;
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: 500;
   white-space: nowrap;
-  background: rgba(255, 255, 255, 0.8);
+  background: #ffffff;
   color: #475569;
-  border: 1px solid rgba(226, 232, 240, 0.8);
+  border: 1px solid #e2e8f0;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-  backdrop-filter: blur(8px);
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.dark .quick-action-chip {
-  background: rgba(30, 41, 59, 0.7);
-  color: #cbd5e1;
-  border-color: rgba(51, 65, 85, 0.8);
+  transition: all 0.15s ease-in-out;
 }
 
 .quick-action-chip:hover {
-  background: #2563eb;
-  color: #ffffff;
-  border-color: #2563eb;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
-}
-
-.dark .quick-action-chip:hover {
-  background: #3b82f6;
-  color: #ffffff;
-  border-color: #3b82f6;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.35);
+  background: #f1f5f9;
+  color: #0f172a;
+  border-color: #cbd5e1;
 }
 
 .quick-action-chip:active {
-  transform: translateY(0) scale(0.96);
+  transform: scale(0.97);
+}
+
+.dark .quick-action-chip {
+  background: #18181b;
+  color: #cbd5e1;
+  border-color: #27272a;
+  box-shadow: none;
+}
+
+.dark .quick-action-chip:hover {
+  background: #27272a;
+  color: #ffffff;
+  border-color: #3f3f46;
 }
 
 /* Voice Waveform Live Bar Visualizer */
