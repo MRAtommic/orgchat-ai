@@ -184,11 +184,29 @@ function exportAuditLogsCSV() {
 }
 
 // ─── System Health Alerts Banner (Google Key, API warnings) ───
+async function dismissSystemAlertBanner(alertId = 'google_credential_error') {
+  const banner = $('systemAlertBanner');
+  if (banner) banner.classList.add('hidden');
+  localStorage.setItem('dismissed_alert_' + alertId, 'true');
+  try {
+    await apiFetch('/api/admin/dismiss-alert', {
+      method: 'POST',
+      body: JSON.stringify({ alert_id: alertId })
+    });
+  } catch (e) {}
+}
+
 async function checkSystemAlerts() {
   try {
     const res = await apiFetch('/api/admin/system-alerts');
     if (res && res.ok && res.alerts && res.alerts.length > 0) {
-      renderSystemAlertsBanner(res.alerts);
+      const activeAlerts = res.alerts.filter(a => localStorage.getItem('dismissed_alert_' + a.id) !== 'true');
+      if (activeAlerts.length > 0) {
+        renderSystemAlertsBanner(activeAlerts);
+      } else {
+        const banner = $('systemAlertBanner');
+        if (banner) banner.classList.add('hidden');
+      }
     } else {
       const banner = $('systemAlertBanner');
       if (banner) banner.classList.add('hidden');
@@ -217,7 +235,7 @@ function renderSystemAlertsBanner(alerts) {
         ${alert.hint ? `<span class="block text-[11px] opacity-75 mt-0.5">${alert.hint}</span>` : ''}
       </div>
     </div>
-    <button onclick="document.getElementById('systemAlertBanner').classList.add('hidden')" class="text-amber-700 dark:text-amber-300 hover:opacity-100 opacity-60 p-1">✕</button>
+    <button onclick="dismissSystemAlertBanner('${alert.id}')" class="text-amber-700 dark:text-amber-300 hover:opacity-100 opacity-60 p-1 font-bold text-sm" title="ปิดการแจ้งเตือน">✕</button>
   `;
 }
 
