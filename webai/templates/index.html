@@ -6901,20 +6901,154 @@
           </div>
         </section>
 
-        <!-- Quotation View -->
-        <section id="view-quotation" class="view hidden flex-1 flex flex-col items-center overflow-hidden animate-in fade-in duration-300 bg-surface-50 dark:bg-surface-950 w-full">
-          <header class="h-14 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between px-6 bg-white dark:bg-surface-900 w-full shrink-0">
-            <h2 class="font-semibold text-sm flex items-center gap-2">
-              <i data-lucide="file-signature" class="w-4 h-4 text-brand-600"></i> สร้างใบเสนอราคา
-            </h2>
+        <!-- Quotation & Invoice View -->
+        <section id="view-quotation" class="view hidden flex-1 flex flex-col overflow-hidden animate-in fade-in duration-300 bg-surface-50 dark:bg-surface-950 w-full h-full">
+          <!-- Top Header -->
+          <header class="h-16 border-b border-surface-200/80 dark:border-surface-800/80 flex items-center justify-between px-6 lg:px-8 bg-white/90 dark:bg-surface-900/90 backdrop-blur-xl w-full shrink-0 z-20 shadow-xs">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-brand-600 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-brand-500/20 flex-shrink-0">
+                <i data-lucide="file-signature" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <div class="flex items-center gap-2">
+                  <h1 class="font-black text-sm text-surface-900 dark:text-white">ใบเสนอราคา & ใบแจ้งหนี้</h1>
+                  <span class="px-2 py-0.5 rounded-full bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 text-[10px] font-bold">Quotation & Invoice</span>
+                </div>
+                <p class="text-[11px] text-surface-400">ระบบจัดการเอกสารการขาย ติดตามสถานะ และพิมพ์ PDF ทางการ</p>
+              </div>
+            </div>
+
+            <!-- View Switcher Tabs (Dashboard vs Creator) -->
+            <div class="flex items-center gap-1 bg-surface-100 dark:bg-surface-800 p-1 rounded-2xl border border-surface-200/70 dark:border-surface-700/70">
+              <button id="tab-qt-dashboard" onclick="switchQtTab('dashboard')" class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all bg-white dark:bg-surface-700 text-brand-600 dark:text-white shadow-xs flex items-center gap-1.5 cursor-pointer">
+                <i data-lucide="layout-grid" class="w-3.5 h-3.5"></i>
+                <span>รายการเอกสารทั้งหมด</span>
+              </button>
+              <button id="tab-qt-creator" onclick="switchQtTab('creator')" class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all text-surface-500 hover:text-surface-900 dark:hover:text-white flex items-center gap-1.5 cursor-pointer">
+                <i data-lucide="printer" class="w-3.5 h-3.5"></i>
+                <span>ออกเอกสารใหม่ (Live PDF)</span>
+              </button>
+            </div>
+
+            <!-- Action CTA -->
             <div class="flex items-center gap-2">
-              <button id="generatePdfBtn" class="btn-primary text-xs py-1.5 px-3 flex items-center gap-1.5">
+              <button onclick="_showQtModal()" class="px-4 py-2 bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white text-xs font-bold rounded-xl shadow-md shadow-brand-500/20 flex items-center gap-1.5 transition-all hover:scale-102 active:scale-98 cursor-pointer">
+                <i data-lucide="plus-circle" class="w-4 h-4"></i>
+                <span>สร้างเอกสารด่วน</span>
+              </button>
+              <button id="generatePdfBtn" class="hidden btn-primary text-xs py-2 px-3 flex items-center gap-1.5">
                 <i data-lucide="file-down" class="w-3.5 h-3.5"></i> สร้าง PDF & บันทึก
               </button>
             </div>
           </header>
-          
-          <div class="flex-1 w-full flex flex-col md:flex-row overflow-hidden">
+
+          <!-- Tab Panel 1: Document Dashboard & History -->
+          <div id="qt-dashboard-panel" class="flex-1 w-full overflow-y-auto custom-scrollbar p-6 lg:p-8 space-y-6">
+            <!-- 4 KPI Summary Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <!-- KPI 1 -->
+              <div class="bg-white dark:bg-surface-900 rounded-3xl border border-surface-200/80 dark:border-surface-800 p-5 shadow-xs flex items-center gap-4 hover:border-brand-300 dark:hover:border-brand-700/50 transition-all">
+                <div class="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 flex items-center justify-center flex-shrink-0">
+                  <i data-lucide="files" class="w-6 h-6"></i>
+                </div>
+                <div class="min-w-0 flex-1">
+                  <p class="text-xs font-bold text-surface-400">เอกสารทั้งหมด</p>
+                  <div class="flex items-baseline gap-2">
+                    <span id="kpi-qt-total-count" class="text-2xl font-black text-surface-900 dark:text-white tabular-nums">0</span>
+                    <span class="text-xs text-surface-400">ฉบับ</span>
+                  </div>
+                  <p id="kpi-qt-total-val" class="text-xs font-bold text-emerald-600 dark:text-emerald-400 mt-0.5 truncate">฿0.00</p>
+                </div>
+              </div>
+
+              <!-- KPI 2 -->
+              <div class="bg-white dark:bg-surface-900 rounded-3xl border border-surface-200/80 dark:border-surface-800 p-5 shadow-xs flex items-center gap-4 hover:border-amber-300 dark:hover:border-amber-700/50 transition-all">
+                <div class="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 flex items-center justify-center flex-shrink-0">
+                  <i data-lucide="file-edit" class="w-6 h-6"></i>
+                </div>
+                <div class="min-w-0 flex-1">
+                  <p class="text-xs font-bold text-surface-400">ฉบับร่าง (Draft)</p>
+                  <div class="flex items-baseline gap-2">
+                    <span id="kpi-qt-draft-count" class="text-2xl font-black text-amber-600 dark:text-amber-400 tabular-nums">0</span>
+                    <span class="text-xs text-surface-400">ฉบับ</span>
+                  </div>
+                  <p class="text-[10px] text-surface-400 mt-0.5">กำลังจัดเตรียม</p>
+                </div>
+              </div>
+
+              <!-- KPI 3 -->
+              <div class="bg-white dark:bg-surface-900 rounded-3xl border border-surface-200/80 dark:border-surface-800 p-5 shadow-xs flex items-center gap-4 hover:border-sky-300 dark:hover:border-sky-700/50 transition-all">
+                <div class="w-12 h-12 rounded-2xl bg-sky-50 dark:bg-sky-900/20 text-sky-600 dark:text-sky-400 flex items-center justify-center flex-shrink-0">
+                  <i data-lucide="send" class="w-6 h-6"></i>
+                </div>
+                <div class="min-w-0 flex-1">
+                  <p class="text-xs font-bold text-surface-400">ส่งแล้ว / รอตอบรับ</p>
+                  <div class="flex items-baseline gap-2">
+                    <span id="kpi-qt-sent-count" class="text-2xl font-black text-sky-600 dark:text-sky-400 tabular-nums">0</span>
+                    <span class="text-xs text-surface-400">ฉบับ</span>
+                  </div>
+                  <p class="text-[10px] text-surface-400 mt-0.5">รอตรวจรับ / อนุมัติ</p>
+                </div>
+              </div>
+
+              <!-- KPI 4 -->
+              <div class="bg-white dark:bg-surface-900 rounded-3xl border border-surface-200/80 dark:border-surface-800 p-5 shadow-xs flex items-center gap-4 hover:border-emerald-300 dark:hover:border-emerald-700/50 transition-all">
+                <div class="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center flex-shrink-0">
+                  <i data-lucide="check-circle-2" class="w-6 h-6"></i>
+                </div>
+                <div class="min-w-0 flex-1">
+                  <p class="text-xs font-bold text-surface-400">อนุมัติ & ชำระแล้ว</p>
+                  <div class="flex items-baseline gap-2">
+                    <span id="kpi-qt-paid-count" class="text-2xl font-black text-emerald-600 dark:text-emerald-400 tabular-nums">0</span>
+                    <span class="text-xs text-surface-400">ฉบับ</span>
+                  </div>
+                  <p class="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5 font-bold">สำเร็จเรียบร้อย</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Full-Width Filter & Search Toolbar -->
+            <div class="bg-white dark:bg-surface-900 rounded-3xl border border-surface-200/80 dark:border-surface-800 p-4 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <!-- Left: Search Box -->
+              <div class="relative flex-1 max-w-md">
+                <i data-lucide="search" class="w-4 h-4 text-surface-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                <input id="qt-search" type="text" placeholder="ค้นหาเลขที่เอกสาร, ชื่อลูกค้า, บริษัท..." oninput="renderQuotations()" class="w-full pl-10 pr-4 py-2 text-xs border border-surface-200 dark:border-surface-700 rounded-xl bg-surface-50/50 dark:bg-surface-800 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/30 transition-all">
+              </div>
+
+              <!-- Right: Filters -->
+              <div class="flex items-center gap-2 flex-wrap">
+                <!-- Type Filter -->
+                <select id="qt-type-f" onchange="loadQuotations()" class="px-3 py-2 text-xs font-bold border border-surface-200 dark:border-surface-700 rounded-xl bg-surface-50/50 dark:bg-surface-800 text-surface-800 dark:text-surface-200 focus:outline-none cursor-pointer">
+                  <option value="">📂 ทุกประเภทเอกสาร</option>
+                  <option value="quotation">📄 ใบเสนอราคา (Quotation)</option>
+                  <option value="invoice">📑 ใบแจ้งหนี้ (Invoice)</option>
+                </select>
+
+                <!-- Status Filter -->
+                <select id="qt-status-f" onchange="loadQuotations()" class="px-3 py-2 text-xs font-bold border border-surface-200 dark:border-surface-700 rounded-xl bg-surface-50/50 dark:bg-surface-800 text-surface-800 dark:text-surface-200 focus:outline-none cursor-pointer">
+                  <option value="">🏷️ ทุกสถานะ</option>
+                  <option value="draft">ร่าง (Draft)</option>
+                  <option value="sent">ส่งแล้ว (Sent)</option>
+                  <option value="approved">อนุมัติแล้ว (Approved)</option>
+                  <option value="paid">ชำระเงินแล้ว (Paid)</option>
+                  <option value="rejected">ปฏิเสธ (Rejected)</option>
+                </select>
+
+                <button onclick="_showQtModal()" class="px-3.5 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer">
+                  <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                  <span>สร้างใหม่</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Documents Grid -->
+            <div id="quotation-list" class="w-full grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+              <!-- Rendered via JS -->
+            </div>
+          </div>
+
+          <!-- Tab Panel 2: Live Document Generator & PDF Preview -->
+          <div id="qt-creator-panel" class="hidden flex-1 w-full flex flex-col md:flex-row overflow-hidden">
             <!-- Input Form Sidebar -->
             <div class="w-full md:w-[400px] border-r border-surface-200 dark:border-surface-800 bg-white dark:bg-surface-900 overflow-y-auto p-6 space-y-6">
               <!-- Navigation Alert Card -->
@@ -10112,7 +10246,7 @@
   <script src="/static/js/line-groups-modal.js?v=4.1"></script>
   <script src="/static/js/plans-modal.js?v=4.1"></script>
   <script src="/static/js/sheets-reconcile.js?v=4.1"></script>
-  <script src="/static/js/financial-dashboard.js?v=4.5"></script>
+  <script src="/static/js/financial-dashboard.js?v=4.6"></script>
   <!-- 🌩️ Weather Detail Modal -->
   <div id="weatherDetailModal" class="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-xl hidden flex items-center justify-center animate-in fade-in duration-500 p-0 sm:p-4">
     <div class="bg-white dark:bg-surface-900 w-full h-full sm:w-[95%] sm:max-w-xl sm:h-auto flex flex-col sm:rounded-[3rem] shadow-[0_0_100px_rgba(0,0,0,0.5)] overflow-hidden border border-white/20">

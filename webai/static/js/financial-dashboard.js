@@ -170,9 +170,84 @@ function _fmtDate(s){ return s ? s.substring(0,10) : '—'; }
    QUOTATION / INVOICE
    ════════════════════════════════════════════════ */
 let _qtList = [];
-const STAGE_COLORS = {draft:'bg-surface-100 text-surface-500', sent:'bg-blue-100 text-blue-700',
-  approved:'bg-green-100 text-green-700', rejected:'bg-red-100 text-red-700', paid:'bg-emerald-100 text-emerald-700'};
-const STAGE_TH = {draft:'ร่าง', sent:'ส่งแล้ว', approved:'อนุมัติ', rejected:'ปฏิเสธ', paid:'ชำระแล้ว'};
+const STAGE_COLORS = {
+  draft: 'bg-surface-100 text-surface-600 dark:bg-surface-800 dark:text-surface-300 border-surface-200 dark:border-surface-700',
+  sent: 'bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300 border-sky-200 dark:border-sky-800/60',
+  approved: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60',
+  paid: 'bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300 border-teal-200 dark:border-teal-800/60',
+  rejected: 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border-rose-200 dark:border-rose-800/60'
+};
+const STAGE_TH = { draft: 'ร่าง', sent: 'ส่งแล้ว', approved: 'อนุมัติ', paid: 'ชำระแล้ว', rejected: 'ปฏิเสธ' };
+
+function updateQtKpiStats() {
+  const totalCount = _qtList.length;
+  const totalVal = _qtList.reduce((acc, x) => acc + Math.max(0, Number(x.total || 0)), 0);
+  const draftCount = _qtList.filter(x => x.status === 'draft').length;
+  const sentCount = _qtList.filter(x => x.status === 'sent').length;
+  const paidCount = _qtList.filter(x => x.status === 'approved' || x.status === 'paid').length;
+
+  const countEl = document.getElementById('kpi-qt-total-count');
+  const valEl = document.getElementById('kpi-qt-total-val');
+  const draftEl = document.getElementById('kpi-qt-draft-count');
+  const sentEl = document.getElementById('kpi-qt-sent-count');
+  const paidEl = document.getElementById('kpi-qt-paid-count');
+
+  if (countEl) countEl.textContent = totalCount;
+  if (valEl) valEl.textContent = '฿' + _fmt(totalVal);
+  if (draftEl) draftEl.textContent = draftCount;
+  if (sentEl) sentEl.textContent = sentCount;
+  if (paidEl) paidEl.textContent = paidCount;
+}
+
+function switchQtTab(tab) {
+  const dashPanel = document.getElementById('qt-dashboard-panel');
+  const creatorPanel = document.getElementById('qt-creator-panel');
+  const tabDash = document.getElementById('tab-qt-dashboard');
+  const tabCreator = document.getElementById('tab-qt-creator');
+  const pdfBtn = document.getElementById('generatePdfBtn');
+
+  if (tab === 'creator') {
+    if (dashPanel) dashPanel.classList.add('hidden');
+    if (creatorPanel) creatorPanel.classList.remove('hidden');
+    if (tabDash) {
+      tabDash.className = 'px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all text-surface-500 hover:text-surface-900 dark:hover:text-white flex items-center gap-1.5 cursor-pointer';
+    }
+    if (tabCreator) {
+      tabCreator.className = 'px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all bg-white dark:bg-surface-700 text-brand-600 dark:text-white shadow-xs flex items-center gap-1.5 cursor-pointer';
+    }
+    if (pdfBtn) pdfBtn.classList.remove('hidden');
+    if (typeof initDocumentGenerator === 'function') initDocumentGenerator();
+  } else {
+    if (creatorPanel) creatorPanel.classList.add('hidden');
+    if (dashPanel) dashPanel.classList.remove('hidden');
+    if (tabDash) {
+      tabDash.className = 'px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all bg-white dark:bg-surface-700 text-brand-600 dark:text-white shadow-xs flex items-center gap-1.5 cursor-pointer';
+    }
+    if (tabCreator) {
+      tabCreator.className = 'px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all text-surface-500 hover:text-surface-900 dark:hover:text-white flex items-center gap-1.5 cursor-pointer';
+    }
+    if (pdfBtn) pdfBtn.classList.add('hidden');
+    loadQuotations();
+  }
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+async function changeQuotationStatus(id, status) {
+  try {
+    const res = await _json(`/api/quotations/${id}/status`, {
+      method: 'POST',
+      body: JSON.stringify({ status })
+    });
+    if (res.ok) {
+      toast('อัปเดตสถานะสำเร็จ', 'success');
+      loadQuotations();
+    } else {
+      toast(res.error || 'ไม่สามารถอัปเดตสถานะได้', 'error');
+    }
+  } catch (err) {
+    toast('เกิดข้อผิดพลาดในการเปลี่ยนสถานะ', 'error');
+  }
+}
 
 async function loadQuotations() {
   const type = document.getElementById('qt-type-f')?.value || '';
@@ -190,37 +265,138 @@ async function loadQuotations() {
 function renderQuotations() {
   const el = document.getElementById('quotation-list');
   if (!el) return;
-  const q = (document.getElementById('qt-search')?.value||'').toLowerCase();
-  const list = _qtList.filter(x => !q || x.quotation_no?.toLowerCase().includes(q) || x.customer_name?.toLowerCase().includes(q));
+  const q = (document.getElementById('qt-search')?.value || '').toLowerCase().trim();
+  const typeF = document.getElementById('qt-type-f')?.value || '';
+  const statusF = document.getElementById('qt-status-f')?.value || '';
+
+  const list = _qtList.filter(x => {
+    if (typeF && x.type !== typeF) return false;
+    if (statusF && x.status !== statusF) return false;
+    if (q) {
+      const matchNo = x.quotation_no?.toLowerCase().includes(q);
+      const matchCust = x.customer_name?.toLowerCase().includes(q);
+      const matchCompany = x.customer_company?.toLowerCase().includes(q);
+      if (!matchNo && !matchCust && !matchCompany) return false;
+    }
+    return true;
+  });
+
+  updateQtKpiStats();
+
   if (!list.length) {
-    el.innerHTML = '<div class="col-span-full py-16 text-center text-surface-400 text-sm">ยังไม่มีรายการ</div>';
+    el.innerHTML = `
+      <div class="col-span-full py-20 text-center">
+        <div class="w-16 h-16 rounded-3xl bg-surface-100 dark:bg-surface-800 text-surface-400 flex items-center justify-center mx-auto mb-4 shadow-inner">
+          <i data-lucide="file-question" class="w-8 h-8 opacity-40"></i>
+        </div>
+        <h4 class="text-sm font-bold text-surface-700 dark:text-surface-300 mb-1">ยังไม่มีเอกสารในหมวดหมู่นี้</h4>
+        <p class="text-xs text-surface-400 max-w-sm mx-auto mb-5">เริ่มต้นสร้างใบเสนอราคาหรือใบแจ้งหนี้เพื่อส่งให้ลูกค้าและพิมพ์ PDF ได้ทันที</p>
+        <button onclick="_showQtModal()" class="inline-flex items-center gap-1.5 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-xl shadow-md shadow-brand-500/20 transition-all hover:scale-102 cursor-pointer">
+          <i data-lucide="plus-circle" class="w-4 h-4"></i>
+          <span>สร้างเอกสารแรก</span>
+        </button>
+      </div>`;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
     return;
   }
-  el.innerHTML = list.map(q => `
-    <div class="bg-white dark:bg-surface-900 rounded-2xl border border-surface-200 dark:border-surface-800 p-5 hover:shadow-lg transition-all">
-      <div class="flex items-start justify-between mb-3">
+
+  const STAGE_META = {
+    draft: { label: 'ร่างเอกสาร', badge: 'bg-surface-100 text-surface-600 dark:bg-surface-800 dark:text-surface-300 border-surface-200 dark:border-surface-700', dot: 'bg-surface-400' },
+    sent: { label: 'ส่งแล้ว', badge: 'bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300 border-sky-200 dark:border-sky-800/60', dot: 'bg-sky-500' },
+    approved: { label: 'อนุมัติแล้ว', badge: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60', dot: 'bg-emerald-500' },
+    paid: { label: 'ชำระเงินแล้ว', badge: 'bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300 border-teal-200 dark:border-teal-800/60', dot: 'bg-teal-500' },
+    rejected: { label: 'ปฏิเสธ', badge: 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border-rose-200 dark:border-rose-800/60', dot: 'bg-rose-500' }
+  };
+
+  el.innerHTML = list.map(q => {
+    const isInvoice = q.type === 'invoice';
+    const st = STAGE_META[q.status] || { label: q.status, badge: 'bg-surface-100 text-surface-500', dot: 'bg-surface-400' };
+    const itemsCount = Array.isArray(q.items) ? q.items.length : 0;
+    const totalVal = Math.max(0, Number(q.total || 0));
+
+    return `
+    <div class="bg-white dark:bg-surface-900 rounded-3xl border border-surface-200/80 dark:border-surface-800 p-6 shadow-xs hover:shadow-xl hover:border-brand-300 dark:hover:border-brand-700/60 transition-all duration-200 flex flex-col justify-between group relative overflow-hidden">
+      <!-- Top Accent Line -->
+      <div class="absolute top-0 left-0 right-0 h-1.5 ${isInvoice ? 'bg-gradient-to-r from-amber-500 to-orange-500' : 'bg-gradient-to-r from-brand-500 to-indigo-500'} opacity-80 group-hover:opacity-100 transition-opacity"></div>
+
+      <div>
+        <!-- Card Header: Type, Document No, Status Badge -->
+        <div class="flex items-start justify-between gap-2 mb-4">
+          <div class="min-w-0">
+            <div class="flex items-center gap-1.5 mb-1">
+              <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${isInvoice ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40' : 'bg-brand-50 dark:bg-brand-900/40 text-brand-600 dark:text-brand-400 border border-brand-200 dark:border-brand-800/40'}">
+                <i data-lucide="${isInvoice ? 'receipt' : 'file-signature'}" class="w-3 h-3"></i>
+                ${isInvoice ? 'INVOICE' : 'QUOTATION'}
+              </span>
+            </div>
+            <h3 class="font-black text-surface-900 dark:text-white text-base tracking-tight font-mono">${q.quotation_no || ('QT-' + q.id)}</h3>
+          </div>
+
+          <!-- Status Pill -->
+          <div class="flex-shrink-0">
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border ${st.badge} shadow-2xs">
+              <span class="w-1.5 h-1.5 rounded-full ${st.dot}"></span>
+              ${st.label}
+            </span>
+          </div>
+        </div>
+
+        <!-- Customer Info -->
+        <div class="space-y-2 mb-5">
+          <div class="flex items-center gap-2 text-surface-800 dark:text-surface-200 font-bold text-xs truncate">
+            <i data-lucide="building-2" class="w-4 h-4 text-surface-400 flex-shrink-0"></i>
+            <span class="truncate" title="${q.customer_name || 'ไม่ระบุลูกค้า'}">${q.customer_name || 'ไม่ระบุลูกค้า'}</span>
+          </div>
+          ${q.customer_company ? `
+          <div class="flex items-center gap-2 text-surface-400 text-[11px] truncate pl-6">
+            <span class="truncate">${q.customer_company}</span>
+          </div>` : ''}
+          <div class="flex items-center justify-between text-[11px] text-surface-400 pt-2 border-t border-surface-100 dark:border-surface-800/60">
+            <span class="flex items-center gap-1"><i data-lucide="package" class="w-3.5 h-3.5"></i> ${itemsCount} รายการ</span>
+            <span class="flex items-center gap-1"><i data-lucide="calendar" class="w-3.5 h-3.5"></i> ${_fmtDate(q.created_at)}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card Footer: Total Amount & Action Buttons -->
+      <div class="pt-4 border-t border-surface-100 dark:border-surface-800 flex items-center justify-between gap-2">
         <div>
-          <span class="text-[10px] font-black text-orange-500 uppercase">${q.type==='invoice'?'INVOICE':'QUOTATION'}</span>
-          <h3 class="font-black text-surface-900 dark:text-white text-sm">${q.quotation_no}</h3>
-          <p class="text-xs text-surface-400">${q.customer_name}</p>
+          <span class="text-[10px] font-bold uppercase tracking-wider text-surface-400 block">ยอดสุทธิ</span>
+          <span class="font-black text-lg text-emerald-600 dark:text-emerald-400 tabular-nums">฿${_fmt(totalVal)}</span>
         </div>
-        <span class="text-[10px] font-bold px-2 py-1 rounded-lg ${STAGE_COLORS[q.status]||'bg-surface-100 text-surface-500'}">${STAGE_TH[q.status]||q.status}</span>
-      </div>
-      <div class="flex items-center justify-between pt-3 border-t border-surface-100 dark:border-surface-800">
-        <span class="font-black text-emerald-600">฿${_fmt(q.total)}</span>
-        <div class="flex gap-1">
-          <button onclick="openQuotationModal(${q.id})" class="p-1.5 hover:bg-surface-100 dark:hover:bg-surface-800 rounded-lg transition text-surface-400 hover:text-orange-500" title="แก้ไข">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+
+        <div class="flex items-center gap-1.5">
+          <!-- Change Status Quick Menu -->
+          <div class="relative">
+            <select onchange="changeQuotationStatus(${q.id}, this.value)" title="เปลี่ยนสถานะ" class="text-[10px] font-bold py-1.5 px-2 rounded-xl bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 border border-surface-200 dark:border-surface-700 hover:border-brand-500 cursor-pointer focus:outline-none">
+              <option value="draft" ${q.status==='draft'?'selected':''}>ร่าง</option>
+              <option value="sent" ${q.status==='sent'?'selected':''}>ส่งแล้ว</option>
+              <option value="approved" ${q.status==='approved'?'selected':''}>อนุมัติ</option>
+              <option value="paid" ${q.status==='paid'?'selected':''}>ชำระแล้ว</option>
+              <option value="rejected" ${q.status==='rejected'?'selected':''}>ปฏิเสธ</option>
+            </select>
+          </div>
+
+          <!-- Download PDF -->
+          <button onclick="downloadQtPdf(${q.id})" class="p-2 bg-surface-100 dark:bg-surface-800 hover:bg-brand-50 dark:hover:bg-brand-900/30 text-surface-500 hover:text-brand-600 dark:hover:text-brand-400 rounded-xl transition-all shadow-2xs cursor-pointer" title="ดาวน์โหลด PDF">
+            <i data-lucide="file-down" class="w-4 h-4"></i>
           </button>
-          <button onclick="downloadQtPdf(${q.id})" class="p-1.5 hover:bg-surface-100 dark:hover:bg-surface-800 rounded-lg transition text-surface-400 hover:text-red-500" title="PDF">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+
+          <!-- Edit Button -->
+          <button onclick="openQuotationModal(${q.id})" class="p-2 bg-surface-100 dark:bg-surface-800 hover:bg-amber-50 dark:hover:bg-amber-900/30 text-surface-500 hover:text-amber-600 dark:hover:text-amber-400 rounded-xl transition-all shadow-2xs cursor-pointer" title="แก้ไขเอกสาร">
+            <i data-lucide="pencil" class="w-4 h-4"></i>
           </button>
-          <button onclick="deleteQuotation(${q.id})" class="p-1.5 hover:bg-surface-100 dark:hover:bg-surface-800 rounded-lg transition text-surface-400 hover:text-red-500" title="ลบ">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+
+          <!-- Delete Button -->
+          <button onclick="deleteQuotation(${q.id})" class="p-2 bg-surface-100 dark:bg-surface-800 hover:bg-rose-50 dark:hover:bg-rose-900/30 text-surface-500 hover:text-rose-600 dark:hover:text-rose-400 rounded-xl transition-all shadow-2xs cursor-pointer" title="ลบเอกสาร">
+            <i data-lucide="trash-2" class="w-4 h-4"></i>
           </button>
         </div>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
+
+  if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
 async function downloadQtPdf(id) {
@@ -280,13 +456,13 @@ function renderQtItems() {
 }
 function qtCalc() {
   const subtotal = _qtItems.reduce((s,it)=>s+(it.qty*it.price),0);
-  const discount = parseFloat(document.getElementById('qt-discount')?.value||0);
-  const vatRate  = parseFloat(document.getElementById('qt-vat')?.value||7);
-  const whtRate  = parseFloat(document.getElementById('qt-wht')?.value||0);
-  const base = subtotal - discount;
+  const discount = Math.max(0, parseFloat(document.getElementById('qt-discount')?.value||0));
+  const vatRate  = Math.max(0, parseFloat(document.getElementById('qt-vat')?.value||7));
+  const whtRate  = Math.max(0, parseFloat(document.getElementById('qt-wht')?.value||0));
+  const base = Math.max(0, subtotal - discount);
   const vatAmt = base * vatRate / 100;
   const whtAmt = base * whtRate / 100;
-  const total  = base + vatAmt - whtAmt;
+  const total  = Math.max(0, base + vatAmt - whtAmt);
   if (document.getElementById('qt-subtotal')) document.getElementById('qt-subtotal').textContent = _fmt(subtotal);
   if (document.getElementById('qt-vat-amt')) document.getElementById('qt-vat-amt').textContent = _fmt(vatAmt);
   if (document.getElementById('qt-wht-amt')) document.getElementById('qt-wht-amt').textContent = _fmt(whtAmt);
@@ -426,29 +602,9 @@ document.addEventListener('DOMContentLoaded', () => {
 function initQuotationView() {
   const el = document.getElementById('view-quotation');
   if (!el) return;
-  // inject filter bar + grid if not already done
-  if (!document.getElementById('quotation-list')) {
-    const bar = `
-      <div class="flex items-center justify-between px-6 py-4 border-b border-surface-200 dark:border-surface-800 bg-white dark:bg-surface-900 sticky top-0 z-10">
-        <div class="flex gap-2 flex-wrap">
-          <input id="qt-search" type="text" placeholder="ค้นหา..." oninput="renderQuotations()" class="px-3 py-1.5 text-xs border border-surface-200 dark:border-surface-700 rounded-xl bg-white dark:bg-surface-800 text-surface-900 dark:text-white w-40">
-          <select id="qt-type-f" onchange="loadQuotations()" class="px-3 py-1.5 text-xs border border-surface-200 dark:border-surface-700 rounded-xl bg-white dark:bg-surface-800 text-surface-900 dark:text-white">
-            <option value="">ทุกประเภท</option><option value="quotation">ใบเสนอราคา</option><option value="invoice">Invoice</option>
-          </select>
-          <select id="qt-status-f" onchange="loadQuotations()" class="px-3 py-1.5 text-xs border border-surface-200 dark:border-surface-700 rounded-xl bg-white dark:bg-surface-800 text-surface-900 dark:text-white">
-            <option value="">ทุกสถานะ</option><option value="draft">ร่าง</option><option value="sent">ส่งแล้ว</option><option value="approved">อนุมัติ</option><option value="paid">ชำระแล้ว</option>
-          </select>
-        </div>
-        <button onclick="_showQtModal()" class="px-4 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold">+ สร้างใหม่</button>
-      </div>
-      <div class="flex-1 overflow-y-auto p-6">
-        <div id="quotation-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
-      </div>`;
-    // remove placeholder content
-    el.querySelector('.w-full.max-w-3xl')?.remove();
-    el.innerHTML = bar;
-  }
+  switchQtTab('dashboard');
   loadQuotations();
+  if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
 /* ════════════════════════════════════════════════
