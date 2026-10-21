@@ -641,3 +641,608 @@ async function loadAttendanceOrgSummary() {
     console.error('[loadAttendanceOrgSummary] Error:', err);
   }
 }
+
+// ============================================================================
+// Organization Attendance Management (Admin Tab & Manual Overrides)
+// ============================================================================
+
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+let _orgAttCurrentDate = '';
+let _orgAttMembersCache = [];
+
+function getOrgAttBangkokToday() {
+  const now = new Date();
+  const bangkokTime = new Date(now.getTime() + (7 * 60 + now.getTimezoneOffset()) * 60000);
+  const yyyy = bangkokTime.getFullYear();
+  const mm = String(bangkokTime.getMonth() + 1).padStart(2, '0');
+  const dd = String(bangkokTime.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function formatOrgAttThaiDate(dateStr) {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return dateStr;
+  const thaiMonths = [
+    'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+    'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'
+  ];
+  const day = parseInt(parts[2], 10);
+  const mIdx = parseInt(parts[1], 10) - 1;
+  const year = parseInt(parts[0], 10) + 543;
+  return `${day} ${thaiMonths[mIdx] || ''} ${year}`;
+}
+
+/**
+ * Load attendance status of all org members for a specific date
+ */
+async function loadOrgAttendance(targetDate) {
+  if (!targetDate) {
+    targetDate = _orgAttCurrentDate || getOrgAttBangkokToday();
+  }
+  _orgAttCurrentDate = targetDate;
+
+  const dateInput = document.getElementById('orgAttDateInput');
+  if (dateInput && dateInput.value !== targetDate) {
+    dateInput.value = targetDate;
+  }
+
+  const dateBadge = document.getElementById('orgAttDateBadge');
+  if (dateBadge) {
+    dateBadge.textContent = formatOrgAttThaiDate(targetDate);
+  }
+
+  const tbody = document.getElementById('orgAttTableBody');
+  if (tbody) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="7" class="py-12 text-center text-surface-400">
+          <div class="flex flex-col items-center justify-center gap-2">
+            <i data-lucide="loader-2" class="w-6 h-6 animate-spin text-brand-500"></i>
+            <span>กำลังโหลดข้อมูลเวลาเข้างานประจำวันที่ ${formatOrgAttThaiDate(targetDate)}...</span>
+          </div>
+        </td>
+      </tr>
+    `;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+
+  try {
+    const res = await fetch(`/api/admin/attendance/daily?date=${encodeURIComponent(targetDate)}`);
+    const data = await res.json();
+
+    if (!data.ok) {
+      if (tbody) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="7" class="py-12 text-center text-rose-500 text-xs">
+              ${data.error || 'ไม่สามารถโหลดข้อมูลเวลาเข้างานได้'}
+            </td>
+          </tr>
+        `;
+      }
+      return;
+    }
+
+    const counts = data.counts || (data.summary ? {
+      total: data.summary.total_members || 0,
+      present: data.summary.present_count || 0,
+      present_rate: data.summary.present_percentage || 0,
+      absent: data.summary.absent_count || 0,
+      late: data.summary.late_count || 0
+    } : {});
+
+    // Update KPI counts
+    const totalEl = document.getElementById('orgAttStatTotal');
+    const presentEl = document.getElementById('orgAttStatPresent');
+    const rateEl = document.getElementById('orgAttStatRate');
+    const absentEl = document.getElementById('orgAttStatAbsent');
+    const lateEl = document.getElementById('orgAttStatLate');
+
+    if (totalEl) totalEl.textContent = counts.total || 0;
+    if (presentEl) presentEl.textContent = counts.present || 0;
+    if (rateEl) rateEl.textContent = `(${counts.present_rate || 0}%)`;
+    if (absentEl) absentEl.textContent = counts.absent || 0;
+    if (lateEl) lateEl.textContent = counts.late || 0;
+
+    const rawMembers = data.members || [];
+    _orgAttMembersCache = rawMembers.map((m, idx) => {
+      let st = m.status || 'absent';
+      if (st === 'on_time') st = 'present';
+      return {
+        user_id: m.user_id || idx + 1,
+        username: m.username || '',
+        full_name: m.full_name || m.display_name || m.username || 'สมาชิก',
+        avatar_url: m.avatar_url || '',
+        role: m.role || 'member',
+        department: m.department || 'ทั่วไป',
+        position: m.position || '',
+        email: m.email || '',
+        status: st,
+        check_in: m.check_in || null,
+        check_out: m.check_out || null,
+        total_hours: m.total_hours || m.work_duration_hours || 0,
+        note: m.note || ''
+      };
+    });
+
+    // Populate department filter options dynamically
+    updateOrgAttDeptFilter(_orgAttMembersCache);
+
+    // Render table
+    filterOrgAttendanceTable();
+  } catch (err) {
+    console.error('[loadOrgAttendance] Error:', err);
+    if (tbody) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="7" class="py-12 text-center text-rose-500 text-xs">
+            เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์
+          </td>
+        </tr>
+      `;
+    }
+  }
+}
+
+function updateOrgAttDeptFilter(members) {
+  const deptSelect = document.getElementById('orgAttDeptFilter');
+  if (!deptSelect) return;
+
+  const currentVal = deptSelect.value;
+  const depts = new Set();
+  members.forEach(m => {
+    if (m.department && m.department.trim()) {
+      depts.add(m.department.trim());
+    }
+  });
+
+  let optionsHtml = '<option value="all">ทุกแผนก</option>';
+  Array.from(depts).sort().forEach(d => {
+    optionsHtml += `<option value="${escapeHtml(d)}">${escapeHtml(d)}</option>`;
+  });
+  deptSelect.innerHTML = optionsHtml;
+  if (depts.has(currentVal)) {
+    deptSelect.value = currentVal;
+  }
+}
+
+/**
+ * Filter and render attendance table
+ */
+function filterOrgAttendanceTable() {
+  const tbody = document.getElementById('orgAttTableBody');
+  const countLabel = document.getElementById('orgAttTableCount');
+  if (!tbody) return;
+
+  const searchQ = ((document.getElementById('orgAttSearchInput') || {}).value || '').toLowerCase().trim();
+  const statusFilter = (document.getElementById('orgAttStatusFilter') || {}).value || 'all';
+  const deptFilter = (document.getElementById('orgAttDeptFilter') || {}).value || 'all';
+
+  const filtered = _orgAttMembersCache.filter(m => {
+    // Dept filter
+    if (deptFilter !== 'all' && (m.department || '').trim() !== deptFilter) {
+      return false;
+    }
+
+    // Status filter
+    if (statusFilter === 'present') {
+      if (m.status !== 'present' && m.status !== 'late' && m.status !== 'manual_admin') return false;
+    } else if (statusFilter === 'absent') {
+      if (m.status !== 'absent') return false;
+    } else if (statusFilter === 'late') {
+      if (m.status !== 'late') return false;
+    } else if (statusFilter === 'manual_admin') {
+      if (m.status !== 'manual_admin') return false;
+    }
+
+    // Search query
+    if (searchQ) {
+      const matchName = (m.full_name || '').toLowerCase().includes(searchQ);
+      const matchUser = (m.username || '').toLowerCase().includes(searchQ);
+      const matchDept = (m.department || '').toLowerCase().includes(searchQ);
+      const matchPos = (m.position || '').toLowerCase().includes(searchQ);
+      const matchEmail = (m.email || '').toLowerCase().includes(searchQ);
+      if (!matchName && !matchUser && !matchDept && !matchPos && !matchEmail) return false;
+    }
+
+    return true;
+  });
+
+  if (countLabel) {
+    countLabel.textContent = `แสดง ${filtered.length} จาก ${_orgAttMembersCache.length} รายการ`;
+  }
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="7" class="py-12 text-center text-surface-400 text-xs">
+          <div class="flex flex-col items-center justify-center gap-1.5">
+            <i data-lucide="filter-x" class="w-8 h-8 opacity-40 mb-1"></i>
+            <span class="font-bold text-surface-600 dark:text-surface-300">ไม่พบข้อมูลตามเงื่อนไขที่ค้นหา</span>
+            <span class="text-[11px] text-surface-400">ลองปรับการค้นหาหรือเปลี่ยนตัวกรองสถานะ</span>
+          </div>
+        </td>
+      </tr>
+    `;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    return;
+  }
+
+  let html = '';
+  filtered.forEach(m => {
+    const displayName = m.full_name || m.username;
+    const initial = (m.username || 'U').substring(0, 1).toUpperCase();
+    const deptRole = [m.department, m.position || m.role].filter(Boolean).join(' • ');
+
+    // Check-in Time & Badges
+    let inHtml = '<span class="text-surface-400 font-mono text-xs">-</span>';
+    if (m.check_in && m.check_in.check_time) {
+      const timeStr = m.check_in.check_time.substring(0, 5);
+      inHtml = `
+        <div class="flex items-center gap-1.5">
+          <span class="font-mono font-bold text-surface-900 dark:text-white">${timeStr} น.</span>
+        </div>
+      `;
+    }
+
+    // Check-out Time
+    let outHtml = '<span class="text-surface-400 font-mono text-xs">-</span>';
+    if (m.check_out && m.check_out.check_time) {
+      const timeStr = m.check_out.check_time.substring(0, 5);
+      outHtml = `
+        <div class="flex items-center gap-1.5">
+          <span class="font-mono font-bold text-surface-900 dark:text-white">${timeStr} น.</span>
+        </div>
+      `;
+    }
+
+    // Hours
+    let hoursHtml = '<span class="text-surface-400 font-mono text-xs">-</span>';
+    if (m.total_hours > 0) {
+      hoursHtml = `<span class="font-mono font-bold text-brand-600 dark:text-brand-400 tabular-nums">${m.total_hours} ชม.</span>`;
+    }
+
+    // Status Badge
+    let statusBadge = '';
+    if (m.status === 'present') {
+      statusBadge = '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>มาทำงาน</span>';
+    } else if (m.status === 'late') {
+      statusBadge = '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/40"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>มาสาย</span>';
+    } else if (m.status === 'manual_admin') {
+      statusBadge = '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 border border-sky-200/60 dark:border-sky-800/40"><span class="w-1.5 h-1.5 rounded-full bg-sky-500"></span>แอดมินบันทึก</span>';
+    } else {
+      statusBadge = '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200/60 dark:border-rose-800/40"><span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span>ยังไม่ลงเวลา</span>';
+    }
+
+    // Note / Location Details
+    let noteHtml = '<span class="text-surface-400 text-xs">-</span>';
+    const notes = [];
+    if (m.check_in && m.check_in.distance_meters !== null && m.check_in.distance_meters !== undefined) {
+      notes.push(`GPS: ${Math.round(m.check_in.distance_meters)} ม.`);
+    }
+    if (m.check_in && m.check_in.note) {
+      notes.push(escapeHtml(m.check_in.note));
+    }
+    if (notes.length > 0) {
+      noteHtml = `<span class="text-surface-600 dark:text-surface-300 text-[11px] truncate max-w-[200px] inline-block" title="${notes.join(' | ')}">${notes.join(' | ')}</span>`;
+    }
+
+    // Action button
+    const hasRecord = !!m.check_in;
+    const btnLabel = hasRecord ? 'แก้ไข' : 'บันทึกเวลาแทน';
+    const btnIcon = hasRecord ? 'edit-2' : 'plus-circle';
+    const btnClass = hasRecord
+      ? 'text-surface-600 dark:text-surface-300 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-surface-100 dark:hover:bg-surface-800'
+      : 'text-brand-600 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-950/40 border border-brand-200 dark:border-brand-800/50';
+
+    html += `
+      <tr class="hover:bg-surface-50/70 dark:hover:bg-surface-800/40 transition-colors">
+        <td class="py-3 px-4">
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-full bg-brand-500 text-white font-bold text-xs flex items-center justify-center shrink-0">
+              ${initial}
+            </div>
+            <div class="min-w-0">
+              <div class="font-bold text-surface-900 dark:text-white truncate flex items-center gap-1.5">
+                <span>${escapeHtml(displayName)}</span>
+                ${m.username !== displayName ? `<span class="text-[10px] text-surface-400 font-normal">(@${escapeHtml(m.username)})</span>` : ''}
+              </div>
+              <div class="text-[10px] text-surface-400 truncate">${escapeHtml(deptRole || 'สมาชิกทั่วไป')}</div>
+            </div>
+          </div>
+        </td>
+        <td class="py-3 px-4">${inHtml}</td>
+        <td class="py-3 px-4">${outHtml}</td>
+        <td class="py-3 px-4">${hoursHtml}</td>
+        <td class="py-3 px-4">${statusBadge}</td>
+        <td class="py-3 px-4">${noteHtml}</td>
+        <td class="py-3 px-4 text-right">
+          <button type="button" onclick="openOrgAttendanceModal(${m.user_id})"
+            class="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold rounded-lg transition-colors ${btnClass}">
+            <i data-lucide="${btnIcon}" class="w-3.5 h-3.5"></i>
+            <span>${btnLabel}</span>
+          </button>
+        </td>
+      </tr>
+    `;
+  });
+
+  tbody.innerHTML = html;
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+/**
+ * Open modal to add or edit attendance
+ */
+function openOrgAttendanceModal(userId) {
+  const member = _orgAttMembersCache.find(m => String(m.user_id) === String(userId) || m.username === String(userId));
+  if (!member) {
+    if (typeof showToast === 'function') showToast('ไม่พบข้อมูลพนักงาน', 'error');
+    return;
+  }
+
+  const modal = document.getElementById('orgAttendanceModal');
+  if (!modal) return;
+
+  const titleEl = document.getElementById('orgAttModalTitle');
+  const userIdEl = document.getElementById('orgAttModalUserId');
+  const attIdEl = document.getElementById('orgAttModalAttId');
+  const dateEl = document.getElementById('orgAttModalDate');
+  const nameEl = document.getElementById('orgAttModalUserName');
+  const deptEl = document.getElementById('orgAttModalUserDept');
+  const dateTextEl = document.getElementById('orgAttModalDateText');
+  const avatarEl = document.getElementById('orgAttModalUserAvatar');
+  const cinInput = document.getElementById('orgAttModalCheckInTime');
+  const coutInput = document.getElementById('orgAttModalCheckOutTime');
+  const statusSelect = document.getElementById('orgAttModalStatus');
+  const noteInput = document.getElementById('orgAttModalNote');
+  const deleteBtn = document.getElementById('orgAttModalDeleteBtn');
+
+  userIdEl.value = member.user_id;
+  dateEl.value = _orgAttCurrentDate || getOrgAttBangkokToday();
+  nameEl.textContent = member.full_name || member.username;
+  deptEl.textContent = [member.department, member.position || member.role].filter(Boolean).join(' • ') || 'ไม่ระบุแผนก';
+  dateTextEl.textContent = formatOrgAttThaiDate(dateEl.value);
+  avatarEl.textContent = (member.username || 'U').substring(0, 1).toUpperCase();
+
+  if (member.check_in) {
+    // Edit existing record
+    titleEl.textContent = `แก้ไขเวลาเข้างาน: ${member.full_name || member.username}`;
+    attIdEl.value = member.check_in.id || '';
+    cinInput.value = (member.check_in.check_time || '08:30:00').substring(0, 8);
+    coutInput.value = member.check_out ? (member.check_out.check_time || '').substring(0, 8) : '';
+    statusSelect.value = member.check_in.status || 'manual_admin';
+    noteInput.value = member.check_in.note || '';
+    if (deleteBtn) deleteBtn.classList.remove('hidden');
+  } else {
+    // New manual entry
+    titleEl.textContent = `บันทึกเวลาเข้างานแทน: ${member.full_name || member.username}`;
+    attIdEl.value = '';
+    cinInput.value = '08:30';
+    coutInput.value = '';
+    statusSelect.value = 'manual_admin';
+    noteInput.value = '';
+    if (deleteBtn) deleteBtn.classList.add('hidden');
+  }
+
+  modal.classList.remove('hidden');
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function closeOrgAttendanceModal() {
+  const modal = document.getElementById('orgAttendanceModal');
+  if (modal) modal.classList.add('hidden');
+}
+
+/**
+ * Save manual or edited attendance record
+ */
+async function saveOrgAttendanceRecord() {
+  const userId = document.getElementById('orgAttModalUserId').value;
+  const date = document.getElementById('orgAttModalDate').value;
+  const cinTime = document.getElementById('orgAttModalCheckInTime').value;
+  const coutTime = document.getElementById('orgAttModalCheckOutTime').value;
+  const status = document.getElementById('orgAttModalStatus').value;
+  const note = document.getElementById('orgAttModalNote').value;
+  const submitBtn = document.getElementById('orgAttModalSubmitBtn');
+
+  if (!userId || !date || !cinTime) {
+    if (typeof showToast === 'function') showToast('กรุณากรอกเวลาเข้างาน', 'error');
+    return;
+  }
+
+  const member = _orgAttMembersCache.find(m => String(m.user_id) === String(userId) || m.username === String(userId));
+  const username = member ? member.username : '';
+
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.classList.add('opacity-60');
+  }
+
+  try {
+    const res = await fetch('/api/admin/attendance/record', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: username,
+        date: date,
+        check_in_time: cinTime,
+        check_out_time: coutTime || null,
+        status: (status === 'present' ? 'on_time' : status),
+        note: note
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      if (typeof showToast === 'function') {
+        showToast(data.error || 'ไม่สามารถบันทึกข้อมูลได้', 'error');
+      } else {
+        alert(data.error || 'ไม่สามารถบันทึกข้อมูลได้');
+      }
+      return;
+    }
+
+    if (typeof showToast === 'function') {
+      showToast(data.message || 'บันทึกเวลาเข้างานเรียบร้อยแล้วค่ะ', 'success');
+    }
+    closeOrgAttendanceModal();
+    loadOrgAttendance(_orgAttCurrentDate);
+  } catch (err) {
+    console.error('[saveOrgAttendanceRecord] Error:', err);
+    if (typeof showToast === 'function') {
+      showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
+    }
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.classList.remove('opacity-60');
+    }
+  }
+}
+
+/**
+ * Delete attendance record
+ */
+async function deleteOrgAttendanceCurrentRecord() {
+  const attId = document.getElementById('orgAttModalAttId').value;
+  const userId = document.getElementById('orgAttModalUserId').value;
+  const member = _orgAttMembersCache.find(m => (m.check_in && String(m.check_in.id) === String(attId)) || String(m.user_id) === String(userId));
+  const username = member ? member.username : '';
+  const date = document.getElementById('orgAttModalDate').value || _orgAttCurrentDate || getOrgAttBangkokToday();
+
+  if (!username) {
+    if (typeof showToast === 'function') showToast('ไม่พบชื่อผู้ใช้สำหรับลบ', 'error');
+    return;
+  }
+
+  if (!confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบบันทึกการลงเวลาของ ${username} ประจำวันที่ ${date}? สถานะจะกลับเป็น "ยังไม่ลงเวลา"`)) {
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/admin/attendance/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: username,
+        date: date
+      })
+    });
+    const data = await res.json();
+
+    if (!res.ok || !data.ok) {
+      if (typeof showToast === 'function') {
+        showToast(data.error || 'ไม่สามารถลบบันทึกได้', 'error');
+      } else {
+        alert(data.error || 'ไม่สามารถลบบันทึกได้');
+      }
+      return;
+    }
+
+    if (typeof showToast === 'function') {
+      showToast(data.message || 'ลบบันทึกเวลาเรียบร้อยแล้ว', 'success');
+    }
+    closeOrgAttendanceModal();
+    loadOrgAttendance(_orgAttCurrentDate);
+  } catch (err) {
+    console.error('[deleteOrgAttendanceCurrentRecord] Error:', err);
+    if (typeof showToast === 'function') {
+      showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
+    }
+  }
+}
+
+/**
+ * Export current table view as CSV
+ */
+function exportOrgAttendanceCSV() {
+  if (!_orgAttMembersCache || _orgAttMembersCache.length === 0) {
+    if (typeof showToast === 'function') showToast('ไม่มีข้อมูลสำหรับส่งออก', 'info');
+    return;
+  }
+
+  const dateStr = _orgAttCurrentDate || getOrgAttBangkokToday();
+  const headers = ['ลำดับ', 'ชื่อ-นามสกุล', 'Username', 'อีเมล', 'แผนก', 'ตำแหน่ง', 'วันที่', 'เวลาเข้า', 'เวลาออก', 'ชั่วโมงทำงาน', 'สถานะ', 'ระยะทาง GPS (ม.)', 'หมายเหตุ'];
+
+  const rows = _orgAttMembersCache.map((m, idx) => {
+    let statusText = 'ยังไม่ลงเวลา';
+    if (m.status === 'present') statusText = 'มาทำงาน (ตรงเวลา)';
+    else if (m.status === 'late') statusText = 'มาสาย';
+    else if (m.status === 'manual_admin') statusText = 'บันทึกโดยแอดมิน';
+
+    const cinTime = m.check_in ? (m.check_in.check_time || '') : '';
+    const coutTime = m.check_out ? (m.check_out.check_time || '') : '';
+    const hours = m.total_hours || 0;
+    const dist = (m.check_in && m.check_in.distance_meters !== null) ? Math.round(m.check_in.distance_meters) : '';
+    const note = (m.check_in && m.check_in.note) ? m.check_in.note : '';
+
+    return [
+      idx + 1,
+      `"${(m.full_name || '').replace(/"/g, '""')}"`,
+      `"${(m.username || '').replace(/"/g, '""')}"`,
+      `"${(m.email || '').replace(/"/g, '""')}"`,
+      `"${(m.department || '').replace(/"/g, '""')}"`,
+      `"${(m.position || m.role || '').replace(/"/g, '""')}"`,
+      dateStr,
+      cinTime,
+      coutTime,
+      hours,
+      `"${statusText}"`,
+      dist,
+      `"${note.replace(/"/g, '""')}"`
+    ].join(',');
+  });
+
+  const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `attendance_${dateStr}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  if (typeof showToast === 'function') {
+    showToast(`ส่งออกไฟล์ attendance_${dateStr}.csv เรียบร้อยแล้ว`, 'success');
+  }
+}
+
+function setOrgAttDateOffset(offsetDays) {
+  const current = _orgAttCurrentDate || getOrgAttBangkokToday();
+  const parts = current.split('-');
+  const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+  d.setDate(d.getDate() + offsetDays);
+
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  loadOrgAttendance(`${yyyy}-${mm}-${dd}`);
+}
+
+function setOrgAttDateToday() {
+  loadOrgAttendance(getOrgAttBangkokToday());
+}
+
+// Global Exports
+window.loadOrgAttendance = loadOrgAttendance;
+window.filterOrgAttendanceTable = filterOrgAttendanceTable;
+window.openOrgAttendanceModal = openOrgAttendanceModal;
+window.closeOrgAttendanceModal = closeOrgAttendanceModal;
+window.saveOrgAttendanceRecord = saveOrgAttendanceRecord;
+window.deleteOrgAttendanceCurrentRecord = deleteOrgAttendanceCurrentRecord;
+window.exportOrgAttendanceCSV = exportOrgAttendanceCSV;
+window.setOrgAttDateOffset = setOrgAttDateOffset;
+window.setOrgAttDateToday = setOrgAttDateToday;

@@ -585,13 +585,211 @@ def get_org_attendance(org_id, date_from=None, date_to=None, username=None, limi
     params.append(limit)
     cursor.execute(query, tuple(params))
     rows = [dict(r) for r in cursor.fetchall()]
+
+def get_daily_org_attendance(org_id: int, target_date: str = None, department: str = None, search: str = None):
+    """
+    Retrieves full daily attendance status for ALL active members in the organization on a given date.
+    Returns summary counts (total, present, absent, late, manual) and per-user details.
+    """
+    from datetime import datetime
+    if not target_date:
+        target_date = datetime.now().strftime("%Y-%m-%d")
+
+    all_members = get_org_members(org_id) or []
+    
+    conn = _get_conn()
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT * FROM time_attendance 
+        WHERE org_id = ? AND check_date = ? 
+        ORDER BY id ASC
+    """, (org_id, target_date))
+    records = [dict(r) for r in cursor.fetchall()]
     conn.close()
-    return rows
+
+    records_by_user = {}
+    for r in records:
+        u = r.get("username")
+        if u not in records_by_user:
+            records_by_user[u] = {"check_in": None, "check_out": None, "all": []}
+        records_by_user[u]["all"].append(r)
+        if r.get("check_type") == "check_in" and not records_by_user[u]["check_in"]:
+            records_by_user[u]["check_in"] = r
+        elif r.get("check_type") == "check_out":
+            records_by_user[u]["check_out"] = r
+
+    processed_members = []
+    for m in all_members:
+        u = m.get("username")
+        u_records = records_by_user.get(u, {"check_in": None, "check_out": None, "all": []})
+        cin = u_records["check_in"]
+        cout = u_records["check_out"]
+
+        attended = cin is not None
+        if attended:
+            st = cin.get("status") or "on_time"
+            if st not in ["on_time", "late", "manual_admin", "outside_geofence"]:
+                st = "on_time"
+        else:
+            st = "absent"
+
+        duration_hours = 0.0
+        if cin and cout and cin.get("check_time") and cout.get("check_time"):
+            try:
+                t1 = datetime.strptime(cin["check_time"][:8], "%H:%M:%S")
+                t2 = datetime.strptime(cout["check_time"][:8], "%H:%M:%S")
+                diff_sec = max(0, (t2 - t1).total_seconds())
+                duration_hours = round(diff_sec / 3600.0, 2)
+            except Exception:
+                duration_hours = 0.0
+
+        raw_note = ""
+        if cin:
+            raw_note = cin.get("note") or (cin.get("address") if cin.get("status") == "manual_admin" else "") or ""
+
+        item = {
+            "username": u,
+            "display_name": m.get("display_name") or u,
+            "avatar_url": m.get("avatar_url") or "",
+            "role": m.get("role") or "member",
+            "department": m.get("department") or "ทั่วไป",
+            "position": m.get("position") or "",
+            "email": m.get("email") or "",
+            "attended": attended,
+            "status": st,
+            "check_in": cin,
+            "check_out": cout,
+            "work_duration_hours": duration_hours,
+            "note": raw_note
+        }
+
+        if department and department.strip() and item["department"] != department.strip():
+            continue
+
+        if search and search.strip():
+            q = search.strip().lower()
+            if (q not in item["username"].lower() and 
+                q not in item["display_name"].lower() and 
+                q not in item["department"].lower() and 
+                q not in item["email"].lower()):
+                continue
+
+        processed_members.append(item)
+
+    def _sort_key(item):
+        if item["attended"] and item["check_in"]:
+            return (0, item["check_in"].get("check_time", "99:99"))
+        return (1, item["display_name"].lower())
+
+    processed_members.sort(key=_sort_key)
+
+    total_m = len(processed_members)
+    present_cnt = sum(1 for x in processed_members if x["attended"])
+    absent_cnt = total_m - present_cnt
+    late_cnt = sum(1 for x in processed_members if x["status"] == "late")
+    manual_cnt = sum(1 for x in processed_members if x["status"] == "manual_admin")
+    pct = round((present_cnt / total_m * 100), 1) if total_m > 0 else 0
+
+    return {
+        "date": target_date,
+        "summary": {
+            "total_members": total_m,
+            "present_count": present_cnt,
+            "absent_count": absent_cnt,
+            "late_count": late_cnt,
+            "manual_count": manual_cnt,
+            "present_percentage": pct
+        },
+        "members": processed_members
+    }
 
 
+def set_manual_attendance(org_id: int, username: str, check_date: str, check_in_time: str, check_out_time: str = None, status: str = 'manual_admin', note: str = None, updated_by: str = None):
+    """
+    Inserts or updates an attendance record manually for an employee by Admin.
+    Allows marking employee as present ('มา'), setting custom time, or correcting status.
+    """
+    conn = _get_conn()
+    cursor = conn.cursor()
+    note_val = note.strip() if note else "บันทึกเวลาแทนโดย Admin"
+    updated_by_val = updated_by or "Admin"
+    
+    if check_in_time and len(check_in_time) == 5:
+        check_in_time = f"{check_in_time}:00"
+    if check_out_time and len(check_out_time) == 5:
+        check_out_time = f"{check_out_time}:00"
+
+    cursor.execute("""
+        SELECT id FROM time_attendance 
+        WHERE org_id = ? AND username = ? AND check_date = ? AND check_type = 'check_in' 
+        LIMIT 1
+    """, (org_id, username, check_date))
+    cin_row = cursor.fetchone()
+
+    if cin_row:
+        cursor.execute("""
+            UPDATE time_attendance 
+            SET check_time = ?, status = ?, note = ?, updated_by = ?
+            WHERE id = ?
+        """, (check_in_time, status, note_val, updated_by_val, cin_row[0]))
+        cin_id = cin_row[0]
+    else:
+        cursor.execute("""
+            INSERT INTO time_attendance (username, org_id, check_date, check_time, check_type, latitude, longitude, address, distance_meters, status, note, updated_by)
+            VALUES (?, ?, ?, ?, 'check_in', NULL, NULL, ?, 0, ?, ?, ?)
+        """, (username, org_id, check_date, check_in_time, note_val, status, note_val, updated_by_val))
+        cin_id = cursor.lastrowid
+
+    cout_id = None
+    if check_out_time:
+        cursor.execute("""
+            SELECT id FROM time_attendance 
+            WHERE org_id = ? AND username = ? AND check_date = ? AND check_type = 'check_out' 
+            LIMIT 1
+        """, (org_id, username, check_date))
+        cout_row = cursor.fetchone()
+
+        if cout_row:
+            cursor.execute("""
+                UPDATE time_attendance 
+                SET check_time = ?, status = 'on_time', note = ?, updated_by = ?
+                WHERE id = ?
+            """, (check_out_time, note_val, updated_by_val, cout_row[0]))
+            cout_id = cout_row[0]
+        else:
+            cursor.execute("""
+                INSERT INTO time_attendance (username, org_id, check_date, check_time, check_type, latitude, longitude, address, distance_meters, status, note, updated_by)
+                VALUES (?, ?, ?, ?, 'check_out', NULL, NULL, ?, 0, 'on_time', ?, ?)
+            """, (username, org_id, check_date, check_out_time, note_val, note_val, updated_by_val))
+            cout_id = cursor.lastrowid
+
+    conn.commit()
+    conn.close()
+    return {
+        "ok": True,
+        "check_in_id": cin_id,
+        "check_out_id": cout_id,
+        "username": username,
+        "check_date": check_date
+    }
 
 
-# --- New Features: Leave and Expense ---
+def delete_attendance_record(org_id: int, username: str, check_date: str):
+    """
+    Deletes all attendance records (check-in and check-out) for a user on a given date.
+    """
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        DELETE FROM time_attendance 
+        WHERE org_id = ? AND username = ? AND check_date = ?
+    """, (org_id, username, check_date))
+    cnt = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return cnt
+
 
 def add_leave_request(line_user_id, username, leave_type, start_date, end_date, reason, org_id=None):
     conn = _get_conn()

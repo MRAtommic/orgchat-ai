@@ -92,6 +92,14 @@ def init_db():
         cursor.execute("ALTER TABLE schedules ADD COLUMN reminder_sent INTEGER DEFAULT 0")
     except sqlite3.OperationalError:
         pass
+    try:
+        cursor.execute("ALTER TABLE time_attendance ADD COLUMN note TEXT DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE time_attendance ADD COLUMN updated_by TEXT DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass
 
 
     cursor.execute("""

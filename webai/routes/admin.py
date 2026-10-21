@@ -212,6 +212,171 @@ def get_admin_attendance():
     return jsonify({"ok": True, "records": records, "count": len(records)})
 
 
+@admin_bp.route("/api/admin/attendance/daily", methods=["GET"])
+@org_admin_required
+def get_admin_attendance_daily():
+    """
+    Returns organization-wide daily attendance, member breakdown, and summary counts.
+    Supports filtering by date, department, and search keyword.
+    """
+    org_id = get_current_org_id() or 1
+    target_date = request.args.get("date") or datetime.now().strftime("%Y-%m-%d")
+    department = request.args.get("department")
+    search = request.args.get("search")
+
+    data = database.get_daily_org_attendance(
+        org_id=org_id,
+        target_date=target_date,
+        department=department,
+        search=search
+    )
+    return jsonify({"ok": True, **data})
+
+
+@admin_bp.route("/api/admin/attendance/record", methods=["POST"])
+@org_admin_required
+def save_admin_attendance_record():
+    """
+    Allows Org Admin to manually record or update an employee's attendance.
+    """
+    org_id = get_current_org_id() or 1
+    admin_user = session.get("user", "Admin")
+    body = request.get_json(silent=True) or {}
+
+    username = (body.get("username") or "").strip()
+    check_date = (body.get("date") or "").strip()
+    check_in_time = (body.get("check_in_time") or "").strip()
+    check_out_time = (body.get("check_out_time") or "").strip() or None
+    status = (body.get("status") or "manual_admin").strip()
+    note = (body.get("note") or "").strip()
+
+    if not username or not check_date or not check_in_time:
+        return jsonify({"ok": False, "error": "กรุณาระบุชื่อผู้ใช้ วันที่ และเวลาเข้างานให้ครบถ้วน"}), 400
+
+    try:
+        res = database.set_manual_attendance(
+            org_id=org_id,
+            username=username,
+            check_date=check_date,
+            check_in_time=check_in_time,
+            check_out_time=check_out_time,
+            status=status,
+            note=note,
+            updated_by=admin_user
+        )
+        try:
+            database.log_event(
+                event_text=f"Admin {admin_user} บันทึก/แก้ไขเวลาเข้างานของ {username} ประจำวันที่ {check_date} (เข้า: {check_in_time}, สถานะ: {status})",
+                user=admin_user,
+                org_id=org_id
+            )
+        except Exception:
+            pass
+
+        return jsonify({"ok": True, "message": "บันทึกเวลาเข้างานเรียบร้อยแล้ว", **res})
+    except Exception as e:
+        logging.error(f"[save_admin_attendance_record] Error: {e}")
+        return jsonify({"ok": False, "error": f"เกิดข้อผิดพลาดในการบันทึก: {str(e)}"}), 500
+
+
+@admin_bp.route("/api/admin/attendance/delete", methods=["POST"])
+@org_admin_required
+def delete_admin_attendance_record():
+    """
+    Allows Org Admin to delete attendance records for a user on a given date.
+    """
+    org_id = get_current_org_id() or 1
+    admin_user = session.get("user", "Admin")
+    body = request.get_json(silent=True) or {}
+
+    username = (body.get("username") or "").strip()
+    check_date = (body.get("date") or "").strip()
+
+    if not username or not check_date:
+        return jsonify({"ok": False, "error": "กรุณาระบุชื่อผู้ใช้และวันที่"}), 400
+
+    try:
+        cnt = database.delete_attendance_record(org_id=org_id, username=username, check_date=check_date)
+        try:
+            database.log_event(
+                event_text=f"Admin {admin_user} ลบรายการบันทึกเวลาของ {username} ประจำวันที่ {check_date}",
+                user=admin_user,
+                org_id=org_id
+            )
+        except Exception:
+            pass
+        return jsonify({"ok": True, "message": f"ลบรายการบันทึกเวลาเรียบร้อยแล้ว ({cnt} รายการ)"})
+    except Exception as e:
+        logging.error(f"[delete_admin_attendance_record] Error: {e}")
+        return jsonify({"ok": False, "error": f"เกิดข้อผิดพลาดในการลบ: {str(e)}"}), 500
+
+
+@admin_bp.route("/api/admin/attendance/export-csv", methods=["GET"])
+@org_admin_required
+def export_admin_attendance_csv():
+    """
+    Exports daily organization attendance records to CSV format.
+    """
+    import csv
+    import io
+    from flask import Response
+
+    org_id = get_current_org_id() or 1
+    target_date = request.args.get("date") or datetime.now().strftime("%Y-%m-%d")
+    department = request.args.get("department")
+
+    data = database.get_daily_org_attendance(
+        org_id=org_id,
+        target_date=target_date,
+        department=department
+    )
+
+    output = io.StringIO()
+    output.write('\ufeff')
+    writer = csv.writer(output)
+
+    writer.writerow(["วันที่", "ชื่อ-นามสกุล", "Username", "แผนก", "ตำแหน่ง", "สถานะการเข้างาน", "เวลาเข้างาน", "เวลาเลิกงาน", "ชั่วโมงทำงาน", "หมายเหตุ / พิกัด GPS"])
+
+    status_labels = {
+        "on_time": "ตรงเวลา",
+        "late": "มาสาย",
+        "manual_admin": "แอดมินบันทึกแทน",
+        "outside_geofence": "นอกพื้นที่ GPS",
+        "absent": "ยังไม่ลงเวลา / ไม่มา"
+    }
+
+    for m in data.get("members", []):
+        cin = m.get("check_in") or {}
+        cout = m.get("check_out") or {}
+        st_text = status_labels.get(m.get("status"), m.get("status"))
+
+        in_time = cin.get("check_time", "-")
+        out_time = cout.get("check_time", "-")
+        duration = f"{m.get('work_duration_hours', 0)} ชม." if m.get("work_duration_hours") else "-"
+        note = m.get("note") or cin.get("address") or ""
+
+        writer.writerow([
+            target_date,
+            m.get("display_name", ""),
+            m.get("username", ""),
+            m.get("department", ""),
+            m.get("position", ""),
+            st_text,
+            in_time,
+            out_time,
+            duration,
+            note
+        ])
+
+    csv_data = output.getvalue()
+    filename = f"attendance_{target_date}.csv"
+    return Response(
+        csv_data,
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
 def _calculate_haversine_distance(lat1, lon1, lat2, lon2):
     """Calculates distance between two GPS points in meters."""
     import math
@@ -500,6 +665,153 @@ def get_attendance_org_summary():
         "outside_count": len(outside_users),
         "records": records
     })
+
+
+@admin_bp.route("/api/attendance/org-members-status", methods=["GET"])
+@login_required
+def get_attendance_org_members_status():
+    """
+    Returns organization-wide attendance status for all members on a given date.
+    Formatted specifically for Org Attendance Management tab.
+    """
+    org_id = get_current_org_id() or 1
+    target_date = request.args.get("date") or datetime.now().strftime("%Y-%m-%d")
+
+    data = database.get_daily_org_attendance(org_id=org_id, target_date=target_date)
+    summary = data.get("summary", {})
+    members = data.get("members", [])
+
+    formatted_members = []
+    for idx, m in enumerate(members, start=1):
+        st = m.get("status", "absent")
+        if st == "on_time":
+            st = "present"
+
+        formatted_members.append({
+            "user_id": idx,
+            "username": m.get("username"),
+            "full_name": m.get("display_name") or m.get("username"),
+            "avatar_url": m.get("avatar_url") or "",
+            "role": m.get("role") or "member",
+            "department": m.get("department") or "ทั่วไป",
+            "position": m.get("position") or "",
+            "email": m.get("email") or "",
+            "status": st,
+            "check_in": m.get("check_in"),
+            "check_out": m.get("check_out"),
+            "total_hours": m.get("work_duration_hours", 0.0),
+            "note": m.get("note", "")
+        })
+
+    counts = {
+        "total": summary.get("total_members", 0),
+        "present": summary.get("present_count", 0),
+        "absent": summary.get("absent_count", 0),
+        "late": summary.get("late_count", 0),
+        "present_rate": summary.get("present_percentage", 0.0)
+    }
+
+    return jsonify({
+        "ok": True,
+        "date": target_date,
+        "counts": counts,
+        "members": formatted_members
+    })
+
+
+@admin_bp.route("/api/attendance/admin/manual-record", methods=["POST"])
+@org_admin_required
+def post_attendance_admin_manual_record():
+    """
+    Allows Org Admin to manually record or update an employee's attendance.
+    """
+    org_id = get_current_org_id() or 1
+    admin_user = session.get("user", "Admin")
+    body = request.get_json(silent=True) or {}
+
+    username = (body.get("username") or "").strip()
+    user_id = body.get("user_id")
+    check_date = (body.get("date") or "").strip()
+    check_in_time = (body.get("check_in_time") or "").strip()
+    check_out_time = (body.get("check_out_time") or "").strip() or None
+    raw_status = (body.get("status") or "manual_admin").strip()
+    status = "on_time" if raw_status == "present" else raw_status
+    note = (body.get("note") or "").strip()
+
+    if not username and user_id is not None:
+        members = database.get_org_members(org_id)
+        try:
+            uid_idx = int(user_id) - 1
+            if 0 <= uid_idx < len(members):
+                username = members[uid_idx].get("username")
+        except Exception:
+            pass
+
+    if not username or not check_date or not check_in_time:
+        return jsonify({"ok": False, "error": "กรุณาระบุข้อมูลให้ครบถ้วน"}), 400
+
+    try:
+        res = database.set_manual_attendance(
+            org_id=org_id,
+            username=username,
+            check_date=check_date,
+            check_in_time=check_in_time,
+            check_out_time=check_out_time,
+            status=status,
+            note=note,
+            updated_by=admin_user
+        )
+        try:
+            database.log_event(
+                event_text=f"Admin {admin_user} บันทึก/แก้ไขเวลาเข้างานของ {username} ประจำวันที่ {check_date}",
+                user=admin_user,
+                org_id=org_id
+            )
+        except Exception:
+            pass
+
+        return jsonify({"ok": True, "message": "บันทึกเวลาเข้างานเรียบร้อยแล้ว", **res})
+    except Exception as e:
+        logging.error(f"[post_attendance_admin_manual_record] Error: {e}")
+        return jsonify({"ok": False, "error": f"เกิดข้อผิดพลาดในการบันทึก: {str(e)}"}), 500
+
+
+@admin_bp.route("/api/attendance/admin/record/<int:record_id>", methods=["DELETE"])
+@org_admin_required
+def delete_attendance_admin_record(record_id: int):
+    """
+    Deletes an attendance record by ID.
+    """
+    org_id = get_current_org_id() or 1
+    admin_user = session.get("user", "Admin")
+    try:
+        conn = database._get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT username, check_date FROM time_attendance WHERE id = ? AND org_id = ?", (record_id, org_id))
+        row = cur.fetchone()
+        if not row:
+            conn.close()
+            return jsonify({"ok": False, "error": "ไม่พบบันทึกเวลาที่ต้องการลบ"}), 404
+
+        u_name = row[0]
+        c_date = row[1]
+        cur.execute("DELETE FROM time_attendance WHERE id = ? AND org_id = ?", (record_id, org_id))
+        conn.commit()
+        conn.close()
+
+        try:
+            database.log_event(
+                event_text=f"Admin {admin_user} ลบบันทึกเวลาของ {u_name} วันที่ {c_date} (ID: {record_id})",
+                user=admin_user,
+                org_id=org_id
+            )
+        except Exception:
+            pass
+
+        return jsonify({"ok": True, "message": "ลบบันทึกเวลาเรียบร้อยแล้ว"})
+    except Exception as e:
+        logging.error(f"[delete_attendance_admin_record] Error: {e}")
+        return jsonify({"ok": False, "error": f"เกิดข้อผิดพลาดในการลบ: {str(e)}"}), 500
 
 
 @admin_bp.route("/api/org/line/channel-config", methods=["GET"])

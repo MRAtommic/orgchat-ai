@@ -9866,7 +9866,7 @@ let _orgLogsCache = [];
 let _orgDepartmentsCache = [];
 
 function switchOrgTab(tab) {
-  ['members', 'tree', 'departments', 'leave', 'google', 'business', 'peak', 'announcements', 'categories', 'logs'].forEach(t => {
+  ['members', 'tree', 'departments', 'leave', 'attendance', 'google', 'business', 'peak', 'announcements', 'categories', 'logs'].forEach(t => {
     const btn = $(`orgTab-${t}`);
     const content = $(`orgTabContent-${t}`);
     const active = t === tab;
@@ -9882,6 +9882,9 @@ function switchOrgTab(tab) {
   if (tab === 'leave') {
     refreshAdminLeaves();
     loadTeamLeaveCalendar();
+  }
+  if (tab === 'attendance' && typeof window.loadOrgAttendance === 'function') {
+    window.loadOrgAttendance();
   }
   if (tab === 'google') loadOrgGoogleStatus();
   if (tab === 'business') loadOrgBusinessProfile();

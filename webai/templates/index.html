@@ -4533,6 +4533,10 @@
                   class="org-tab whitespace-nowrap shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white hover:bg-surface-200/50 dark:hover:bg-surface-700/40">
                   <i data-lucide="clipboard-list" class="w-4 h-4 shrink-0"></i>คำขอลา
                 </button>
+                <button id="orgTab-attendance" onclick="switchOrgTab('attendance')"
+                  class="org-tab whitespace-nowrap shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white hover:bg-surface-200/50 dark:hover:bg-surface-700/40">
+                  <i data-lucide="clock" class="w-4 h-4 shrink-0"></i>เวลาเข้างาน
+                </button>
                 <button id="orgTab-google" onclick="switchOrgTab('google')"
                   class="org-tab whitespace-nowrap shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white hover:bg-surface-200/50 dark:hover:bg-surface-700/40">
                   <i data-lucide="hard-drive" class="w-4 h-4 shrink-0"></i>Google Drive
@@ -4870,6 +4874,245 @@
                         ปิดหน้าต่าง
                       </button>
                     </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Tab: Attendance (เวลาเข้างาน) -->
+              <div id="orgTabContent-attendance" class="hidden space-y-5">
+                <!-- Header / Controls Bar -->
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-surface-900 p-4 rounded-2xl border border-surface-200 dark:border-surface-800 shadow-sm">
+                  <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-brand-500/10 dark:bg-brand-500/20 text-brand-600 dark:text-brand-400 flex items-center justify-center shrink-0">
+                      <i data-lucide="clock" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                      <h3 class="text-sm font-black text-surface-900 dark:text-white flex items-center gap-2">
+                        จัดการเวลาเข้างานขององค์กร
+                        <span id="orgAttDateBadge" class="text-[11px] font-semibold px-2.5 py-0.5 rounded-md bg-surface-100 dark:bg-surface-800 text-surface-700 dark:text-surface-300 font-mono"></span>
+                      </h3>
+                      <p class="text-[11px] text-surface-500 dark:text-surface-400">ตรวจสอบพนักงานที่มาและยังไม่มา พร้อมระบบบันทึกหรือแก้ไขเวลาแทนโดยแอดมิน</p>
+                    </div>
+                  </div>
+
+                  <div class="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                    <button type="button" onclick="setOrgAttDateOffset(-1)" class="px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-surface-200 dark:border-surface-700 hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-600 dark:text-surface-300 transition-colors">
+                      เมื่อวาน
+                    </button>
+                    <button type="button" onclick="setOrgAttDateToday()" class="px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-surface-200 dark:border-surface-700 hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-600 dark:text-surface-300 transition-colors">
+                      วันนี้
+                    </button>
+                    <div class="relative">
+                      <input type="date" id="orgAttDateInput" onchange="loadOrgAttendance(this.value)"
+                        class="pl-3 pr-3 py-1.5 bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl text-xs font-bold text-surface-800 dark:text-surface-100 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none">
+                    </div>
+                    <button type="button" onclick="exportOrgAttendanceCSV()" title="ส่งออกข้อมูลเป็น CSV"
+                      class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-surface-100 dark:bg-surface-800 hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-200 border border-surface-200/60 dark:border-surface-700/60 transition-colors">
+                      <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                      <span>CSV</span>
+                    </button>
+                    <button type="button" onclick="loadOrgAttendance()" title="รีเฟรชข้อมูล"
+                      class="p-2 rounded-xl border border-surface-200 dark:border-surface-700 hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-600 dark:text-surface-300 transition-colors">
+                      <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- 4 KPI Summary Cards -->
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div class="p-4 rounded-2xl bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 shadow-sm flex items-center justify-between">
+                    <div>
+                      <div class="text-[11px] font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider">สมาชิกทั้งหมด</div>
+                      <div id="orgAttStatTotal" class="text-2xl font-black text-surface-900 dark:text-white mt-0.5 font-mono tabular-nums">0</div>
+                    </div>
+                    <div class="w-9 h-9 rounded-xl bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 flex items-center justify-center">
+                      <i data-lucide="users" class="w-4 h-4"></i>
+                    </div>
+                  </div>
+
+                  <div class="p-4 rounded-2xl bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 shadow-sm flex items-center justify-between">
+                    <div>
+                      <div class="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">มาทำงานแล้ว</div>
+                      <div class="flex items-baseline gap-2 mt-0.5">
+                        <span id="orgAttStatPresent" class="text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono tabular-nums">0</span>
+                        <span id="orgAttStatRate" class="text-[10px] font-bold text-surface-400 font-mono">(0%)</span>
+                      </div>
+                    </div>
+                    <div class="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                      <i data-lucide="user-check" class="w-4 h-4"></i>
+                    </div>
+                  </div>
+
+                  <div class="p-4 rounded-2xl bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 shadow-sm flex items-center justify-between">
+                    <div>
+                      <div class="text-[11px] font-semibold text-rose-600 dark:text-rose-400 uppercase tracking-wider">ยังไม่ลงเวลา / ขาด</div>
+                      <div id="orgAttStatAbsent" class="text-2xl font-black text-rose-600 dark:text-rose-400 mt-0.5 font-mono tabular-nums">0</div>
+                    </div>
+                    <div class="w-9 h-9 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center">
+                      <i data-lucide="user-x" class="w-4 h-4"></i>
+                    </div>
+                  </div>
+
+                  <div class="p-4 rounded-2xl bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 shadow-sm flex items-center justify-between">
+                    <div>
+                      <div class="text-[11px] font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider">มาสาย</div>
+                      <div id="orgAttStatLate" class="text-2xl font-black text-amber-600 dark:text-amber-400 mt-0.5 font-mono tabular-nums">0</div>
+                    </div>
+                    <div class="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                      <i data-lucide="alert-triangle" class="w-4 h-4"></i>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Filters & Search -->
+                <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white dark:bg-surface-900 p-3.5 rounded-2xl border border-surface-200 dark:border-surface-800 shadow-sm">
+                  <div class="relative flex-1">
+                    <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-surface-400"></i>
+                    <input id="orgAttSearchInput" type="text" placeholder="ค้นหาชื่อ, username, ตำแหน่ง หรือแผนก..."
+                      oninput="filterOrgAttendanceTable()"
+                      class="w-full pl-9 pr-4 py-2 bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none text-surface-900 dark:text-white transition-all">
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <select id="orgAttStatusFilter" onchange="filterOrgAttendanceTable()"
+                      class="px-3 py-2 bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl text-xs font-semibold text-surface-800 dark:text-surface-200 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none">
+                      <option value="all">ทุกสถานะ</option>
+                      <option value="present">มาทำงานแล้ว</option>
+                      <option value="absent">ยังไม่ลงเวลา / ไม่มา</option>
+                      <option value="late">มาสาย</option>
+                      <option value="manual_admin">บันทึกโดยแอดมิน</option>
+                    </select>
+
+                    <select id="orgAttDeptFilter" onchange="filterOrgAttendanceTable()"
+                      class="px-3 py-2 bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl text-xs font-semibold text-surface-800 dark:text-surface-200 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none">
+                      <option value="all">ทุกแผนก</option>
+                    </select>
+                  </div>
+                </div>
+
+                <!-- Attendance Table -->
+                <div class="bg-white dark:bg-surface-900 rounded-2xl border border-surface-200 dark:border-surface-800 shadow-sm overflow-hidden">
+                  <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs">
+                      <thead class="bg-surface-50 dark:bg-surface-800/60 text-surface-500 dark:text-surface-400 border-b border-surface-200 dark:border-surface-800">
+                        <tr>
+                          <th scope="col" class="py-3 px-4 font-bold">พนักงาน / สมาชิก</th>
+                          <th scope="col" class="py-3 px-4 font-bold">เวลาเข้า</th>
+                          <th scope="col" class="py-3 px-4 font-bold">เวลาออก</th>
+                          <th scope="col" class="py-3 px-4 font-bold">ชั่วโมงทำงาน</th>
+                          <th scope="col" class="py-3 px-4 font-bold">สถานะ</th>
+                          <th scope="col" class="py-3 px-4 font-bold">สถานที่ / บันทึก</th>
+                          <th scope="col" class="py-3 px-4 font-bold text-right">การจัดการ</th>
+                        </tr>
+                      </thead>
+                      <tbody id="orgAttTableBody" class="divide-y divide-surface-100 dark:divide-surface-800/80">
+                        <tr>
+                          <td colspan="7" class="py-12 text-center text-surface-400">
+                            <div class="flex flex-col items-center justify-center gap-2">
+                              <i data-lucide="loader-2" class="w-6 h-6 animate-spin text-brand-500"></i>
+                              <span>กำลังโหลดข้อมูลเวลาเข้างาน...</span>
+                            </div>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div class="px-4 py-3 bg-surface-50/50 dark:bg-surface-800/30 border-t border-surface-100 dark:border-surface-800/80 flex items-center justify-between text-[11px] text-surface-500">
+                    <span id="orgAttTableCount">แสดง 0 รายการ</span>
+                    <span class="text-surface-400">คลิก "แก้ไข" หรือ "บันทึกเวลาแทน" เพื่อจัดการข้อมูล</span>
+                  </div>
+                </div>
+
+                <!-- Modal: Admin Attendance Manual Override / Entry -->
+                <div id="orgAttendanceModal" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm hidden flex items-center justify-center p-4 animate-in fade-in duration-200" onclick="if(event.target === this) closeOrgAttendanceModal()">
+                  <div class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+                    <div class="px-6 py-4 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between bg-surface-50 dark:bg-surface-800/40">
+                      <div>
+                        <div class="text-[10px] font-black uppercase tracking-widest text-surface-400">การจัดการเวลาโดยแอดมิน</div>
+                        <h3 id="orgAttModalTitle" class="text-sm font-bold text-surface-900 dark:text-white mt-0.5">บันทึกเวลาเข้างานแทน</h3>
+                      </div>
+                      <button type="button" onclick="closeOrgAttendanceModal()" class="p-1.5 text-surface-400 hover:text-surface-600 dark:hover:text-surface-200 rounded-lg transition-colors">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                      </button>
+                    </div>
+
+                    <form id="orgAttendanceForm" onsubmit="event.preventDefault(); saveOrgAttendanceRecord();" class="p-6 space-y-4 overflow-y-auto custom-scrollbar">
+                      <input type="hidden" id="orgAttModalUserId">
+                      <input type="hidden" id="orgAttModalAttId">
+                      <input type="hidden" id="orgAttModalDate">
+
+                      <!-- Member card snippet -->
+                      <div class="p-3 rounded-xl bg-surface-50 dark:bg-surface-800/60 border border-surface-200/80 dark:border-surface-700/80 flex items-center gap-3">
+                        <div id="orgAttModalUserAvatar" class="w-10 h-10 rounded-full bg-brand-500 text-white font-bold text-sm flex items-center justify-center shrink-0">
+                          U
+                        </div>
+                        <div class="min-w-0 flex-1">
+                          <div id="orgAttModalUserName" class="text-xs font-bold text-surface-900 dark:text-white truncate">ชื่อพนักงาน</div>
+                          <div class="text-[11px] text-surface-400 flex items-center gap-2">
+                            <span id="orgAttModalUserDept" class="truncate">-</span>
+                            <span>•</span>
+                            <span id="orgAttModalDateText" class="font-mono font-semibold text-brand-600 dark:text-brand-400">2026-10-21</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- In & Out Times -->
+                      <div class="grid grid-cols-2 gap-3">
+                        <div>
+                          <label class="block text-[11px] font-bold text-surface-700 dark:text-surface-300 mb-1">
+                            เวลาเข้างาน <span class="text-rose-500">*</span>
+                          </label>
+                          <input type="time" id="orgAttModalCheckInTime" step="1" required
+                            class="w-full px-3 py-2 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl text-xs font-bold font-mono text-surface-900 dark:text-white focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none">
+                        </div>
+                        <div>
+                          <label class="block text-[11px] font-bold text-surface-700 dark:text-surface-300 mb-1">
+                            เวลาออกงาน <span class="text-surface-400 font-normal">(เว้นว่างได้)</span>
+                          </label>
+                          <input type="time" id="orgAttModalCheckOutTime" step="1"
+                            class="w-full px-3 py-2 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl text-xs font-bold font-mono text-surface-900 dark:text-white focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none">
+                        </div>
+                      </div>
+
+                      <!-- Status selection -->
+                      <div>
+                        <label class="block text-[11px] font-bold text-surface-700 dark:text-surface-300 mb-1">
+                          สถานะการลงเวลา
+                        </label>
+                        <select id="orgAttModalStatus"
+                          class="w-full px-3 py-2 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl text-xs font-bold text-surface-900 dark:text-white focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none">
+                          <option value="manual_admin">บันทึกโดยแอดมิน (Manual Entry)</option>
+                          <option value="on_time">ตรงเวลา (On Time)</option>
+                          <option value="late">มาสาย (Late)</option>
+                        </select>
+                      </div>
+
+                      <!-- Note -->
+                      <div>
+                        <label class="block text-[11px] font-bold text-surface-700 dark:text-surface-300 mb-1">
+                          หมายเหตุ / เหตุผล
+                        </label>
+                        <textarea id="orgAttModalNote" rows="2" placeholder="เช่น ปฏิบัติงานนอกสถานที่, ลืมสแกน GPS, แจ้งลาป่วยกะทันหัน"
+                          class="w-full px-3 py-2 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl text-xs font-medium text-surface-900 dark:text-white focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none resize-none"></textarea>
+                      </div>
+
+                      <div class="pt-2 flex items-center justify-between gap-2 border-t border-surface-100 dark:border-surface-800">
+                        <button type="button" id="orgAttModalDeleteBtn" onclick="deleteOrgAttendanceCurrentRecord()"
+                          class="px-3 py-1.5 text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-xl transition-colors hidden">
+                          ลบบันทึกนี้
+                        </button>
+                        <div class="flex items-center gap-2 ml-auto">
+                          <button type="button" onclick="closeOrgAttendanceModal()"
+                            class="px-3.5 py-1.5 text-xs font-bold text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 rounded-xl transition-colors">
+                            ยกเลิก
+                          </button>
+                          <button type="submit" id="orgAttModalSubmitBtn"
+                            class="px-4 py-1.5 text-xs font-bold bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-xs transition-colors flex items-center gap-1.5">
+                            <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                            <span>บันทึกข้อมูล</span>
+                          </button>
+                        </div>
+                      </div>
+                    </form>
                   </div>
                 </div>
               </div>
@@ -9874,7 +10117,7 @@
   <script src="/static/js/billing.js?v=4.0"></script>
   <script src="/static/js/kb.js?v=4.2"></script>
   <script src="/static/js/admin.js?v=4.0"></script>
-  <script src="/static/js/attendance.js?v=1.1"></script>
+  <script src="/static/js/attendance.js?v=2.0"></script>
   <script src="/static/js/line-groups-modal.js?v=4.1"></script>
   <script src="/static/js/plans-modal.js?v=4.1"></script>
   <script src="/static/js/sheets-reconcile.js?v=4.1"></script>
