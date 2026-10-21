@@ -160,17 +160,21 @@ def get_system_alerts():
     org_id = get_current_org_id()
     alerts = []
 
-    # Check Google Workspace auth error
-    google_err = google_manager.get_auth_error(org_id)
-    if google_err:
-        alerts.append({
-            "id": "google_credential_error",
-            "level": "critical",
-            "title": "การเชื่อมต่อ Google Workspace ขัดข้อง",
-            "message": "ตรวจพบข้อผิดพลาดของ Google Service Account หรือ OAuth Key: " + str(google_err.get("message", "")),
-            "hint": "กรุณาตรวจสอบ Service Account Key ใน Google Cloud Console หรือเชื่อมต่อ Google OAuth ใหม่ในหน้าการตั้งค่า",
-            "timestamp": google_err.get("timestamp")
-        })
+    # Check Google Workspace auth error only if GOOGLE_SERVICE_ACCOUNT_JSON is explicitly configured
+    if os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON"):
+        google_err = google_manager.get_auth_error(org_id)
+        if google_err:
+            alerts.append({
+                "id": "google_credential_error",
+                "level": "critical",
+                "title": "การเชื่อมต่อ Google Workspace ขัดข้อง",
+                "message": "ตรวจพบข้อผิดพลาดของ Google Service Account หรือ OAuth Key: " + str(google_err.get("message", "")),
+                "hint": "กรุณาตรวจสอบ Service Account Key ใน Google Cloud Console หรือเชื่อมต่อ Google OAuth ใหม่ในหน้าการตั้งค่า",
+                "timestamp": google_err.get("timestamp")
+            })
+    else:
+        google_manager.clear_auth_error(org_id)
+        google_manager.clear_auth_error('global')
 
     return jsonify({"ok": True, "alerts": alerts})
 
