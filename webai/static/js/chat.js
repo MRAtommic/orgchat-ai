@@ -4263,8 +4263,8 @@ function renderPosts(posts) {
       ${p.attachments && p.attachments.length ? (() => {
         const total = p.attachments.length;
         const gridClass = total === 1
-          ? 'flex justify-center max-w-xl mx-auto w-full my-2'
-          : (total === 2 ? 'grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto w-full my-2 justify-center' : 'grid grid-cols-2 md:grid-cols-3 gap-3 my-2');
+          ? 'w-full my-3'
+          : (total === 2 ? 'grid grid-cols-1 sm:grid-cols-2 gap-3 w-full my-3' : 'grid grid-cols-2 md:grid-cols-3 gap-3 my-2');
         return `
         <div class="${gridClass}">
           ${p.attachments.map(file => {
@@ -4275,11 +4275,14 @@ function renderPosts(posts) {
 
       if (isImg) {
         const cardClass = total === 1
-          ? 'w-full max-w-lg relative group/att overflow-hidden rounded-2xl border border-surface-200/80 dark:border-surface-800 aspect-video cursor-pointer shadow-sm mx-auto'
-          : 'relative group/att overflow-hidden rounded-xl border border-surface-200/80 dark:border-surface-800 aspect-video cursor-pointer shadow-xs w-full';
+          ? 'w-full relative group/att overflow-hidden rounded-2xl border border-surface-200/80 dark:border-surface-800 bg-surface-50 dark:bg-surface-950/40 cursor-pointer shadow-xs'
+          : 'relative group/att overflow-hidden rounded-xl border border-surface-200/80 dark:border-surface-800 aspect-video cursor-pointer shadow-xs w-full bg-surface-50 dark:bg-surface-950/40';
+        const imgClass = total === 1
+          ? 'w-full max-h-[580px] object-contain mx-auto transition-transform group-hover/att:scale-[1.01] duration-300'
+          : 'w-full h-full object-cover transition-transform group-hover/att:scale-105 duration-300';
         return `
                 <div class="${cardClass}" onclick="openLightbox('${path}', '${name}')">
-                  <img src="${path}" class="w-full h-full object-cover transition-transform group-hover/att:scale-105 duration-300" loading="lazy">
+                  <img src="${path}" class="${imgClass}" loading="lazy">
                   <div class="absolute inset-0 bg-black/45 opacity-0 group-hover/att:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white">
                     <button onclick="event.stopPropagation(); openLightbox('${path}', '${name}')" class="px-3 py-1.5 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-lg active:scale-95" title="ขยายรูป">
                       <i data-lucide="zoom-in" class="w-3.5 h-3.5"></i> ขยายรูป

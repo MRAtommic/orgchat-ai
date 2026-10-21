@@ -1,4 +1,4 @@
-const CACHE_NAME = 'orgchat-offline-v12';
+const CACHE_NAME = 'orgchat-offline-v13';
 const OFFLINE_URL = '/static/offline.html';
 
 const ASSETS_TO_CACHE = [

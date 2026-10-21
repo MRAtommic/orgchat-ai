@@ -208,7 +208,7 @@ def get_admin_attendance():
         date_to=date_to,
         username=username,
         limit=limit
-    )
+    ) or []
     return jsonify({"ok": True, "records": records, "count": len(records)})
 
 
@@ -598,7 +598,7 @@ def get_my_attendance_history():
         date_from=date_from,
         date_to=date_to,
         limit=limit
-    )
+    ) or []
 
     grouped = {}
     for r in records:
@@ -648,9 +648,9 @@ def get_attendance_org_summary():
         date_from=today,
         date_to=today,
         limit=500
-    )
+    ) or []
 
-    members = database.get_org_members(org_id)
+    members = database.get_org_members(org_id) or []
     clocked_in_users = set(r["username"] for r in records if r.get("check_type") == "check_in")
     late_users = set(r["username"] for r in records if r.get("status") == "late")
     outside_users = set(r["username"] for r in records if r.get("status") == "outside_geofence")

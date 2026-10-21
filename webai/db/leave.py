@@ -585,6 +585,8 @@ def get_org_attendance(org_id, date_from=None, date_to=None, username=None, limi
     params.append(limit)
     cursor.execute(query, tuple(params))
     rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
 
 def get_daily_org_attendance(org_id: int, target_date: str = None, department: str = None, search: str = None):
     """

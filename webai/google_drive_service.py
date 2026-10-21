@@ -1171,6 +1171,9 @@ class GoogleWorkspaceManager:
         """Locks the first row (headers) and applies royal blue header styling and data validations."""
         if not self.sheets_service or not self.spreadsheet_id:
             return
+        if 'global' in getattr(self, '_last_auth_errors', {}):
+            logger.info("ℹ️ Skipping ensure_essential_sheets: Google Service Account credentials require regeneration in Google Cloud Console.")
+            return
         try:
             spreadsheet = self._sheet_exec(lambda: self.sheets_service.spreadsheets().get(spreadsheetId=self.spreadsheet_id))
             existing_sheet = next((s for s in spreadsheet.get('sheets', []) if s['properties']['title'] == sheet_title), None)
@@ -1357,6 +1360,9 @@ class GoogleWorkspaceManager:
         """Iterates over all sheets in the spreadsheet and freezes/styles them."""
         if not self.sheets_service or not self.spreadsheet_id:
             return
+        if 'global' in getattr(self, '_last_auth_errors', {}):
+            logger.info("ℹ️ Skipping ensure_essential_sheets: Google Service Account credentials require regeneration in Google Cloud Console.")
+            return
         try:
             spreadsheet = self.sheets_service.spreadsheets().get(spreadsheetId=self.spreadsheet_id).execute()
             for s in spreadsheet.get('sheets', []):
@@ -1368,6 +1374,9 @@ class GoogleWorkspaceManager:
     def ensure_essential_sheets(self):
         """Ensures all essential sheets exist in the spreadsheet and have standard headers & styling."""
         if not self.sheets_service or not self.spreadsheet_id:
+            return
+        if 'global' in getattr(self, '_last_auth_errors', {}):
+            logger.info("ℹ️ Skipping ensure_essential_sheets: Google Service Account credentials require regeneration in Google Cloud Console.")
             return
         
         try:
@@ -3510,8 +3519,8 @@ class GoogleWorkspaceManager:
     @thread_safe
     def move_row_between_sheets(self, from_sheet, row_index, to_sheet):
         """Moves a specific row from one sheet to another, adjusting headers appropriately and deleting from source."""
-        if not self.sheets_service or not self.spreadsheet_id:
-            return False, "Google Sheets service not initialized"
+        if not self.sheets_service or not self.spreadsheet_id or 'global' in getattr(self, '_last_auth_errors', {}):
+            return False, "Google Sheets service not initialized or credentials expired"
             
         try:
             # 1. Get source row values
@@ -3614,7 +3623,7 @@ class GoogleWorkspaceManager:
 
     def get_monthly_summary(self, return_raw=False, period="month"):
         """Fetches real spreadsheet data and generates a stunning monthly expense summary Flex Message."""
-        if not self.sheets_service or not self.spreadsheet_id:
+        if not self.sheets_service or not self.spreadsheet_id or 'global' in getattr(self, '_last_auth_errors', {}):
             return "❌ ระบบ Google Sheets ยังไม่ได้เชื่อมต่อหรือยังไม่ได้ลงทะเบียนค่ะ"
             
         try:
