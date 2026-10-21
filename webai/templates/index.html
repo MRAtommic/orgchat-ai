@@ -967,7 +967,7 @@
           <i data-lucide="user" class="w-5 h-5"></i>
         </div>
         <div class="flex-1 min-w-0 user-info">
-          <p id="sidebarDisplayName" class="text-sm font-bold truncate">Loading...</p>
+          <p id="sidebarDisplayName" class="text-sm font-bold truncate">{{ session.get('display_name') or session.get('user') or 'User' }}</p>
           <div class="flex items-center gap-1.5 mt-0.5">
             <span id="sidebarUserRole" class="text-[9px] {% if is_superadmin %}text-amber-500 font-extrabold{% elif is_org_admin or is_admin %}text-indigo-500 font-bold{% else %}text-surface-400 font-bold{% endif %} uppercase tracking-widest">{% if is_superadmin %}Super Admin{% elif is_org_admin or is_admin %}Admin{% else %}Member{% endif %}</span>
             <span id="sidebarPlanBadge" class="hidden px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase tracking-wider">FREE</span>
@@ -1763,12 +1763,6 @@
                 </div>
               </div>
             </div>
-
-
-              </div>
-            </div>
-
-
           </div>
         </section>
 
@@ -10109,7 +10103,7 @@
   <script src="/static/js/core.js?v=4.3"></script>
   <script src="/static/js/sound-fx.js?v=1.0"></script>
   <script src="/static/js/appearance.js?v=1.0"></script>
-  <script src="/static/js/chat.js?v=7.7"></script>
+  <script src="/static/js/chat.js?v=7.8"></script>
   <script src="/static/js/line-oa.js?v=1.0"></script>
   <script src="/static/js/billing.js?v=4.0"></script>
   <script src="/static/js/kb.js?v=4.2"></script>
