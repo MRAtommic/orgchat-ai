@@ -3833,87 +3833,73 @@ async function loadPosts(category = 'All') {
   }
 }
 
-// ─── Formal Workplace Reaction System ──────────────────────────────
+// ─── Clean Standard Social Reactions ──────────────────────────────
 const REACTION_CONFIG = {
   like: {
     emoji: '👍',
-    label: 'เห็นชอบ',
+    label: 'ถูกใจ',
     shortLabel: 'ถูกใจ',
     badgeClass: 'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400 border-blue-200 dark:border-blue-800/60',
     iconColor: 'text-blue-600 dark:text-blue-400',
-    desc: 'เห็นชอบ / รับทราบ'
-  },
-  celebrate: {
-    emoji: '👏',
-    label: 'ยินดีด้วย',
-    shortLabel: 'ยินดี',
-    badgeClass: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/60',
-    iconColor: 'text-emerald-600 dark:text-emerald-400',
-    desc: 'ยินดีด้วย / ยอดเยี่ยม'
-  },
-  support: {
-    emoji: '🤝',
-    label: 'ร่วมมือ',
-    shortLabel: 'ร่วมมือ',
-    badgeClass: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800/60',
-    iconColor: 'text-indigo-600 dark:text-indigo-400',
-    desc: 'สนับสนุน / ร่วมใจ'
-  },
-  insightful: {
-    emoji: '💡',
-    label: 'ไอเดียดี',
-    shortLabel: 'ไอเดียดี',
-    badgeClass: 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400 border-amber-200 dark:border-amber-800/60',
-    iconColor: 'text-amber-600 dark:text-amber-400',
-    desc: 'มีประโยชน์ / น่าสนใจ'
-  },
-  target: {
-    emoji: '🎯',
-    label: 'ตรงเป้า',
-    shortLabel: 'ตรงเป้า',
-    badgeClass: 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400 border-rose-200 dark:border-rose-800/60',
-    iconColor: 'text-rose-600 dark:text-rose-400',
-    desc: 'ตรงจุด / บรรลุผล'
-  },
-  rocket: {
-    emoji: '🚀',
-    label: 'ลุยเลย',
-    shortLabel: 'ลุยเลย',
-    badgeClass: 'bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-400 border-violet-200 dark:border-violet-800/60',
-    iconColor: 'text-violet-600 dark:text-violet-400',
-    desc: 'ก้าวกระโดด / สุดยอด'
+    desc: 'ถูกใจ'
   },
   love: {
     emoji: '❤️',
-    label: 'ประทับใจ',
-    shortLabel: 'ประทับใจ',
-    badgeClass: 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400 border-red-200 dark:border-red-800/60',
-    iconColor: 'text-red-600 dark:text-red-400',
-    desc: 'ประทับใจ / ซาบซึ้ง'
+    label: 'รักเลย',
+    shortLabel: 'รักเลย',
+    badgeClass: 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400 border-rose-200 dark:border-rose-800/60',
+    iconColor: 'text-rose-600 dark:text-rose-400',
+    desc: 'รักเลย'
   },
-  thankyou: {
-    emoji: '🙏',
-    label: 'ขอบคุณ',
-    shortLabel: 'ขอบคุณ',
-    badgeClass: 'bg-teal-50 text-teal-600 dark:bg-teal-950/40 dark:text-teal-400 border-teal-200 dark:border-teal-800/60',
-    iconColor: 'text-teal-600 dark:text-teal-400',
-    desc: 'ขอบคุณทีมงาน'
+  celebrate: {
+    emoji: '👏',
+    label: 'ยอดเยี่ยม',
+    shortLabel: 'ยอดเยี่ยม',
+    badgeClass: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/60',
+    iconColor: 'text-emerald-600 dark:text-emerald-400',
+    desc: 'ยอดเยี่ยม'
   },
-  haha: { emoji: '😂', label: 'ฮาเลย', shortLabel: 'ฮาเลย', badgeClass: 'bg-yellow-50 text-yellow-600 dark:bg-yellow-950/40 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800/60', iconColor: 'text-yellow-600', desc: 'ผ่อนคลาย' },
-  wow: { emoji: '😮', label: 'ทึ่ง', shortLabel: 'ทึ่ง', badgeClass: 'bg-sky-50 text-sky-600 dark:bg-sky-950/40 dark:text-sky-400 border-sky-200 dark:border-sky-800/60', iconColor: 'text-sky-600', desc: 'ตื่นเต้น' },
-  sad: { emoji: '😢', label: 'เศร้า', shortLabel: 'เศร้า', badgeClass: 'bg-blue-50 text-blue-500 dark:bg-blue-950/40 dark:text-blue-400 border-blue-200 dark:border-blue-800/60', iconColor: 'text-blue-500', desc: 'เห็นใจ' },
-  angry: { emoji: '😡', label: 'โกรธ', shortLabel: 'โกรธ', badgeClass: 'bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400 border-orange-200 dark:border-orange-800/60', iconColor: 'text-orange-600', desc: 'ไม่เห็นด้วย' }
+  haha: {
+    emoji: '😆',
+    label: 'ฮาเลย',
+    shortLabel: 'ฮาเลย',
+    badgeClass: 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400 border-amber-200 dark:border-amber-800/60',
+    iconColor: 'text-amber-600 dark:text-amber-400',
+    desc: 'ฮาเลย'
+  },
+  wow: {
+    emoji: '😮',
+    label: 'ว้าว',
+    shortLabel: 'ว้าว',
+    badgeClass: 'bg-sky-50 text-sky-600 dark:bg-sky-950/40 dark:text-sky-400 border-sky-200 dark:border-sky-800/60',
+    iconColor: 'text-sky-600 dark:text-sky-400',
+    desc: 'ว้าว'
+  },
+  sad: {
+    emoji: '😢',
+    label: 'เศร้า',
+    shortLabel: 'เศร้า',
+    badgeClass: 'bg-indigo-50 text-indigo-500 dark:bg-indigo-950/40 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800/60',
+    iconColor: 'text-indigo-500 dark:text-indigo-400',
+    desc: 'เศร้า'
+  },
+  // Legacy / fallback support for previously reacted posts
+  angry: { emoji: '😡', label: 'โกรธ', shortLabel: 'โกรธ', badgeClass: 'bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400 border-orange-200 dark:border-orange-800/60', iconColor: 'text-orange-600', desc: 'โกรธ' },
+  support: { emoji: '🤝', label: 'ร่วมมือ', shortLabel: 'ร่วมมือ', badgeClass: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800/60', iconColor: 'text-indigo-600', desc: 'ร่วมมือ' },
+  insightful: { emoji: '💡', label: 'ไอเดียดี', shortLabel: 'ไอเดียดี', badgeClass: 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400 border-amber-200 dark:border-amber-800/60', iconColor: 'text-amber-600', desc: 'ไอเดียดี' },
+  target: { emoji: '🎯', label: 'ตรงเป้า', shortLabel: 'ตรงเป้า', badgeClass: 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400 border-rose-200 dark:border-rose-800/60', iconColor: 'text-rose-600', desc: 'ตรงเป้า' },
+  rocket: { emoji: '🚀', label: 'ลุยเลย', shortLabel: 'ลุยเลย', badgeClass: 'bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-400 border-violet-200 dark:border-violet-800/60', iconColor: 'text-violet-600', desc: 'ลุยเลย' },
+  thankyou: { emoji: '🙏', label: 'ขอบคุณ', shortLabel: 'ขอบคุณ', badgeClass: 'bg-teal-50 text-teal-600 dark:bg-teal-950/40 dark:text-teal-400 border-teal-200 dark:border-teal-800/60', iconColor: 'text-teal-600', desc: 'ขอบคุณ' }
 };
 
+// 6 Core Classic Reactions (Natural, familiar, no AI-slop)
 const FORMAL_REACTIONS = [
-  ['like', '👍', 'เห็นชอบ', 'รับทราบ / เห็นชอบ'],
-  ['celebrate', '👏', 'ยินดีด้วย', 'ยอดเยี่ยม / ยินดีด้วย'],
-  ['support', '🤝', 'ร่วมมือ', 'สนับสนุน / ร่วมใจ'],
-  ['insightful', '💡', 'ไอเดียดี', 'สาระประโยชน์ / ไอเดียสร้างสรรค์'],
-  ['target', '🎯', 'ตรงเป้า', 'ตรงจุด / บรรลุเป้าหมาย'],
-  ['rocket', '🚀', 'ลุยเลย', 'ก้าวกระโดด / สุดยอด'],
-  ['love', '❤️', 'ประทับใจ', 'ประทับใจ / ซาบซึ้ง'],
-  ['thankyou', '🙏', 'ขอบคุณ', 'ขอบคุณทีมงาน']
+  ['like', '👍', 'ถูกใจ', 'ถูกใจ'],
+  ['love', '❤️', 'รักเลย', 'รักเลย'],
+  ['celebrate', '👏', 'ยอดเยี่ยม', 'ยอดเยี่ยม'],
+  ['haha', '😆', 'ฮาเลย', 'ฮาเลย'],
+  ['wow', '😮', 'ว้าว', 'ว้าว'],
+  ['sad', '😢', 'เศร้า', 'เศร้า']
 ];
 
 function renderPosts(posts) {
@@ -4131,11 +4117,13 @@ function renderPosts(posts) {
       })() : ''}
 
       <div class="flex items-center pt-4 border-t border-surface-50 dark:border-surface-800 gap-2">
-        <!-- Reaction Button with Picker -->
+        <!-- Reaction Button with Dock -->
         <div class="relative flex items-center gap-2" id="reaction-wrap-${p.id}"
              onmouseenter="showReactionPicker(${p.id})"
              onmouseleave="hideReactionPickerDelayed(${p.id})">
-          <button class="reaction-trigger flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-surface-200/80 dark:border-surface-700/80 bg-white/70 dark:bg-surface-800/70 hover:bg-surface-100/80 dark:hover:bg-surface-700/80 hover:border-brand-300 dark:hover:border-brand-600/50 transition-all group/rbtn shadow-2xs text-surface-600 dark:text-surface-300 active:scale-95" data-pid="${p.id}" onclick="quickReact(${p.id}, 'like')">
+          <button class="reaction-trigger flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-surface-200/80 dark:border-surface-700/80 bg-white/70 dark:bg-surface-800/70 hover:bg-surface-100/80 dark:hover:bg-surface-700/80 hover:border-brand-300 dark:hover:border-brand-600/50 transition-all group/rbtn shadow-2xs text-surface-600 dark:text-surface-300 active:scale-95 cursor-pointer" 
+                  data-pid="${p.id}" 
+                  onclick="handleReactionTriggerClick(${p.id}, event)">
             <span class="flex items-center justify-center" id="my-reaction-icon-${p.id}">
               <i data-lucide="thumbs-up" class="w-4 h-4 text-surface-400 group-hover/rbtn:text-brand-600 group-hover/rbtn:scale-110 transition-transform"></i>
             </span>
@@ -4145,22 +4133,22 @@ function renderPosts(posts) {
           <button onclick="openReactionsModal(${p.id})" id="reaction-counts-${p.id}" class="${p.likes > 0 ? '' : 'hidden'} inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface-100/90 dark:bg-surface-800 hover:bg-surface-200 dark:hover:bg-surface-700 border border-surface-200/70 dark:border-surface-700/70 text-xs font-bold text-surface-600 dark:text-surface-300 transition-all cursor-pointer shadow-2xs hover:scale-105" title="ดูผู้แสดงความรู้สึกทั้งหมด">
             <span id="total-reactions-${p.id}" class="tabular-nums font-bold text-xs">${p.likes || 0}</span>
           </button>
-          <!-- Reaction Picker Popup -->
-          <div class="reaction-picker absolute left-0 z-50 pointer-events-auto"
+          <!-- Reaction Dock Popup with Zero-Gap Bridge -->
+          <div class="reaction-picker absolute left-0 bottom-full pb-2.5 z-50 pointer-events-auto select-none"
                id="rpicker-${p.id}"
-               style="bottom:calc(100% + 6px); display:none;"
+               style="display:none; opacity:0; transform: translateY(6px) scale(0.95); transition: opacity 0.18s ease-out, transform 0.18s ease-out;"
                onmouseenter="showReactionPicker(${p.id})"
                onmouseleave="hideReactionPickerDelayed(${p.id})">
-            <div class="flex items-center gap-1 bg-white/95 dark:bg-surface-900/95 backdrop-blur-xl rounded-2xl shadow-[0_12px_36px_rgba(0,0,0,0.22)] border border-surface-200/90 dark:border-surface-700/90 p-1.5 animate-in zoom-in-95 fade-in duration-150">
+            <div class="flex items-center gap-1 bg-white/95 dark:bg-surface-900/95 backdrop-blur-xl rounded-full shadow-[0_12px_36px_rgba(0,0,0,0.22)] border border-surface-200/90 dark:border-surface-700/90 px-2 py-1.5 ring-1 ring-black/5 dark:ring-white/10">
             ${FORMAL_REACTIONS.map(([key, emoji, label, desc]) => `
               <button onclick="setReaction(${p.id}, '${key}')" 
-                      class="reaction-btn group/r relative flex flex-col items-center justify-center w-9 h-9 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800 transition-all duration-150 hover:scale-125 hover:-translate-y-1 active:scale-110" 
+                      class="reaction-btn group/r relative flex items-center justify-center w-10 h-10 rounded-full hover:bg-surface-100 dark:hover:bg-surface-800 transition-all duration-150 hover:scale-130 hover:-translate-y-1.5 active:scale-105 cursor-pointer" 
                       data-reaction="${key}" 
                       data-pid="${p.id}"
                       title="${desc}">
-                <span class="text-xl leading-none select-none transition-transform">${emoji}</span>
-                <!-- Tooltip Label on Hover -->
-                <span class="absolute -top-7 px-2 py-0.5 rounded-md bg-surface-900 text-white dark:bg-surface-100 dark:text-surface-900 text-[10px] font-bold whitespace-nowrap opacity-0 group-hover/r:opacity-100 transition-opacity pointer-events-none shadow-md z-50">
+                <span class="text-2xl leading-none select-none transition-transform duration-150">${emoji}</span>
+                <!-- Tooltip Label on Hover (Centered) -->
+                <span class="absolute -top-8 left-1/2 -translate-x-1/2 px-2.5 py-1 rounded-full bg-surface-900/90 text-white dark:bg-surface-100 dark:text-surface-900 text-[11px] font-bold whitespace-nowrap opacity-0 group-hover/r:opacity-100 transition-all duration-150 pointer-events-none shadow-lg z-50 scale-90 group-hover/r:scale-100">
                   ${label}
                 </span>
               </button>
@@ -4776,31 +4764,75 @@ async function summarizePost(pid, btn) {
 
 // State to track current user's reaction per post
 const myReactions = {}; // { postId: reactionType | null }
-const _pickerTimers = {}; // hide delay timers per post
+const _pickerTimers = {}; // { [pid]: { timer: number, animTimer: number } }
+
+function clearPickerTimers(pid) {
+  if (_pickerTimers[pid]) {
+    if (_pickerTimers[pid].timer) clearTimeout(_pickerTimers[pid].timer);
+    if (_pickerTimers[pid].animTimer) clearTimeout(_pickerTimers[pid].animTimer);
+    delete _pickerTimers[pid];
+  }
+}
 
 function showReactionPicker(pid) {
-  // Cancel any pending hide
-  if (_pickerTimers[pid]) { clearTimeout(_pickerTimers[pid]); delete _pickerTimers[pid]; }
+  clearPickerTimers(pid);
   const el = document.getElementById(`rpicker-${pid}`);
   if (!el) return;
   el.style.display = 'block';
-  // Trigger animation
-  requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'scale(1) translateY(0)'; });
+  // Force reflow for reliable transition
+  void el.offsetHeight;
+  el.style.opacity = '1';
+  el.style.transform = 'translateY(0) scale(1)';
+}
+
+function hideReactionPicker(pid, immediate = false) {
+  clearPickerTimers(pid);
+  const el = document.getElementById(`rpicker-${pid}`);
+  if (!el) return;
+  if (immediate) {
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(6px) scale(0.95)';
+    el.style.display = 'none';
+    return;
+  }
+  el.style.opacity = '0';
+  el.style.transform = 'translateY(6px) scale(0.95)';
+  const animTimer = setTimeout(() => {
+    if (el) el.style.display = 'none';
+    delete _pickerTimers[pid];
+  }, 180);
+  _pickerTimers[pid] = { timer: null, animTimer };
 }
 
 function hideReactionPickerDelayed(pid) {
-  _pickerTimers[pid] = setTimeout(() => {
-    const el = document.getElementById(`rpicker-${pid}`);
-    if (el) {
-      el.style.opacity = '0';
-      el.style.transform = 'scale(0.85) translateY(4px)';
-      setTimeout(() => { if (el) el.style.display = 'none'; }, 160);
-    }
-    delete _pickerTimers[pid];
-  }, 220); // 220ms grace period - comfortable time to move mouse to picker
+  clearPickerTimers(pid);
+  const timer = setTimeout(() => {
+    hideReactionPicker(pid, false);
+  }, 350); // Comfortable 350ms grace period so it never vanishes accidentally
+  _pickerTimers[pid] = { timer, animTimer: null };
+}
+
+function handleReactionTriggerClick(pid, e) {
+  if (e) e.stopPropagation();
+  const current = myReactions[pid];
+  if (current) {
+    // Already reacted -> click removes reaction (unlike)
+    setReaction(pid, current);
+    hideReactionPicker(pid, true);
+  } else {
+    // Not reacted yet -> set 'like' AND open dock briefly so user can pick another reaction if desired
+    setReaction(pid, 'like');
+    showReactionPicker(pid);
+    // Auto-hide after 1.8s unless user hovers over dock
+    const timer = setTimeout(() => {
+      hideReactionPicker(pid, false);
+    }, 1800);
+    _pickerTimers[pid] = { timer, animTimer: null };
+  }
 }
 
 async function setReaction(pid, reaction) {
+  hideReactionPicker(pid, true); // Instantly close reaction dock
   try {
     const res = await fetch(`/api/posts/${pid}/react`, {
       method: 'POST',
@@ -4819,7 +4851,6 @@ async function setReaction(pid, reaction) {
 }
 
 function quickReact(pid, defaultReaction) {
-  // If already reacted, remove. Otherwise set default 'like'
   const current = myReactions[pid];
   setReaction(pid, current || defaultReaction);
 }
@@ -4890,6 +4921,18 @@ function updateReactionUI(pid, counts, total, myReaction) {
     }
   });
 }
+
+// Close open reaction picker docks on outside click
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.reaction-picker') && !e.target.closest('.reaction-trigger')) {
+    document.querySelectorAll('.reaction-picker').forEach(el => {
+      if (el.style.display !== 'none') {
+        const pid = el.id.replace('rpicker-', '');
+        hideReactionPicker(pid, true);
+      }
+    });
+  }
+});
 
 async function openReactionsModal(pid) {
   try {

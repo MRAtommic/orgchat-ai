@@ -1101,18 +1101,18 @@ def post_react(pid):
 
     if reacted:
         REACTION_LABELS = {
-            'like': '👍 เห็นชอบ',
-            'celebrate': '👏 ยินดีด้วย',
+            'like': '👍 ถูกใจ',
+            'love': '❤️ รักเลย',
+            'celebrate': '👏 ยอดเยี่ยม',
+            'haha': '😆 ฮาเลย',
+            'wow': '😮 ว้าว',
+            'sad': '😢 เศร้า',
+            'angry': '😡 โกรธ',
             'support': '🤝 ร่วมมือ',
             'insightful': '💡 ไอเดียดี',
             'target': '🎯 ตรงเป้า',
             'rocket': '🚀 ยอดเยี่ยม',
-            'love': '❤️ ประทับใจ',
-            'thankyou': '🙏 ขอบคุณ',
-            'haha': '😆 ฮาเลย',
-            'wow': '😲 ทึ่งเลย',
-            'sad': '😢 เศร้า',
-            'angry': '😡 โกรธ'
+            'thankyou': '🙏 ขอบคุณ'
         }
         post = database.get_post_by_id(pid)
         if post and post.get("author") != user:
