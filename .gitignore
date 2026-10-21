@@ -73,3 +73,5 @@ Thumbs.db
 *.lock
 .env*
 *.bak
+.taste-skill/
+สกิล AI/
