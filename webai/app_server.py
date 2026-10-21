@@ -12,6 +12,11 @@ try:
 except Exception:
     pass
 
+from pathlib import Path
+BASE_DIR = Path(__file__).parent.absolute()
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
 from dns_patch import apply_dns_patch_if_needed
 apply_dns_patch_if_needed()
 
