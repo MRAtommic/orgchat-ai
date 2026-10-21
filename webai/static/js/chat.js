@@ -3833,6 +3833,89 @@ async function loadPosts(category = 'All') {
   }
 }
 
+// ─── Formal Workplace Reaction System ──────────────────────────────
+const REACTION_CONFIG = {
+  like: {
+    emoji: '👍',
+    label: 'เห็นชอบ',
+    shortLabel: 'ถูกใจ',
+    badgeClass: 'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400 border-blue-200 dark:border-blue-800/60',
+    iconColor: 'text-blue-600 dark:text-blue-400',
+    desc: 'เห็นชอบ / รับทราบ'
+  },
+  celebrate: {
+    emoji: '👏',
+    label: 'ยินดีด้วย',
+    shortLabel: 'ยินดี',
+    badgeClass: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/60',
+    iconColor: 'text-emerald-600 dark:text-emerald-400',
+    desc: 'ยินดีด้วย / ยอดเยี่ยม'
+  },
+  support: {
+    emoji: '🤝',
+    label: 'ร่วมมือ',
+    shortLabel: 'ร่วมมือ',
+    badgeClass: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800/60',
+    iconColor: 'text-indigo-600 dark:text-indigo-400',
+    desc: 'สนับสนุน / ร่วมใจ'
+  },
+  insightful: {
+    emoji: '💡',
+    label: 'ไอเดียดี',
+    shortLabel: 'ไอเดียดี',
+    badgeClass: 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400 border-amber-200 dark:border-amber-800/60',
+    iconColor: 'text-amber-600 dark:text-amber-400',
+    desc: 'มีประโยชน์ / น่าสนใจ'
+  },
+  target: {
+    emoji: '🎯',
+    label: 'ตรงเป้า',
+    shortLabel: 'ตรงเป้า',
+    badgeClass: 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400 border-rose-200 dark:border-rose-800/60',
+    iconColor: 'text-rose-600 dark:text-rose-400',
+    desc: 'ตรงจุด / บรรลุผล'
+  },
+  rocket: {
+    emoji: '🚀',
+    label: 'ลุยเลย',
+    shortLabel: 'ลุยเลย',
+    badgeClass: 'bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-400 border-violet-200 dark:border-violet-800/60',
+    iconColor: 'text-violet-600 dark:text-violet-400',
+    desc: 'ก้าวกระโดด / สุดยอด'
+  },
+  love: {
+    emoji: '❤️',
+    label: 'ประทับใจ',
+    shortLabel: 'ประทับใจ',
+    badgeClass: 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400 border-red-200 dark:border-red-800/60',
+    iconColor: 'text-red-600 dark:text-red-400',
+    desc: 'ประทับใจ / ซาบซึ้ง'
+  },
+  thankyou: {
+    emoji: '🙏',
+    label: 'ขอบคุณ',
+    shortLabel: 'ขอบคุณ',
+    badgeClass: 'bg-teal-50 text-teal-600 dark:bg-teal-950/40 dark:text-teal-400 border-teal-200 dark:border-teal-800/60',
+    iconColor: 'text-teal-600 dark:text-teal-400',
+    desc: 'ขอบคุณทีมงาน'
+  },
+  haha: { emoji: '😂', label: 'ฮาเลย', shortLabel: 'ฮาเลย', badgeClass: 'bg-yellow-50 text-yellow-600 dark:bg-yellow-950/40 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800/60', iconColor: 'text-yellow-600', desc: 'ผ่อนคลาย' },
+  wow: { emoji: '😮', label: 'ทึ่ง', shortLabel: 'ทึ่ง', badgeClass: 'bg-sky-50 text-sky-600 dark:bg-sky-950/40 dark:text-sky-400 border-sky-200 dark:border-sky-800/60', iconColor: 'text-sky-600', desc: 'ตื่นเต้น' },
+  sad: { emoji: '😢', label: 'เศร้า', shortLabel: 'เศร้า', badgeClass: 'bg-blue-50 text-blue-500 dark:bg-blue-950/40 dark:text-blue-400 border-blue-200 dark:border-blue-800/60', iconColor: 'text-blue-500', desc: 'เห็นใจ' },
+  angry: { emoji: '😡', label: 'โกรธ', shortLabel: 'โกรธ', badgeClass: 'bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400 border-orange-200 dark:border-orange-800/60', iconColor: 'text-orange-600', desc: 'ไม่เห็นด้วย' }
+};
+
+const FORMAL_REACTIONS = [
+  ['like', '👍', 'เห็นชอบ', 'รับทราบ / เห็นชอบ'],
+  ['celebrate', '👏', 'ยินดีด้วย', 'ยอดเยี่ยม / ยินดีด้วย'],
+  ['support', '🤝', 'ร่วมมือ', 'สนับสนุน / ร่วมใจ'],
+  ['insightful', '💡', 'ไอเดียดี', 'สาระประโยชน์ / ไอเดียสร้างสรรค์'],
+  ['target', '🎯', 'ตรงเป้า', 'ตรงจุด / บรรลุเป้าหมาย'],
+  ['rocket', '🚀', 'ลุยเลย', 'ก้าวกระโดด / สุดยอด'],
+  ['love', '❤️', 'ประทับใจ', 'ประทับใจ / ซาบซึ้ง'],
+  ['thankyou', '🙏', 'ขอบคุณ', 'ขอบคุณทีมงาน']
+];
+
 function renderPosts(posts) {
   if (!posts.length) {
     feedPosts.innerHTML = `
@@ -4052,25 +4135,34 @@ function renderPosts(posts) {
         <div class="relative flex items-center gap-2" id="reaction-wrap-${p.id}"
              onmouseenter="showReactionPicker(${p.id})"
              onmouseleave="hideReactionPickerDelayed(${p.id})">
-          <button class="reaction-trigger flex items-center gap-1.5 px-3 py-2 rounded-xl border border-surface-100 dark:border-surface-800 bg-surface-50/50 dark:bg-surface-900/50 hover:border-rose-200 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all group/rbtn" data-pid="${p.id}" onclick="quickReact(${p.id}, 'like')">
-            <span class="text-sm leading-none" id="my-reaction-icon-${p.id}">👍</span>
-            <span class="text-xs font-bold text-surface-400 group-hover/rbtn:text-rose-500 transition-colors" id="react-label-${p.id}">ถูกใจ</span>
+          <button class="reaction-trigger flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-surface-200/80 dark:border-surface-700/80 bg-white/70 dark:bg-surface-800/70 hover:bg-surface-100/80 dark:hover:bg-surface-700/80 hover:border-brand-300 dark:hover:border-brand-600/50 transition-all group/rbtn shadow-2xs text-surface-600 dark:text-surface-300 active:scale-95" data-pid="${p.id}" onclick="quickReact(${p.id}, 'like')">
+            <span class="flex items-center justify-center" id="my-reaction-icon-${p.id}">
+              <i data-lucide="thumbs-up" class="w-4 h-4 text-surface-400 group-hover/rbtn:text-brand-600 group-hover/rbtn:scale-110 transition-transform"></i>
+            </span>
+            <span class="text-xs font-semibold group-hover/rbtn:text-brand-600 transition-colors" id="react-label-${p.id}">ถูกใจ</span>
           </button>
-          <!-- Reaction count -->
-          <button onclick="openReactionsModal(${p.id})" id="reaction-counts-${p.id}" class="text-xs font-bold text-surface-400 hover:text-brand-600 transition-colors min-w-[18px] text-left">
-            <span id="total-reactions-${p.id}">${p.likes || 0}</span>
+          <!-- Reaction count badge (Pill) -->
+          <button onclick="openReactionsModal(${p.id})" id="reaction-counts-${p.id}" class="${p.likes > 0 ? '' : 'hidden'} inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface-100/90 dark:bg-surface-800 hover:bg-surface-200 dark:hover:bg-surface-700 border border-surface-200/70 dark:border-surface-700/70 text-xs font-bold text-surface-600 dark:text-surface-300 transition-all cursor-pointer shadow-2xs hover:scale-105" title="ดูผู้แสดงความรู้สึกทั้งหมด">
+            <span id="total-reactions-${p.id}" class="tabular-nums font-bold text-xs">${p.likes || 0}</span>
           </button>
-          <!-- Reaction Picker Popup (JS hover, delay 150ms to avoid gap issue) -->
-          <div class="reaction-picker absolute left-0 z-50"
+          <!-- Reaction Picker Popup -->
+          <div class="reaction-picker absolute left-0 z-50 pointer-events-auto"
                id="rpicker-${p.id}"
-               style="bottom:100%; padding-bottom:12px; display:none;"
+               style="bottom:calc(100% + 6px); display:none;"
                onmouseenter="showReactionPicker(${p.id})"
                onmouseleave="hideReactionPickerDelayed(${p.id})">
-            <div class="flex gap-0.5 bg-white dark:bg-surface-800 rounded-2xl shadow-2xl border border-surface-100 dark:border-surface-700 p-1.5">
-            ${[['like', '\u{1F44D}', 'ถูกใจ'], ['love', '\u2764\uFE0F', 'รักเลย'], ['haha', '\u{1F602}', 'ฮาเลย'], ['wow', '\u{1F62E}', 'ทึ่ง'], ['sad', '\u{1F622}', 'เศร้า'], ['angry', '\u{1F621}', 'โกรธ']].map(([key, emoji, label]) => `
-              <button onclick="setReaction(${p.id}, '${key}')" title="${label}" class="reaction-btn flex flex-col items-center gap-0.5 p-2 rounded-xl hover:bg-surface-50 dark:hover:bg-surface-700 transition-all hover:scale-125 active:scale-110" data-reaction="${key}" data-pid="${p.id}">
-                <span style="font-size:24px;line-height:1.1">${emoji}</span>
-                <span class="text-[8px] font-bold text-surface-400">${label}</span>
+            <div class="flex items-center gap-1 bg-white/95 dark:bg-surface-900/95 backdrop-blur-xl rounded-2xl shadow-[0_12px_36px_rgba(0,0,0,0.22)] border border-surface-200/90 dark:border-surface-700/90 p-1.5 animate-in zoom-in-95 fade-in duration-150">
+            ${FORMAL_REACTIONS.map(([key, emoji, label, desc]) => `
+              <button onclick="setReaction(${p.id}, '${key}')" 
+                      class="reaction-btn group/r relative flex flex-col items-center justify-center w-9 h-9 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800 transition-all duration-150 hover:scale-125 hover:-translate-y-1 active:scale-110" 
+                      data-reaction="${key}" 
+                      data-pid="${p.id}"
+                      title="${desc}">
+                <span class="text-xl leading-none select-none transition-transform">${emoji}</span>
+                <!-- Tooltip Label on Hover -->
+                <span class="absolute -top-7 px-2 py-0.5 rounded-md bg-surface-900 text-white dark:bg-surface-100 dark:text-surface-900 text-[10px] font-bold whitespace-nowrap opacity-0 group-hover/r:opacity-100 transition-opacity pointer-events-none shadow-md z-50">
+                  ${label}
+                </span>
               </button>
             `).join('')}
             </div>
@@ -4682,16 +4774,6 @@ async function summarizePost(pid, btn) {
 }
 
 
-// ─── Reaction System ──────────────────────────────
-const REACTION_CONFIG = {
-  like: { emoji: '👍', label: 'ถูกใจ', color: 'text-blue-500' },
-  love: { emoji: '❤️', label: 'รักเลย', color: 'text-red-500' },
-  haha: { emoji: '😂', label: 'ฮาเลย', color: 'text-yellow-500' },
-  wow: { emoji: '😮', label: 'ทึ่ง', color: 'text-yellow-500' },
-  sad: { emoji: '😢', label: 'เศร้า', color: 'text-blue-400' },
-  angry: { emoji: '😡', label: 'โกรธ', color: 'text-orange-500' },
-};
-
 // State to track current user's reaction per post
 const myReactions = {}; // { postId: reactionType | null }
 const _pickerTimers = {}; // hide delay timers per post
@@ -4701,7 +4783,7 @@ function showReactionPicker(pid) {
   if (_pickerTimers[pid]) { clearTimeout(_pickerTimers[pid]); delete _pickerTimers[pid]; }
   const el = document.getElementById(`rpicker-${pid}`);
   if (!el) return;
-  el.classList.remove('hidden');
+  el.style.display = 'block';
   // Trigger animation
   requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'scale(1) translateY(0)'; });
 }
@@ -4712,10 +4794,10 @@ function hideReactionPickerDelayed(pid) {
     if (el) {
       el.style.opacity = '0';
       el.style.transform = 'scale(0.85) translateY(4px)';
-      setTimeout(() => { if (el) el.classList.add('hidden'); }, 160);
+      setTimeout(() => { if (el) el.style.display = 'none'; }, 160);
     }
     delete _pickerTimers[pid];
-  }, 150); // 150ms grace period - enough to move mouse to picker
+  }, 220); // 220ms grace period - comfortable time to move mouse to picker
 }
 
 async function setReaction(pid, reaction) {
@@ -4752,37 +4834,59 @@ function updateReactionUI(pid, counts, total, myReaction) {
 
   const cfg = myReaction ? REACTION_CONFIG[myReaction] : null;
 
-  if (iconEl) iconEl.textContent = cfg ? cfg.emoji : '👍';
-  if (labelEl) {
-    labelEl.textContent = cfg ? cfg.label : 'ถูกใจ';
-    if (triggerBtn) {
-      triggerBtn.className = `flex items-center gap-2 transition-colors reaction-trigger ${cfg ? cfg.color : 'text-surface-400 hover:text-brand-600'}`;
+  if (iconEl) {
+    if (cfg) {
+      iconEl.innerHTML = `<span class="text-base leading-none select-none animate-in zoom-in-75 duration-150">${cfg.emoji}</span>`;
+    } else {
+      iconEl.innerHTML = `<i data-lucide="thumbs-up" class="w-4 h-4 text-surface-400 group-hover/rbtn:text-brand-600 group-hover/rbtn:scale-110 transition-transform"></i>`;
+      if (typeof lucide !== 'undefined') lucide.createIcons();
     }
   }
 
-  // Build emoji count summary next to total
-  if (totalEl) totalEl.textContent = total;
-  if (countsEl && total > 0) {
-    const topEmojis = Object.entries(counts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3)
-      .map(([rtype]) => REACTION_CONFIG[rtype]?.emoji || '👍')
-      .join('');
-    countsEl.innerHTML = `
-      <span class="flex items-center gap-0.5">
-        <span class="text-sm leading-none">${topEmojis}</span>
-        <span class="text-xs font-bold ml-1">${total}</span>
-      </span>
-    `;
+  if (labelEl) {
+    labelEl.textContent = cfg ? (cfg.shortLabel || cfg.label) : 'ถูกใจ';
+  }
+
+  if (triggerBtn) {
+    if (cfg) {
+      triggerBtn.className = `reaction-trigger flex items-center gap-1.5 px-3 py-1.5 rounded-xl border transition-all shadow-xs ${cfg.badgeClass} font-bold active:scale-95`;
+    } else {
+      triggerBtn.className = `reaction-trigger flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-surface-200/80 dark:border-surface-700/80 bg-white/70 dark:bg-surface-800/70 hover:bg-surface-100/80 dark:hover:bg-surface-700/80 hover:border-brand-300 dark:hover:border-brand-600/50 transition-all group/rbtn shadow-2xs text-surface-600 dark:text-surface-300 active:scale-95`;
+    }
+  }
+
+  // Update reaction counts badge
+  if (countsEl) {
+    if (total > 0) {
+      countsEl.classList.remove('hidden');
+      const topEntries = Object.entries(counts || {})
+        .filter(([_, c]) => c > 0)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3);
+      
+      const topEmojisHtml = topEntries.length > 0
+        ? `<div class="flex -space-x-1.5 items-center mr-0.5">${topEntries.map(([rtype]) => {
+            const e = REACTION_CONFIG[rtype]?.emoji || '👍';
+            return `<span class="inline-flex items-center justify-center w-4 h-4 text-[11px] rounded-full bg-white dark:bg-surface-700 shadow-2xs border border-white dark:border-surface-800 select-none">${e}</span>`;
+          }).join('')}</div>`
+        : '';
+
+      countsEl.innerHTML = `
+        ${topEmojisHtml}
+        <span id="total-reactions-${pid}" class="tabular-nums font-bold text-xs text-surface-600 dark:text-surface-300">${total}</span>
+      `;
+    } else {
+      countsEl.classList.add('hidden');
+    }
   }
 
   // Update reaction buttons styling in picker
   document.querySelectorAll(`.reaction-btn[data-pid="${pid}"]`).forEach(btn => {
     const rkey = btn.dataset.reaction;
     if (myReaction === rkey) {
-      btn.classList.add('ring-2', 'ring-brand-500', 'bg-brand-50', 'dark:bg-brand-900/30');
+      btn.classList.add('ring-2', 'ring-brand-500', 'bg-brand-50', 'dark:bg-brand-900/40', 'scale-110');
     } else {
-      btn.classList.remove('ring-2', 'ring-brand-500', 'bg-brand-50', 'dark:bg-brand-900/30');
+      btn.classList.remove('ring-2', 'ring-brand-500', 'bg-brand-50', 'dark:bg-brand-900/40', 'scale-110');
     }
   });
 }

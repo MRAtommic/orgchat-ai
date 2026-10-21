@@ -522,7 +522,10 @@ def toggle_like(post_id, user):
 @db_transaction_retry()
 def set_reaction(post_id, user, reaction):
     """Set or update a specific emoji reaction for a user on a post. Returns (reacted, reaction_type)."""
-    VALID_REACTIONS = {'like', 'love', 'haha', 'wow', 'sad', 'angry'}
+    VALID_REACTIONS = {
+        'like', 'celebrate', 'support', 'insightful', 'target', 'rocket', 'love', 'thankyou',
+        'haha', 'wow', 'sad', 'angry'
+    }
     if reaction not in VALID_REACTIONS:
         reaction = 'like'
     
