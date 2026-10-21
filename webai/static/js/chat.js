@@ -17342,14 +17342,14 @@ async function loadDriveContents(folderId = 'root') {
         backBtn.disabled = state.drive.history.length <= 1;
       }
     } else {
-      toast(data.error || 'ไม่สามารถโหลดข้อมูล Google Drive ได้', 'error');
+      const isAuthErr = data.error && (data.error.includes('Google Workspace') || data.error.includes('Service Account') || data.error.includes('JWT') || data.error.includes('OAuth'));
       grid.innerHTML = `
         <div class="col-span-full py-16 flex flex-col items-center justify-center text-center">
           <div class="w-14 h-14 bg-amber-50 dark:bg-amber-950/40 text-amber-500 rounded-2xl flex items-center justify-center mb-3">
-            <i data-lucide="cloud-off" class="w-7 h-7"></i>
+            <i data-lucide="${isAuthErr ? 'key-round' : 'cloud-off'}" class="w-7 h-7"></i>
           </div>
-          <p class="font-bold text-surface-800 dark:text-surface-100 mb-1">${escHtml(data.error || 'ไม่สามารถเชื่อมต่อ Google Drive ได้')}</p>
-          <p class="text-xs text-surface-400 max-w-md mb-4">ตรวจพบข้อผิดพลาดในการเชื่อมต่อ หรือ Google OAuth ขององค์กรอาจหมดอายุ</p>
+          <p class="font-bold text-surface-800 dark:text-surface-100 mb-1 max-w-lg leading-relaxed">${escHtml(data.error || 'ไม่สามารถเชื่อมต่อ Google Drive ได้')}</p>
+          <p class="text-xs text-surface-400 max-w-md mb-4">${isAuthErr ? 'กรุณาอัปเดต Service Account Key ใน Google Cloud Console หรือเชื่อมต่อ Google ในหน้าตั้งค่า' : 'ตรวจพบข้อผิดพลาดในการเชื่อมต่อ กรุณาลองใหม่อีกครั้ง'}</p>
           <div class="flex items-center gap-2">
             <button onclick="loadDriveContents(state.drive.currentFolderId)" class="px-4 py-2 bg-surface-100 dark:bg-surface-800 hover:bg-surface-200 text-surface-700 dark:text-surface-200 text-xs font-bold rounded-xl transition">ลองอีกครั้ง</button>
             <a href="/#settings" class="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-xl shadow-sm transition">ไปที่หน้าตั้งค่า Google</a>
@@ -17360,15 +17360,19 @@ async function loadDriveContents(folderId = 'root') {
     }
   } catch (e) {
     console.error('Drive Load Error:', e);
-    toast(e.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อ Google Drive', 'error');
+    const errText = e.message || '';
+    const isAuthErr = errText.includes('Google Workspace') || errText.includes('Service Account') || errText.includes('JWT') || errText.includes('OAuth');
     grid.innerHTML = `
       <div class="col-span-full py-16 flex flex-col items-center justify-center text-center">
-        <div class="w-14 h-14 bg-rose-50 dark:bg-rose-950/40 text-rose-500 rounded-2xl flex items-center justify-center mb-3">
-          <i data-lucide="alert-circle" class="w-7 h-7"></i>
+        <div class="w-14 h-14 ${isAuthErr ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-500' : 'bg-rose-50 dark:bg-rose-950/40 text-rose-500'} rounded-2xl flex items-center justify-center mb-3">
+          <i data-lucide="${isAuthErr ? 'key-round' : 'alert-circle'}" class="w-7 h-7"></i>
         </div>
-        <p class="font-bold text-surface-800 dark:text-surface-100 mb-1">${escHtml(e.message || 'การเชื่อมต่อหมดเวลา')}</p>
-        <p class="text-xs text-surface-400 max-w-md mb-4">เซิร์ฟเวอร์ใช้เวลาตอบสนองนานเกินไป กรุณาตรวจสอบสถานะการเชื่อมต่อ</p>
-        <button onclick="loadDriveContents(state.drive.currentFolderId)" class="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-xl shadow-sm transition">ลองอีกครั้ง</button>
+        <p class="font-bold text-surface-800 dark:text-surface-100 mb-1 max-w-lg leading-relaxed">${escHtml(errText || 'ไม่สามารถโหลดข้อมูลไดรฟ์ได้')}</p>
+        <p class="text-xs text-surface-400 max-w-md mb-4">${isAuthErr ? 'กุญแจ Service Account หรือ OAuth อาจหมดอายุหรือถูกเพิกถอน กรุณาอัปเดตกุญแจใหม่' : 'เซิร์ฟเวอร์ใช้เวลาตอบสนองนานเกินไป กรุณาตรวจสอบสถานะการเชื่อมต่อ'}</p>
+        <div class="flex items-center gap-2">
+          <button onclick="loadDriveContents(state.drive.currentFolderId)" class="px-4 py-2 bg-surface-100 dark:bg-surface-800 hover:bg-surface-200 text-surface-700 dark:text-surface-200 text-xs font-bold rounded-xl transition">ลองอีกครั้ง</button>
+          <a href="/#settings" class="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-xl shadow-sm transition">ไปที่หน้าตั้งค่า Google</a>
+        </div>
       </div>
     `;
     if (typeof lucide !== 'undefined') lucide.createIcons();

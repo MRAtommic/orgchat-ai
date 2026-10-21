@@ -306,8 +306,20 @@ class GoogleWorkspaceManager:
     def _record_auth_error(self, error, org_id=None):
         """Records an authentication failure for system health dashboards."""
         key = org_id if org_id is not None else 'global'
+        err_msg = str(error)
+        err_lower = err_msg.lower()
+        if "invalid_grant" in err_lower or "jwt signature" in err_lower or "invalid_jwt" in err_lower:
+            display_msg = "Google Service Account Key หมดอายุ ถูกเพิกถอน หรือถูกสร้างใหม่ใน Google Cloud Console กรุณาอัปเดตกุญแจ (JSON) ในระบบ"
+        elif "insufficient" in err_lower or "permission" in err_lower:
+            display_msg = "สิทธิ์การเข้าถึง Google Workspace ไม่เพียงพอ กรุณาตรวจสอบสิทธิ์การแชร์ของไดรฟ์"
+        elif "quota" in err_lower or "rate limit" in err_lower:
+            display_msg = "Google API ใช้งานเกินโควตาชั่วคราว กรุณารอสักครู่แล้วลองใหม่"
+        else:
+            display_msg = err_msg
+
         self._last_auth_errors[key] = {
-            "message": str(error),
+            "message": display_msg,
+            "raw_error": err_msg,
             "timestamp": time.time(),
             "org_id": key
         }
