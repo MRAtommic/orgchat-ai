@@ -1489,28 +1489,29 @@
             </div>
 
             <!-- Quick Attendance & GPS Clock-in Widget (Home Dashboard) -->
-            <div id="homeAttendanceWidget" class="w-full glass p-5 sm:p-6 rounded-[2.5rem] border border-emerald-500/20 bg-gradient-to-r from-emerald-500/10 via-teal-500/5 to-surface-50 dark:to-surface-900 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div class="flex items-center gap-4 w-full sm:w-auto">
-                <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center shadow-lg shadow-emerald-500/20 shrink-0">
-                  <i data-lucide="clock" class="w-7 h-7"></i>
+            <div id="homeAttendanceWidget" class="w-full p-4 sm:p-5 rounded-2xl border border-surface-200 dark:border-surface-800 bg-white dark:bg-surface-900/90 shadow-sm hover:border-emerald-500/30 transition-all flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div class="flex items-center gap-3.5 w-full sm:w-auto">
+                <div class="w-11 h-11 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200/70 dark:border-emerald-800/60 flex items-center justify-center shrink-0">
+                  <i data-lucide="clock" class="w-5 h-5"></i>
                 </div>
-                <div class="space-y-1 min-w-0">
+                <div class="space-y-0.5 min-w-0">
                   <div class="flex items-center gap-2">
-                    <span class="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">ระบบลงเวลาทำงาน GPS</span>
-                    <span id="homeAttStatusBadge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-800">ยังไม่ Check-in</span>
+                    <span class="text-xs font-semibold text-surface-700 dark:text-surface-300">ระบบลงเวลาทำงาน GPS</span>
+                    <span id="homeAttStatusBadge" class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 border border-surface-200 dark:border-surface-700">
+                      ยังไม่ Check-in
+                    </span>
                   </div>
-                  <h3 id="homeAttStatusTitle" class="text-base sm:text-lg font-black text-surface-900 dark:text-white truncate">
+                  <h3 id="homeAttStatusTitle" class="text-sm sm:text-base font-semibold text-surface-900 dark:text-white truncate">
                     ยังไม่ได้ลงเวลาเข้างานวันนี้
                   </h3>
-                  <p id="homeAttStatusSub" class="text-xs text-surface-500 dark:text-surface-400 flex items-center gap-1.5 truncate">
-                    <i data-lucide="map-pin" class="w-3.5 h-3.5 text-emerald-500 flex-shrink-0"></i> บันทึกเวลาเข้า-ออกงานด้วยพิกัด GPS อัตโนมัติ
+                  <p id="homeAttStatusSub" class="text-xs text-surface-500 dark:text-surface-400 truncate">
+                    บันทึกเวลาเข้า-ออกงานด้วยพิกัด GPS อัตโนมัติ
                   </p>
                 </div>
               </div>
               <div class="flex items-center gap-2 w-full sm:w-auto shrink-0 justify-end">
                 <button id="homeAttActionBtn" onclick="showView('attendance')"
-                  class="flex-1 sm:flex-initial px-5 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white text-xs font-black rounded-2xl shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2">
-                  <i data-lucide="log-in" class="w-4 h-4"></i>
+                  class="flex-1 sm:flex-initial px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium rounded-xl shadow-sm hover:shadow transition-all flex items-center justify-center active:scale-[0.98]">
                   <span id="homeAttActionBtnText">เช็คอินเข้างาน (GPS)</span>
                 </button>
               </div>
@@ -9873,7 +9874,7 @@
   <script src="/static/js/billing.js?v=4.0"></script>
   <script src="/static/js/kb.js?v=4.2"></script>
   <script src="/static/js/admin.js?v=4.0"></script>
-  <script src="/static/js/attendance.js?v=1.0"></script>
+  <script src="/static/js/attendance.js?v=1.1"></script>
   <script src="/static/js/line-groups-modal.js?v=4.1"></script>
   <script src="/static/js/plans-modal.js?v=4.1"></script>
   <script src="/static/js/sheets-reconcile.js?v=4.1"></script>

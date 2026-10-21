@@ -193,6 +193,38 @@ async function loadAttendanceToday() {
       if (typeof lucide !== 'undefined') lucide.createIcons();
     }
 
+    // Synchronize Home Attendance Widget
+    const homeBadge = document.getElementById('homeAttStatusBadge');
+    const homeTitle = document.getElementById('homeAttStatusTitle');
+    const homeSub = document.getElementById('homeAttStatusSub');
+    const homeBtnText = document.getElementById('homeAttActionBtnText');
+
+    if (homeBadge && homeTitle && homeSub) {
+      if (!data.check_in) {
+        homeBadge.textContent = 'ยังไม่ Check-in';
+        homeBadge.className = 'inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 border border-surface-200 dark:border-surface-700';
+        homeTitle.textContent = 'ยังไม่ได้ลงเวลาเข้างานวันนี้';
+        homeSub.textContent = 'บันทึกเวลาเข้า-ออกงานด้วยพิกัด GPS อัตโนมัติ';
+        if (homeBtnText) homeBtnText.textContent = 'เช็คอินเข้างาน (GPS)';
+      } else if (!data.check_out) {
+        const inTime = data.check_in.check_time ? data.check_in.check_time.substring(0, 5) : '--:--';
+        homeBadge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> เข้างานแล้ว';
+        homeBadge.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20';
+        homeTitle.textContent = `เข้างานแล้วเวลา ${inTime} น.`;
+        homeSub.textContent = data.check_in.is_late ? 'บันทึกเวลาสาย • แตะเพื่อลงเวลาเลิกงานเมื่อสิ้นสุดวัน' : 'ตรงเวลา • แตะเพื่อลงเวลาเลิกงานเมื่อสิ้นสุดวัน';
+        if (homeBtnText) homeBtnText.textContent = 'ลงเวลาเลิกงาน';
+      } else {
+        const inTime = data.check_in.check_time ? data.check_in.check_time.substring(0, 5) : '--:--';
+        const outTime = data.check_out.check_time ? data.check_out.check_time.substring(0, 5) : '--:--';
+        homeBadge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span> บันทึกครบถ้วน';
+        homeBadge.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20';
+        homeTitle.textContent = `เข้า ${inTime} น. / ออก ${outTime} น.`;
+        homeSub.textContent = 'บันทึกเวลาทำงานวันนี้เรียบร้อยแล้ว แตะหากต้องการอัปเดตเวลาออก';
+        if (homeBtnText) homeBtnText.textContent = 'อัปเดตเวลาออก';
+      }
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+
   } catch (err) {
     console.error('[loadAttendanceToday] Error:', err);
   }
