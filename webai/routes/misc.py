@@ -345,6 +345,16 @@ def serve_favicon():
     return ('', 204)
 
 
+@misc_bp.route('/game')
+@misc_bp.route('/game/<path:path>')
+def serve_game_frontend(path="index.html"):
+    """Serve the 2D game statically so it can be accessed publicly via the tunnel."""
+    game_dir = os.path.abspath(os.path.join(current_app.root_path, '..', 'game ของฉัน'))
+    if not os.path.exists(os.path.join(game_dir, path)):
+        path = "index.html"
+    return send_from_directory(game_dir, path)
+
+
 # ═══════════════════════════════════════════════════════════════
 # 🛡️ Security, Audit & FIM Routes (Chapter 1, 3, 4)
 # ═══════════════════════════════════════════════════════════════

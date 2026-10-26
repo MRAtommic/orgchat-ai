@@ -1499,120 +1499,264 @@
               </div>
             </div>
 
-            <!-- Weather Widget -->
-            <div id="weatherCard" class="p-5 sm:p-6 rounded-2xl border border-surface-200/80 dark:border-surface-800 bg-white dark:bg-surface-900 shadow-sm hover:border-brand-500/40 transition-colors cursor-pointer group flex flex-col lg:flex-row items-center justify-between gap-5" onclick="showWeatherDetail()">
-              <div class="flex items-center gap-4 sm:gap-6 w-full lg:w-auto">
-                <div id="weatherIconContainer" class="w-14 h-14 sm:w-16 sm:h-16 bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 rounded-2xl flex items-center justify-center shrink-0 border border-brand-200/50 dark:border-brand-800/50">
-                  <i data-lucide="cloud-sun" id="mainWeatherIcon" class="w-8 h-8 sm:w-9 sm:h-9"></i>
+            <!-- Executive Operations & Core Workflows Grid -->
+            <div class="space-y-3">
+              <div class="flex items-center justify-between px-1">
+                <div class="flex items-center gap-2">
+                  <div class="w-2 h-2 rounded-full bg-brand-500"></div>
+                  <h2 class="text-xs font-bold tracking-wider uppercase text-surface-500 dark:text-surface-400">
+                    ศูนย์ปฏิบัติการและบริการด่วน (Enterprise Operations)
+                  </h2>
                 </div>
-                <div>
-                  <div class="flex items-center gap-2 mb-1">
-                    <i data-lucide="map-pin" class="w-3.5 h-3.5 text-brand-600 dark:text-brand-400"></i>
-                    <span class="text-[11px] font-semibold uppercase tracking-wider text-surface-500">Bangkok, Thailand</span>
-                    <span class="mx-1 text-surface-300 dark:text-surface-700">|</span>
-                    <span id="weatherLastUpdate" class="text-[10px] font-medium text-surface-400 tabular-nums">--:--</span>
-                  </div>
-                  <div class="flex items-baseline gap-3">
-                    <span id="currentTemp" class="text-4xl sm:text-5xl font-extrabold tracking-tighter tabular-nums font-mono text-surface-900 dark:text-white">--°C</span>
-                    <div class="flex flex-col">
-                      <span id="weatherCondition" class="text-sm font-semibold text-surface-700 dark:text-surface-300">กำลังโหลด...</span>
-                      <span id="rainChance" class="text-[11px] font-medium text-blue-500 flex items-center gap-1 tabular-nums">
-                        <i data-lucide="droplets" class="w-3 h-3"></i> โอกาสฝน --%
+                <span class="text-[11px] font-medium text-surface-400">เข้าถึงงานสำคัญทันใจ</span>
+              </div>
+
+              <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                <!-- Action 1: AI Knowledge Base & RAG -->
+                <div onclick="showView('kb')" class="p-5 rounded-2xl border border-surface-200/80 dark:border-surface-800 bg-white dark:bg-surface-900 shadow-xs hover:border-brand-500/40 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between">
+                  <div>
+                    <div class="flex items-center justify-between mb-3.5">
+                      <div class="w-10 h-10 rounded-xl bg-brand-50 dark:bg-brand-500/10 text-brand-600 dark:text-brand-400 flex items-center justify-center border border-brand-200/60 dark:border-brand-500/20">
+                        <i data-lucide="database" class="w-5 h-5"></i>
+                      </div>
+                      <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-300">
+                        RAG AI Search
                       </span>
                     </div>
+                    <h3 class="text-base font-bold text-surface-900 dark:text-white group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors">
+                      คลังความรู้ & สัญญา
+                    </h3>
+                    <p class="text-xs text-surface-500 dark:text-surface-400 mt-1 leading-relaxed line-clamp-2">
+                      ค้นหาข้อบังคับ ระเบียบ สัญญา และคู่มือการปฏิบัติงานด้วย AI Vector Search
+                    </p>
+                  </div>
+                  <div class="pt-4 mt-2 border-t border-surface-100 dark:border-surface-800 flex items-center justify-between text-xs font-semibold text-brand-600 dark:text-brand-400">
+                    <span>เปิดค้นหาเอกสาร</span>
+                    <i data-lucide="arrow-right" class="w-4 h-4 group-hover:translate-x-1 transition-transform"></i>
                   </div>
                 </div>
-              </div>
-              
-              <div class="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end border-t md:border-t-0 border-surface-100 dark:border-surface-800 pt-4 md:pt-0">
-                <div class="flex flex-col items-end px-3 sm:px-4 border-r border-surface-200 dark:border-surface-800">
-                  <span class="text-[10px] font-medium text-surface-400 uppercase tracking-wider mb-0.5">รู้สึกเหมือน</span>
-                  <span id="dashFeelsLike" class="text-sm font-bold tabular-nums font-mono text-surface-800 dark:text-surface-200">--°C</span>
+
+                <!-- Action 2: Quotation & Invoicing -->
+                <div onclick="showView('quotation')" class="p-5 rounded-2xl border border-surface-200/80 dark:border-surface-800 bg-white dark:bg-surface-900 shadow-xs hover:border-blue-500/40 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between">
+                  <div>
+                    <div class="flex items-center justify-between mb-3.5">
+                      <div class="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center border border-blue-200/60 dark:border-blue-500/20">
+                        <i data-lucide="receipt" class="w-5 h-5"></i>
+                      </div>
+                      <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                        Finance Hub
+                      </span>
+                    </div>
+                    <h3 class="text-base font-bold text-surface-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                      ใบเสนอราคา & Invoice
+                    </h3>
+                    <p class="text-xs text-surface-500 dark:text-surface-400 mt-1 leading-relaxed line-clamp-2">
+                      ออกใบเสนอราคา ใบวางบิล ใบแจ้งหนี้ และหนังสือรับรองหัก ณ ที่จ่าย ภ.ง.ด.
+                    </p>
+                  </div>
+                  <div class="pt-4 mt-2 border-t border-surface-100 dark:border-surface-800 flex items-center justify-between text-xs font-semibold text-blue-600 dark:text-blue-400">
+                    <span>จัดการเอกสารการเงิน</span>
+                    <i data-lucide="arrow-right" class="w-4 h-4 group-hover:translate-x-1 transition-transform"></i>
+                  </div>
                 </div>
-                <div class="flex flex-col items-center px-3 sm:px-4 border-r border-surface-200 dark:border-surface-800">
-                  <span class="text-[10px] font-medium text-surface-400 uppercase tracking-wider mb-0.5">แสง UV</span>
-                  <span id="dashUV" class="text-sm font-bold tabular-nums font-mono text-emerald-600 dark:text-emerald-400">--</span>
+
+                <!-- Action 3: HR & Leave -->
+                <div onclick="showView('leave')" class="p-5 rounded-2xl border border-surface-200/80 dark:border-surface-800 bg-white dark:bg-surface-900 shadow-xs hover:border-purple-500/40 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between">
+                  <div>
+                    <div class="flex items-center justify-between mb-3.5">
+                      <div class="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center border border-purple-200/60 dark:border-purple-500/20">
+                        <i data-lucide="calendar-check" class="w-5 h-5"></i>
+                      </div>
+                      <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                        HR Portal
+                      </span>
+                    </div>
+                    <h3 class="text-base font-bold text-surface-900 dark:text-white group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
+                      ยื่นลางาน & เช็คสิทธิ
+                    </h3>
+                    <p class="text-xs text-surface-500 dark:text-surface-400 mt-1 leading-relaxed line-clamp-2">
+                      ตรวจสอบโควตาวันลาคงเหลือ ยื่นคำขอลาป่วย/ลากิจ และติดตามการอนุมัติ
+                    </p>
+                  </div>
+                  <div class="pt-4 mt-2 border-t border-surface-100 dark:border-surface-800 flex items-center justify-between text-xs font-semibold text-purple-600 dark:text-purple-400">
+                    <span>ยื่นใบลา / เช็คโควตา</span>
+                    <i data-lucide="arrow-right" class="w-4 h-4 group-hover:translate-x-1 transition-transform"></i>
+                  </div>
                 </div>
-                <div class="flex flex-col items-center px-3 sm:px-4 border-r border-surface-200 dark:border-surface-800">
-                  <span class="text-[10px] font-medium text-surface-400 uppercase tracking-wider mb-0.5">PM 2.5</span>
-                  <span id="dashPM25" class="text-sm font-bold tabular-nums font-mono text-emerald-600 dark:text-emerald-400">--</span>
-                </div>
-                <div class="flex flex-col items-end px-3 sm:px-4">
-                  <span class="text-[10px] font-medium text-surface-400 uppercase tracking-wider mb-0.5">ความชื้น</span>
-                  <span id="dashHumidity" class="text-sm font-bold tabular-nums font-mono text-surface-800 dark:text-surface-200">--%</span>
-                </div>
-                <button onclick="event.stopPropagation(); fetchWeather();" class="w-9 h-9 rounded-xl bg-surface-100 dark:bg-surface-800 text-surface-500 hover:text-brand-600 dark:hover:text-brand-400 flex items-center justify-center transition-colors ml-1" title="Refresh Weather">
-                  <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-                </button>
-                <div class="w-9 h-9 rounded-xl bg-brand-600 text-white flex items-center justify-center shadow-sm">
-                  <i data-lucide="chevron-right" class="w-4 h-4"></i>
+
+                <!-- Action 4: AI Reply Assistant -->
+                <div onclick="showView('reply-assistant')" class="p-5 rounded-2xl border border-surface-200/80 dark:border-surface-800 bg-white dark:bg-surface-900 shadow-xs hover:border-emerald-500/40 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between">
+                  <div>
+                    <div class="flex items-center justify-between mb-3.5">
+                      <div class="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center border border-emerald-200/60 dark:border-emerald-500/20">
+                        <i data-lucide="bot" class="w-5 h-5"></i>
+                      </div>
+                      <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                        Smart Assistant
+                      </span>
+                    </div>
+                    <h3 class="text-base font-bold text-surface-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                      ตัวช่วยตอบแชทลูกค้า
+                    </h3>
+                    <p class="text-xs text-surface-500 dark:text-surface-400 mt-1 leading-relaxed line-clamp-2">
+                      ร่างข้อความตอบลูกค้าด้วย AI อัตโนมัติ รวดเร็ว ถูกต้อง ตรงตามมาตรฐานบริษัท
+                    </p>
+                  </div>
+                  <div class="pt-4 mt-2 border-t border-surface-100 dark:border-surface-800 flex items-center justify-between text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                    <span>เปิดตัวช่วยตอบแชท</span>
+                    <i data-lucide="arrow-right" class="w-4 h-4 group-hover:translate-x-1 transition-transform"></i>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <!-- Lunch & Tips Row -->
-            <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
-              <!-- Lunch Randomizer Card -->
-              <div class="p-6 rounded-2xl border border-surface-200/80 dark:border-surface-800 bg-white dark:bg-surface-900 shadow-sm overflow-hidden group">
-                <div class="flex items-center justify-between mb-4">
-                  <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 bg-rose-50 dark:bg-rose-900/30 text-rose-600 rounded-xl flex items-center justify-center shrink-0">
-                      <i data-lucide="utensils" class="w-5 h-5"></i>
+            <!-- Row: Enterprise System Trust & Office Lifestyle -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <!-- Enterprise System Integrity & Security -->
+              <div class="p-6 rounded-2xl border border-surface-200/80 dark:border-surface-800 bg-white dark:bg-surface-900 shadow-xs flex flex-col justify-between">
+                <div>
+                  <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-3">
+                      <div class="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center border border-emerald-200/60 dark:border-emerald-500/20 shrink-0">
+                        <i data-lucide="shield-check" class="w-5 h-5"></i>
+                      </div>
+                      <div>
+                        <h3 class="text-base font-bold text-surface-900 dark:text-white">ความปลอดภัยและสถานะระบบ</h3>
+                        <p class="text-[11px] text-surface-500 dark:text-surface-400 font-medium">Enterprise Security & System Integrity</p>
+                      </div>
                     </div>
-                    <div>
-                      <h3 class="text-base font-bold text-surface-900 dark:text-white">เที่ยงนี้กินอะไรดี?</h3>
-                      <p class="text-[11px] text-surface-500 dark:text-surface-400 font-medium">สุ่มร้านอร่อยใกล้คุณ ไม่ต้องคิดให้ปวดหัว</p>
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                      <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> ระบบปกติ 100%
+                    </span>
+                  </div>
+
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+                    <div class="p-3 bg-surface-50 dark:bg-surface-800/50 rounded-xl border border-surface-100 dark:border-surface-800">
+                      <div class="flex items-center justify-between text-xs font-semibold text-surface-700 dark:text-surface-300">
+                        <span class="flex items-center gap-1.5"><i data-lucide="cpu" class="w-3.5 h-3.5 text-brand-500"></i> AI RAG Vector Engine</span>
+                        <span class="text-emerald-500 text-[10px]">Active</span>
+                      </div>
+                      <p class="text-[11px] text-surface-400 mt-1">ChromaDB Cosine HNSW Index</p>
+                    </div>
+
+                    <div class="p-3 bg-surface-50 dark:bg-surface-800/50 rounded-xl border border-surface-100 dark:border-surface-800">
+                      <div class="flex items-center justify-between text-xs font-semibold text-surface-700 dark:text-surface-300">
+                        <span class="flex items-center gap-1.5"><i data-lucide="shield" class="w-3.5 h-3.5 text-indigo-500"></i> WAF & Perimeter Shield</span>
+                        <span class="text-emerald-500 text-[10px]">Protected</span>
+                      </div>
+                      <p class="text-[11px] text-surface-400 mt-1">ป้องกัน SQLi / XSS / LFI อัตโนมัติ</p>
+                    </div>
+
+                    <div class="p-3 bg-surface-50 dark:bg-surface-800/50 rounded-xl border border-surface-100 dark:border-surface-800">
+                      <div class="flex items-center justify-between text-xs font-semibold text-surface-700 dark:text-surface-300">
+                        <span class="flex items-center gap-1.5"><i data-lucide="hard-drive" class="w-3.5 h-3.5 text-amber-500"></i> Corporate Database</span>
+                        <span class="text-emerald-500 text-[10px]">WAL Sync</span>
+                      </div>
+                      <p class="text-[11px] text-surface-400 mt-1">SQLite Multi-tenant Isolation</p>
+                    </div>
+
+                    <div class="p-3 bg-surface-50 dark:bg-surface-800/50 rounded-xl border border-surface-100 dark:border-surface-800">
+                      <div class="flex items-center justify-between text-xs font-semibold text-surface-700 dark:text-surface-300">
+                        <span class="flex items-center gap-1.5"><i data-lucide="file-check" class="w-3.5 h-3.5 text-emerald-500"></i> PDPA Audit Trail</span>
+                        <span class="text-emerald-500 text-[10px]">Logged</span>
+                      </div>
+                      <p class="text-[11px] text-surface-400 mt-1">บันทึกประวัติการเข้าถึงตามกฎหมาย</p>
                     </div>
                   </div>
-                  <button onclick="openLunchModal()" class="p-2 text-surface-400 hover:text-rose-600 transition-colors" title="ตั้งค่าร้านโปรด">
-                    <i data-lucide="settings" class="w-4 h-4"></i>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-surface-100 dark:border-surface-800 flex items-center justify-between text-xs text-surface-400">
+                  <span>เซิร์ฟเวอร์พร้อมให้บริการ (Uptime: 99.98%)</span>
+                  <button onclick="loadDashboard()" class="text-brand-600 hover:text-brand-500 font-semibold flex items-center gap-1">
+                    <i data-lucide="refresh-cw" class="w-3 h-3"></i> ตรวจสอบอีกครั้ง
                   </button>
                 </div>
-                
-                <div id="dashLunchResultArea" class="bg-surface-50 dark:bg-surface-800/50 rounded-xl p-4 border border-surface-200 dark:border-surface-700/60 text-center relative min-h-[110px] flex flex-col justify-center transition-all">
-                  <div id="dashLunchQuickPreview" class="flex items-center justify-center gap-2 mb-1">
-                    <span class="w-2 h-2 rounded-full bg-rose-500"></span>
-                    <span class="text-[11px] font-semibold text-surface-600 dark:text-surface-300">พร้อมสุ่มของอร่อยแล้ว!</span>
-                  </div>
-                  <div id="dashLunchPlaceName" class="text-xl sm:text-2xl font-bold text-surface-900 dark:text-white">...</div>
-                  <div id="dashLunchPlaceType" class="text-xs text-surface-500 font-medium mt-0.5">กดปุ่มด้านล่างเพื่อเริ่มสุ่มร้านเด็ด</div>
-                  <div id="dashLunchPlaceLocation" class="text-[11px] text-brand-600 dark:text-brand-400 mt-1.5 font-semibold flex items-center justify-center gap-1"></div>
-                  
-                  <!-- Rolling Overlay -->
-                  <div id="dashLunchRollingOverlay" class="absolute inset-0 bg-white/90 dark:bg-surface-900/90 backdrop-blur-sm hidden flex flex-col items-center justify-center rounded-xl animate-in fade-in">
-                    <div class="w-8 h-8 border-3 border-rose-500/20 border-t-rose-500 rounded-full animate-spin"></div>
-                    <span class="text-xs font-semibold text-rose-500 tracking-wide mt-2">กำลังหมุนหาร้านเด็ดให้อยู่น้า...</span>
-                  </div>
-                </div>
-                
-                <button onclick="rollLunch()" class="w-full mt-4 py-3 bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white rounded-xl text-xs sm:text-sm font-semibold shadow-sm transition-colors flex items-center justify-center gap-2 active:scale-95">
-                  <i data-lucide="dice-5" class="w-4 h-4"></i> สุ่มเมนูอาหาร
-                </button>
               </div>
 
-              <!-- Productivity Tip Card -->
-              <div class="p-6 rounded-2xl border border-surface-200/80 dark:border-surface-800 bg-white dark:bg-surface-900 shadow-sm overflow-hidden group">
-                <div class="flex items-center gap-3 mb-4">
-                  <div class="w-10 h-10 bg-amber-50 dark:bg-amber-900/30 text-amber-600 rounded-xl flex items-center justify-center shrink-0">
-                    <i data-lucide="lightbulb" class="w-5 h-5"></i>
+              <!-- Office Environment & Lifestyle Hub (Weather & Lunch) -->
+              <div class="space-y-4">
+                <!-- Weather Widget (Refined Compact) -->
+                <div id="weatherCard" class="p-4 sm:p-5 rounded-2xl border border-surface-200/80 dark:border-surface-800 bg-white dark:bg-surface-900 shadow-xs hover:border-brand-500/40 transition-colors cursor-pointer group flex items-center justify-between gap-4" onclick="showWeatherDetail()">
+                  <div class="flex items-center gap-3.5 min-w-0">
+                    <div id="weatherIconContainer" class="w-12 h-12 bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 rounded-xl flex items-center justify-center shrink-0 border border-brand-200/50 dark:border-brand-800/50">
+                      <i data-lucide="cloud-sun" id="mainWeatherIcon" class="w-6 h-6"></i>
+                    </div>
+                    <div class="min-w-0">
+                      <div class="flex items-center gap-1.5 text-[11px] text-surface-500 font-medium">
+                        <i data-lucide="map-pin" class="w-3 h-3 text-brand-600"></i>
+                        <span>Bangkok</span>
+                        <span class="text-surface-300 dark:text-surface-700">•</span>
+                        <span id="weatherLastUpdate" class="text-[10px] tabular-nums">--:--</span>
+                      </div>
+                      <div class="flex items-baseline gap-2 mt-0.5">
+                        <span id="currentTemp" class="text-2xl font-extrabold tabular-nums font-mono text-surface-900 dark:text-white">--°C</span>
+                        <span id="weatherCondition" class="text-xs font-semibold text-surface-600 dark:text-surface-300 truncate">กำลังโหลด...</span>
+                        <span id="rainChance" class="text-[10px] font-medium text-blue-500 flex items-center gap-0.5 tabular-nums">
+                          <i data-lucide="droplets" class="w-2.5 h-2.5"></i> --%
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <h3 class="text-base font-bold text-surface-900 dark:text-white">เคล็ดลับการทำงานวันนี้</h3>
-                    <p class="text-[11px] text-surface-500 dark:text-surface-400 font-medium">เพิ่มพลังและประสิทธิภาพในการทำงาน</p>
+                  
+                  <div class="flex items-center gap-2 shrink-0">
+                    <div class="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-lg bg-surface-50 dark:bg-surface-800 text-[11px]">
+                      <span class="text-surface-400">PM 2.5:</span>
+                      <span id="dashPM25" class="font-bold tabular-nums font-mono text-emerald-600 dark:text-emerald-400">--</span>
+                      <!-- Preserved elements for JS querySelectors -->
+                      <span class="hidden">
+                        <span id="dashFeelsLike">--°C</span>
+                        <span id="dashUV">--</span>
+                        <span id="dashHumidity">--%</span>
+                      </span>
+                    </div>
+                    <button onclick="event.stopPropagation(); fetchWeather();" class="w-8 h-8 rounded-lg bg-surface-100 dark:bg-surface-800 text-surface-500 hover:text-brand-600 flex items-center justify-center transition-colors" title="Refresh Weather">
+                      <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                    </button>
+                    <div class="w-8 h-8 rounded-lg bg-surface-100 dark:bg-surface-800 text-surface-400 group-hover:text-brand-600 group-hover:bg-brand-50 dark:group-hover:bg-brand-900/30 flex items-center justify-center transition-colors">
+                      <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                    </div>
                   </div>
                 </div>
-                <div class="space-y-3.5">
-                  <div class="p-4 bg-amber-500/10 dark:bg-amber-500/5 rounded-xl border border-amber-500/20">
-                    <p class="text-xs sm:text-sm font-medium text-surface-800 dark:text-surface-200 leading-relaxed">
-                      "ลองใช้เทคนิค Pomodoro: ทำงานโฟกัส 25 นาที พักเบรก 5 นาที เพื่อรักษาความสดชื่นและความคิดสร้างสรรค์ตลอดวัน!"
-                    </p>
+
+                <!-- Lunch Randomizer Card (Refined Compact Perk) -->
+                <div class="p-4 sm:p-5 rounded-2xl border border-surface-200/80 dark:border-surface-800 bg-white dark:bg-surface-900 shadow-xs overflow-hidden group">
+                  <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center gap-2.5">
+                      <div class="w-8 h-8 bg-rose-50 dark:bg-rose-900/30 text-rose-600 rounded-lg flex items-center justify-center shrink-0">
+                        <i data-lucide="utensils" class="w-4 h-4"></i>
+                      </div>
+                      <div>
+                        <h4 class="text-xs font-bold text-surface-900 dark:text-white">สุ่มเมนูมื้อเที่ยง (Office Perks)</h4>
+                        <p class="text-[10px] text-surface-400">ร้านแนะนำสำหรับทีมงานรอบออฟฟิศ</p>
+                      </div>
+                    </div>
+                    <button onclick="openLunchModal()" class="p-1.5 text-surface-400 hover:text-rose-600 transition-colors" title="ตั้งค่าร้านโปรด">
+                      <i data-lucide="settings" class="w-3.5 h-3.5"></i>
+                    </button>
                   </div>
-                  <div class="flex items-center justify-between text-xs font-semibold text-surface-500 dark:text-surface-400">
-                    <span>สถานะระบบ RAG Vector Store & ความปลอดภัย:</span>
-                    <span class="text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> พร้อมทำงาน 100%</span>
-                  </div>
-                  <div class="w-full bg-surface-100 dark:bg-surface-800 h-1.5 rounded-full overflow-hidden">
-                    <div class="bg-emerald-500 h-full w-full rounded-full"></div>
+                  
+                  <div id="dashLunchResultArea" class="bg-surface-50 dark:bg-surface-800/40 rounded-xl px-4 py-2.5 border border-surface-100 dark:border-surface-700/60 text-center relative flex items-center justify-between transition-all">
+                    <div class="text-left min-w-0 flex-1">
+                      <div id="dashLunchQuickPreview" class="flex items-center gap-1.5">
+                        <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                        <span class="text-[10px] font-semibold text-surface-500 dark:text-surface-400">พร้อมสุ่มเมนู</span>
+                      </div>
+                      <div id="dashLunchPlaceName" class="text-sm font-bold text-surface-900 dark:text-white truncate">...</div>
+                      <div class="flex items-center gap-2">
+                        <span id="dashLunchPlaceType" class="text-[10px] text-surface-400 truncate">กดปุ่มเพื่อสุ่ม</span>
+                        <span id="dashLunchPlaceLocation" class="text-[10px] text-brand-600 dark:text-brand-400 font-semibold truncate"></span>
+                      </div>
+                    </div>
+                    
+                    <button onclick="rollLunch()" class="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors flex items-center gap-1.5 active:scale-95 shrink-0 ml-2">
+                      <i data-lucide="dice-5" class="w-3.5 h-3.5"></i> สุ่มเลย
+                    </button>
+
+                    <!-- Rolling Overlay -->
+                    <div id="dashLunchRollingOverlay" class="absolute inset-0 bg-white/95 dark:bg-surface-900/95 backdrop-blur-sm hidden flex items-center justify-center gap-2 rounded-xl animate-in fade-in">
+                      <div class="w-4 h-4 border-2 border-rose-500/20 border-t-rose-500 rounded-full animate-spin"></div>
+                      <span class="text-xs font-semibold text-rose-500">กำลังหมุนหาร้านเด็ด...</span>
+                    </div>
                   </div>
                 </div>
               </div>
