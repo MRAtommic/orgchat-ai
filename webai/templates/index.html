@@ -1379,235 +1379,381 @@
           </div>
         </section>
 
-        <!-- Home Dashboard View (Clean Executive Workbench) -->
-        <section id="view-home" class="view hidden flex-1 flex flex-col items-center overflow-y-auto custom-scrollbar animate-in fade-in duration-300 bg-surface-50 dark:bg-surface-950 w-full">
-          <div class="w-full max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+        <!-- Home Dashboard View (Smart Dashboard) -->
+        <section id="view-home" class="view hidden flex-1 flex flex-col items-center overflow-y-auto custom-scrollbar animate-in fade-in duration-500 bg-surface-50 dark:bg-surface-950 w-full">
+          <div class="w-full max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6 md:space-y-8">
             
-            <!-- Unified Executive Header & Greeting -->
-            <header class="w-full flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-surface-200/70 dark:border-surface-800">
+            <!-- Dashboard Header -->
+            <header class="w-full flex items-center justify-between mb-1 animate-in fade-in slide-in-from-top-4 duration-700">
               <div>
-                <div class="flex items-center gap-2 mb-1.5">
-                  <span id="dashTodayDateText" class="text-xs font-semibold text-surface-400">วันนี้</span>
-                  <span class="text-surface-300 dark:text-surface-700">•</span>
-                  <div id="dashSystemStatus" class="inline-flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
-                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                    <span id="dashSystemStatusText">ระบบพร้อมใช้งาน</span>
-                  </div>
-                </div>
-                <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-surface-900 dark:text-white" id="dashGreeting">
-                  สวัสดี ยินดีต้อนรับ
-                </h1>
-                <p class="text-xs sm:text-sm text-surface-500 dark:text-surface-400 mt-1 max-w-2xl leading-relaxed" id="dashAISummary">
-                  กำลังรวบรวมข้อมูลและเตรียมสรุปภาพรวมสำหรับวันนี้...
-                </p>
+                <h2 class="text-2xl sm:text-3xl font-black text-surface-900 dark:text-white tracking-tight">ภาพรวมวันนี้</h2>
+                <p class="text-xs text-surface-400 font-bold tracking-widest mt-1">ทุกอย่างที่คุณต้องรู้ พร้อมอยู่ตรงนี้แล้ว</p>
               </div>
-
-              <div class="flex items-center gap-2.5 shrink-0">
-                <!-- GPS Attendance Quick Action -->
-                <div id="homeAttendanceWidget" class="flex items-center">
-                  <button id="homeAttActionBtn" onclick="showView('attendance')"
-                    class="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-xs font-semibold rounded-xl shadow-xs transition-colors flex items-center gap-1.5 active:scale-95">
-                    <i data-lucide="clock" class="w-3.5 h-3.5"></i>
-                    <span id="homeAttActionBtnText">ลงเวลาเข้างาน (GPS)</span>
-                  </button>
-                  <!-- Preserved hidden text nodes for attendance.js -->
-                  <span id="homeAttStatusBadge" class="hidden"></span>
-                  <span id="homeAttStatusTitle" class="hidden"></span>
-                  <span id="homeAttStatusSub" class="hidden"></span>
+              <div class="flex items-center gap-3">
+                <button onclick="loadDashboard()" class="p-2.5 bg-white dark:bg-surface-900 text-surface-600 dark:text-surface-400 rounded-2xl border border-surface-100 dark:border-surface-800 hover:bg-brand-50 dark:hover:bg-brand-900/20 hover:text-brand-600 transition-all shadow-sm group">
+                  <i data-lucide="refresh-cw" class="w-4 h-4 group-active:rotate-180 transition-transform duration-500"></i>
+                </button>
+                <div id="dashSystemStatus" class="hidden md:flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-lg border border-emerald-500/20">
+                  <div class="w-2 h-2 bg-emerald-500 rounded-full"></div>
+                  <span id="dashSystemStatusText" class="text-[10px] font-bold tracking-wider uppercase">ระบบออนไลน์</span>
                 </div>
-
-                <button onclick="showView('chat')"
-                  class="px-4 py-2.5 bg-surface-900 hover:bg-surface-800 dark:bg-surface-100 dark:hover:bg-white dark:text-surface-900 text-white text-xs font-semibold rounded-xl shadow-xs transition-colors flex items-center gap-1.5 active:scale-95">
-                  <i data-lucide="message-square" class="w-3.5 h-3.5"></i>
-                  <span>ถาม AI</span>
-                </button>
-
-                <button onclick="loadDashboard()" class="p-2.5 text-surface-400 hover:text-surface-700 dark:hover:text-surface-200 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors" title="รีเฟรชข้อมูล">
-                  <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-                </button>
               </div>
             </header>
 
-            <!-- Alerts & Announcements (Only visible when active) -->
-            <div id="myLineBannerAlert" class="hidden w-full p-3.5 bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl flex items-center justify-between gap-3 shadow-2xs">
-              <div class="flex items-center gap-2.5 min-w-0">
-                <i data-lucide="message-circle" class="w-4 h-4 text-emerald-500 shrink-0"></i>
-                <span class="text-xs font-medium text-surface-700 dark:text-surface-200 truncate">เชื่อมต่อบัญชี LINE เพื่อรับแจ้งเตือนส่วนตัว</span>
+            <!-- แบนเนอร์เตือนผูก LINE ส่วนตัว (จะถูกควบคุมโดย JS ให้ซ่อนเมื่อเชื่อมต่อแล้ว) -->
+            <div id="myLineBannerAlert" class="hidden w-full p-4 bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl flex items-center justify-between gap-4 shadow-xs">
+              <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center justify-center flex-shrink-0">
+                  <i data-lucide="message-circle" class="w-4 h-4"></i>
+                </div>
+                <div>
+                  <div class="text-xs font-bold text-surface-900 dark:text-white">เชื่อมต่อบัญชี LINE สำหรับการแจ้งเตือนส่วนตัว</div>
+                  <p class="text-[11px] text-surface-500 dark:text-surface-400 mt-0.5">รับสลิปเงินเดือน สรุปเอกสาร และข่าวสารขององค์กรแบบส่วนตัวเรียลไทม์</p>
+                </div>
               </div>
-              <button onclick="showView('settings')" class="px-3 py-1 bg-surface-900 dark:bg-white text-white dark:text-surface-900 text-xs font-semibold rounded-lg shrink-0">ผูกบัญชี</button>
+              <button onclick="showView('settings')" class="px-3.5 py-1.5 bg-surface-900 hover:bg-surface-800 dark:bg-surface-100 dark:hover:bg-white dark:text-surface-900 text-white text-xs font-bold rounded-lg transition shadow-2xs whitespace-nowrap active:scale-[0.98]">
+                ผูกบัญชี LINE
+              </button>
             </div>
 
-            <div id="dashLatestAnnouncement" class="hidden w-full p-4 bg-amber-500/10 dark:bg-amber-500/5 border border-amber-500/20 rounded-xl flex items-center justify-between gap-4">
-              <div class="flex items-center gap-3 min-w-0">
-                <i data-lucide="megaphone" class="w-4 h-4 text-amber-500 shrink-0"></i>
-                <div class="min-w-0">
+            <!-- AI Hero Section (Daily Intelligence - Modern-Minimal Workbench) -->
+            <div class="w-full">
+              <!-- Full Width: Greeting & Briefing -->
+              <div class="relative overflow-hidden rounded-2xl bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 p-6 sm:p-8 md:p-9 shadow-xs">
+                <div class="relative z-10 space-y-4 md:space-y-5">
+                  <div class="flex items-center gap-2.5">
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-surface-100 dark:bg-surface-800 text-surface-700 dark:text-surface-300 border border-surface-200 dark:border-surface-700">
+                      <i data-lucide="sparkles" class="w-3.5 h-3.5 text-brand-600 dark:text-brand-400"></i>
+                      <span>AI Daily Briefing</span>
+                    </span>
+                    <span class="text-xs text-surface-400 font-medium">สรุปข้อมูลอัจฉริยะประจำวัน</span>
+                  </div>
+                  <div class="max-w-3xl space-y-2">
+                    <h1 class="text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-tight leading-tight text-surface-900 dark:text-white" id="dashGreeting">
+                      สวัสดี ยินดีต้อนรับ
+                    </h1>
+                    <p class="text-sm sm:text-base text-surface-600 dark:text-surface-300 font-normal leading-relaxed" id="dashAISummary">
+                      กำลังรวบรวมข้อมูลและเตรียมสรุปสิ่งที่น่าสนใจสำหรับวันนี้ให้คุณ...
+                    </p>
+                  </div>
+                  <div class="flex flex-wrap gap-2.5 pt-1">
+                    <button onclick="showView('chat')" class="px-4 py-2.5 bg-surface-900 hover:bg-surface-800 dark:bg-surface-100 dark:hover:bg-white dark:text-surface-900 text-white rounded-xl text-xs sm:text-sm font-semibold transition-colors shadow-xs flex items-center gap-2 active:scale-[0.98]">
+                      <i data-lucide="message-square" class="w-4 h-4"></i> พูดคุยกับ AI
+                    </button>
+                    <button onclick="loadDashboard()" class="px-4 py-2.5 bg-white dark:bg-surface-800 hover:bg-surface-50 dark:hover:bg-surface-700 border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-200 rounded-xl text-xs sm:text-sm font-semibold transition-colors shadow-2xs flex items-center gap-2 active:scale-[0.98]">
+                      <i data-lucide="refresh-cw" class="w-4 h-4"></i> อัปเดตข้อมูล
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Latest Announcement Banner -->
+            <div id="dashLatestAnnouncement" class="hidden w-full p-4 sm:p-5 bg-amber-500/10 dark:bg-amber-500/5 border border-amber-500/30 rounded-2xl flex-col md:flex-row items-start md:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
+              <div class="flex items-start gap-3.5">
+                <div class="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center flex-shrink-0 shadow-2xs">
+                  <i data-lucide="megaphone" class="w-5 h-5"></i>
+                </div>
+                <div class="space-y-0.5 min-w-0">
                   <div class="flex items-center gap-2">
-                    <span id="dashAnnPriority" class="text-[10px] font-bold uppercase text-amber-600 dark:text-amber-400"></span>
-                    <span id="dashAnnMeta" class="text-[10px] text-surface-400"></span>
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-500 text-white" id="dashAnnPriority">สำคัญมาก</span>
+                    <span class="text-[11px] font-medium text-surface-500 dark:text-surface-400" id="dashAnnMeta">โพสต์โดย @admin • 2 hours ago</span>
                   </div>
-                  <h4 id="dashAnnTitle" class="text-xs font-bold text-surface-900 dark:text-white truncate"></h4>
-                  <p id="dashAnnContent" class="text-xs text-surface-500 truncate"></p>
+                  <h3 class="text-sm sm:text-base font-bold text-surface-900 dark:text-white truncate" id="dashAnnTitle">หัวข้อประกาศล่าสุด</h3>
+                  <p class="text-xs text-surface-600 dark:text-surface-300 leading-relaxed line-clamp-2" id="dashAnnContent">รายละเอียดเนื้อหาประกาศขององค์กรจะปรากฏตรงนี้...</p>
                 </div>
               </div>
-              <button onclick="showView('org'); loadOrgMembers(); switchOrgTab('announcements');" class="text-xs font-semibold text-amber-600 hover:underline shrink-0">ดูทั้งหมด</button>
-            </div>
-
-            <!-- Quick Actions (Minimalist & Breathable 4 Tiles) -->
-            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-              <!-- 1: Knowledge Base -->
-              <button onclick="showView('kb')" class="p-4 sm:p-5 rounded-2xl bg-white dark:bg-surface-900 border border-surface-200/80 dark:border-surface-800 hover:border-brand-500/50 hover:shadow-xs transition-all text-left group">
-                <div class="w-10 h-10 rounded-xl bg-brand-50 dark:bg-brand-500/10 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
-                  <i data-lucide="database" class="w-5 h-5"></i>
-                </div>
-                <div class="font-bold text-sm sm:text-base text-surface-900 dark:text-white">คลังความรู้ AI</div>
-                <div class="text-xs text-surface-400 dark:text-surface-500 mt-0.5">ค้นหาเอกสาร & สัญญา</div>
-              </button>
-
-              <!-- 2: Quotation / Invoicing -->
-              <button onclick="showView('quotation')" class="p-4 sm:p-5 rounded-2xl bg-white dark:bg-surface-900 border border-surface-200/80 dark:border-surface-800 hover:border-blue-500/50 hover:shadow-xs transition-all text-left group">
-                <div class="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
-                  <i data-lucide="receipt" class="w-5 h-5"></i>
-                </div>
-                <div class="font-bold text-sm sm:text-base text-surface-900 dark:text-white">ใบเสนอราคา</div>
-                <div class="text-xs text-surface-400 dark:text-surface-500 mt-0.5">ออกบิล & ใบแจ้งหนี้</div>
-              </button>
-
-              <!-- 3: Leave -->
-              <button onclick="showView('leave')" class="p-4 sm:p-5 rounded-2xl bg-white dark:bg-surface-900 border border-surface-200/80 dark:border-surface-800 hover:border-purple-500/50 hover:shadow-xs transition-all text-left group">
-                <div class="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
-                  <i data-lucide="calendar-check" class="w-5 h-5"></i>
-                </div>
-                <div class="font-bold text-sm sm:text-base text-surface-900 dark:text-white">ยื่นลางาน</div>
-                <div class="text-xs text-surface-400 dark:text-surface-500 mt-0.5">เช็คสิทธิ & วันลา</div>
-              </button>
-
-              <!-- 4: Chat Assistant -->
-              <button onclick="showView('chat')" class="p-4 sm:p-5 rounded-2xl bg-white dark:bg-surface-900 border border-surface-200/80 dark:border-surface-800 hover:border-emerald-500/50 hover:shadow-xs transition-all text-left group">
-                <div class="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
-                  <i data-lucide="sparkles" class="w-5 h-5"></i>
-                </div>
-                <div class="font-bold text-sm sm:text-base text-surface-900 dark:text-white">แชทกับ AI</div>
-                <div class="text-xs text-surface-400 dark:text-surface-500 mt-0.5">ถามตอบ & ช่วยงาน</div>
+              <button onclick="showView('org'); loadOrgMembers(); switchOrgTab('announcements');" class="px-4 py-2.5 bg-surface-900 hover:bg-surface-800 dark:bg-surface-100 dark:hover:bg-white dark:text-surface-900 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm shrink-0 whitespace-nowrap self-stretch md:self-auto text-center">
+                เปิดดูประกาศทั้งหมด
               </button>
             </div>
 
-            <!-- Unified Metrics Strip (4 Clean Metric Cards) -->
-            <div class="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
-              <!-- Users -->
-              <div class="p-4 sm:p-5 rounded-2xl border border-surface-200/80 dark:border-surface-800 bg-white dark:bg-surface-900 shadow-2xs">
-                <div class="flex items-center justify-between mb-2">
-                  <span class="text-xs font-semibold text-surface-500 dark:text-surface-400">ผู้ใช้ในระบบ</span>
-                  <span class="text-[10px] font-bold text-emerald-600 dark:text-emerald-400" id="dashStatUsersBadge"></span>
+            <!-- Quick Attendance & GPS Clock-in Widget (Home Dashboard) -->
+            <div id="homeAttendanceWidget" class="w-full p-4 sm:p-5 rounded-2xl border border-surface-200/80 dark:border-surface-800 bg-white dark:bg-surface-900 shadow-sm hover:border-emerald-500/40 transition-colors flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div class="flex items-center gap-3.5 w-full sm:w-auto">
+                <div class="w-11 h-11 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 flex items-center justify-center shrink-0">
+                  <i data-lucide="clock" class="w-5 h-5"></i>
                 </div>
-                <div class="text-2xl sm:text-3xl font-extrabold tracking-tight tabular-nums font-mono text-surface-900 dark:text-white" id="dashStatUsers">0</div>
-                <div class="text-[11px] text-surface-400 mt-1">สมาชิกในองค์กร</div>
+                <div class="space-y-0.5 min-w-0">
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold text-surface-700 dark:text-surface-300">ระบบลงเวลาทำงาน GPS</span>
+                    <span id="homeAttStatusBadge" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                      <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                      ยังไม่ Check-in
+                    </span>
+                  </div>
+                  <h3 id="homeAttStatusTitle" class="text-sm sm:text-base font-bold text-surface-900 dark:text-white truncate">
+                    ยังไม่ได้ลงเวลาเข้างานวันนี้
+                  </h3>
+                  <p id="homeAttStatusSub" class="text-xs text-surface-500 dark:text-slate-400 truncate">
+                    บันทึกเวลาเข้า-ออกงานด้วยพิกัด GPS อัตโนมัติ
+                  </p>
+                </div>
               </div>
-
-              <!-- Documents -->
-              <div class="p-4 sm:p-5 rounded-2xl border border-surface-200/80 dark:border-surface-800 bg-white dark:bg-surface-900 shadow-2xs">
-                <div class="flex items-center justify-between mb-2">
-                  <span class="text-xs font-semibold text-surface-500 dark:text-surface-400">คลังเอกสาร</span>
-                  <span class="text-[10px] font-bold text-brand-600 dark:text-brand-400">พร้อมค้นหา</span>
-                </div>
-                <div class="text-2xl sm:text-3xl font-extrabold tracking-tight tabular-nums font-mono text-surface-900 dark:text-white" id="dashStatFiles">0</div>
-                <div class="text-[11px] text-surface-400 mt-1">
-                  ไฟล์ทั้งหมด <span class="hidden" id="dashStatDriveFiles">0</span>
-                </div>
-              </div>
-
-              <!-- Financial -->
-              <div class="p-4 sm:p-5 rounded-2xl border border-surface-200/80 dark:border-surface-800 bg-white dark:bg-surface-900 shadow-2xs">
-                <div class="flex items-center justify-between mb-2">
-                  <span class="text-xs font-semibold text-surface-500 dark:text-surface-400">ยอดรวมการเงิน</span>
-                  <span class="text-[10px] font-bold text-blue-600 dark:text-blue-400">ใบเสร็จ/บิล</span>
-                </div>
-                <div class="text-2xl sm:text-3xl font-extrabold tracking-tight tabular-nums font-mono text-surface-900 dark:text-white truncate" id="dashStatTotalAmount">฿0.00</div>
-                <div class="text-[11px] text-surface-400 mt-1">จากเอกสารการเงิน</div>
-              </div>
-
-              <!-- AI Assistance & Tasks -->
-              <div class="p-4 sm:p-5 rounded-2xl border border-surface-200/80 dark:border-surface-800 bg-white dark:bg-surface-900 shadow-2xs">
-                <div class="flex items-center justify-between mb-2">
-                  <span class="text-xs font-semibold text-surface-500 dark:text-surface-400">ใช้งาน AI</span>
-                  <span class="text-[10px] font-bold text-purple-600 dark:text-purple-400" id="dashStatCompletion">0%</span>
-                </div>
-                <div class="text-2xl sm:text-3xl font-extrabold tracking-tight tabular-nums font-mono text-surface-900 dark:text-white" id="dashStatQueries">0</div>
-                <div class="text-[11px] text-surface-400 mt-1">
-                  ครั้งที่สนทนากับ AI
-                  <span class="hidden" id="dashDriveCategoryStats"></span>
-                </div>
+              <div class="flex items-center gap-2 w-full sm:w-auto shrink-0 justify-end">
+                <button id="homeAttActionBtn" onclick="showView('attendance')"
+                  class="flex-1 sm:flex-initial px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-xs font-semibold rounded-xl shadow-sm transition-colors flex items-center justify-center gap-1.5 active:scale-95">
+                  <i data-lucide="log-in" class="w-4 h-4"></i>
+                  <span id="homeAttActionBtnText">เช็คอินเข้างาน (GPS)</span>
+                </button>
               </div>
             </div>
 
-            <!-- Activity & Schedule (Two Clean Columns) -->
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-2">
+            <!-- Weather Widget -->
+            <div id="weatherCard" class="p-5 sm:p-6 rounded-2xl border border-surface-200/80 dark:border-surface-800 bg-white dark:bg-surface-900 shadow-sm hover:border-brand-500/40 transition-colors cursor-pointer group flex flex-col lg:flex-row items-center justify-between gap-5" onclick="showWeatherDetail()">
+              <div class="flex items-center gap-4 sm:gap-6 w-full lg:w-auto">
+                <div id="weatherIconContainer" class="w-14 h-14 sm:w-16 sm:h-16 bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 rounded-2xl flex items-center justify-center shrink-0 border border-brand-200/50 dark:border-brand-800/50">
+                  <i data-lucide="cloud-sun" id="mainWeatherIcon" class="w-8 h-8 sm:w-9 sm:h-9"></i>
+                </div>
+                <div>
+                  <div class="flex items-center gap-2 mb-1">
+                    <i data-lucide="map-pin" class="w-3.5 h-3.5 text-brand-600 dark:text-brand-400"></i>
+                    <span class="text-[11px] font-semibold uppercase tracking-wider text-surface-500">Bangkok, Thailand</span>
+                    <span class="mx-1 text-surface-300 dark:text-surface-700">|</span>
+                    <span id="weatherLastUpdate" class="text-[10px] font-medium text-surface-400 tabular-nums">--:--</span>
+                  </div>
+                  <div class="flex items-baseline gap-3">
+                    <span id="currentTemp" class="text-4xl sm:text-5xl font-extrabold tracking-tighter tabular-nums font-mono text-surface-900 dark:text-white">--°C</span>
+                    <div class="flex flex-col">
+                      <span id="weatherCondition" class="text-sm font-semibold text-surface-700 dark:text-surface-300">กำลังโหลด...</span>
+                      <span id="rainChance" class="text-[11px] font-medium text-blue-500 flex items-center gap-1 tabular-nums">
+                        <i data-lucide="droplets" class="w-3 h-3"></i> โอกาสฝน --%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
               
-              <!-- Upcoming Schedule & Tasks -->
-              <div class="space-y-6">
-                <div class="p-5 sm:p-6 rounded-2xl border border-surface-200/80 dark:border-surface-800 bg-white dark:bg-surface-900 shadow-2xs">
-                  <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-sm font-bold tracking-tight flex items-center gap-2 text-surface-900 dark:text-white">
-                      <i data-lucide="calendar" class="w-4 h-4 text-brand-600"></i> กำหนดการสำคัญ
-                    </h3>
-                    <button onclick="showView('calendar')" class="text-xs font-semibold text-brand-600 hover:underline">ดูทั้งหมด</button>
+              <div class="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end border-t md:border-t-0 border-surface-100 dark:border-surface-800 pt-4 md:pt-0">
+                <div class="flex flex-col items-end px-3 sm:px-4 border-r border-surface-200 dark:border-surface-800">
+                  <span class="text-[10px] font-medium text-surface-400 uppercase tracking-wider mb-0.5">รู้สึกเหมือน</span>
+                  <span id="dashFeelsLike" class="text-sm font-bold tabular-nums font-mono text-surface-800 dark:text-surface-200">--°C</span>
+                </div>
+                <div class="flex flex-col items-center px-3 sm:px-4 border-r border-surface-200 dark:border-surface-800">
+                  <span class="text-[10px] font-medium text-surface-400 uppercase tracking-wider mb-0.5">แสง UV</span>
+                  <span id="dashUV" class="text-sm font-bold tabular-nums font-mono text-emerald-600 dark:text-emerald-400">--</span>
+                </div>
+                <div class="flex flex-col items-center px-3 sm:px-4 border-r border-surface-200 dark:border-surface-800">
+                  <span class="text-[10px] font-medium text-surface-400 uppercase tracking-wider mb-0.5">PM 2.5</span>
+                  <span id="dashPM25" class="text-sm font-bold tabular-nums font-mono text-emerald-600 dark:text-emerald-400">--</span>
+                </div>
+                <div class="flex flex-col items-end px-3 sm:px-4">
+                  <span class="text-[10px] font-medium text-surface-400 uppercase tracking-wider mb-0.5">ความชื้น</span>
+                  <span id="dashHumidity" class="text-sm font-bold tabular-nums font-mono text-surface-800 dark:text-surface-200">--%</span>
+                </div>
+                <button onclick="event.stopPropagation(); fetchWeather();" class="w-9 h-9 rounded-xl bg-surface-100 dark:bg-surface-800 text-surface-500 hover:text-brand-600 dark:hover:text-brand-400 flex items-center justify-center transition-colors ml-1" title="Refresh Weather">
+                  <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                </button>
+                <div class="w-9 h-9 rounded-xl bg-brand-600 text-white flex items-center justify-center shadow-sm">
+                  <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                </div>
+              </div>
+            </div>
+
+            <!-- Lunch & Tips Row -->
+            <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              <!-- Lunch Randomizer Card -->
+              <div class="p-6 rounded-2xl border border-surface-200/80 dark:border-surface-800 bg-white dark:bg-surface-900 shadow-sm overflow-hidden group">
+                <div class="flex items-center justify-between mb-4">
+                  <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-rose-50 dark:bg-rose-900/30 text-rose-600 rounded-xl flex items-center justify-center shrink-0">
+                      <i data-lucide="utensils" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                      <h3 class="text-base font-bold text-surface-900 dark:text-white">เที่ยงนี้กินอะไรดี?</h3>
+                      <p class="text-[11px] text-surface-500 dark:text-surface-400 font-medium">สุ่มร้านอร่อยใกล้คุณ ไม่ต้องคิดให้ปวดหัว</p>
+                    </div>
                   </div>
-                  <div id="dashUpcomingList" class="space-y-3">
-                    <!-- Skeleton / Schedule items injected by JS -->
+                  <button onclick="openLunchModal()" class="p-2 text-surface-400 hover:text-rose-600 transition-colors" title="ตั้งค่าร้านโปรด">
+                    <i data-lucide="settings" class="w-4 h-4"></i>
+                  </button>
+                </div>
+                
+                <div id="dashLunchResultArea" class="bg-surface-50 dark:bg-surface-800/50 rounded-xl p-4 border border-surface-200 dark:border-surface-700/60 text-center relative min-h-[110px] flex flex-col justify-center transition-all">
+                  <div id="dashLunchQuickPreview" class="flex items-center justify-center gap-2 mb-1">
+                    <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+                    <span class="text-[11px] font-semibold text-surface-600 dark:text-surface-300">พร้อมสุ่มของอร่อยแล้ว!</span>
+                  </div>
+                  <div id="dashLunchPlaceName" class="text-xl sm:text-2xl font-bold text-surface-900 dark:text-white">...</div>
+                  <div id="dashLunchPlaceType" class="text-xs text-surface-500 font-medium mt-0.5">กดปุ่มด้านล่างเพื่อเริ่มสุ่มร้านเด็ด</div>
+                  <div id="dashLunchPlaceLocation" class="text-[11px] text-brand-600 dark:text-brand-400 mt-1.5 font-semibold flex items-center justify-center gap-1"></div>
+                  
+                  <!-- Rolling Overlay -->
+                  <div id="dashLunchRollingOverlay" class="absolute inset-0 bg-white/90 dark:bg-surface-900/90 backdrop-blur-sm hidden flex flex-col items-center justify-center rounded-xl animate-in fade-in">
+                    <div class="w-8 h-8 border-3 border-rose-500/20 border-t-rose-500 rounded-full animate-spin"></div>
+                    <span class="text-xs font-semibold text-rose-500 tracking-wide mt-2">กำลังหมุนหาร้านเด็ดให้อยู่น้า...</span>
                   </div>
                 </div>
+                
+                <button onclick="rollLunch()" class="w-full mt-4 py-3 bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white rounded-xl text-xs sm:text-sm font-semibold shadow-sm transition-colors flex items-center justify-center gap-2 active:scale-95">
+                  <i data-lucide="dice-5" class="w-4 h-4"></i> สุ่มเมนูอาหาร
+                </button>
+              </div>
 
-                <div class="p-5 sm:p-6 rounded-2xl border border-surface-200/80 dark:border-surface-800 bg-white dark:bg-surface-900 shadow-2xs">
-                  <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-sm font-bold tracking-tight flex items-center gap-2 text-surface-900 dark:text-white">
-                      <i data-lucide="check-square" class="w-4 h-4 text-rose-600"></i> งานที่รอดำเนินการ
-                    </h3>
-                    <button onclick="showView('kanban')" class="text-xs font-semibold text-rose-600 hover:underline">บอร์ดงาน</button>
+              <!-- Productivity Tip Card -->
+              <div class="p-6 rounded-2xl border border-surface-200/80 dark:border-surface-800 bg-white dark:bg-surface-900 shadow-sm overflow-hidden group">
+                <div class="flex items-center gap-3 mb-4">
+                  <div class="w-10 h-10 bg-amber-50 dark:bg-amber-900/30 text-amber-600 rounded-xl flex items-center justify-center shrink-0">
+                    <i data-lucide="lightbulb" class="w-5 h-5"></i>
                   </div>
-                  <div id="dashTaskList" class="space-y-2.5">
-                    <!-- Tasks injected by JS -->
+                  <div>
+                    <h3 class="text-base font-bold text-surface-900 dark:text-white">เคล็ดลับการทำงานวันนี้</h3>
+                    <p class="text-[11px] text-surface-500 dark:text-surface-400 font-medium">เพิ่มพลังและประสิทธิภาพในการทำงาน</p>
+                  </div>
+                </div>
+                <div class="space-y-3.5">
+                  <div class="p-4 bg-amber-500/10 dark:bg-amber-500/5 rounded-xl border border-amber-500/20">
+                    <p class="text-xs sm:text-sm font-medium text-surface-800 dark:text-surface-200 leading-relaxed">
+                      "ลองใช้เทคนิค Pomodoro: ทำงานโฟกัส 25 นาที พักเบรก 5 นาที เพื่อรักษาความสดชื่นและความคิดสร้างสรรค์ตลอดวัน!"
+                    </p>
+                  </div>
+                  <div class="flex items-center justify-between text-xs font-semibold text-surface-500 dark:text-surface-400">
+                    <span>สถานะระบบ RAG Vector Store & ความปลอดภัย:</span>
+                    <span class="text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> พร้อมทำงาน 100%</span>
+                  </div>
+                  <div class="w-full bg-surface-100 dark:bg-surface-800 h-1.5 rounded-full overflow-hidden">
+                    <div class="bg-emerald-500 h-full w-full rounded-full"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Quick Stats Grid -->
+            <div class="grid grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6">
+              <div class="p-5 rounded-2xl border border-surface-200/80 dark:border-surface-800 bg-white dark:bg-surface-900 shadow-sm hover:border-brand-500/30 transition-colors">
+                <div class="flex items-start justify-between mb-3">
+                  <div class="w-9 h-9 bg-brand-50 dark:bg-brand-500/10 text-brand-600 dark:text-brand-400 rounded-xl flex items-center justify-center"><i data-lucide="users" class="w-4 h-4"></i></div>
+                  <span class="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400" id="dashStatUsersBadge"></span>
+                </div>
+                <div class="text-2xl font-bold tracking-tight tabular-nums font-mono text-surface-900 dark:text-white" id="dashStatUsers">0</div>
+                <div class="text-xs font-medium text-surface-500 dark:text-surface-400 mt-1">ผู้ใช้ทั้งหมด</div>
+              </div>
+              <div class="p-5 rounded-2xl border border-surface-200/80 dark:border-surface-800 bg-white dark:bg-surface-900 shadow-sm hover:border-brand-500/30 transition-colors">
+                <div class="flex items-start justify-between mb-3">
+                  <div class="w-9 h-9 bg-brand-50 dark:bg-brand-500/10 text-brand-600 dark:text-brand-400 rounded-xl flex items-center justify-center"><i data-lucide="file-text" class="w-4 h-4"></i></div>
+                  <span class="text-[11px] font-semibold text-brand-600 dark:text-brand-400">คลังข้อมูล</span>
+                </div>
+                <div class="text-2xl font-bold tracking-tight tabular-nums font-mono text-surface-900 dark:text-white" id="dashStatFiles">0</div>
+                <div class="text-xs font-medium text-surface-500 dark:text-surface-400 mt-1">เอกสาร</div>
+              </div>
+              <div class="p-5 rounded-2xl border border-surface-200/80 dark:border-surface-800 bg-white dark:bg-surface-900 shadow-sm hover:border-brand-500/30 transition-colors">
+                <div class="flex items-start justify-between mb-3">
+                  <div class="w-9 h-9 bg-brand-50 dark:bg-brand-500/10 text-brand-600 dark:text-brand-400 rounded-xl flex items-center justify-center"><i data-lucide="brain-circuit" class="w-4 h-4"></i></div>
+                  <span class="text-[11px] font-semibold text-brand-600 dark:text-brand-400">AI ช่วยเหลือ</span>
+                </div>
+                <div class="text-2xl font-bold tracking-tight tabular-nums font-mono text-surface-900 dark:text-white" id="dashStatQueries">0</div>
+                <div class="text-xs font-medium text-surface-500 dark:text-surface-400 mt-1">ครั้งที่ใช้ AI</div>
+              </div>
+              <div class="p-5 rounded-2xl border border-surface-200/80 dark:border-surface-800 bg-white dark:bg-surface-900 shadow-sm hover:border-brand-500/30 transition-colors">
+                <div class="flex items-start justify-between mb-3">
+                  <div class="w-9 h-9 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-xl flex items-center justify-center"><i data-lucide="check-circle" class="w-4 h-4"></i></div>
+                  <span class="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">ประสิทธิภาพ</span>
+                </div>
+                <div class="text-2xl font-bold tracking-tight tabular-nums font-mono text-surface-900 dark:text-white" id="dashStatCompletion">0%</div>
+                <div class="text-xs font-medium text-surface-500 dark:text-surface-400 mt-1">งานเสร็จแล้ว</div>
+              </div>
+            </div>
+            
+            <!-- Drive Insights [NEW] -->
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6 mt-6">
+              <!-- Drive Total Files -->
+              <div class="p-5 rounded-2xl border border-surface-200/80 dark:border-surface-800 bg-white dark:bg-surface-900 shadow-sm hover:border-brand-500/30 transition-colors group">
+                <div class="flex items-start justify-between mb-3">
+                  <div class="w-9 h-9 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-xl flex items-center justify-center">
+                    <i data-lucide="cloud-upload" class="w-4 h-4"></i>
+                  </div>
+                  <span class="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">จัดเก็บสำเร็จ</span>
+                </div>
+                <div class="text-2xl sm:text-3xl font-bold tracking-tight tabular-nums font-mono text-surface-900 dark:text-white" id="dashStatDriveFiles">0</div>
+                <div class="text-xs font-medium text-surface-500 dark:text-surface-400 mt-1">ไฟล์ที่พั้นช่วยพี่จัดเก็บ</div>
+              </div>
+
+              <!-- Total Financial Amount -->
+              <div class="p-5 rounded-2xl border border-surface-200/80 dark:border-surface-800 bg-white dark:bg-surface-900 shadow-sm hover:border-brand-500/30 transition-colors group">
+                <div class="flex items-start justify-between mb-3">
+                  <div class="w-9 h-9 bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-xl flex items-center justify-center">
+                    <i data-lucide="banknote" class="w-4 h-4"></i>
+                  </div>
+                  <span class="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">ยอดรวมการเงิน</span>
+                </div>
+                <div class="text-2xl sm:text-3xl font-bold tracking-tight tabular-nums font-mono text-surface-900 dark:text-white truncate" id="dashStatTotalAmount">฿0.00</div>
+                <div class="text-xs font-medium text-surface-500 dark:text-surface-400 mt-1">ยอดรวมจากเอกสารการเงิน</div>
+              </div>
+
+              <!-- Category Distribution Summary -->
+              <div class="p-5 rounded-2xl border border-surface-200/80 dark:border-surface-800 bg-white dark:bg-surface-900 shadow-sm hover:border-brand-500/30 transition-colors group lg:col-span-1">
+                <div class="flex items-start justify-between mb-3">
+                  <div class="w-9 h-9 bg-brand-50 dark:bg-brand-500/10 text-brand-600 dark:text-brand-400 rounded-xl flex items-center justify-center">
+                    <i data-lucide="pie-chart" class="w-4 h-4"></i>
+                  </div>
+                  <span class="text-[10px] font-bold text-brand-600 dark:text-brand-400 uppercase tracking-wider">หมวดหมู่เอกสาร</span>
+                </div>
+                <div id="dashDriveCategoryStats" class="flex flex-wrap gap-2">
+                   <span class="text-xs text-surface-400 italic">ไม่มีข้อมูลหมวดหมู่</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              
+              <!-- Upcoming Schedule -->
+              <div class="space-y-6">
+                <div class="flex items-center justify-between px-2">
+                  <h3 class="text-lg font-black tracking-tight flex items-center gap-2 text-surface-900 dark:text-white">
+                    <i data-lucide="calendar" class="w-5 h-5 text-brand-600"></i> กำหนดการสำคัญ
+                  </h3>
+                  <button onclick="showView('calendar')" class="text-[10px] font-black uppercase tracking-widest text-brand-600 hover:underline">ดูทั้งหมด</button>
+                </div>
+                <div id="dashUpcomingList" class="space-y-4">
+                   <!-- Skeleton or placeholder -->
+                   <div class="animate-pulse flex items-center gap-4 p-4 bg-white dark:bg-surface-900 rounded-2xl border border-surface-100 dark:border-surface-800">
+                      <div class="w-12 h-12 bg-surface-100 dark:bg-surface-800 rounded-xl"></div>
+                      <div class="flex-1 space-y-2">
+                        <div class="h-3 bg-surface-100 dark:bg-surface-800 rounded w-1/3"></div>
+                        <div class="h-4 bg-surface-200 dark:bg-surface-700 rounded w-2/3"></div>
+                      </div>
+                   </div>
+                </div>
+
+                <!-- Pending Tasks (MOVED HERE) -->
+                <div class="space-y-6 pt-8 border-t border-surface-100 dark:border-surface-800">
+                  <div class="flex items-center justify-between px-2">
+                    <h3 class="text-lg font-black tracking-tight flex items-center gap-2 text-surface-900 dark:text-white">
+                      <i data-lucide="check-square" class="w-5 h-5 text-rose-600"></i> งานที่รอดำเนินการ
+                    </h3>
+                  </div>
+                  <div id="dashTaskList" class="space-y-3">
+                     <!-- Placeholder -->
+                     <div class="p-4 bg-white dark:bg-surface-900 rounded-2xl border border-surface-100 dark:border-surface-800 flex items-center gap-3">
+                        <div class="w-2 h-2 rounded-full bg-amber-500"></div>
+                        <span class="text-sm font-medium text-surface-500">กำลังโหลดงาน...</span>
+                     </div>
                   </div>
                 </div>
               </div>
 
-              <!-- Recent Files Column -->
-              <div class="space-y-6">
-                <div class="p-5 sm:p-6 rounded-2xl border border-surface-200/80 dark:border-surface-800 bg-white dark:bg-surface-900 shadow-2xs flex flex-col h-full">
+              <div class="space-y-8">
+                <!-- What's New in Knowledge Base [MOVED HERE] -->
+                <div class="p-6 rounded-2xl border border-surface-200/80 dark:border-surface-800 bg-white dark:bg-surface-900 shadow-sm flex flex-col">
                   <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-sm font-bold tracking-tight flex items-center gap-2 text-surface-900 dark:text-white">
+                    <h3 class="text-sm font-bold tracking-tight flex items-center gap-2 text-surface-900 dark:text-white uppercase">
                       <i data-lucide="folder-clock" class="w-4 h-4 text-brand-600"></i> คลังความรู้ล่าสุด
                     </h3>
-                    <button onclick="showView('kb')" class="text-xs font-semibold text-brand-600 hover:underline">ดูทั้งหมด</button>
+                    <button onclick="showView('kb')" class="text-[10px] font-bold uppercase tracking-wider text-brand-600 dark:text-brand-400 hover:underline">ดูทั้งหมด</button>
                   </div>
-                  <div id="dashRecentFiles" class="space-y-2.5 flex-1 overflow-y-auto no-scrollbar max-h-[380px]">
-                    <!-- Files injected by JS -->
+                  <div id="dashRecentFiles" class="space-y-3 flex-1 overflow-y-auto no-scrollbar max-h-[200px]">
+                    <!-- Files injected here -->
+                    <div class="animate-pulse flex items-center gap-3 p-3">
+                      <div class="w-10 h-10 bg-surface-100 dark:bg-surface-800 rounded-xl"></div>
+                      <div class="flex-1 space-y-2">
+                        <div class="h-2 bg-surface-100 dark:bg-surface-800 rounded w-1/2"></div>
+                        <div class="h-2 bg-surface-50 dark:bg-surface-800 rounded w-1/4"></div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
-
             </div>
-
-            <!-- Hidden DOM Elements required by core.js / chat.js runtime -->
-            <div class="hidden" aria-hidden="true">
-              <div id="weatherCard">
-                <i id="mainWeatherIcon"></i>
-                <span id="weatherLastUpdate"></span>
-                <span id="currentTemp"></span>
-                <span id="weatherCondition"></span>
-                <span id="rainChance"></span>
-                <span id="dashFeelsLike"></span>
-                <span id="dashUV"></span>
-                <span id="dashPM25"></span>
-                <span id="dashHumidity"></span>
-              </div>
-              <div id="dashLunchResultArea">
-                <span id="dashLunchQuickPreview"></span>
-                <span id="dashLunchPlaceName"></span>
-                <span id="dashLunchPlaceType"></span>
-                <span id="dashLunchPlaceLocation"></span>
-                <div id="dashLunchRollingOverlay"></div>
-              </div>
-            </div>
-
           </div>
         </section>
 
