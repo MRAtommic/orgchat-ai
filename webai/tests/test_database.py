@@ -105,5 +105,19 @@ class TestDatabase(BaseTestCase):
         self.assertEqual(latest.get("action"), "USER_LOGIN_SUCCESS")
         self.assertEqual(latest.get("username"), "alice")
 
+    def test_lunch_places_crud(self):
+        """Test adding, retrieving, and randomly selecting lunch places."""
+        import uuid
+        name = f"Somtum Delight {uuid.uuid4().hex[:4]}"
+        database.add_lunch_place(name=name, type_str="ส้มตำ/อีสาน", location="ข้างออฟฟิศ", added_by="admin")
+
+        places = database.get_all_lunch_places()
+        self.assertTrue(any(p.get("name") == name for p in places))
+
+        random_place = database.get_random_lunch()
+        self.assertIsNotNone(random_place)
+        self.assertIn("name", random_place)
+
+
 if __name__ == "__main__":
     unittest.main()

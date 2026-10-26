@@ -89,5 +89,21 @@ class TestRBAC(BaseTestCase):
         self.assertIn("member_count", quota)
 
 
+    def test_org_ownership_transfer(self):
+        """Test transferring ownership from current owner to another member."""
+        org_name = f"Transfer Corp {uuid.uuid4().hex[:6]}"
+        org_id, _ = database.create_organization(name=org_name, owner_username="owner_alice")
+        database.add_org_member(org_id=org_id, username="member_bob", role="member")
+
+        self.assertTrue(database.is_org_owner(org_id, "owner_alice"))
+        self.assertFalse(database.is_org_owner(org_id, "member_bob"))
+
+        # Transfer ownership
+        success, msg = database.transfer_org_ownership(org_id, "owner_alice", "member_bob")
+        self.assertTrue(success)
+        self.assertTrue(database.is_org_owner(org_id, "member_bob"))
+        self.assertFalse(database.is_org_owner(org_id, "owner_alice"))
+
+
 if __name__ == "__main__":
     unittest.main()
