@@ -3683,28 +3683,6 @@ def api_leave_get_comments(leave_id):
     return jsonify({"ok": True, "comments": comments})
 
 
-@admin_bp.route("/api/lunch/random")
-@login_required
-def api_lunch_random():
-    return jsonify(database.get_random_lunch() or {"name": "ยังไม่มีรายชื่ออาหารในระบบ"})
-
-
-@admin_bp.route("/api/lunch/all")
-@login_required
-def api_lunch_all():
-    return jsonify(database.get_all_lunch_places())
-
-
-@admin_bp.route("/api/lunch/add", methods=["POST"])
-@login_required
-def api_lunch_add():
-    data = request.get_json() or {}
-    name = data.get("name")
-    if not name: return jsonify({"ok": False}), 400
-    database.add_lunch_place(name, data.get("type", ""), data.get("location", ""), session.get("user"))
-    return jsonify({"ok": True})
-
-
 @admin_bp.route("/api/admin/notifications/clear_all", methods=["POST"])
 @admin_required
 def admin_clear_all_notifications_route():

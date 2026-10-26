@@ -2568,28 +2568,6 @@ def update_org_member_role(username):
     return jsonify({"ok": True, "username": username, "role": new_role})
 
 
-@auth_bp.route("/api/org/transfer-ownership", methods=["POST"])
-@login_required
-def transfer_org_ownership_endpoint():
-    """Transfer Organization Super Admin (Owner) to another member."""
-    me = session.get("user")
-    org_id = get_current_org_id()
-    if not org_id:
-        return jsonify({"ok": False, "error": "คุณยังไม่ได้อยู่ในองค์กร"}), 403
-    
-    data = request.get_json(force=True) or {}
-    new_owner = data.get("new_owner", "").strip()
-    if not new_owner:
-        return jsonify({"ok": False, "error": "กรุณาระบุชื่อผู้ใช้ที่จะรับโอนสิทธิ์"}), 400
-
-    ok, msg = database.transfer_org_ownership(org_id, me, new_owner)
-    if not ok:
-        return jsonify({"ok": False, "error": msg}), 403
-
-    database.log_event(f"Organization ownership transferred from {me} to {new_owner}", user=me, org_id=org_id)
-    return jsonify({"ok": True, "message": msg, "new_owner": new_owner})
-
-
 
 @auth_bp.route("/api/org/members/<username>/manager", methods=["POST"])
 @login_required
@@ -3171,7 +3149,7 @@ def transfer_org_ownership_route():
             details=f"Owner role transferred from {me} to {new_owner}",
             ip_address=request.remote_addr or "127.0.0.1"
         )
-        return jsonify({"ok": True, "message": msg})
+        return jsonify({"ok": True, "message": msg, "new_owner": new_owner})
     return jsonify({"ok": False, "error": msg}), 400
 
 

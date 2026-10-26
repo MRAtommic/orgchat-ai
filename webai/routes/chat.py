@@ -2322,7 +2322,5 @@ from routes.quotation_crm import (
     _sync_sheet_append_quotation,
     create_quotation,
     financial_insights,
-    get_debate_roles,
-    run_ai_debate,
 )
 
