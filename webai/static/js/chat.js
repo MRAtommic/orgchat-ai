@@ -1322,23 +1322,23 @@ async function loadDashboard() {
       // Render Upcoming
       if (upcomingList) {
         if (!data.upcoming.length) {
-          upcomingList.innerHTML = '<div class="text-xs text-surface-400 p-4">ไม่มีกำหนดการใหม่เร็วๆ นี้</div>';
+          upcomingList.innerHTML = '<div class="text-xs text-surface-500 dark:text-surface-400 p-4">ไม่มีกำหนดการใหม่เร็วๆ นี้</div>';
         } else {
           upcomingList.innerHTML = data.upcoming.map(s => {
             const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
             const d = s.date.split('-');
             const mIdx = parseInt(d[1]) - 1;
             return `
-            <div class="flex items-center gap-4 p-4 bg-white dark:bg-surface-900 rounded-3xl border border-surface-100 dark:border-surface-800 hover:shadow-xl hover:-translate-y-1 transition-all group cursor-pointer" onclick="showView('calendar')">
-              <div class="w-14 h-14 flex flex-col items-center justify-center bg-brand-50 dark:bg-brand-900/40 text-brand-600 rounded-2xl">
-                 <span class="text-[11px] font-black uppercase text-brand-400">${months[mIdx] || d[1]}</span>
-                 <span class="text-xl font-black leading-none">${d[2]}</span>
+            <div class="flex items-center gap-4 p-4 bg-white dark:bg-surface-900 rounded-2xl border border-surface-200/70 dark:border-surface-800/80 shadow-xs hover:border-brand-500/30 hover:shadow-sm transition-all duration-200 group cursor-pointer" onclick="showView('calendar')">
+              <div class="w-12 h-12 flex flex-col items-center justify-center bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 rounded-xl border border-brand-200/50 dark:border-brand-800/40 flex-shrink-0">
+                 <span class="text-[10px] font-bold uppercase tracking-wider text-brand-600 dark:text-brand-400 leading-none mb-0.5">${months[mIdx] || d[1]}</span>
+                 <span class="text-lg font-extrabold leading-none tabular-nums font-mono">${d[2]}</span>
               </div>
-              <div class="flex-1">
-                <div class="text-[11px] font-bold tracking-wide text-surface-400 mb-0.5">${s.time} • ${s.category}</div>
-                <div class="text-sm md:text-base font-black text-surface-700 dark:text-surface-200 line-clamp-1">${s.title}</div>
+              <div class="flex-1 min-w-0">
+                <div class="text-[11px] font-medium text-surface-500 dark:text-surface-400 mb-0.5">${s.time} • ${s.category}</div>
+                <div class="text-sm font-bold text-surface-900 dark:text-white line-clamp-1">${s.title}</div>
               </div>
-              <div class="w-10 h-10 rounded-full bg-surface-50 dark:bg-surface-800 flex items-center justify-center group-hover:bg-brand-600 group-hover:text-white transition-all">
+              <div class="w-8 h-8 rounded-xl bg-surface-100 dark:bg-surface-800 flex items-center justify-center text-surface-500 dark:text-surface-400 group-hover:bg-brand-600 group-hover:text-white transition-all flex-shrink-0">
                 <i data-lucide="arrow-right" class="w-4 h-4"></i>
               </div>
             </div>
@@ -1350,15 +1350,15 @@ async function loadDashboard() {
       // Render Tasks
       if (taskList) {
         if (!data.pending_tasks.length) {
-          taskList.innerHTML = '<div class="text-[10px] text-surface-400 p-2">ไม่มีงานค้าง</div>';
+          taskList.innerHTML = '<div class="text-xs text-surface-500 dark:text-surface-400 p-3">ไม่มีงานค้าง</div>';
         } else {
           taskList.innerHTML = data.pending_tasks.map(t => `
-            <div class="p-4 bg-white dark:bg-surface-900 rounded-2xl border border-surface-100 dark:border-surface-800 flex items-center justify-between hover:border-brand-300 transition-all">
-              <div class="flex items-center gap-3">
-                <div class="w-2 h-2 rounded-full ${t.status === 'doing' ? 'bg-blue-500 animate-pulse' : 'bg-amber-500'}"></div>
-                <span class="text-xs font-bold line-clamp-1">${t.title}</span>
+            <div class="p-3.5 bg-white dark:bg-surface-900 rounded-xl border border-surface-200/70 dark:border-surface-800/80 shadow-xs flex items-center justify-between hover:border-brand-500/30 transition-all">
+              <div class="flex items-center gap-3 min-w-0">
+                <div class="w-2 h-2 rounded-full flex-shrink-0 ${t.status === 'doing' ? 'bg-blue-500 animate-pulse' : 'bg-amber-500'}"></div>
+                <span class="text-xs font-semibold text-surface-900 dark:text-surface-100 line-clamp-1">${t.title}</span>
               </div>
-              <div class="px-2 py-0.5 rounded-full bg-surface-50 dark:bg-surface-800 text-[8px] font-black uppercase text-surface-500">${t.status}</div>
+              <div class="px-2 py-0.5 rounded-md bg-surface-100 dark:bg-surface-800 text-[10px] font-semibold text-surface-600 dark:text-surface-400 border border-surface-200/60 dark:border-surface-700/50 flex-shrink-0">${t.status}</div>
             </div>
           `).join('');
         }
@@ -1367,16 +1367,16 @@ async function loadDashboard() {
       // Render Files
       if (recentFiles) {
         if (!data.recent_files.length) {
-           recentFiles.innerHTML = '<div class="text-[10px] text-surface-400 p-2 text-center">ยังไม่มีไฟล์ในคลัง</div>';
+           recentFiles.innerHTML = '<div class="text-xs text-surface-500 dark:text-surface-400 p-3 text-center">ยังไม่มีไฟล์ในคลัง</div>';
         } else {
            recentFiles.innerHTML = data.recent_files.map(f => `
-             <div class="flex items-center gap-3 p-3 hover:bg-brand-50 dark:hover:bg-brand-900/20 rounded-2xl transition-all cursor-pointer group" onclick="showView('kb')">
-               <div class="w-10 h-10 rounded-xl bg-surface-50 dark:bg-surface-800 flex items-center justify-center text-surface-400 group-hover:bg-white dark:group-hover:bg-surface-700 group-hover:text-brand-600 transition-all">
-                 <i data-lucide="file" class="w-5 h-5"></i>
+             <div class="flex items-center gap-3 p-2.5 hover:bg-surface-50 dark:hover:bg-surface-800/60 rounded-xl transition-all cursor-pointer group" onclick="showView('kb')">
+               <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 border border-brand-200/40 dark:border-brand-800/40 flex items-center justify-center group-hover:bg-brand-600 group-hover:text-white transition-all flex-shrink-0">
+                 <i data-lucide="file" class="w-4 h-4"></i>
                </div>
                <div class="flex-1 min-w-0">
-                 <div class="text-xs font-bold truncate text-surface-700 dark:text-surface-200">${f.name}</div>
-                 <div class="text-[11px] text-surface-400 font-bold tracking-tight">${f.type} • ${(f.size/1024).toFixed(0)} KB</div>
+                 <div class="text-xs font-semibold truncate text-surface-900 dark:text-surface-100">${f.name}</div>
+                 <div class="text-[11px] text-surface-500 dark:text-surface-400 font-medium">${f.type} • ${(f.size/1024).toFixed(0)} KB</div>
                </div>
              </div>
            `).join('');
