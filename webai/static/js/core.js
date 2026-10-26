@@ -411,7 +411,7 @@ function toast(msg, type = 'info') {
   if (!container) {
     container = document.createElement('div');
     // z-[99999] ต้องสูงกว่าทุก modal (groupChatModal=1200, incoming call=9000)
-    container.className = 'toast-container fixed top-6 right-6 z-[99999] flex flex-col gap-3 pointer-events-none';
+    container.className = 'toast-container fixed top-4 right-4 sm:top-6 sm:right-6 left-4 sm:left-auto z-[99999] flex flex-col gap-2.5 pointer-events-none max-w-sm ml-auto';
     document.body.appendChild(container);
   }
   const el = document.createElement('div');
@@ -429,7 +429,7 @@ function toast(msg, type = 'info') {
     danger: '❌ ',
     warning: '⚠️ '
   };
-  el.className = `${bgMap[type] || bgMap.info} px-5 py-3 rounded-xl shadow-xl text-xs font-semibold animate-in slide-in-from-right-10 duration-300 pointer-events-auto cursor-pointer flex items-center gap-2`;
+  el.className = `${bgMap[type] || bgMap.info} w-full max-w-full px-4 py-3 rounded-xl shadow-2xl text-xs font-semibold animate-in slide-in-from-top-2 sm:slide-in-from-right-10 duration-300 pointer-events-auto cursor-pointer flex items-center gap-2 break-words`;
   el.textContent = `${iconMap[type] || ''}${msg}`;
   el.onclick = () => el.remove();
   container.appendChild(el);

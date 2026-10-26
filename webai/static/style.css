@@ -71,7 +71,7 @@
   transform-origin: bottom left;
   transform: scale(0.85) translateY(4px);
   opacity: 0;
-  transition: opacity 0.18s ease, transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: opacity 0.18s ease, transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 
@@ -99,7 +99,7 @@
 
 /* Staggered pop-in for emoji buttons */
 .reaction-picker .reaction-btn {
-  animation: reactionPop 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation: reactionPop 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .reaction-picker .reaction-btn:nth-child(1) {
@@ -150,35 +150,71 @@
 
 
 /* Hallmark · genre: modern-minimal · macrostructure: workbench · design-system: design.md · designed-as-app */
+/* 3-Layer Design Token Architecture (design-system / ui-ux-pro-max) */
 :root {
-  --color-paper: #f5f4ef;
-  --color-paper-2: #eae8e1;
-  --color-paper-3: #dedbd2;
-  --color-ink: #1c1917;
-  --color-ink-2: #44403c;
-  --color-rule: #dedbd2;
-  --color-accent: #2563eb;
+  /* Layer 1: Primitive Tokens */
+  --slate-50: #f8fafc;
+  --slate-100: #f1f5f9;
+  --slate-200: #e2e8f0;
+  --slate-300: #cbd5e1;
+  --slate-400: #94a3b8;
+  --slate-500: #64748b;
+  --slate-600: #475569;
+  --slate-700: #334155;
+  --slate-800: #1e293b;
+  --slate-900: #0f172a;
+  --slate-950: #090d16;
+
+  /* Layer 2: Semantic Tokens (Light Mode - Clean Technical Slate) */
+  --color-paper: var(--slate-50);
+  --color-paper-2: #ffffff;
+  --color-paper-3: var(--slate-100);
+  --color-ink: var(--slate-900);
+  --color-ink-2: var(--slate-500);
+  --color-rule: var(--slate-200);
+  --color-accent: var(--slate-900);
   --color-accent-ink: #ffffff;
-  --color-secondary-accent: #3b82f6;
-  --color-focus: #3b82f6;
+  --color-accent-emerald: #10b981;
+  --color-secondary-accent: #0284c7;
+  --color-focus: #0ea5e9;
 
   --brand-600: #2563eb;
   --brand-700: #1d4ed8;
   --brand-50: #eff6ff;
   --brand-100: #dbeafe;
   --brand-rgb: 37, 99, 235;
-  --surface: #f5f4ef;
+  --surface: var(--slate-50);
+
+  /* Layer 3: Component Tokens */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --shadow-subtle: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
+  --shadow-card: 0 2px 8px -2px rgba(15, 23, 42, 0.06);
 }
 
 html.dark,
 .dark {
-  --surface: #020617;
+  /* Semantic Tokens (Dark Mode - Deep Technical Slate) */
+  --color-paper: var(--slate-950);
+  --color-paper-2: var(--slate-900);
+  --color-paper-3: var(--slate-800);
+  --color-ink: var(--slate-50);
+  --color-ink-2: var(--slate-400);
+  --color-rule: var(--slate-800);
+  --color-accent: #10b981;
+  --color-accent-ink: #022c22;
+  --color-accent-emerald: #10b981;
+  --color-secondary-accent: #0ea5e9;
+  --color-focus: #0ea5e9;
+  --surface: var(--slate-950);
 }
 
 html.dark body,
 .dark body {
-  background-color: #020617;
-  color: #f8fafc;
+  background-color: var(--slate-950);
+  color: var(--slate-50);
 }
 
 /* Studio Technical Slate overrides: Flatten redundant glass nesting & glow */
@@ -517,10 +553,18 @@ body {
 }
 
 .nav-item.active {
-  background-color: var(--brand-600);
-  color: white;
-  font-weight: 700;
-  box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.2);
+  background-color: #0f172a;
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+
+.dark .nav-item.active {
+  background-color: #1e293b;
+  color: #f8fafc;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: none;
 }
 
 .nav-item-locked {
@@ -1219,7 +1263,7 @@ tr:hover .delete-row-btn {
   color: #64748b;
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
@@ -1689,7 +1733,7 @@ tr:hover .delete-row-btn {
   letter-spacing: 0.03em;
   text-transform: uppercase;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   min-width: 52px;
   min-height: 52px;
   position: relative;
@@ -1706,7 +1750,7 @@ tr:hover .delete-row-btn {
 }
 
 .mobile-nav-btn.active i {
-  filter: drop-shadow(0 4px 6px rgba(37, 99, 235, 0.4));
+  filter: none;
 }
 
 .dark .mobile-nav-btn {
@@ -2034,7 +2078,7 @@ tr:hover .delete-row-btn {
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
   margin-bottom: 12px;
   cursor: grab;
-  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   border: 1px solid #f1f5f9;
 }
 
@@ -2056,7 +2100,7 @@ tr:hover .delete-row-btn {
 
 /* AI Deep Analysis Animation */
 #aiSummaryResult {
-  animation: slide-down-fade 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: slide-down-fade 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes slide-down-fade {
@@ -2338,18 +2382,21 @@ tr:hover .delete-row-btn {
 }
 
 .bubble-me {
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
+  background: #1e293b !important;
   color: #ffffff !important;
+  border-radius: 14px !important;
   border-bottom-right-radius: 4px !important;
-  border: 1px solid rgba(255, 255, 255, 0.18) !important;
-  box-shadow: 0 4px 14px -2px rgba(37, 99, 235, 0.35) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08) !important;
 }
 
 .dark .bubble-me {
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
-  color: #ffffff !important;
-  border: 1px solid rgba(255, 255, 255, 0.22) !important;
-  box-shadow: 0 6px 18px -2px rgba(37, 99, 235, 0.45) !important;
+  background: #1e293b !important;
+  color: #f8fafc !important;
+  border-radius: 14px !important;
+  border-bottom-right-radius: 4px !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3) !important;
 }
 
 .bubble-me .prose,
@@ -2374,12 +2421,13 @@ tr:hover .delete-row-btn {
 
 .dark .bubble-them,
 .dark .bubble-bot {
-  background: #111827 !important;
+  background: #0f172a !important;
   color: #f8fafc !important;
+  border-radius: 14px !important;
   border-bottom-left-radius: 4px !important;
-  border: 1px solid rgba(255, 255, 255, 0.09) !important;
-  box-shadow: 0 4px 20px -4px rgba(0, 0, 0, 0.35) !important;
-  backdrop-filter: blur(10px);
+  border: 1px solid #1e293b !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2) !important;
+  backdrop-filter: none;
 }
 
 /* Feedback Panel Fixes */
@@ -3455,14 +3503,14 @@ tr:hover .delete-row-btn {
   border-radius: 14px !important;
   gap: 2px !important;
   -webkit-tap-highlight-color: transparent;
-  transition: all 0.18s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
   position: relative;
 }
 
 .mobile-nav-btn i {
   width: 22px;
   height: 22px;
-  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .mobile-nav-btn span {
@@ -3490,11 +3538,11 @@ tr:hover .delete-row-btn {
 
 .mobile-nav-btn.active i {
   transform: scale(1.2) translateY(-1px);
-  filter: drop-shadow(0 3px 8px rgba(37, 99, 235, 0.45)) !important;
+  filter: none !important;
 }
 
 .dark .mobile-nav-btn.active i {
-  filter: drop-shadow(0 3px 8px rgba(147, 197, 253, 0.4)) !important;
+  filter: none !important;
 }
 
 /* Active dot indicator under icon */
@@ -3506,13 +3554,13 @@ tr:hover .delete-row-btn {
   transform: translateX(-50%);
   width: 4px;
   height: 4px;
-  background: #2563eb;
+  background: #10b981;
   border-radius: 50%;
-  animation: dotPop 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation: dotPop 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .dark .mobile-nav-btn.active::before {
-  background: #93c5fd;
+  background: #10b981;
 }
 
 @keyframes dotPop {
@@ -3805,7 +3853,7 @@ tr:hover .delete-row-btn {
 }
 
 .custom-modal-box {
-  animation: modalScaleIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation: modalScaleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 @keyframes modalScaleIn {
@@ -4237,7 +4285,7 @@ html, body {
 
 /* Hardware accelerated buttons & clickable spring micro-interactions */
 button, a, input, select, textarea, .nav-item, .btn-action, .chip-item {
-  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.18s ease, border-color 0.18s ease, opacity 0.18s ease;
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.18s ease, border-color 0.18s ease, opacity 0.18s ease;
   backface-visibility: hidden;
 }
 
@@ -4247,12 +4295,12 @@ button:active:not(:disabled), .nav-item:active, .btn-action:active {
 
 /* Fluid Card Hover & Press Motion */
 .card, .modal-card, .drawer-panel, .glass-card, [class*="rounded-3xl"] {
-  transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.28s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease;
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.28s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease;
 }
 
 /* Dynamic Focus Glow for Inputs */
 .input-field, input[type="text"], input[type="password"], input[type="email"], select, textarea {
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 .input-field:focus, input:focus, select:focus, textarea:focus {

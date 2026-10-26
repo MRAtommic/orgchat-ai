@@ -998,26 +998,27 @@ function renderCategoryUI() {
   if (!sidebar) return;
 
   sidebar.innerHTML = `
-    <div class="drop-zone" data-id="all">
+    <div class="drop-zone shrink-0" data-id="all">
       <button class="kb-cat-item active" data-id="all">
         <i data-lucide="layers" class="w-3.5 h-3.5"></i>
         <span>ไฟล์ทั้งหมด</span>
       </button>
     </div>
-    <div class="drop-zone" data-id="unassigned">
+    <div class="drop-zone shrink-0" data-id="unassigned">
       <button class="kb-cat-item" data-id="unassigned">
         <i data-lucide="help-circle" class="w-3.5 h-3.5"></i>
         <span>ยังไม่ได้ระบุ</span>
       </button>
     </div>
-    <div class="my-2 border-t border-surface-100 dark:border-surface-800"></div>
+    <div class="my-2 border-t border-surface-100 dark:border-surface-800 hidden md:block"></div>
+    <div class="h-5 w-px bg-surface-200 dark:bg-surface-800 md:hidden my-auto shrink-0 mx-0.5"></div>
     ${state.kbCategories.map(c => `
-      <div class="group flex items-center justify-between drop-zone" data-id="${c.id}">
+      <div class="group flex items-center justify-between drop-zone shrink-0" data-id="${c.id}">
         <button class="kb-cat-item flex-1" data-id="${c.id}">
           <i data-lucide="${c.visibility === 'private' ? 'lock' : (c.visibility === 'restricted' ? 'users' : 'folder')}" class="w-3.5 h-3.5 ${c.visibility === 'private' ? 'text-amber-500' : (c.visibility === 'restricted' ? 'text-brand-500' : '')}"></i>
-          <span class="truncate">${c.name}</span>
+          <span class="truncate max-w-[120px] md:max-w-none">${c.name}</span>
         </button>
-        <div class="flex items-center opacity-0 group-hover:opacity-100 transition-all">
+        <div class="flex items-center opacity-0 group-hover:opacity-100 transition-all ml-1">
           ${(state.isAdmin || c.created_by === state.user) ? `
             <button onclick="openKBCategorySettings(${c.id})" class="p-1 px-1.5 text-surface-400 hover:text-brand-600 transition-all" title="ตั้งค่าความเป็นส่วนตัว">
               <i data-lucide="settings" class="w-3 h-3"></i>

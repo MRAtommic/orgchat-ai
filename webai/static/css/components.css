@@ -480,14 +480,14 @@
       border-radius: 1rem;
     }
     .dark .kanban-cards-list.drag-over {
-      background-color: rgba(99, 102, 241, 0.1);
-      outline: 2px dashed rgba(129, 140, 248, 0.5);
+      background-color: rgba(37, 99, 235, 0.08);
+      outline: 2px dashed rgba(96, 165, 250, 0.5);
     }
     .kanban-drag-placeholder {
       min-height: 4.5rem;
       border-radius: 0.75rem;
-      border: 2px dashed #6366f1;
-      background: rgba(99, 102, 241, 0.08);
+      border: 2px dashed #2563eb;
+      background: rgba(37, 99, 235, 0.06);
       margin: 0.5rem 0;
       transition: all 0.15s ease;
       animation: placeholderPulse 1.2s infinite ease-in-out;
@@ -534,23 +534,37 @@
 
     .kb-cat-item:hover {
       background: #f1f5f9;
-      color: #7c3aed;
+      color: #0f172a;
     }
 
     .dark .kb-cat-item:hover {
       background: #1e293b;
-      color: #a78bfa;
+      color: #f8fafc;
     }
 
     .kb-cat-item.active {
-      background: #7c3aed;
-      color: white;
-      box-shadow: 0 4px 12px rgba(124, 58, 237, 0.2);
+      background: #0f172a;
+      color: #ffffff;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1);
     }
 
     .dark .kb-cat-item.active {
-      background: #7c3aed;
-      color: white;
+      background: #1e293b;
+      color: #f8fafc;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: none;
+    }
+
+    @media (max-width: 768px) {
+      .kb-cat-item {
+        width: auto !important;
+        white-space: nowrap !important;
+        flex-shrink: 0 !important;
+        padding: 6px 12px !important;
+        font-size: 11px !important;
+        gap: 6px !important;
+        border-radius: 9999px !important;
+      }
     }
 
     /* Messenger Style Sidebar Styles */
