@@ -916,6 +916,7 @@ Game.generateVillageMap = function() {
         map[y][51].solid = false;
         map[y][51].type = 'bridge';
     }
+    map[40][51].interactable = 'sailboat_pier';
     map[41][51].solid = true;
     map[41][51].type = 'sailboat';
     map[41][51].interactable = 'sailboat_pier';
@@ -2090,6 +2091,7 @@ Game.generateIslandMap = function() {
             map[y][x].type = 'bridge';
         }
     }
+    map[31][23].interactable = 'exit_island_sailboat';
     // Moored Sailboat at South Dock
     map[32][23].solid = true;
     map[32][23].type = 'sailboat';
@@ -3332,11 +3334,11 @@ Game.updatePlayer = function(dt) {
 
         // Check Sailboat Dock collision contact trigger
         if ((!this.player.warpCooldown || this.player.warpCooldown <= 0) && (!this.screenFade || this.screenFade.phase === 'none')) {
-            if (this.currentScene === 'village' && pTileX === 51 && pTileY >= 40 && dy > 0) {
+            if (this.currentScene === 'village' && pTileX === 51 && pTileY >= 40 && pTileY <= 42) {
                 this.player.warpCooldown = 800;
                 this.handleTileInteract('sailboat_pier', 51, 41);
                 return;
-            } else if (this.currentScene === 'island' && pTileX === 23 && pTileY >= 31 && dy > 0) {
+            } else if (this.currentScene === 'island' && pTileX === 23 && pTileY >= 31 && pTileY <= 33) {
                 this.player.warpCooldown = 800;
                 this.handleTileInteract('exit_island_sailboat', 23, 32);
                 return;
@@ -3905,6 +3907,14 @@ Game.actOnTile = function(tx, ty) {
     const dist = Math.hypot(playerTileX - tx, playerTileY - ty);
 
     // 1. Check interaction triggers if within reach (doors, bed, well, chests, shop counter, sailboat)
+    if (this.currentScene === 'village' && (tx === 51 || Math.abs(tx - 51) <= 1) && (ty >= 40 && ty <= 42) && dist <= 4.2) {
+        this.handleTileInteract('sailboat_pier', 51, 41);
+        return;
+    }
+    if (this.currentScene === 'island' && (tx === 23 || Math.abs(tx - 23) <= 1) && (ty >= 31 && ty <= 33) && dist <= 4.2) {
+        this.handleTileInteract('exit_island_sailboat', 23, 32);
+        return;
+    }
     if (tile && tile.interactable && dist <= 3.8) {
         this.handleTileInteract(tile.interactable, tx, ty);
         return;
@@ -4927,6 +4937,7 @@ Game.setupTouchControls = function() {
     const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || window.innerWidth <= 840 || this.forceTouchControls;
     const touchOverlay = document.getElementById('touchControls');
     if (touchOverlay) {
+        touchOverlay.classList.toggle('force-show', isTouchDevice);
         touchOverlay.style.display = isTouchDevice ? 'flex' : 'none';
     }
     this.checkOrientationNotice();
@@ -5173,6 +5184,9 @@ Game.setupTouchControls = function() {
 
             // Only shoot if touching the game canvas directly (never intercept hotbar, menus, or modals!)
             if (t.target !== this.canvas) continue;
+
+            // Also ignore touches on the left 48% of screen (virtual joystick thumb area)
+            if (t.clientX < window.innerWidth * 0.48 && t.clientY > 55) continue;
 
             e.preventDefault();
             canvasShootTouchId = t.identifier;
@@ -5489,6 +5503,7 @@ Game.toggleTouchControls = function() {
     this.forceTouchControls = !this.forceTouchControls;
     const touchOverlay = document.getElementById('touchControls');
     if (touchOverlay) {
+        touchOverlay.classList.toggle('force-show', this.forceTouchControls);
         touchOverlay.style.display = this.forceTouchControls ? 'flex' : 'none';
     }
     this.addFloatingText(this.forceTouchControls ? 'เปิดปุ่มควบคุมบนหน้าจอ' : 'ซ่อนปุ่มควบคุมบนหน้าจอ', this.player.x, this.player.y - 15, '#38bdf8');
@@ -7396,7 +7411,7 @@ Game.render = function() {
                         if (distToP <= 80) {
                             const isIsland = this.currentScene === 'island';
                             const isRepaired = !!this.player.sailboatRepaired;
-                            const promptText = isIsland ? 'ล่องเรือกลับหมู่บ้าน' : (isRepaired ? 'ล่องเรือสู่เกาะเขตร้อน' : 'บูรณะเรือใบโบราณ');
+                            const promptText = isIsland ? 'ล่องเรือกลับหมู่บ้าน' : (isRepaired ? 'ล่องเรือสู่เกาะเขตร้อน' : 'ขึ้นเรือ / บูรณะเรือใบ');
                             const badgeY = screenY - 26 + Math.sin(performance.now() * 0.005) * 3;
 
                             this.ctx.save();
@@ -17886,10 +17901,14 @@ Game.warpCaveFloor = function(targetFloor: number) {
 };
 
 
-Game.travelToIsland = function() {
-    this.switchScene('island', 18, 24);
+Game.sailToIslandNow = function() {
+    this.closeAllModals();
+    this.player.sailboatRepaired = true;
+    if (typeof this.saveGame === 'function') {
+        this.saveGame();
+    }
     SoundEngine.bell();
-    this.addFloatingText(' ล่องเรือข้ามสมุทรสู่เกาะเขตร้อน!', this.player.x, this.player.y - 15, '#38bdf8');
+    this.travelToIsland();
 };
 
 
@@ -18590,7 +18609,8 @@ Game.openSailboatRepairModal = function() {
     const woodEl = document.getElementById('repairReqWood');
     const ironEl = document.getElementById('repairReqIron');
     const goldEl = document.getElementById('repairReqGold');
-    const btn = document.getElementById('btnConfirmSailboatRepair') as HTMLButtonElement;
+    const btnRepair = document.getElementById('btnConfirmSailboatRepair') as HTMLButtonElement;
+    const btnSailNow = document.getElementById('btnSailNow') as HTMLButtonElement;
 
     if (woodEl) {
         woodEl.textContent = `${woodCount} / 20`;
@@ -18606,9 +18626,13 @@ Game.openSailboatRepairModal = function() {
     }
 
     const canRepair = woodCount >= 20 && ironCount >= 5 && goldCount >= 500;
-    if (btn) {
-        btn.disabled = !canRepair;
-        btn.textContent = canRepair ? 'บูรณะเรือใบโบราณ (ซ่อมแซม)' : 'วัสดุหรือเหรียญทองไม่เพียงพอ';
+    if (btnRepair) {
+        btnRepair.disabled = !canRepair;
+        btnRepair.textContent = canRepair ? 'บูรณะเรือใบ (+100 XP)' : 'ต้องการวัสดุครบเพื่อบูรณะ (+100 XP)';
+    }
+    if (btnSailNow) {
+        btnSailNow.disabled = false;
+        btnSailNow.textContent = 'ออกเรือสู่เกาะเขตร้อนทันที';
     }
 
     modal.style.display = 'flex';
@@ -20628,7 +20652,7 @@ Game.renderActiveSkillBar = function() {
     }
 };
 
-// Skill Joystick Aiming Controls (Mobile Drag to Aim & Desktop Mouse Drag Aim)
+// Skill Joystick Aiming Controls (Mobile Drag to Aim & Desktop Mouse Drag Aim with ROV Cancel)
 Game.setupSkillJoystickControls = function() {
     const containers = [
         document.getElementById('activeSkillSlots'),
@@ -20643,6 +20667,31 @@ Game.setupSkillJoystickControls = function() {
     let activeSlot = 0;
     let activeSlotEl: HTMLElement | null = null;
     let isDraggingAim = false;
+
+    const checkCancelZoneHover = (clientX: number, clientY: number): boolean => {
+        const cancelZone = document.getElementById('skillCancelZone');
+        if (!cancelZone) return false;
+        cancelZone.style.display = 'flex';
+        const rect = cancelZone.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        const dist = Math.hypot(clientX - centerX, clientY - centerY);
+        const isHovered = dist < Math.max(rect.width * 0.75, 55);
+        if (isHovered) {
+            cancelZone.classList.add('is-hovered');
+        } else {
+            cancelZone.classList.remove('is-hovered');
+        }
+        return isHovered;
+    };
+
+    const hideCancelZone = () => {
+        const cancelZone = document.getElementById('skillCancelZone');
+        if (cancelZone) {
+            cancelZone.style.display = 'none';
+            cancelZone.classList.remove('is-hovered');
+        }
+    };
 
     containers.forEach(container => {
         if ((container as any)._joystickAttached) return;
@@ -20664,6 +20713,7 @@ Game.setupSkillJoystickControls = function() {
             activeSlot = slot;
             activeSlotEl = slotEl;
             isDraggingAim = false;
+            this.activeSkillCancelled = false;
 
             SoundEngine.init();
             if (SoundEngine.isBgmOn()) SoundEngine.startBgm();
@@ -20690,13 +20740,18 @@ Game.setupSkillJoystickControls = function() {
             this.activeSkillAiming = true;
             this.activeSkillAimSlot = activeSlot;
             this.skillAimAngle = Math.atan2(dy, dx);
+            this.activeSkillCancelled = checkCancelZoneHover(touch.clientX, touch.clientY);
 
             // Visual joystick tilt on the slot orb
             const maxTilt = 18;
             const tiltX = Math.cos(this.skillAimAngle) * Math.min(dist, maxTilt);
             const tiltY = Math.sin(this.skillAimAngle) * Math.min(dist, maxTilt);
             activeSlotEl.style.transform = `translate(${tiltX}px, ${tiltY}px) scale(1.12)`;
-            activeSlotEl.style.boxShadow = `0 0 16px #38bdf8, 0 0 8px #facc15`;
+            if (this.activeSkillCancelled) {
+                activeSlotEl.style.boxShadow = `0 0 18px #ef4444, 0 0 10px #b91c1c`;
+            } else {
+                activeSlotEl.style.boxShadow = `0 0 16px #38bdf8, 0 0 8px #facc15`;
+            }
         }
     }, { passive: false });
 
@@ -20711,6 +20766,8 @@ Game.setupSkillJoystickControls = function() {
         }
         if (stillTouch) return;
 
+        hideCancelZone();
+
         if (activeSlotEl) {
             activeSlotEl.style.transform = '';
             activeSlotEl.style.boxShadow = '';
@@ -20718,18 +20775,27 @@ Game.setupSkillJoystickControls = function() {
 
         const slotToTrigger = activeSlot;
         const wasAiming = isDraggingAim;
+        const wasCancelled = !!this.activeSkillCancelled;
+        const finalAngle = this.skillAimAngle;
+
         activeTouchId = null;
         activeSlotEl = null;
+        this.activeSkillAiming = false;
+        this.activeSkillCancelled = false;
+        this.skillAimAngle = null;
 
-        if (wasAiming && this.skillAimAngle !== null) {
-            this.triggerPlayerSkill(slotToTrigger);
-        } else {
-            this.skillAimAngle = null;
-            this.triggerPlayerSkill(slotToTrigger);
+        if (wasCancelled) {
+            this.addFloatingText('✕ ยกเลิกสกิล', this.player.x, this.player.y - 15, '#ef4444');
+            return;
         }
 
-        this.activeSkillAiming = false;
-        this.skillAimAngle = null;
+        if (wasAiming && finalAngle !== null) {
+            this.skillAimAngle = finalAngle;
+            this.triggerPlayerSkill(slotToTrigger);
+            this.skillAimAngle = null;
+        } else {
+            this.triggerPlayerSkill(slotToTrigger);
+        }
     };
 
     window.addEventListener('touchend', endSkillTouch, { passive: false });
@@ -20750,6 +20816,7 @@ Game.setupSkillJoystickControls = function() {
             activeSlot = slot;
             activeSlotEl = slotEl;
             isDraggingAim = false;
+            this.activeSkillCancelled = false;
         });
     });
 
@@ -20764,38 +20831,57 @@ Game.setupSkillJoystickControls = function() {
             this.activeSkillAiming = true;
             this.activeSkillAimSlot = activeSlot;
             this.skillAimAngle = Math.atan2(dy, dx);
+            this.activeSkillCancelled = checkCancelZoneHover(e.clientX, e.clientY);
+
             const maxTilt = 18;
             const tiltX = Math.cos(this.skillAimAngle) * Math.min(dist, maxTilt);
             const tiltY = Math.sin(this.skillAimAngle) * Math.min(dist, maxTilt);
             activeSlotEl.style.transform = `translate(${tiltX}px, ${tiltY}px) scale(1.12)`;
-            activeSlotEl.style.boxShadow = `0 0 16px #38bdf8, 0 0 8px #facc15`;
+            if (this.activeSkillCancelled) {
+                activeSlotEl.style.boxShadow = `0 0 18px #ef4444, 0 0 10px #b91c1c`;
+            } else {
+                activeSlotEl.style.boxShadow = `0 0 16px #38bdf8, 0 0 8px #facc15`;
+            }
         }
     });
 
     window.addEventListener('mouseup', () => {
         if (!isMouseDown) return;
         isMouseDown = false;
+        hideCancelZone();
+
         if (activeSlotEl) {
             activeSlotEl.style.transform = '';
             activeSlotEl.style.boxShadow = '';
         }
         const slotToTrigger = activeSlot;
-        activeSlotEl = null;
+        const wasAiming = isDraggingAim;
+        const wasCancelled = !!this.activeSkillCancelled;
+        const finalAngle = this.skillAimAngle;
 
-        if (isDraggingAim && this.skillAimAngle !== null) {
+        activeSlotEl = null;
+        this.activeSkillAiming = false;
+        this.activeSkillCancelled = false;
+        this.skillAimAngle = null;
+
+        if (wasCancelled) {
+            this.addFloatingText('✕ ยกเลิกสกิล', this.player.x, this.player.y - 15, '#ef4444');
+            return;
+        }
+
+        if (wasAiming && finalAngle !== null) {
+            this.skillAimAngle = finalAngle;
             this.triggerPlayerSkill(slotToTrigger);
-        } else {
             this.skillAimAngle = null;
+        } else {
             this.triggerPlayerSkill(slotToTrigger);
         }
-        this.activeSkillAiming = false;
-        this.skillAimAngle = null;
     });
 };
 
 // Draw Canvas Active Skill Visuals
 Game.drawActiveSkillVisuals = function(ctx) {
-    // 0. Draw Skill Joystick Aiming Indicator (Mobile & Mouse Drag Aim)
+    // 0. Draw Skill Joystick Aiming Indicator (Mobile & Mouse Drag Aim with ROV Cancel)
     if (this.activeSkillAiming && this.skillAimAngle !== null && this.skillAimAngle !== undefined && this.player) {
         const px = Math.round(this.player.x + 12 - this.camera.x);
         const py = Math.round(this.player.y + 14 - this.camera.y);
@@ -20803,14 +20889,15 @@ Game.drawActiveSkillVisuals = function(ctx) {
         const aimDist = 160;
         const tx = px + Math.cos(ang) * aimDist;
         const ty = py + Math.sin(ang) * aimDist;
+        const isCancelled = !!this.activeSkillCancelled;
 
         ctx.save();
-        ctx.shadowColor = '#38bdf8';
+        ctx.shadowColor = isCancelled ? '#ef4444' : '#38bdf8';
         ctx.shadowBlur = 14;
 
         // Aiming trajectory dashed line
-        ctx.strokeStyle = '#38bdf8';
-        ctx.lineWidth = 3;
+        ctx.strokeStyle = isCancelled ? '#ef4444' : '#38bdf8';
+        ctx.lineWidth = isCancelled ? 3.5 : 3;
         ctx.setLineDash([8, 6]);
         ctx.beginPath();
         ctx.moveTo(px, py);
@@ -20819,7 +20906,7 @@ Game.drawActiveSkillVisuals = function(ctx) {
 
         // Directional Arrowhead
         ctx.setLineDash([]);
-        ctx.fillStyle = '#fde047';
+        ctx.fillStyle = isCancelled ? '#ef4444' : '#fde047';
         ctx.beginPath();
         const arrowSize = 14;
         const a1 = ang + Math.PI - 0.45;
@@ -20831,14 +20918,32 @@ Game.drawActiveSkillVisuals = function(ctx) {
         ctx.fill();
 
         // Target reticle ring
-        ctx.strokeStyle = '#facc15';
+        ctx.strokeStyle = isCancelled ? '#ef4444' : '#facc15';
         ctx.lineWidth = 2.5;
         ctx.beginPath();
         ctx.arc(tx, ty, 16, 0, Math.PI * 2);
         ctx.stroke();
 
+        if (isCancelled) {
+            // Draw Cancel '✕' icon inside reticle
+            ctx.strokeStyle = '#ef4444';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(tx - 7, ty - 7);
+            ctx.lineTo(tx + 7, ty + 7);
+            ctx.moveTo(tx + 7, ty - 7);
+            ctx.lineTo(tx - 7, ty + 7);
+            ctx.stroke();
+
+            // Floating label above reticle
+            ctx.fillStyle = '#fee2e2';
+            ctx.font = 'bold 12px Kanit, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('✕ ยกเลิกสกิล', tx, ty - 22);
+        }
+
         // Player range circle indicator
-        ctx.strokeStyle = 'rgba(56, 189, 248, 0.28)';
+        ctx.strokeStyle = isCancelled ? 'rgba(239, 68, 68, 0.35)' : 'rgba(56, 189, 248, 0.28)';
         ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.arc(px, py, aimDist, 0, Math.PI * 2);

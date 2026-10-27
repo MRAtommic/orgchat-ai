@@ -1194,9 +1194,10 @@
                             <span id="repairReqGold" class="repair-item-status">0 / 500 G</span>
                         </div>
                     </div>
-                    <div class="repair-modal-actions" style="margin-top: 18px; display: flex; justify-content: flex-end; gap: 10px;">
+                    <div class="repair-modal-actions" style="margin-top: 18px; display: flex; justify-content: flex-end; align-items: center; gap: 10px; flex-wrap: wrap;">
                         <button class="btn-secondary" onclick="Game.closeModal('sailboatRepairModal')">ยกเลิก</button>
-                        <button id="btnConfirmSailboatRepair" class="btn-primary" onclick="Game.repairSailboat()">บูรณะเรือใบโบราณ (ซ่อมแซม)</button>
+                        <button id="btnConfirmSailboatRepair" class="btn-secondary" style="border: 1px solid #eab308; color: #fde047; padding: 8px 14px; font-weight: 600;" onclick="Game.repairSailboat()">บูรณะเรือใบ (+100 XP)</button>
+                        <button id="btnSailNow" class="btn-primary" style="background: linear-gradient(135deg, #0284c7, #0ea5e9); font-weight: bold; padding: 8px 18px; border: 1px solid #38bdf8; box-shadow: 0 4px 12px rgba(14, 165, 233, 0.35);" onclick="Game.sailToIslandNow()">ออกเรือสู่เกาะเขตร้อนทันที</button>
                     </div>
                 </div>
             </div>
