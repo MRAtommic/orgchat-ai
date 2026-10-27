@@ -453,9 +453,28 @@ class SoundEngineService {
     setTimeout(() => this.playTone(440, 'sawtooth', 0.25, 0.3), 240);
   }
 
-  public swordSlash(): void {
-    this.playTone(340, 'triangle', 0.05, 0.25);
-    setTimeout(() => this.playTone(180, 'sine', 0.08, 0.2), 20);
+  public swordSlash(comboStep: number = 1): void {
+    if (comboStep === 3) {
+      // Step 3 Finisher Smite Sound (resonant blade boom + high harmonic shimmer)
+      this.playTone(160, 'sawtooth', 0.12, 0.35);
+      setTimeout(() => this.playTone(520, 'triangle', 0.16, 0.4), 25);
+      setTimeout(() => this.playTone(880, 'sine', 0.22, 0.3), 60);
+    } else if (comboStep === 2) {
+      // Step 2 Cleave (medium pitch whoosh)
+      this.playTone(420, 'triangle', 0.06, 0.28);
+      setTimeout(() => this.playTone(220, 'sine', 0.09, 0.22), 20);
+    } else {
+      // Step 1 Swift Slash (crisp agile swoosh)
+      this.playTone(340, 'triangle', 0.05, 0.25);
+      setTimeout(() => this.playTone(180, 'sine', 0.08, 0.2), 20);
+    }
+  }
+
+  public comboFinisher(): void {
+    this.playTone(95, 'sawtooth', 0.18, 0.4);
+    setTimeout(() => this.playTone(380, 'square', 0.12, 0.35), 30);
+    setTimeout(() => this.playTone(760, 'triangle', 0.22, 0.35), 70);
+    setTimeout(() => this.playTone(1200, 'sine', 0.3, 0.28), 120);
   }
 
   public miningHit(): void {

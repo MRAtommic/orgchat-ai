@@ -278,7 +278,9 @@ Game.init = function() {
     this.initAmbientCreatures();
     this.setupInputListeners();
     this.setupTouchControls();
-    this.setupSkillJoystickControls();
+    if (typeof (this as any).setupSkillJoystickControls === 'function') {
+        (this as any).setupSkillJoystickControls();
+    }
 
     // Multi-User Profile & Cloud/Local Save System
     if (typeof Auth !== 'undefined') {
@@ -3170,12 +3172,17 @@ Game.updatePlayer = function(dt) {
     let dx = 0;
     let dy = 0;
 
-    if (this.keys.up) { dy -= 1; this.player.direction = 'up'; }
-    if (this.keys.down) { dy += 1; this.player.direction = 'down'; }
-    if (this.keys.left) { dx -= 1; this.player.direction = 'left'; }
-    if (this.keys.right) { dx += 1; this.player.direction = 'right'; }
-
-    if (dx !== 0 && dy !== 0) { dx *= 0.7071; dy *= 0.7071; }
+    // Smooth 360-degree analog movement for mobile virtual joystick
+    if (this.player.joystickMove) {
+        dx = this.player.joystickMove.x;
+        dy = this.player.joystickMove.y;
+    } else {
+        if (this.keys.up) { dy -= 1; this.player.direction = 'up'; }
+        if (this.keys.down) { dy += 1; this.player.direction = 'down'; }
+        if (this.keys.left) { dx -= 1; this.player.direction = 'left'; }
+        if (this.keys.right) { dx += 1; this.player.direction = 'right'; }
+        if (dx !== 0 && dy !== 0) { dx *= 0.7071; dy *= 0.7071; }
+    }
 
     
     // Dark Souls: Bloodstain Recovery
@@ -4976,10 +4983,17 @@ Game.setupTouchControls = function() {
 
             const deadZone = 7;
             if (dist > deadZone) {
+                const normDist = (clampedDist - deadZone) / (maxRadius - deadZone);
                 const cosVal = Math.cos(angle);
                 const sinVal = Math.sin(angle);
-                const threshold = 0.38;
 
+                // True 360-degree analog vector
+                this.player.joystickMove = {
+                    x: cosVal * normDist,
+                    y: sinVal * normDist
+                };
+
+                const threshold = 0.38;
                 this.keys.right = cosVal > threshold;
                 this.keys.left = cosVal < -threshold;
                 this.keys.down = sinVal > threshold;
@@ -4991,6 +5005,7 @@ Game.setupTouchControls = function() {
                     this.player.direction = dy > 0 ? 'down' : 'up';
                 }
             } else {
+                this.player.joystickMove = null;
                 this.keys.up = false;
                 this.keys.down = false;
                 this.keys.left = false;
@@ -5035,6 +5050,7 @@ Game.setupTouchControls = function() {
             for (let i = 0; i < e.changedTouches.length; i++) {
                 if (e.changedTouches[i].identifier === dpadTouchId) {
                     dpadTouchId = null;
+                    this.player.joystickMove = null;
                     joystickKnob.style.transform = 'translate(0px, 0px)';
                     joystickBase.classList.remove('is-active');
                     this.keys.up = false;
@@ -11537,21 +11553,22 @@ Game.playerMeleeAttack = function(targetWorldX, targetWorldY, weapon) {
     if (combo === 1) {
         comboMult = 1.0;
         comboCooldownMult = 0.88;
-        SoundEngine.swordSlash();
+        SoundEngine.swordSlash(1);
     } else if (combo === 2) {
         comboMult = 1.25;
         comboCooldownMult = 0.92;
-        SoundEngine.swordSlash();
+        SoundEngine.swordSlash(2);
         this.addFloatingText('[2x COMBO!]', originX, originY - 24, '#38bdf8');
     } else if (combo === 3) {
         comboMult = 1.75;
         comboCooldownMult = 1.15;
         forceCrit = true;
-        this.triggerScreenShake(4.5, 140);
-        this.spawnParticles(originX, originY, '#facc15', 18);
-        this.spawnParticles(originX, originY, '#ffffff', 12);
-        SoundEngine.levelUp();
-        this.addFloatingText('★ 3x FINISHER CRIT!', originX - 25, originY - 28, '#fde047');
+        this.triggerScreenShake(5.0, 150);
+        this.spawnParticles(originX, originY, '#facc15', 20);
+        this.spawnParticles(originX, originY, '#ffffff', 14);
+        if (typeof SoundEngine.comboFinisher === 'function') SoundEngine.comboFinisher();
+        else SoundEngine.swordSlash(3);
+        this.addFloatingText('★ 3x FINISHER CRIT! ★', originX - 25, originY - 28, '#fde047');
     }
 
     this.playerShootCooldown = Math.round((weapon.cooldown || 250) * comboCooldownMult);
@@ -11562,6 +11579,7 @@ Game.playerMeleeAttack = function(targetWorldX, targetWorldY, weapon) {
         dir: this.player.direction,
         isHoly: (weapon.id === 'excalibur_sword' || weapon.id === 'luminarch_crystal_blade'),
         timer: combo === 3 ? 210 : 160,
+        maxTimer: combo === 3 ? 210 : 160,
         comboStep: combo
     };
 
@@ -11590,6 +11608,8 @@ Game.playerMeleeAttack = function(targetWorldX, targetWorldY, weapon) {
             if (dist < attackRange) {
                 bug.hp -= finalDamage;
                 bug.flashTimer = 160;
+                bug.squashX = 1.35;
+                bug.squashY = 0.72;
                 bug.x += Math.cos(angle) * (isCrit ? 18 : 10);
                 bug.y += Math.sin(angle) * (isCrit ? 18 : 10);
 
@@ -11625,6 +11645,8 @@ Game.playerMeleeAttack = function(targetWorldX, targetWorldY, weapon) {
                 m.hp -= finalDamage;
                 this.applyRuneCombatProc(m, finalDamage);
                 m.flashTimer = 160;
+                m.squashX = 1.35;
+                m.squashY = 0.72;
                 m.x += Math.cos(angle) * (isCrit ? 18 : 10);
                 m.y += Math.sin(angle) * (isCrit ? 18 : 10);
 
@@ -11701,6 +11723,8 @@ Game.playerMeleeAttack = function(targetWorldX, targetWorldY, weapon) {
                 this.boss.hp -= finalDamage;
                 this.applyRuneCombatProc(this.boss, finalDamage);
                 this.boss.flashTimer = 180;
+                this.boss.squashX = 1.25;
+                this.boss.squashY = 0.8;
                 this.triggerScreenShake(isCrit ? 7.0 : 4.5, 160);
                 this.triggerHitstop(isCrit ? 70 : 45);
                 if (isCrit) SoundEngine.critHit(); else SoundEngine.hit();
@@ -12022,6 +12046,15 @@ Game.updateDemonBugs = function(dt) {
         const bug = this.demonBugs[i];
         if (bug.flashTimer > 0) bug.flashTimer -= dt;
 
+        if (bug.squashX && bug.squashX !== 1.0) {
+            bug.squashX += (1.0 - bug.squashX) * 0.22;
+            if (Math.abs(bug.squashX - 1.0) < 0.02) bug.squashX = 1.0;
+        }
+        if (bug.squashY && bug.squashY !== 1.0) {
+            bug.squashY += (1.0 - bug.squashY) * 0.22;
+            if (Math.abs(bug.squashY - 1.0) < 0.02) bug.squashY = 1.0;
+        }
+
         bug.animTimer += dt;
         if (bug.animTimer > 160) {
             bug.animTimer = 0;
@@ -12257,6 +12290,8 @@ Game.updateProjectiles = function(dt) {
                         hit = true;
                         bug.hp -= p.damage;
                         bug.flashTimer = 140;
+                        bug.squashX = 1.35;
+                        bug.squashY = 0.72;
                         if (p.fromPlayer) this.triggerScreenShake(2.5, 90);
                         SoundEngine.hit();
                         this.spawnParticles(p.x, p.y, '#f59e0b', 6);
@@ -12296,6 +12331,8 @@ Game.updateProjectiles = function(dt) {
                         m.hp -= p.damage;
                         if (p.fromPlayer) this.applyRuneCombatProc(m, p.damage);
                         m.flashTimer = 140;
+                        m.squashX = 1.35;
+                        m.squashY = 0.72;
                         if (p.fromPlayer) this.triggerScreenShake(2.5, 90);
                         SoundEngine.hit();
                         this.spawnParticles(p.x, p.y, '#f59e0b', 6);
@@ -12344,6 +12381,8 @@ Game.updateProjectiles = function(dt) {
                         this.boss.hp -= p.damage;
                         if (p.fromPlayer) this.applyRuneCombatProc(this.boss, p.damage);
                         this.boss.flashTimer = 140;
+                        this.boss.squashX = 1.25;
+                        this.boss.squashY = 0.8;
                         if (p.fromPlayer) this.triggerScreenShake(3.5, 120);
                         SoundEngine.hit();
                         this.spawnParticles(p.x, p.y, '#f59e0b', 8);
@@ -12745,13 +12784,29 @@ Game.drawSingleBug = function(bug) {
     const frames = SPRITES.bugs[bug.type];
     if (frames) {
         const spr = frames[bug.frame] || frames[0];
+        const bSquashX = bug.squashX || 1.0;
+        const bSquashY = bug.squashY || 1.0;
+        const hasSquash = (bSquashX !== 1.0 || bSquashY !== 1.0);
+
+        if (hasSquash) {
+            this.ctx.save();
+            this.ctx.translate(sx + 14, sy + 14);
+            this.ctx.scale(bSquashX, bSquashY);
+            this.ctx.translate(-(sx + 14), -(sy + 14));
+        }
+
+        this.ctx.drawImage(spr, sx, sy);
+
         if (bug.flashTimer > 0) {
             this.ctx.save();
-            this.ctx.filter = 'brightness(3) saturate(0.2)';
+            this.ctx.globalCompositeOperation = 'lighter';
+            this.ctx.globalAlpha = Math.min(0.85, bug.flashTimer / 100);
             this.ctx.drawImage(spr, sx, sy);
             this.ctx.restore();
-        } else {
-            this.ctx.drawImage(spr, sx, sy);
+        }
+
+        if (hasSquash) {
+            this.ctx.restore();
         }
     }
 
@@ -13441,6 +13496,16 @@ Game.updateWorldMonsters = function(dt) {
         const m = this.worldMonsters[i];
         if (m.flashTimer > 0) m.flashTimer -= dt;
 
+        // Smooth Squash & Stretch recovery (Dynamic Impact Bounce)
+        if (m.squashX && m.squashX !== 1.0) {
+            m.squashX += (1.0 - m.squashX) * 0.22;
+            if (Math.abs(m.squashX - 1.0) < 0.02) m.squashX = 1.0;
+        }
+        if (m.squashY && m.squashY !== 1.0) {
+            m.squashY += (1.0 - m.squashY) * 0.22;
+            if (Math.abs(m.squashY - 1.0) < 0.02) m.squashY = 1.0;
+        }
+
         m.animTimer = (m.animTimer || 0) + dt;
         if (m.animTimer > 160) {
             m.animTimer = 0;
@@ -13899,8 +13964,10 @@ Game.drawBossDashGhosts = function() {
         const spr = (bossSprites && bossSprites[g.frame]) || bossSprites[0] || SPRITES.bossKathuros[0];
         if (spr) {
             this.ctx.save();
-            this.ctx.globalAlpha = Math.max(0, g.alpha);
-            this.ctx.filter = 'brightness(1.8) hue-rotate(300deg)';
+            this.ctx.globalAlpha = Math.max(0, g.alpha * 0.72);
+            this.ctx.drawImage(spr, bx, by);
+            this.ctx.globalCompositeOperation = 'lighter';
+            this.ctx.globalAlpha = Math.max(0, g.alpha * 0.5);
             this.ctx.drawImage(spr, bx, by);
             this.ctx.restore();
         }
@@ -13915,6 +13982,16 @@ Game.updateBoss = function(dt) {
         if (bossBar && bossBar.style.display !== 'none') bossBar.style.display = 'none';
         if (typeof SoundEngine.setBossBattle === 'function') SoundEngine.setBossBattle(false);
         return;
+    }
+
+    if (this.boss.flashTimer > 0) this.boss.flashTimer -= dt;
+    if (this.boss.squashX && this.boss.squashX !== 1.0) {
+        this.boss.squashX += (1.0 - this.boss.squashX) * 0.22;
+        if (Math.abs(this.boss.squashX - 1.0) < 0.02) this.boss.squashX = 1.0;
+    }
+    if (this.boss.squashY && this.boss.squashY !== 1.0) {
+        this.boss.squashY += (1.0 - this.boss.squashY) * 0.22;
+        if (Math.abs(this.boss.squashY - 1.0) < 0.02) this.boss.squashY = 1.0;
     }
 
     const dist = Math.hypot((this.player.x + 12) - (this.boss.x + 32), (this.player.y + 14) - (this.boss.y + 32));
@@ -16267,13 +16344,30 @@ Game.drawSingleWorldMonster = function(m) {
     const frames = SPRITES.worldMonsters[m.type];
     if (frames) {
         const spr = frames[m.frame] || frames[0];
+        // Fast hardware-accelerated hit flash (Zero ctx.filter GPU stall!)
+        const sx = m.squashX || 1.0;
+        const sy = m.squashY || 1.0;
+        const hasSquash = (sx !== 1.0 || sy !== 1.0);
+
+        if (hasSquash) {
+            this.ctx.save();
+            this.ctx.translate(mx + 16, my + 16);
+            this.ctx.scale(sx, sy);
+            this.ctx.translate(-(mx + 16), -(my + 16));
+        }
+
+        this.ctx.drawImage(spr, mx, my);
+
         if (m.flashTimer > 0) {
             this.ctx.save();
-            this.ctx.filter = 'brightness(3) saturate(0.2)';
+            this.ctx.globalCompositeOperation = 'lighter';
+            this.ctx.globalAlpha = Math.min(0.85, m.flashTimer / 100);
             this.ctx.drawImage(spr, mx, my);
             this.ctx.restore();
-        } else {
-            this.ctx.drawImage(spr, mx, my);
+        }
+
+        if (hasSquash) {
+            this.ctx.restore();
         }
     }
 
@@ -16361,17 +16455,33 @@ Game.drawBoss = function() {
         this.ctx.stroke();
     }
 
-    // Boss Sprite with Flash
+    // Boss Sprite with Flash (Zero ctx.filter GPU stall & Dynamic Squash Bounce)
     const bossSprites = (SPRITES.bosses && SPRITES.bosses[this.boss.id]) || SPRITES.bossKathuros;
     const spr = (bossSprites && bossSprites[this.boss.frame]) || bossSprites[0] || SPRITES.bossKathuros[0];
     if (spr) {
+        const bSquashX = this.boss.squashX || 1.0;
+        const bSquashY = this.boss.squashY || 1.0;
+        const hasSquash = (bSquashX !== 1.0 || bSquashY !== 1.0);
+
+        if (hasSquash) {
+            this.ctx.save();
+            this.ctx.translate(bx + 32, by + 32);
+            this.ctx.scale(bSquashX, bSquashY);
+            this.ctx.translate(-(bx + 32), -(by + 32));
+        }
+
+        this.ctx.drawImage(spr, bx, by);
+
         if (this.boss.flashTimer > 0) {
             this.ctx.save();
-            this.ctx.filter = 'brightness(3) saturate(0.2)';
+            this.ctx.globalCompositeOperation = 'lighter';
+            this.ctx.globalAlpha = Math.min(0.85, this.boss.flashTimer / 100);
             this.ctx.drawImage(spr, bx, by);
             this.ctx.restore();
-        } else {
-            this.ctx.drawImage(spr, bx, by);
+        }
+
+        if (hasSquash) {
+            this.ctx.restore();
         }
     }
 
@@ -17627,22 +17737,62 @@ Game.drawMeleeSlash = function() {
     const slash = this.meleeSlashAnim;
     const sx = Math.round(slash.x - this.camera.x);
     const sy = Math.round(slash.y - this.camera.y);
+    const progress = Math.max(0, Math.min(1, slash.timer / (slash.maxTimer || 180)));
+    const combo = slash.comboStep || 1;
 
     this.ctx.save();
     this.ctx.translate(sx, sy);
     this.ctx.rotate(slash.angle);
 
-    this.ctx.strokeStyle = slash.isHoly ? 'rgba(253, 224, 71, 0.9)' : 'rgba(248, 250, 252, 0.85)';
-    this.ctx.lineWidth = 3;
-    this.ctx.beginPath();
-    this.ctx.arc(20, 0, 24, -Math.PI / 3, Math.PI / 3);
-    this.ctx.stroke();
+    if (combo === 3) {
+        // Step 3 Finisher: Giant Golden Explosive Solar Arc (180 degrees)
+        this.ctx.shadowColor = '#facc15';
+        this.ctx.shadowBlur = 16;
+
+        this.ctx.strokeStyle = `rgba(250, 204, 21, ${0.95 * progress})`;
+        this.ctx.lineWidth = 6;
+        this.ctx.beginPath();
+        this.ctx.arc(14, 0, 36, -Math.PI / 1.8, Math.PI / 1.8);
+        this.ctx.stroke();
+
+        this.ctx.strokeStyle = `rgba(255, 255, 255, ${1.0 * progress})`;
+        this.ctx.lineWidth = 3;
+        this.ctx.beginPath();
+        this.ctx.arc(16, 0, 32, -Math.PI / 2.2, Math.PI / 2.2);
+        this.ctx.stroke();
+    } else if (combo === 2) {
+        // Step 2: Wide Azure Cleave (125 degrees)
+        this.ctx.shadowColor = '#38bdf8';
+        this.ctx.shadowBlur = 12;
+
+        this.ctx.strokeStyle = `rgba(56, 189, 248, ${0.88 * progress})`;
+        this.ctx.lineWidth = 4.5;
+        this.ctx.beginPath();
+        this.ctx.arc(16, 0, 28, -Math.PI / 2.6, Math.PI / 2.6);
+        this.ctx.stroke();
+
+        this.ctx.strokeStyle = `rgba(255, 255, 255, ${0.95 * progress})`;
+        this.ctx.lineWidth = 2.2;
+        this.ctx.beginPath();
+        this.ctx.arc(18, 0, 25, -Math.PI / 3, Math.PI / 3);
+        this.ctx.stroke();
+    } else {
+        // Step 1: Swift Silver Slash (75 degrees)
+        this.ctx.shadowColor = '#cbd5e1';
+        this.ctx.shadowBlur = 8;
+
+        this.ctx.strokeStyle = `rgba(248, 250, 252, ${0.88 * progress})`;
+        this.ctx.lineWidth = 3.5;
+        this.ctx.beginPath();
+        this.ctx.arc(18, 0, 24, -Math.PI / 3.4, Math.PI / 3.4);
+        this.ctx.stroke();
+    }
 
     if (slash.isHoly) {
-        this.ctx.strokeStyle = 'rgba(96, 165, 250, 0.8)';
-        this.ctx.lineWidth = 1.5;
+        this.ctx.strokeStyle = `rgba(253, 224, 71, ${0.9 * progress})`;
+        this.ctx.lineWidth = 2.5;
         this.ctx.beginPath();
-        this.ctx.arc(26, 0, 30, -Math.PI / 4, Math.PI / 4);
+        this.ctx.arc(22, 0, 38, -Math.PI / 3, Math.PI / 3);
         this.ctx.stroke();
     }
 
@@ -20357,6 +20507,8 @@ Game.damageEnemiesInRadius = function(x, y, radius, dmg, text, color, proc = nul
             if (Math.hypot((b.x + 14) - x, (b.y + 14) - y) <= radius) {
                 b.hp -= dmg;
                 b.flashTimer = 160;
+                b.squashX = 1.35;
+                b.squashY = 0.72;
                 this.addFloatingText(text, b.x, b.y - 10, color);
                 if (proc) proc(b);
             }
@@ -20368,6 +20520,8 @@ Game.damageEnemiesInRadius = function(x, y, radius, dmg, text, color, proc = nul
             if (Math.hypot((m.x + 16) - x, (m.y + 16) - y) <= radius) {
                 m.hp -= dmg;
                 m.flashTimer = 160;
+                m.squashX = 1.35;
+                m.squashY = 0.72;
                 this.addFloatingText(text, m.x, m.y - 10, color);
                 if (proc) proc(m);
             }
@@ -20377,6 +20531,8 @@ Game.damageEnemiesInRadius = function(x, y, radius, dmg, text, color, proc = nul
         if (Math.hypot((this.boss.x + 32) - x, (this.boss.y + 32) - y) <= radius + 30) {
             this.boss.hp -= dmg;
             this.boss.flashTimer = 180;
+            this.boss.squashX = 1.25;
+            this.boss.squashY = 0.8;
             this.addFloatingText(text, this.boss.x + 20, this.boss.y - 10, color);
             if (proc) proc(this.boss);
             if (this.boss.hp <= 0) this.defeatBoss();
@@ -20402,6 +20558,8 @@ Game.damageEnemiesInLine = function(x1, y1, x2, y2, width, dmg, text, color) {
             if (checkLineHit(m.x + 16, m.y + 16)) {
                 m.hp -= dmg;
                 m.flashTimer = 160;
+                m.squashX = 1.35;
+                m.squashY = 0.72;
                 this.addFloatingText(text, m.x, m.y - 10, color);
             }
         }
@@ -20410,6 +20568,8 @@ Game.damageEnemiesInLine = function(x1, y1, x2, y2, width, dmg, text, color) {
         if (checkLineHit(this.boss.x + 32, this.boss.y + 32)) {
             this.boss.hp -= dmg;
             this.boss.flashTimer = 180;
+            this.boss.squashX = 1.25;
+            this.boss.squashY = 0.8;
             this.addFloatingText(text, this.boss.x + 20, this.boss.y - 10, color);
             if (this.boss.hp <= 0) this.defeatBoss();
         }
@@ -20632,6 +20792,119 @@ Game.updatePlayerSkills = function(dt) {
     }
 };
 
+// Skill Visual Metadata & SVG Vector Icon Glyphs
+const SKILL_SHORT_TAGS: Record<string, string> = {
+    cyclone_slash: 'ดาบหมุน',
+    flash_thrust: 'แทงพริบตา',
+    ironclad_bastion: 'เกราะเหล็ก',
+    judgement_blade: 'สุริยัน',
+    pyroclast_orb: 'บอลเพลิง',
+    glacial_ring: 'เหมันต์',
+    prism_shield: 'ปริซึม',
+    meteor_cataclysm: 'ฝนดาวตก',
+    arrow_barrage: 'ห่าธนู',
+    venom_trap: 'กับดักพิษ',
+    shadow_dash: 'ก้าวเงา',
+    dragonpiercer: 'ศรอัสนี',
+    radiant_spear: 'หอกแสง',
+    divine_heal: 'อวยพรเทวะ',
+    sanctuary_pylon: 'เสาศักดิ์',
+    wrath_heavens: 'ทัณฑ์เทวา'
+};
+
+const CLASS_HERALDRY: Record<string, { icon: string; name: string; color: string }> = {
+    warrior: { icon: '⚔️', name: 'จอมดาบ', color: '#f59e0b' },
+    mage: { icon: '🔮', name: 'จอมเวท', color: '#a855f7' },
+    ranger: { icon: '🏹', name: 'จอมพราน', color: '#10b981' },
+    paladin: { icon: '✨', name: 'เทวะ', color: '#eab308' }
+};
+
+const SKILL_ICONS: Record<string, string> = {
+    // Warrior
+    cyclone_slash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2a10 10 0 0 1 10 10c0 4-2.5 7.5-6 9" stroke="#38bdf8"/>
+        <path d="M12 22A10 10 0 0 1 2 12c0-4 2.5-7.5 6-9" stroke="#7dd3fc"/>
+        <path d="M8 8l8 8M16 8l-8 8" stroke="#ffffff"/>
+        <circle cx="12" cy="12" r="2.5" fill="#38bdf8"/>
+    </svg>`,
+    flash_thrust: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 21l8-8M11 13l8-8 2 2-8 8-2-2z" fill="rgba(103,232,249,0.25)" stroke="#67e8f9"/>
+        <path d="M21 3l-4 4" stroke="#ffffff"/>
+        <path d="M2 11h4M3 15h4M5 7h3" stroke="#a5f3fc"/>
+    </svg>`,
+    ironclad_bastion: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2l8 3.5v6.5c0 6-4 10.5-8 11.8C8 22.5 4 18 4 12V5.5L12 2z" fill="rgba(245,158,11,0.25)" stroke="#f59e0b"/>
+        <path d="M12 6v12M7.5 11h9" stroke="#fef08a" stroke-width="2.2"/>
+        <circle cx="12" cy="11" r="2" fill="#fbbf24"/>
+    </svg>`,
+    judgement_blade: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2v18M9 7l3-5 3 5M8 15h8M12 20v2" stroke="#fde047"/>
+        <path d="M4 12l2-1M20 12l-2-1M6 6l2 2M18 6l-2 2M6 18l2-2M18 18l-2-2" stroke="#f59e0b"/>
+        <circle cx="12" cy="11" r="2" fill="#ef4444"/>
+    </svg>`,
+
+    // Mage
+    pyroclast_orb: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="13" r="6" fill="rgba(249,115,22,0.3)" stroke="#f97316"/>
+        <path d="M12 2c1.5 3 0 5 2 8 1.5-2 2.5-3 2.5-5 3 2.5 4.5 6 2 9.5-1.5 2.5-4 3.5-6.5 3-3-.6-5-3.2-4.5-6.5.5-3 3-5 6.5-9z" fill="rgba(239,68,68,0.3)" stroke="#ef4444"/>
+        <circle cx="12" cy="13" r="2" fill="#fef08a"/>
+    </svg>`,
+    glacial_ring: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2v20M2 12h20M5 5l14 14M5 19L19 5" stroke="#38bdf8"/>
+        <circle cx="12" cy="12" r="3" fill="rgba(147,197,253,0.35)" stroke="#bfdbfe"/>
+        <path d="M10 6l2-2 2 2M10 18l2 2 2-2M6 10l-2 2 2 2M18 10l2 2-2 2" stroke="#ffffff"/>
+    </svg>`,
+    prism_shield: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="12 2 20 7 20 17 12 22 4 17 4 7" fill="rgba(192,132,252,0.25)" stroke="#c084fc"/>
+        <polygon points="12 6 16 9 16 15 12 18 8 15 8 9" stroke="#e879f9"/>
+        <circle cx="12" cy="12" r="2" fill="#ffffff"/>
+    </svg>`,
+    meteor_cataclysm: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="7" cy="17" r="4.5" fill="rgba(239,68,68,0.4)" stroke="#ef4444"/>
+        <path d="M10 14l11-11M14 17l7-7M7 11l10-10" stroke="#f97316"/>
+        <path d="M3 21l3-1M2 17l2 1M7 22l-1-2" stroke="#fde047"/>
+    </svg>`,
+
+    // Ranger
+    arrow_barrage: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 12h18M16 7l5 5-5 5" stroke="#34d399"/>
+        <path d="M4 6l14 3.5-3 1.5M4 18l14-3.5-3-1.5" stroke="#10b981"/>
+    </svg>`,
+    venom_trap: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 16c2 4 14 4 18 0M5 16l2-6 3 4 2-8 2 8 3-4 2 6" stroke="#84cc16"/>
+        <circle cx="12" cy="7" r="2" fill="#a3e635"/>
+        <path d="M12 12v3" stroke="#4ade80"/>
+    </svg>`,
+    shadow_dash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M13 2l-6 10h6l-4 10 10-12h-6l4-8z" fill="rgba(167,139,250,0.3)" stroke="#a78bfa"/>
+        <path d="M3 8h4M2 13h5M4 17h3" stroke="#818cf8"/>
+    </svg>`,
+    dragonpiercer: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M2 12l6-5 4 2.5 5-6 3 4-3.5 4.5 3.5 4.5-3 4-5-6-4 2.5z" fill="rgba(56,189,248,0.25)" stroke="#38bdf8"/>
+        <path d="M10 12h12M17 8l5 4-5 4" stroke="#facc15" stroke-width="2.2"/>
+    </svg>`,
+
+    // Paladin
+    radiant_spear: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2l3 5-3 2-3-2zM12 9v13M8 14h8" stroke="#facc15"/>
+        <path d="M5 9c2.5-1 4.5 1 7 3 2.5-2 4.5-4 7-3" stroke="#fef08a"/>
+    </svg>`,
+    divine_heal: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="rgba(244,114,182,0.3)" stroke="#f472b6"/>
+        <path d="M12 7v6M9 10h6" stroke="#ffffff" stroke-width="2.4"/>
+    </svg>`,
+    sanctuary_pylon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="12 2 16 6 15 20 9 20 8 6" fill="rgba(251,191,36,0.25)" stroke="#fbbf24"/>
+        <path d="M12 7v8M10 11h4" stroke="#fef3c7"/>
+        <circle cx="12" cy="2" r="1.5" fill="#2dd4bf"/>
+        <path d="M5 21h14" stroke="#fbbf24"/>
+    </svg>`,
+    wrath_heavens: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M19 10a4 4 0 0 0-7.8-1.2A5 5 0 0 0 2 13h16a3 3 0 0 0 1-5.8z" fill="rgba(254,240,138,0.2)" stroke="#fde047"/>
+        <path d="M13 11l-3 6h4l-3 6" stroke="#f59e0b" stroke-width="2.5"/>
+    </svg>`
+};
+
 // Render HUD Active Skill Bar
 Game.renderActiveSkillBar = function() {
     const container = document.getElementById('activeSkillSlots');
@@ -20651,30 +20924,15 @@ Game.renderActiveSkillBar = function() {
         if (nameEl.textContent !== shortName) nameEl.textContent = shortName;
     }
     const spEl = document.getElementById('skillPointsBadge');
-    const spText = (this.player.skillPoints || 0) + ' SP';
+    const spVal = this.player.skillPoints || 0;
+    const spText = spVal + ' SP';
     if (spEl && spEl.textContent !== spText) spEl.textContent = spText;
 
-    const SKILL_SHORT_TAGS: Record<string, string> = {
-        cyclone_slash: 'ดาบหมุน',
-        flash_thrust: 'แทงพริบตา',
-        ironclad_bastion: 'เกราะเหล็ก',
-        judgement_blade: 'สุริยัน',
-        pyroclast_orb: 'บอลเพลิง',
-        glacial_ring: 'เหมันต์',
-        prism_shield: 'ปริซึม',
-        meteor_cataclysm: 'ฝนดาวตก',
-        arrow_barrage: 'ห่าธนู',
-        venom_trap: 'กับดักพิษ',
-        shadow_dash: 'ก้าวเงา',
-        dragonpiercer: 'ศรอัสนี',
-        radiant_spear: 'หอกแสง',
-        divine_heal: 'อวยพรเทวะ',
-        sanctuary_pylon: 'เสาศักดิ์',
-        wrath_heavens: 'ทัณฑ์เทวา'
-    };
     const ACTION_KEYS = ['Z', 'X', 'C', 'V'];
+    const heraldry = CLASS_HERALDRY[this.player.activeClass || 'warrior'] || CLASS_HERALDRY.warrior;
+    const hasSp = spVal > 0;
 
-    // 1. Initial DOM Build on first load or class change (Zero innerHTML during combat!)
+    // 1. Initial DOM Build on first load or class change (Zero innerHTML churn during combat!)
     if (this._renderedSkillClass !== this.player.activeClass) {
         this._renderedSkillClass = this.player.activeClass;
 
@@ -20684,10 +20942,12 @@ Game.renderActiveSkillBar = function() {
                 const lv = this.player.skillLevels[skill.id] || 1;
                 const tag = SKILL_SHORT_TAGS[skill.id] || skill.name.substring(0, 4);
                 const actionKey = ACTION_KEYS[skill.slot - 1] || 'Z';
+                const svgIcon = SKILL_ICONS[skill.id] || '';
                 html += `
-                    <div class="active-skill-slot ${skill.isUltimate ? 'ultimate' : ''}" 
+                    <div class="active-skill-slot slot-${skill.slot} ${skill.isUltimate ? 'ultimate' : ''}" 
                          data-slot="${skill.slot}"
                          title="${skill.name} (${skill.enName}) [${actionKey}]">
+                        <div class="skill-slot-icon-wrap">${svgIcon}</div>
                         <span class="skill-slot-key">${actionKey}</span>
                         <span class="skill-slot-tag">${tag}</span>
                         <span class="skill-slot-level">Lv.${lv}</span>
@@ -20700,24 +20960,42 @@ Game.renderActiveSkillBar = function() {
 
         if (touchContainer) {
             let touchHtml = `
-                <div class="touch-skill-class-btn" onclick="Game.openSkillTreeModal()" title="เปิดผังสกิล [K]">
-                    <span class="touch-skill-class-tag">${cls.tag}</span>
-                    <span class="touch-skill-class-sp">${this.player.skillPoints || 0} SP</span>
-                </div>
+                <button class="touch-skill-class-btn ${hasSp ? 'has-sp-glow' : ''}" 
+                        type="button" 
+                        onclick="Game.openSkillTreeModal()" 
+                        title="เปิดผังสกิลและเปลี่ยนสายอาชีพ [K]">
+                    <div class="touch-skill-class-orb">
+                        <div class="touch-skill-class-header">
+                            <span class="touch-skill-class-icon">${heraldry.icon}</span>
+                            <span class="touch-skill-class-name">${heraldry.name}</span>
+                        </div>
+                        <div class="touch-skill-class-sp ${hasSp ? 'has-sp' : ''}">
+                            <span class="sp-sparkle">✦</span> ${spVal} SP
+                        </div>
+                    </div>
+                    <div class="touch-skill-pill touch-skill-class-pill">[K] ผัง</div>
+                </button>
             `;
             cls.skills.forEach(skill => {
                 const lv = this.player.skillLevels[skill.id] || 1;
                 const tag = SKILL_SHORT_TAGS[skill.id] || skill.name.substring(0, 4);
                 const actionKey = ACTION_KEYS[skill.slot - 1] || 'Z';
+                const isUlt = !!skill.isUltimate;
+                const svgIcon = SKILL_ICONS[skill.id] || '';
+
                 touchHtml += `
-                    <button class="touch-skill-btn ${skill.isUltimate ? 'touch-skill-ult' : ''}"
+                    <button class="touch-skill-btn slot-${skill.slot} ${isUlt ? 'touch-skill-ult' : ''}"
                             data-slot="${skill.slot}"
                             type="button"
                             title="${skill.name} [${actionKey}]">
+                        <div class="touch-skill-orb">
+                            <div class="touch-skill-icon-wrap">${svgIcon}</div>
+                            <div class="touch-skill-cd" style="display: none;"></div>
+                            <div class="touch-skill-sheen"></div>
+                        </div>
                         <span class="touch-skill-key">${actionKey}</span>
-                        <span class="touch-skill-tag">${tag}</span>
-                        <span class="touch-skill-lv">v${lv}</span>
-                        <div class="touch-skill-cd" style="display: none;"></div>
+                        <span class="touch-skill-lv">★${lv}</span>
+                        <div class="touch-skill-pill">${tag}</div>
                     </button>
                 `;
             });
@@ -20725,9 +21003,23 @@ Game.renderActiveSkillBar = function() {
         }
     }
 
-    // 2. High-Performance Lightweight Cooldown Tick (Zero DOM churn)
+    // 2. High-Performance Lightweight Cooldown & SP Tick (Zero DOM churn)
+    if (touchContainer) {
+        const touchSpEl = touchContainer.querySelector('.touch-skill-class-sp') as HTMLElement;
+        if (touchSpEl) {
+            const touchSpTxt = `✦ ${spVal} SP`;
+            if (touchSpEl.textContent !== touchSpTxt) touchSpEl.textContent = touchSpTxt;
+            touchSpEl.classList.toggle('has-sp', hasSp);
+        }
+        const classBtn = touchContainer.querySelector('.touch-skill-class-btn') as HTMLElement;
+        if (classBtn) {
+            classBtn.classList.toggle('has-sp-glow', hasSp);
+        }
+    }
+
     cls.skills.forEach(skill => {
         const cd = this.player.skillCooldowns[skill.id] || 0;
+        const lv = this.player.skillLevels[skill.id] || 1;
         const isOnCd = cd > 0;
         const cdText = (cd / 1000).toFixed(1) + 's';
 
@@ -20764,6 +21056,11 @@ Game.renderActiveSkillBar = function() {
                     } else if (cdEl.style.display !== 'none') {
                         cdEl.style.display = 'none';
                     }
+                }
+                const lvEl = touchBtn.querySelector('.touch-skill-lv') as HTMLElement;
+                const expectedLv = '★' + lv;
+                if (lvEl && lvEl.textContent !== expectedLv) {
+                    lvEl.textContent = expectedLv;
                 }
             }
         }
@@ -20999,6 +21296,14 @@ Game.setupSkillJoystickControls = function() {
         }
     });
 };
+
+if (typeof window !== 'undefined') {
+    setTimeout(() => {
+        if (typeof Game.setupSkillJoystickControls === 'function') {
+            Game.setupSkillJoystickControls();
+        }
+    }, 100);
+}
 
 // Draw Canvas Active Skill Visuals
 Game.drawActiveSkillVisuals = function(ctx) {
@@ -21779,6 +22084,7 @@ Game.closeSkillTreeModal = function() {
 Game.switchSkillClass = function(clsId) {
     if (!CLASS_SKILLS[clsId] || !this.player) return;
     this.player.activeClass = clsId;
+    this._renderedSkillClass = null;
     SoundEngine.skillCast();
     this.renderSkillTreeContent();
     this.renderActiveSkillBar();
@@ -21798,6 +22104,7 @@ Game.upgradeSkill = function(skillId) {
 
     this.player.skillPoints -= 1;
     this.player.skillLevels[skillId] = currentLv + 1;
+    this._renderedSkillClass = null;
     SoundEngine.skillUpgrade();
     this.triggerScreenShake(3.0, 100);
     this.addFloatingText('★ อัปเกรดสกิลเป็น Lv.' + (currentLv + 1) + '!', this.player.x, this.player.y - 25, '#4ade80');
@@ -21813,6 +22120,7 @@ Game.resetSkillPoints = function() {
     for (const k in this.player.skillLevels) {
         this.player.skillLevels[k] = 1;
     }
+    this._renderedSkillClass = null;
     SoundEngine.skillUpgrade();
     this.addFloatingText('★ รีเซ็ตแต้มสกิลทั้งหมด คืน ' + totalPoints + ' SP!', this.player.x - 30, this.player.y - 25, '#38bdf8');
     this.renderSkillTreeContent();
