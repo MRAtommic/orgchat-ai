@@ -104,6 +104,23 @@
                         <span class="gold-unit">G</span>
                     </div>
                 </div>
+
+                <!-- Dynamic RPG Quest Tracker Widget -->
+                <div id="hudQuestTracker" class="quest-tracker-widget" onclick="Game.toggleModal('questModal')" title="คลิกเพื่อดูสมุดภารกิจทั้งหมด">
+                    <div class="quest-tracker-header">
+                        <div class="quest-tracker-title-wrap">
+                            <span class="quest-tracker-badge">เควสต์</span>
+                            <span id="questTrackerTitle" class="quest-tracker-title">บทที่ 1: วิบัติสปอร์กลายพันธุ์</span>
+                        </div>
+                        <span id="questTrackerToggleBtn" class="quest-tracker-toggle-arrow">▼</span>
+                    </div>
+                    <div id="questTrackerBody" class="quest-tracker-body">
+                        <div id="questTrackerObjective" class="quest-tracker-objective">กำจัดแมลงปีศาจ (0/3)</div>
+                        <div id="questTrackerSubObjective" class="quest-tracker-sub-obj">เก็บสปอร์กลายพันธุ์ (0/2)</div>
+                        <div id="questTrackerHint" class="quest-tracker-hint">[เป้าหมาย]: ปราบแมลงในฟาร์ม</div>
+                    </div>
+                </div>
+
                 <div class="hud-actions-row">
                     <button id="btnSkillMastery" class="btn-hud-icon" onclick="Game.toggleSkillMasteryModal()" title="ผังความชำนาญและทักษะพิเศษ (K)" data-tooltip="ผังทักษะ (K)">
                         <span class="btn-hud-emoji">ทักษะ</span><span class="badge-key">K</span>

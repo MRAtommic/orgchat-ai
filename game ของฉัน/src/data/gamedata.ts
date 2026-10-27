@@ -71,6 +71,9 @@ export const RECIPES: Record<string, RecipeData> = {
   sacred_purification_tea: { id: 'sacred_purification_tea', name: 'ชาเทวะชำระมลทิน (Purification Tea)', category: 'kitchen', ingredients: { starflower_herb: 2, star_fruit: 1, milk: 1 }, sellPrice: 460, energyRestore: 150, xp: 65, levelReq: 4 },
   crab_cakes: { id: 'crab_cakes', name: 'ทอดมันปูยักษ์เกาะสมบัติ (Crab Cakes)', category: 'kitchen', ingredients: { crab_meat: 2, flour: 1, egg: 1 }, sellPrice: 380, energyRestore: 130, xp: 50, levelReq: 3 },
   tropical_smoothie: { id: 'tropical_smoothie', name: 'สมูทตี้ผลไม้รวมเขตร้อน (Tropical Smoothie)', category: 'kitchen', ingredients: { pineapple: 1, banana: 1, coconut: 1 }, sellPrice: 340, energyRestore: 120, xp: 45, levelReq: 3 },
+  titan_elixir: { id: 'titan_elixir', name: 'น้ำยาเทวะสยบศึก (Titan Elixir)', category: 'kitchen', ingredients: { strawberry: 2, blight_spore: 2, aged_cheese: 1 }, sellPrice: 480, energyRestore: 150, xp: 75, levelReq: 4 },
+  swiftfoot_tonic: { id: 'swiftfoot_tonic', name: 'ยาบำรุงสายลมคลั่ง (Swiftfoot Tonic)', category: 'kitchen', ingredients: { pineapple: 2, banana: 2, craft_ale: 1 }, sellPrice: 420, energyRestore: 130, xp: 60, levelReq: 3 },
+  ironbark_brew: { id: 'ironbark_brew', name: 'โอสถปราการศิลา (Ironbark Brew)', category: 'kitchen', ingredients: { potato: 3, swamp_herb: 2, beetle_shell: 1 }, sellPrice: 450, energyRestore: 140, xp: 70, levelReq: 4 },
 
   // สิ่งประดิษฐ์งานช่าง & กล่องเก็บของ & อัปเกรดกระเป๋า
   chest: { id: 'chest', name: 'กล่องเก็บของไม้ (Storage Chest)', category: 'carpentry', ingredients: { wood: 20 }, sellPrice: 50, xp: 15, levelReq: 1 },
@@ -641,6 +644,9 @@ export const WORLD_ITEMS: Record<string, MaterialItem> = {
   ironhide_dragon_steak: { id: 'ironhide_dragon_steak', name: 'สเต๊กเกราะศิลา (Ironhide Steak)', sellPrice: 420, energyRestore: 140, hpRestore: 80, desc: '[อาหารบัฟรบ] ลดความเสียหายลงอีก 30% และป้องกันการเกิด Guard Break ได้ 1 ครั้ง' },
   stamina_surge_pie: { id: 'stamina_surge_pie', name: 'พายวายุคลั่ง (Stamina Surge Pie)', sellPrice: 390, energyRestore: 110, hpRestore: 50, desc: '[อาหารบัฟรบ] ฟื้นฟู Stamina รวดเร็วขึ้น 200% และกลิ้งหลบ Dash ได้ฟรีไม่เสียพลังงาน' },
   sacred_purification_tea: { id: 'sacred_purification_tea', name: 'ชาเทวะชำระมลทิน (Purification Tea)', sellPrice: 460, energyRestore: 150, hpRestore: 90, desc: '[อาหารบัฟรบ] ป้องกันความเสียหายจากไฟ/พิษ/สายฟ้าบนพื้น 100% และฟื้นเลือด +6 HP/วินาที' },
+  titan_elixir: { id: 'titan_elixir', name: 'น้ำยาเทวะสยบศึก (Titan Elixir)', sellPrice: 480, energyRestore: 150, hpRestore: 120, desc: '[อาหารบัฟรบ] พลังโจมตี +45 ดาเมจ และเพิ่มอัตราคริติคอล +20% นาน 3 นาที!' },
+  swiftfoot_tonic: { id: 'swiftfoot_tonic', name: 'ยาบำรุงสายลมคลั่ง (Swiftfoot Tonic)', sellPrice: 420, energyRestore: 130, hpRestore: 80, desc: '[อาหารบัฟรบ] ความเร็วเคลื่อนที่ +40% และกลิ้ง Dash ไม่จำกัด Stamina นาน 3 นาที!' },
+  ironbark_brew: { id: 'ironbark_brew', name: 'โอสถปราการศิลา (Ironbark Brew)', sellPrice: 450, energyRestore: 140, hpRestore: 100, desc: '[อาหารบัฟรบ] ลดความเสียหายลง 35% และป้องกันการ์ดแตกได้ 2 ครั้ง นาน 3 นาที!' },
 
   // วัตถุดิบและสมบัติจากเกาะมหาสมบัติเขตร้อน (Tropical Island Relics & Expedition Items)
   banana: { id: 'banana', name: 'กล้วยหอมทอง (Golden Banana)', sellPrice: 140, energyRestore: 60, desc: 'กล้วยหอมทองคำสุกหวาน อุดมด้วยแร่ธาตุ ฟื้นฟู Stamina +60' },

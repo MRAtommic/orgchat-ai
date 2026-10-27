@@ -3292,14 +3292,16 @@ Game.updatePlayer = function(dt) {
         curSpeed *= this.player.buffs.speed;
     }
 
-    // Apply hunger & thirst speed penalty (เดินช้าลงเมื่อเกจความหิวหรือน้ำต่ำ)
+    // Well-Fed & Hydrated positive buff vs Hunger/Thirst penalties
     const hungerVal = this.player.hunger !== undefined ? this.player.hunger : 100;
     const thirstVal = this.player.thirst !== undefined ? this.player.thirst : 100;
 
-    if (hungerVal <= 0 || thirstVal <= 0) {
-        curSpeed *= 0.78; // เดินช้าลงเพียง 22% เมื่อหิวโซหรือขาดน้ำ
+    if (hungerVal >= 75 && thirstVal >= 75) {
+        curSpeed *= 1.10; // สมบูรณ์พร้อม: วิ่งเร็วขึ้น +10%
+    } else if (hungerVal <= 0 || thirstVal <= 0) {
+        curSpeed *= 0.78; // เดินช้าลง 22% เมื่อหิวโซหรือขาดน้ำ
     } else if (hungerVal < 25 || thirstVal < 25) {
-        curSpeed *= 0.90; // เดินช้าลงเพียง 10% เมื่อความหิวหรือน้ำต่ำกว่า 25%
+        curSpeed *= 0.90; // เดินช้าลง 10% เมื่อความหิวหรือน้ำต่ำกว่า 25%
     }
 
     // Anti-stuck safety: If player is ever trapped inside a solid obstacle, auto-nudge out to walkable floor
@@ -3823,7 +3825,8 @@ Game.consumeItem = function(item: any, slotIndex: number) {
 
     const id = item.id;
     const hasBuff = (id === 'farmer_stew' || id === 'vigor_juice' || id === 'herbal_defense_soup' ||
-                     id === 'parry_master_broth' || id === 'ironhide_dragon_steak' || id === 'stamina_surge_pie' || id === 'sacred_purification_tea');
+                     id === 'parry_master_broth' || id === 'ironhide_dragon_steak' || id === 'stamina_surge_pie' || id === 'sacred_purification_tea' ||
+                     id === 'titan_elixir' || id === 'swiftfoot_tonic' || id === 'ironbark_brew');
 
     const maxHp = this.player.maxHp || 100;
     const maxEnergy = this.player.maxEnergy || 100;
@@ -3878,6 +3881,15 @@ Game.consumeItem = function(item: any, slotIndex: number) {
     } else if (id === 'sacred_purification_tea') {
         this.player.buffs = Object.assign(this.player.buffs || {}, { hazardImmune: true, regen: 6, timer: 180000, name: 'ชาเทวะชำระมลทิน (กันไฟ/พิษ & ฮีล +6/s)' });
         this.addFloatingText(' บัฟ: ชาเทวะ (ภูมิคุ้มกันพิษ/ไฟ/ช็อต & ฟื้นฟู +6 HP/s 3 นาที)', this.player.x - 40, this.player.y - 35, '#4ade80');
+    } else if (id === 'titan_elixir') {
+        this.player.buffs = Object.assign(this.player.buffs || {}, { damage: 45, critBonus: 0.20, timer: 180000, name: 'เทวะสยบศึก (Dmg +45 & Crit +20%)' });
+        this.addFloatingText(' บัฟ: เทวะสยบศึก (+45 ดาเมจ & คริ +20% 3 นาที)', this.player.x - 40, this.player.y - 35, '#f59e0b');
+    } else if (id === 'swiftfoot_tonic') {
+        this.player.buffs = Object.assign(this.player.buffs || {}, { speed: 1.40, staminaSurge: true, timer: 180000, name: 'สายลมคลั่ง (Speed +40% & Free Dash)' });
+        this.addFloatingText(' บัฟ: สายลมคลั่ง (+40% วิ่งเร็ว & Dash ฟรี 3 นาที)', this.player.x - 40, this.player.y - 35, '#38bdf8');
+    } else if (id === 'ironbark_brew') {
+        this.player.buffs = Object.assign(this.player.buffs || {}, { defense: 0.35, guardBreakImmune: true, timer: 180000, name: 'ปราการศิลา (Def +35% & ต้านการ์ดแตก)' });
+        this.addFloatingText(' บัฟ: ปราการศิลา (ลดดาเมจ 35% & ต้านการ์ดแตก 3 นาที)', this.player.x - 40, this.player.y - 35, '#10b981');
     }
 
     // Decrement item stack
@@ -5545,6 +5557,105 @@ Game.toggleMusic = function() {
     this.addFloatingText(isPlaying ? 'เปิดเสียงดนตรี (BGM)' : 'ปิดเสียงดนตรี', this.player.x, this.player.y - 15, '#38bdf8');
 };
 
+
+Game.updateQuestTrackerHUD = function() {
+    const trackerEl = document.getElementById('hudQuestTracker');
+    if (!trackerEl || !this.player) return;
+
+    const curQuestId = this.player.currentQuestId || 'q1';
+    const qData = (typeof QUESTS !== 'undefined' && QUESTS[curQuestId]) ? QUESTS[curQuestId] : null;
+    if (!qData) {
+        trackerEl.style.display = 'none';
+        return;
+    }
+    trackerEl.style.display = 'block';
+
+    const titleEl = document.getElementById('questTrackerTitle');
+    const objEl = document.getElementById('questTrackerObjective');
+    const subObjEl = document.getElementById('questTrackerSubObjective');
+    const hintEl = document.getElementById('questTrackerHint');
+
+    if (titleEl) {
+        const parts = qData.title.split(':');
+        titleEl.textContent = (parts[0] || 'ภารกิจ') + ': ' + (parts[1] || '').trim();
+    }
+
+    const qp = this.player.questProgress || {};
+    let objText = '';
+    let subText = '';
+    let hintText = '';
+    let isComplete = false;
+
+    if (qData.id === 'q1') {
+        const bugs = qp.bugsDefeated || 0;
+        const spores = this.getItemCount('blight_spore');
+        objText = 'กำจัดแมลงปีศาจ (' + bugs + ' / 3)';
+        subText = 'เก็บสปอร์กลายพันธุ์ (' + spores + ' / 2)';
+        isComplete = bugs >= 3 && spores >= 2;
+        hintText = isComplete ? 'ไปพบนายกเทศมนตรีกิลเบิร์ตที่คฤหาสน์หมู่บ้าน' : 'ปราบแมลงปีศาจที่บุกเข้ามาในไร่';
+    } else if (qData.id === 'q2') {
+        const spores = this.getItemCount('blight_spore');
+        const herbs = this.getItemCount('starflower_herb');
+        objText = 'สปอร์กลายพันธุ์ (' + spores + ' / 3)';
+        subText = 'สมุนไพรดวงดาว (' + herbs + ' / 2)';
+        isComplete = spores >= 3 && herbs >= 2;
+        hintText = isComplete ? 'นำวัตถุดิบส่งให้หมอยาลิเลียนที่คลินิก' : 'เก็บสมุนไพรดวงดาวในป่าเอลเดอร์วู้ด';
+    } else if (qData.id === 'q3') {
+        const wolves = qp.wolvesKilled || 0;
+        const rubies = this.getItemCount('ruby_gem');
+        objText = 'กำจัดหมาป่าเงา (' + wolves + ' / 3)';
+        subText = 'ขุดแร่ทับทิม (' + rubies + ' / 2)';
+        isComplete = wolves >= 3 && rubies >= 2;
+        hintText = isComplete ? 'รายงานผู้กองวาเลเรียที่ประตูปราการเหนือ' : 'ล่าหมาป่าในป่า และขุดแร่ในถ้ำ';
+    } else if (qData.id === 'q4') {
+        const caveBugs = qp.caveMonstersDefeated || 0;
+        const manas = this.getItemCount('mana_crystal');
+        objText = 'ปราบมอนสเตอร์ถ้ำ (' + caveBugs + ' / 3)';
+        subText = 'ขุดผลึกมานา (' + manas + ' / 2)';
+        isComplete = caveBugs >= 3 && manas >= 2;
+        hintText = isComplete ? 'กลับไปรายงานผู้เฒ่าเอลดริน' : 'ลงสำรวจถ้ำผลึกหินทางตะวันออกเฉียงเหนือ';
+    } else if (qData.targetBoss) {
+        const bossDead = !!(this.player.defeatedBosses && this.player.defeatedBosses[qData.targetBoss]);
+        objText = 'ปราบมหาบอส ' + qData.targetBoss.replace('boss_', '').toUpperCase();
+        isComplete = bossDead;
+        hintText = isComplete ? 'สำเร็จภารกิจ! รับรางวัลอันทรงเกียรติ' : 'เตรียมอาหารบัฟและอาวุธให้พร้อมก่อนบุก';
+    } else {
+        objText = qData.desc.substring(0, 36) + '...';
+        hintText = 'ดูรายละเอียดเพิ่มเติมในสมุดเควสต์ (ESC)';
+    }
+
+    if (objEl) {
+        objEl.textContent = objText;
+        objEl.style.color = isComplete ? '#4ade80' : '#f8fafc';
+    }
+    if (subObjEl) {
+        if (subText) {
+            subObjEl.style.display = 'block';
+            subObjEl.textContent = subText;
+            subObjEl.style.color = isComplete ? '#4ade80' : '#e2e8f0';
+        } else {
+            subObjEl.style.display = 'none';
+        }
+    }
+    if (hintEl) {
+        if (!this.player.sailboatRepaired && this.currentScene === 'village') {
+            hintEl.textContent = '[เป้าหมาย]: ซ่อมเรือใบที่ท่าเรือ (ไม้ 20, เหล็ก 5, 500 G) เพื่อข้ามสู่เกาะ';
+            hintEl.style.color = '#38bdf8';
+        } else {
+            hintEl.textContent = hintText;
+            hintEl.style.color = isComplete ? '#fde047' : '#94a3b8';
+        }
+    }
+};
+
+Game.toggleQuestTracker = function() {
+    const body = document.getElementById('questTrackerBody');
+    const arrow = document.getElementById('questTrackerToggleBtn');
+    if (!body) return;
+    const isHidden = body.style.display === 'none';
+    body.style.display = isHidden ? 'block' : 'none';
+    if (arrow) arrow.textContent = isHidden ? '▼' : '▶';
+};
 
 Game.harvestCrop = function(tx, ty) {
     const tile = this.map[ty][tx];
@@ -7434,7 +7545,7 @@ Game.render = function() {
                         if (distToP <= 80) {
                             const isIsland = this.currentScene === 'island';
                             const isRepaired = !!this.player.sailboatRepaired;
-                            const promptText = isIsland ? 'ล่องเรือกลับหมู่บ้าน' : (isRepaired ? 'ล่องเรือสู่เกาะเขตร้อน' : 'ขึ้นเรือ / บูรณะเรือใบ');
+                            const promptText = isIsland ? 'ล่องเรือกลับหมู่บ้าน' : (isRepaired ? 'ล่องเรือสู่เกาะเขตร้อน' : 'บูรณะเรือใบ (ไม้ 20, เหล็ก 5, 500 G)');
                             const badgeY = screenY - 26 + Math.sin(performance.now() * 0.005) * 3;
 
                             this.ctx.save();
@@ -9678,6 +9789,8 @@ Game.updateHUD = function() {
     const waterFill = document.getElementById('waterFill');
     if (waterFill) waterFill.style.width = ((this.player.waterCan / this.player.waterCanMax) * 100) + '%';
 
+    this.updateQuestTrackerHUD();
+
     const lvlEl = document.getElementById('hudLevel');
     if (lvlEl) lvlEl.textContent = 'Lv.' + this.player.level;
 
@@ -11588,12 +11701,16 @@ Game.playerMeleeAttack = function(targetWorldX, targetWorldY, weapon) {
     const forgeEnchant = (this.player.volcanoForgeEnchant || 0) * 30;
     const forgeCrit = (this.player.volcanoForgeEnchant || 0) * 0.15;
     const baseCrit = (this.player.skillMastery?.critical_edge ? 0.38 : 0.22) + forgeCrit;
-    const critRate = hasWarrior ? baseCrit + 0.18 : baseCrit;
+    const buffCrit = this.player.buffs?.critBonus || 0;
+    const critRate = (hasWarrior ? baseCrit + 0.18 : baseCrit) + buffCrit;
     const baseMult = this.player.skillMastery?.critical_edge ? 2.5 : 1.8;
     const critMult = hasWarrior ? baseMult + 0.4 : baseMult;
     const isCrit = forceCrit || (Math.random() < critRate);
     const bonusDmg = (this.player.buffs?.damage || 0) + forgeEnchant;
-    const finalDamage = Math.round((weapon.damage + bonusDmg) * comboMult * (isCrit ? critMult : 1.0));
+    const isWellFed = (this.player.hunger !== undefined ? this.player.hunger : 100) >= 75 &&
+                      (this.player.thirst !== undefined ? this.player.thirst : 100) >= 75;
+    const wellFedBonus = isWellFed ? 1.15 : 1.0;
+    const finalDamage = Math.round((weapon.damage + bonusDmg) * comboMult * (isCrit ? critMult : 1.0) * wellFedBonus);
 
     // Check hit on breakables (Urns / Crates)
     if (typeof this.checkBreakablesInArea === 'function') {
@@ -13488,6 +13605,25 @@ Game.damagePlayer = function(amount, source = null) {
 };
 
 
+Game.checkMonsterCollision = function(x, y) {
+    const hitbox = {
+        left: x + 6, right: x + 24,
+        top: y + 14, bottom: y + 27
+    };
+    const minTileX = Math.floor(hitbox.left / this.tileSize);
+    const maxTileX = Math.floor(hitbox.right / this.tileSize);
+    const minTileY = Math.floor(hitbox.top / this.tileSize);
+    const maxTileY = Math.floor(hitbox.bottom / this.tileSize);
+
+    for (let ty = minTileY; ty <= maxTileY; ty++) {
+        for (let tx = minTileX; tx <= maxTileX; tx++) {
+            if (ty < 0 || ty >= this.mapHeight || tx < 0 || tx >= this.mapWidth) return true;
+            if (this.map[ty]?.[tx]?.solid) return true;
+        }
+    }
+    return false;
+};
+
 Game.updateWorldMonsters = function(dt) {
     const combatScenes = ['forest', 'cave', 'cave_depths', 'swamp', 'volcano', 'frost_peak', 'crypt', 'ancient_canopy', 'tempest_plateau', 'island', 'island_volcano'];
     if (!combatScenes.includes(this.currentScene)) return;
@@ -13518,22 +13654,82 @@ Game.updateWorldMonsters = function(dt) {
 
         const dist = Math.hypot((this.player.x + 12) - (m.x + 16), (this.player.y + 14) - (m.y + 16));
 
-        // Aggro & chase player
-        if (dist < (m.aggroRange || 160)) {
-            const angle = Math.atan2((this.player.y + 14) - (m.y + 16), (this.player.x + 12) - (m.x + 16));
-            m.x += Math.cos(angle) * (m.speed || 1.2);
-            m.y += Math.sin(angle) * (m.speed || 1.2);
+        // 1. Separation / Flocking Force (Prevent monsters from stacking into a single blob)
+        let sepX = 0;
+        let sepY = 0;
+        for (let j = 0; j < this.worldMonsters.length; j++) {
+            if (i === j) continue;
+            const other = this.worldMonsters[j];
+            const dmx = m.x - other.x;
+            const dmy = m.y - other.y;
+            const sepDist = Math.hypot(dmx, dmy);
+            if (sepDist > 0 && sepDist < 30) {
+                const repulse = (30 - sepDist) / 30;
+                sepX += (dmx / sepDist) * repulse * 0.95;
+                sepY += (dmy / sepDist) * repulse * 0.95;
+            }
+        }
 
-            if (Math.abs(Math.cos(angle)) > Math.abs(Math.sin(angle))) {
-                m.direction = Math.cos(angle) > 0 ? 'right' : 'left';
+        // 2. Aggro & Chase player with Obstacle Sliding (No walking through trees or rocks!)
+        if (dist < (m.aggroRange || 170)) {
+            const angle = Math.atan2((this.player.y + 14) - (m.y + 16), (this.player.x + 12) - (m.x + 16));
+            const moveSpeed = (m.speed || 1.2);
+            let vx = Math.cos(angle) * moveSpeed + sepX;
+            let vy = Math.sin(angle) * moveSpeed + sepY;
+
+            // X movement check
+            if (!this.checkMonsterCollision(m.x + vx, m.y)) {
+                m.x += vx;
+            } else if (!this.checkMonsterCollision(m.x, m.y + (vy !== 0 ? vy : moveSpeed * 0.6))) {
+                // Wall slide Y
+                m.y += (vy !== 0 ? vy : moveSpeed * 0.6);
+            }
+
+            // Y movement check
+            if (!this.checkMonsterCollision(m.x, m.y + vy)) {
+                m.y += vy;
+            } else if (!this.checkMonsterCollision(m.x + (vx !== 0 ? vx : moveSpeed * 0.6), m.y)) {
+                // Wall slide X
+                m.x += (vx !== 0 ? vx : moveSpeed * 0.6);
+            }
+
+            if (Math.abs(vx) > Math.abs(vy)) {
+                m.direction = vx > 0 ? 'right' : 'left';
             } else {
-                m.direction = Math.sin(angle) > 0 ? 'down' : 'up';
+                m.direction = vy > 0 ? 'down' : 'up';
             }
 
             // Attack player if within 26px
             if (dist < 26 && m.attackCooldown <= 0) {
                 this.damagePlayer(m.damage || 10, m);
                 m.attackCooldown = 1500;
+            }
+        } else {
+            // 3. Idle Wander Behavior (ลาดตระเวนสำรวจรอบๆ ตัว ไม่ยืนแข็งทื่อ)
+            m.wanderTimer = (m.wanderTimer || 0) - dt;
+            if (m.wanderTimer <= 0) {
+                m.wanderTimer = 2200 + Math.random() * 2800;
+                if (Math.random() < 0.5) {
+                    const wandAngle = Math.random() * Math.PI * 2;
+                    m.wanderVx = Math.cos(wandAngle) * 0.42;
+                    m.wanderVy = Math.sin(wandAngle) * 0.42;
+                    m.direction = Math.abs(m.wanderVx) > Math.abs(m.wanderVy) ? (m.wanderVx > 0 ? 'right' : 'left') : (m.wanderVy > 0 ? 'down' : 'up');
+                } else {
+                    m.wanderVx = 0;
+                    m.wanderVy = 0;
+                }
+            }
+
+            if (m.wanderVx || m.wanderVy) {
+                const nextWx = m.x + m.wanderVx;
+                const nextWy = m.y + m.wanderVy;
+                if (!this.checkMonsterCollision(nextWx, nextWy)) {
+                    m.x = nextWx;
+                    m.y = nextWy;
+                } else {
+                    m.wanderVx = 0;
+                    m.wanderVy = 0;
+                }
             }
         }
     }
@@ -20643,11 +20839,14 @@ Game.calculateSkillDamage = function(skill: any, lv: number): number {
     const weaponDmg = (selItem && selItem.damage) ? selItem.damage : ((selItem && WEAPONS[selItem.id]?.damage) ? WEAPONS[selItem.id].damage : 45);
     const pLevel = this.player.level || 1;
     const buffDmg = this.player.buffs?.damage || 0;
+    const isWellFed = (this.player.hunger !== undefined ? this.player.hunger : 100) >= 75 &&
+                      (this.player.thirst !== undefined ? this.player.thirst : 100) >= 75;
+    const wellFedMult = isWellFed ? 1.15 : 1.0;
 
     if (skill.isUltimate) {
-        return Math.round((skill.baseDmg * 3.2) + ((lv - 1) * skill.dmgPerLv * 2.8) + (weaponDmg * 2.6) + (pLevel * 22) + buffDmg);
+        return Math.round(((skill.baseDmg * 3.2) + ((lv - 1) * skill.dmgPerLv * 2.8) + (weaponDmg * 2.6) + (pLevel * 22) + buffDmg) * wellFedMult);
     }
-    return Math.round((skill.baseDmg * 2.5) + ((lv - 1) * skill.dmgPerLv * 2.0) + (weaponDmg * 1.5) + (pLevel * 10) + buffDmg);
+    return Math.round(((skill.baseDmg * 2.5) + ((lv - 1) * skill.dmgPerLv * 2.0) + (weaponDmg * 1.5) + (pLevel * 10) + buffDmg) * wellFedMult);
 };
 
 Game.pullEnemiesInRadius = function(x: number, y: number, radius: number, pullForce: number) {

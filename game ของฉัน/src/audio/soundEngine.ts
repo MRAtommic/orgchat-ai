@@ -163,6 +163,30 @@ const BOSS_BATTLE_MELODY = [
   { note: 0, dur: 0.12 }
 ];
 
+const ISLAND_MELODY = [
+  { note: 329.63, dur: 0.35 }, // E4
+  { note: 392.00, dur: 0.35 }, // G4
+  { note: 440.00, dur: 0.35 }, // A4
+  { note: 493.88, dur: 0.40 }, // B4
+  { note: 587.33, dur: 0.35 }, // D5
+  { note: 493.88, dur: 0.35 }, // B4
+  { note: 440.00, dur: 0.50 }, // A4
+  { note: 392.00, dur: 0.30 }, // G4
+  { note: 329.63, dur: 0.60 }, // E4
+  { note: 0, dur: 0.25 }
+];
+
+const ISLAND_VOLCANO_MELODY = [
+  { note: 110.00, dur: 0.35 }, // A2
+  { note: 164.81, dur: 0.30 }, // E3
+  { note: 220.00, dur: 0.30 }, // A3
+  { note: 207.65, dur: 0.30 }, // G#3
+  { note: 174.61, dur: 0.35 }, // F3
+  { note: 164.81, dur: 0.45 }, // E3
+  { note: 130.81, dur: 0.55 }, // C3
+  { note: 0, dur: 0.25 }
+];
+
 class SoundEngineService {
   private ctx: AudioContext | null = null;
   private enabled: boolean = true;
@@ -174,6 +198,24 @@ class SoundEngineService {
   private isBossBattle: boolean = false;
   private currentScene: string = 'farm';
   private bgmVolume: number = 0.06;
+
+  constructor() {
+    if (typeof window !== 'undefined') {
+      this.setupAutoUnlock();
+    }
+  }
+
+  public setupAutoUnlock(): void {
+    const unlock = () => {
+      this.init();
+      window.removeEventListener('touchstart', unlock);
+      window.removeEventListener('click', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+    window.addEventListener('touchstart', unlock, { passive: true });
+    window.addEventListener('click', unlock, { passive: true });
+    window.addEventListener('keydown', unlock, { passive: true });
+  }
 
   public init(): void {
     if (!this.ctx) {
@@ -259,6 +301,10 @@ class SoundEngineService {
         return FROST_PEAK_MELODY;
       case 'crypt':
         return CRYPT_MELODY;
+      case 'island':
+        return ISLAND_MELODY;
+      case 'island_volcano':
+        return ISLAND_VOLCANO_MELODY;
       case 'farm':
       default:
         return FARM_DAY_MELODY;
