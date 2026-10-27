@@ -11520,19 +11520,52 @@ Game.playerMeleeAttack = function(targetWorldX, targetWorldY, weapon) {
         this.player.direction = dy > 0 ? 'down' : 'up';
     }
 
-    SoundEngine.swordSlash();
-    this.playerShootCooldown = weapon.cooldown || 250;
+    // 3-Hit Combat Combo System
+    const now = performance.now();
+    if (!this.player.lastAttackTime || (now - this.player.lastAttackTime > 1100)) {
+        this.player.comboStep = 1;
+    } else {
+        this.player.comboStep = ((this.player.comboStep || 1) % 3) + 1;
+    }
+    this.player.lastAttackTime = now;
+    const combo = this.player.comboStep;
+
+    let comboMult = 1.0;
+    let comboCooldownMult = 1.0;
+    let forceCrit = false;
+
+    if (combo === 1) {
+        comboMult = 1.0;
+        comboCooldownMult = 0.88;
+        SoundEngine.swordSlash();
+    } else if (combo === 2) {
+        comboMult = 1.25;
+        comboCooldownMult = 0.92;
+        SoundEngine.swordSlash();
+        this.addFloatingText('[2x COMBO!]', originX, originY - 24, '#38bdf8');
+    } else if (combo === 3) {
+        comboMult = 1.75;
+        comboCooldownMult = 1.15;
+        forceCrit = true;
+        this.triggerScreenShake(4.5, 140);
+        this.spawnParticles(originX, originY, '#facc15', 18);
+        this.spawnParticles(originX, originY, '#ffffff', 12);
+        SoundEngine.levelUp();
+        this.addFloatingText('★ 3x FINISHER CRIT!', originX - 25, originY - 28, '#fde047');
+    }
+
+    this.playerShootCooldown = Math.round((weapon.cooldown || 250) * comboCooldownMult);
     this.meleeSlashAnim = {
         x: originX,
         y: originY,
         angle: angle,
         dir: this.player.direction,
         isHoly: (weapon.id === 'excalibur_sword' || weapon.id === 'luminarch_crystal_blade'),
-        timer: 160
+        timer: combo === 3 ? 210 : 160,
+        comboStep: combo
     };
 
-
-    const attackRange = weapon.range || 65;
+    const attackRange = (weapon.range || 65) + (combo === 3 ? 18 : 0);
     const hasWarrior = (typeof this.hasRing === 'function' && this.hasRing('ring_warrior'));
     const forgeEnchant = (this.player.volcanoForgeEnchant || 0) * 30;
     const forgeCrit = (this.player.volcanoForgeEnchant || 0) * 0.15;
@@ -11540,9 +11573,9 @@ Game.playerMeleeAttack = function(targetWorldX, targetWorldY, weapon) {
     const critRate = hasWarrior ? baseCrit + 0.18 : baseCrit;
     const baseMult = this.player.skillMastery?.critical_edge ? 2.5 : 1.8;
     const critMult = hasWarrior ? baseMult + 0.4 : baseMult;
-    const isCrit = Math.random() < critRate;
+    const isCrit = forceCrit || (Math.random() < critRate);
     const bonusDmg = (this.player.buffs?.damage || 0) + forgeEnchant;
-    const finalDamage = Math.round((weapon.damage + bonusDmg) * (isCrit ? critMult : 1.0));
+    const finalDamage = Math.round((weapon.damage + bonusDmg) * comboMult * (isCrit ? critMult : 1.0));
 
     // Check hit on breakables (Urns / Crates)
     if (typeof this.checkBreakablesInArea === 'function') {
@@ -17627,11 +17660,9 @@ Game.gameLoop = function(timestamp) {
         const dt = Math.min(100, Math.max(1, rawDt));
         this.lastTime = timestamp;
 
-        // Hitstop / Impact freeze for combat punchiness
+        // Fluid combat hitstop (no freeze, smooth 60fps controls)
         if (this.hitstopTimer > 0) {
-            this.hitstopTimer -= dt;
-            this.render();
-            return;
+            this.hitstopTimer = Math.max(0, this.hitstopTimer - dt);
         }
 
         // Screen transition updates (fade in/out & scene banner)
@@ -20604,7 +20635,8 @@ Game.updatePlayerSkills = function(dt) {
 // Render HUD Active Skill Bar
 Game.renderActiveSkillBar = function() {
     const container = document.getElementById('activeSkillSlots');
-    if (!container || !this.player) return;
+    const touchContainer = document.getElementById('touchSkillsRow');
+    if (!this.player) return;
 
     this.initPlayerSkills();
     const cls = CLASS_SKILLS[this.player.activeClass || 'warrior'];
@@ -20612,11 +20644,15 @@ Game.renderActiveSkillBar = function() {
 
     // Update Class tag & SP badge
     const tagEl = document.getElementById('skillClassTag');
-    if (tagEl) tagEl.textContent = cls.tag;
+    if (tagEl && tagEl.textContent !== cls.tag) tagEl.textContent = cls.tag;
     const nameEl = document.getElementById('skillClassName');
-    if (nameEl) nameEl.textContent = cls.name.split(' ')[0].replace('สาย', '');
+    if (nameEl) {
+        const shortName = cls.name.split(' ')[0].replace('สาย', '');
+        if (nameEl.textContent !== shortName) nameEl.textContent = shortName;
+    }
     const spEl = document.getElementById('skillPointsBadge');
-    if (spEl) spEl.textContent = (this.player.skillPoints || 0) + ' SP';
+    const spText = (this.player.skillPoints || 0) + ' SP';
+    if (spEl && spEl.textContent !== spText) spEl.textContent = spText;
 
     const SKILL_SHORT_TAGS: Record<string, string> = {
         cyclone_slash: 'ดาบหมุน',
@@ -20636,72 +20672,102 @@ Game.renderActiveSkillBar = function() {
         sanctuary_pylon: 'เสาศักดิ์',
         wrath_heavens: 'ทัณฑ์เทวา'
     };
-
     const ACTION_KEYS = ['Z', 'X', 'C', 'V'];
-    let html = '';
-    cls.skills.forEach(skill => {
-        const cd = this.player.skillCooldowns[skill.id] || 0;
-        const lv = this.player.skillLevels[skill.id] || 1;
-        const isOnCd = cd > 0;
-        const cdSec = (cd / 1000).toFixed(1);
-        const tag = SKILL_SHORT_TAGS[skill.id] || skill.name.substring(0, 4);
-        const actionKey = ACTION_KEYS[skill.slot - 1] || 'Z';
 
-        html += `
-            <div class="active-skill-slot ${skill.isUltimate ? 'ultimate' : ''} ${isOnCd ? 'on-cooldown' : ''}" 
-                 data-slot="${skill.slot}"
-                 title="${skill.name} (${skill.enName}) [แตะ/ลากเล็งทิศทาง หรือกดปุ่ม ${actionKey}]\n${skill.desc}\nใช้ ${skill.energy} Energy | คูลดาวน์ ${(skill.cd/1000).toFixed(1)}s">
-                <span class="skill-slot-key">${actionKey}</span>
-                <span class="skill-slot-tag">${tag}</span>
-                <span class="skill-slot-level">Lv.${lv}</span>
-                ${isOnCd ? `<div class="skill-cooldown-overlay">${cdSec}s</div>` : ''}
-            </div>
-        `;
-    });
+    // 1. Initial DOM Build on first load or class change (Zero innerHTML during combat!)
+    if (this._renderedSkillClass !== this.player.activeClass) {
+        this._renderedSkillClass = this.player.activeClass;
 
-    if (this._lastSkillBarHtml !== html) {
-        this._lastSkillBarHtml = html;
-        container.innerHTML = html;
-    }
+        if (container) {
+            let html = '';
+            cls.skills.forEach(skill => {
+                const lv = this.player.skillLevels[skill.id] || 1;
+                const tag = SKILL_SHORT_TAGS[skill.id] || skill.name.substring(0, 4);
+                const actionKey = ACTION_KEYS[skill.slot - 1] || 'Z';
+                html += `
+                    <div class="active-skill-slot ${skill.isUltimate ? 'ultimate' : ''}" 
+                         data-slot="${skill.slot}"
+                         title="${skill.name} (${skill.enName}) [${actionKey}]">
+                        <span class="skill-slot-key">${actionKey}</span>
+                        <span class="skill-slot-tag">${tag}</span>
+                        <span class="skill-slot-level">Lv.${lv}</span>
+                        <div class="skill-cooldown-overlay" style="display: none;"></div>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+        }
 
-    // Update Mobile Touch Skills Row [Z, X, C, V]
-    const touchContainer = document.getElementById('touchSkillsRow');
-    if (touchContainer) {
-        let touchHtml = `
-            <div class="touch-skill-class-btn" onclick="Game.openSkillTreeModal()" title="เปิดผังสกิลและเปลี่ยนสายอาชีพ [K]">
-                <span class="touch-skill-class-tag">${cls.tag}</span>
-                <span class="touch-skill-class-sp">${this.player.skillPoints || 0} SP</span>
-            </div>
-        `;
-
-        cls.skills.forEach(skill => {
-            const cd = this.player.skillCooldowns[skill.id] || 0;
-            const lv = this.player.skillLevels[skill.id] || 1;
-            const isOnCd = cd > 0;
-            const cdSec = (cd / 1000).toFixed(1);
-            const tag = SKILL_SHORT_TAGS[skill.id] || skill.name.substring(0, 4);
-            const actionKey = ACTION_KEYS[skill.slot - 1] || 'Z';
-            const isUlt = !!skill.isUltimate;
-            const readyUltClass = isUlt && !isOnCd ? 'touch-ult-ready' : '';
-
-            touchHtml += `
-                <button class="touch-skill-btn ${isUlt ? 'touch-skill-ult' : ''} ${isOnCd ? 'on-cooldown' : ''} ${readyUltClass}"
-                        data-slot="${skill.slot}"
-                        type="button"
-                        title="${skill.name} [${actionKey}]">
-                    <span class="touch-skill-key">${actionKey}</span>
-                    <span class="touch-skill-tag">${tag}</span>
-                    <span class="touch-skill-lv">v${lv}</span>
-                    ${isOnCd ? `<div class="touch-skill-cd">${cdSec}s</div>` : ''}
-                </button>
+        if (touchContainer) {
+            let touchHtml = `
+                <div class="touch-skill-class-btn" onclick="Game.openSkillTreeModal()" title="เปิดผังสกิล [K]">
+                    <span class="touch-skill-class-tag">${cls.tag}</span>
+                    <span class="touch-skill-class-sp">${this.player.skillPoints || 0} SP</span>
+                </div>
             `;
-        });
-
-        if (this._lastTouchSkillsHtml !== touchHtml) {
-            this._lastTouchSkillsHtml = touchHtml;
+            cls.skills.forEach(skill => {
+                const lv = this.player.skillLevels[skill.id] || 1;
+                const tag = SKILL_SHORT_TAGS[skill.id] || skill.name.substring(0, 4);
+                const actionKey = ACTION_KEYS[skill.slot - 1] || 'Z';
+                touchHtml += `
+                    <button class="touch-skill-btn ${skill.isUltimate ? 'touch-skill-ult' : ''}"
+                            data-slot="${skill.slot}"
+                            type="button"
+                            title="${skill.name} [${actionKey}]">
+                        <span class="touch-skill-key">${actionKey}</span>
+                        <span class="touch-skill-tag">${tag}</span>
+                        <span class="touch-skill-lv">v${lv}</span>
+                        <div class="touch-skill-cd" style="display: none;"></div>
+                    </button>
+                `;
+            });
             touchContainer.innerHTML = touchHtml;
         }
     }
+
+    // 2. High-Performance Lightweight Cooldown Tick (Zero DOM churn)
+    cls.skills.forEach(skill => {
+        const cd = this.player.skillCooldowns[skill.id] || 0;
+        const isOnCd = cd > 0;
+        const cdText = (cd / 1000).toFixed(1) + 's';
+
+        // Desktop overlay
+        if (container) {
+            const slotEl = container.querySelector(`[data-slot="${skill.slot}"]`) as HTMLElement;
+            if (slotEl) {
+                slotEl.classList.toggle('on-cooldown', isOnCd);
+                const cdEl = slotEl.querySelector('.skill-cooldown-overlay') as HTMLElement;
+                if (cdEl) {
+                    if (isOnCd) {
+                        cdEl.textContent = cdText;
+                        if (cdEl.style.display !== 'flex') cdEl.style.display = 'flex';
+                    } else if (cdEl.style.display !== 'none') {
+                        cdEl.style.display = 'none';
+                    }
+                }
+            }
+        }
+
+        // Mobile touch button
+        if (touchContainer) {
+            const touchBtn = touchContainer.querySelector(`[data-slot="${skill.slot}"]`) as HTMLElement;
+            if (touchBtn) {
+                touchBtn.classList.toggle('on-cooldown', isOnCd);
+                if (skill.isUltimate) {
+                    touchBtn.classList.toggle('touch-ult-ready', !isOnCd);
+                }
+                const cdEl = touchBtn.querySelector('.touch-skill-cd') as HTMLElement;
+                if (cdEl) {
+                    if (isOnCd) {
+                        cdEl.textContent = cdText;
+                        if (cdEl.style.display !== 'flex') cdEl.style.display = 'flex';
+                    } else if (cdEl.style.display !== 'none') {
+                        cdEl.style.display = 'none';
+                    }
+                }
+            }
+        }
+    });
 };
 
 // Skill Joystick Aiming Controls (Mobile Drag to Aim & Desktop Mouse Drag Aim with ROV Cancel)
@@ -20715,25 +20781,23 @@ Game.setupSkillJoystickControls = function() {
     let activeSlot = 0;
     let activeSlotEl: HTMLElement | null = null;
     let isDraggingAim = false;
+    let cancelRect: { cx: number; cy: number; radius: number } | null = null;
 
-    const checkCancelZoneHover = (clientX: number, clientY: number): boolean => {
+    const cacheCancelZone = () => {
         const cancelZone = document.getElementById('skillCancelZone');
-        if (!cancelZone) return false;
-        cancelZone.style.display = 'flex';
-        const rect = cancelZone.getBoundingClientRect();
-        const centerX = rect.left + rect.width / 2;
-        const centerY = rect.top + rect.height / 2;
-        const dist = Math.hypot(clientX - centerX, clientY - centerY);
-        const isHovered = dist < Math.max(rect.width * 0.75, 55);
-        if (isHovered) {
-            cancelZone.classList.add('is-hovered');
-        } else {
-            cancelZone.classList.remove('is-hovered');
+        if (cancelZone) {
+            cancelZone.style.display = 'flex';
+            const r = cancelZone.getBoundingClientRect();
+            cancelRect = {
+                cx: r.left + r.width / 2,
+                cy: r.top + r.height / 2,
+                radius: Math.max(r.width * 0.75, 55)
+            };
         }
-        return isHovered;
     };
 
     const hideCancelZone = () => {
+        cancelRect = null;
         const cancelZone = document.getElementById('skillCancelZone');
         if (cancelZone) {
             cancelZone.style.display = 'none';
@@ -20758,6 +20822,7 @@ Game.setupSkillJoystickControls = function() {
         activeSlotEl = slotEl;
         isDraggingAim = false;
         this.activeSkillCancelled = false;
+        cacheCancelZone();
 
         SoundEngine.init();
         if (SoundEngine.isBgmOn()) SoundEngine.startBgm();
@@ -20778,22 +20843,30 @@ Game.setupSkillJoystickControls = function() {
         const dy = touch.clientY - startY;
         const dist = Math.hypot(dx, dy);
 
-        if (dist > 10) {
+        if (dist > 12) {
             isDraggingAim = true;
             this.activeSkillAiming = true;
             this.activeSkillAimSlot = activeSlot;
-            this.skillAimAngle = Math.atan2(dy, dx);
-            this.activeSkillCancelled = checkCancelZoneHover(touch.clientX, touch.clientY);
-
-            // Visual joystick tilt on the slot orb
-            const maxTilt = 18;
-            const tiltX = Math.cos(this.skillAimAngle) * Math.min(dist, maxTilt);
-            const tiltY = Math.sin(this.skillAimAngle) * Math.min(dist, maxTilt);
-            activeSlotEl.style.transform = `translate(${tiltX}px, ${tiltY}px) scale(1.12)`;
-            if (this.activeSkillCancelled) {
-                activeSlotEl.style.boxShadow = `0 0 18px #ef4444, 0 0 10px #b91c1c`;
+            
+            // Butter-smooth angular interpolation (Zero jitter)
+            const targetAngle = Math.atan2(dy, dx);
+            if (this.skillAimAngle === null || this.skillAimAngle === undefined) {
+                this.skillAimAngle = targetAngle;
             } else {
-                activeSlotEl.style.boxShadow = `0 0 16px #38bdf8, 0 0 8px #facc15`;
+                let diff = targetAngle - this.skillAimAngle;
+                while (diff < -Math.PI) diff += Math.PI * 2;
+                while (diff > Math.PI) diff -= Math.PI * 2;
+                this.skillAimAngle += diff * 0.55;
+            }
+            this.skillAimDistRatio = Math.min(1.0, (dist - 12) / 70);
+
+            // Fast cancel zone check (Zero getBoundingClientRect in touchmove!)
+            if (cancelRect) {
+                const distToCancel = Math.hypot(touch.clientX - cancelRect.cx, touch.clientY - cancelRect.cy);
+                const isHover = distToCancel < cancelRect.radius;
+                this.activeSkillCancelled = isHover;
+                const cz = document.getElementById('skillCancelZone');
+                if (cz) cz.classList.toggle('is-hovered', isHover);
             }
         }
     }, { passive: false });
@@ -20859,6 +20932,7 @@ Game.setupSkillJoystickControls = function() {
         activeSlotEl = slotEl;
         isDraggingAim = false;
         this.activeSkillCancelled = false;
+        cacheCancelZone();
     });
 
     window.addEventListener('mousemove', (e: MouseEvent) => {
@@ -20872,7 +20946,13 @@ Game.setupSkillJoystickControls = function() {
             this.activeSkillAiming = true;
             this.activeSkillAimSlot = activeSlot;
             this.skillAimAngle = Math.atan2(dy, dx);
-            this.activeSkillCancelled = checkCancelZoneHover(e.clientX, e.clientY);
+            if (cancelRect) {
+                const distToCancel = Math.hypot(e.clientX - cancelRect.cx, e.clientY - cancelRect.cy);
+                const isHover = distToCancel < cancelRect.radius;
+                this.activeSkillCancelled = isHover;
+                const cz = document.getElementById('skillCancelZone');
+                if (cz) cz.classList.toggle('is-hovered', isHover);
+            }
 
             const maxTilt = 18;
             const tiltX = Math.cos(this.skillAimAngle) * Math.min(dist, maxTilt);
@@ -20922,73 +21002,130 @@ Game.setupSkillJoystickControls = function() {
 
 // Draw Canvas Active Skill Visuals
 Game.drawActiveSkillVisuals = function(ctx) {
-    // 0. Draw Skill Joystick Aiming Indicator (Mobile & Mouse Drag Aim with ROV Cancel)
+    // 0. Contextual Skill Aim Indicator (Mobile & Mouse Drag Aim)
     if (this.activeSkillAiming && this.skillAimAngle !== null && this.skillAimAngle !== undefined && this.player) {
         const px = Math.round(this.player.x + 12 - this.camera.x);
         const py = Math.round(this.player.y + 14 - this.camera.y);
         const ang = this.skillAimAngle;
-        const aimDist = 160;
-        const tx = px + Math.cos(ang) * aimDist;
-        const ty = py + Math.sin(ang) * aimDist;
         const isCancelled = !!this.activeSkillCancelled;
+
+        // Detect Skill Category
+        const cls = CLASS_SKILLS[this.player.activeClass || 'warrior'];
+        const currentSkill = cls?.skills?.find(s => s.slot === this.activeSkillAimSlot);
+        const skillId = currentSkill ? currentSkill.id : '';
+
+        // Category A: 360-Degree Self AoE (Cyclone, Glacial Ring, Sanctuary Pylon, Judgement)
+        const isAoeSelf = ['cyclone_slash', 'glacial_ring', 'sanctuary_pylon', 'judgement_blade'].includes(skillId);
+        // Category B: Ground Target AoE (Meteor, Venom Trap)
+        const isGroundAoe = ['meteor_cataclysm', 'venom_trap'].includes(skillId);
+        // Category C: Self Buff / Healing (Ironclad, Prism Shield, Shadow Dash, Divine Heal)
+        const isSelfBuff = ['ironclad_bastion', 'prism_shield', 'shadow_dash', 'divine_heal'].includes(skillId);
 
         ctx.save();
         ctx.shadowColor = isCancelled ? '#ef4444' : '#38bdf8';
-        ctx.shadowBlur = 14;
+        ctx.shadowBlur = 12;
 
-        // Aiming trajectory dashed line
-        ctx.strokeStyle = isCancelled ? '#ef4444' : '#38bdf8';
-        ctx.lineWidth = isCancelled ? 3.5 : 3;
-        ctx.setLineDash([8, 6]);
-        ctx.beginPath();
-        ctx.moveTo(px, py);
-        ctx.lineTo(tx, ty);
-        ctx.stroke();
-
-        // Directional Arrowhead
-        ctx.setLineDash([]);
-        ctx.fillStyle = isCancelled ? '#ef4444' : '#fde047';
-        ctx.beginPath();
-        const arrowSize = 14;
-        const a1 = ang + Math.PI - 0.45;
-        const a2 = ang + Math.PI + 0.45;
-        ctx.moveTo(tx, ty);
-        ctx.lineTo(tx + Math.cos(a1) * arrowSize, ty + Math.sin(a1) * arrowSize);
-        ctx.lineTo(tx + Math.cos(a2) * arrowSize, ty + Math.sin(a2) * arrowSize);
-        ctx.closePath();
-        ctx.fill();
-
-        // Target reticle ring
-        ctx.strokeStyle = isCancelled ? '#ef4444' : '#facc15';
-        ctx.lineWidth = 2.5;
-        ctx.beginPath();
-        ctx.arc(tx, ty, 16, 0, Math.PI * 2);
-        ctx.stroke();
-
-        if (isCancelled) {
-            // Draw Cancel '✕' icon inside reticle
-            ctx.strokeStyle = '#ef4444';
+        if (isAoeSelf) {
+            // Draw Full 360-Degree Radial Blast Area around player
+            const radius = (skillId === 'judgement_blade') ? 220 : ((skillId === 'glacial_ring') ? 160 : 140);
+            ctx.strokeStyle = isCancelled ? '#ef4444' : '#facc15';
             ctx.lineWidth = 3;
+            ctx.setLineDash([10, 8]);
             ctx.beginPath();
-            ctx.moveTo(tx - 7, ty - 7);
-            ctx.lineTo(tx + 7, ty + 7);
-            ctx.moveTo(tx + 7, ty - 7);
-            ctx.lineTo(tx - 7, ty + 7);
+            ctx.arc(px, py, radius, 0, Math.PI * 2);
             ctx.stroke();
 
-            // Floating label above reticle
-            ctx.fillStyle = '#fee2e2';
-            ctx.font = 'bold 12px Kanit, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText('✕ ยกเลิกสกิล', tx, ty - 22);
-        }
+            ctx.fillStyle = isCancelled ? 'rgba(239, 68, 68, 0.12)' : 'rgba(250, 204, 21, 0.14)';
+            ctx.beginPath();
+            ctx.arc(px, py, radius, 0, Math.PI * 2);
+            ctx.fill();
 
-        // Player range circle indicator
-        ctx.strokeStyle = isCancelled ? 'rgba(239, 68, 68, 0.35)' : 'rgba(56, 189, 248, 0.28)';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.arc(px, py, aimDist, 0, Math.PI * 2);
-        ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.fillStyle = isCancelled ? '#fee2e2' : '#fef08a';
+            ctx.font = 'bold 12px "Prompt", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(isCancelled ? '✕ ยกเลิก' : (currentSkill?.name || 'โจมตีรอบตัว 360°') + ' (รัศมี ' + radius + 'px)', px, py - radius - 10);
+        } else if (isGroundAoe) {
+            // Draw Ground Target Reticle
+            const castDist = 70 + (this.skillAimDistRatio || 0.6) * 140;
+            const gx = px + Math.cos(ang) * castDist;
+            const gy = py + Math.sin(ang) * castDist;
+            const groundRadius = 100;
+
+            ctx.strokeStyle = isCancelled ? '#ef4444' : '#fb923c';
+            ctx.lineWidth = 2.5;
+            ctx.setLineDash([8, 6]);
+            ctx.beginPath();
+            ctx.moveTo(px, py);
+            ctx.lineTo(gx, gy);
+            ctx.stroke();
+
+            ctx.setLineDash([]);
+            ctx.strokeStyle = isCancelled ? '#ef4444' : '#ea580c';
+            ctx.lineWidth = 3;
+            ctx.fillStyle = isCancelled ? 'rgba(239, 68, 68, 0.15)' : 'rgba(234, 88, 12, 0.2)';
+            ctx.beginPath();
+            ctx.arc(gx, gy, groundRadius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = isCancelled ? '#fee2e2' : '#fed7aa';
+            ctx.font = 'bold 12px "Prompt", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(isCancelled ? '✕ ยกเลิก' : (currentSkill?.name || 'จุดตกบนพื้น') + ' (รัศมี 100px)', gx, gy - groundRadius - 8);
+        } else if (isSelfBuff) {
+            // Self Buff / Heal protective aura
+            ctx.strokeStyle = isCancelled ? '#ef4444' : '#4ade80';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(px, py, 50, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.fillStyle = isCancelled ? 'rgba(239, 68, 68, 0.12)' : 'rgba(74, 222, 128, 0.15)';
+            ctx.beginPath();
+            ctx.arc(px, py, 50, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = isCancelled ? '#fee2e2' : '#bbf7d0';
+            ctx.font = 'bold 12px "Prompt", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(isCancelled ? '✕ ยกเลิก' : (currentSkill?.name || 'บัฟเสริมพลัง') + ' (ร่ายใส่ตัวเอง)', px, py - 60);
+        } else {
+            // Directional Skillshot Beam
+            const range = (skillId === 'dragonpiercer') ? 450 : ((skillId === 'flash_thrust') ? 180 : 220);
+            const tx = px + Math.cos(ang) * range;
+            const ty = py + Math.sin(ang) * range;
+
+            ctx.strokeStyle = isCancelled ? '#ef4444' : '#38bdf8';
+            ctx.lineWidth = 3;
+            ctx.setLineDash([8, 6]);
+            ctx.beginPath();
+            ctx.moveTo(px, py);
+            ctx.lineTo(tx, ty);
+            ctx.stroke();
+
+            ctx.setLineDash([]);
+            ctx.fillStyle = isCancelled ? '#ef4444' : '#fde047';
+            ctx.beginPath();
+            const arrowSize = 14;
+            const a1 = ang + Math.PI - 0.45;
+            const a2 = ang + Math.PI + 0.45;
+            ctx.moveTo(tx, ty);
+            ctx.lineTo(tx + Math.cos(a1) * arrowSize, ty + Math.sin(a1) * arrowSize);
+            ctx.lineTo(tx + Math.cos(a2) * arrowSize, ty + Math.sin(a2) * arrowSize);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.strokeStyle = isCancelled ? '#ef4444' : '#38bdf8';
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.arc(tx, ty, 18, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.fillStyle = isCancelled ? '#fee2e2' : '#e0f2fe';
+            ctx.font = 'bold 12px "Prompt", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(isCancelled ? '✕ ยกเลิก' : (currentSkill?.name || 'เล็งยิงเส้นตรง'), tx, ty - 24);
+        }
 
         ctx.restore();
     }
