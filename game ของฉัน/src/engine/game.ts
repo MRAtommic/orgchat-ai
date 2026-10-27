@@ -9663,14 +9663,52 @@ Game.updateHUD = function() {
             btnA.classList.add('combat-mode');
             const spanEl = btnA.querySelector('span');
             const smallEl = btnA.querySelector('small');
-            if (spanEl && spanEl.textContent !== '⚔️') spanEl.textContent = '⚔️';
-            if (smallEl && smallEl.textContent !== 'ยิง/ฟัน') smallEl.textContent = 'ยิง/ฟัน';
+            if (spanEl && spanEl.textContent !== 'ATK') spanEl.textContent = 'ATK';
+            if (smallEl && smallEl.textContent !== 'ยิง/โจมตี') smallEl.textContent = 'ยิง/โจมตี';
         } else {
             btnA.classList.remove('combat-mode');
             const spanEl = btnA.querySelector('span');
             const smallEl = btnA.querySelector('small');
-            if (spanEl && spanEl.textContent !== 'A') spanEl.textContent = 'A';
+            if (spanEl && spanEl.textContent !== 'ACT') spanEl.textContent = 'ACT';
             if (smallEl && smallEl.textContent !== 'ทำฟาร์ม') smallEl.textContent = 'ทำฟาร์ม';
+        }
+    }
+
+    // Dynamic Mobile Explore Button [E] UI Update
+    const btnE = document.getElementById('touchBtnE');
+    if (btnE && this.player && this.map) {
+        let canInteract = false;
+        const target = typeof this.getTargetTile === 'function' ? this.getTargetTile() : null;
+        if (target && this.map[target.y] && this.map[target.y][target.x]) {
+            const t = this.map[target.y][target.x];
+            if (t && (t.interactable || (t.crop && t.crop.ready))) canInteract = true;
+        }
+        if (!canInteract) {
+            const px = Math.floor((this.player.x + 10) / this.tileSize);
+            const py = Math.floor((this.player.y + 20) / this.tileSize);
+            const nearTiles = [
+                this.map[py]?.[px],
+                this.map[py - 1]?.[px],
+                this.map[py + 1]?.[px],
+                this.map[py]?.[px - 1],
+                this.map[py]?.[px + 1]
+            ];
+            for (const nt of nearTiles) {
+                if (nt && (nt.interactable || (nt.crop && nt.crop.ready))) {
+                    canInteract = true;
+                    break;
+                }
+            }
+        }
+        if (!canInteract && typeof this.findNearbyDroppedItem === 'function') {
+            if (this.findNearbyDroppedItem(this.player.x + 12, this.player.y + 16, 48)) {
+                canInteract = true;
+            }
+        }
+        if (canInteract) {
+            btnE.classList.add('interact-ready');
+        } else {
+            btnE.classList.remove('interact-ready');
         }
     }
 

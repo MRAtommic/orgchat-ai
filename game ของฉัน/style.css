@@ -2365,10 +2365,10 @@ body {
    ======================================================== */
 .skill-cancel-zone {
     position: absolute;
-    top: 12px;
+    top: 14px;
     left: 50%;
     transform: translateX(-50%);
-    z-index: 95;
+    z-index: 1000;
     pointer-events: auto;
     display: flex;
     flex-direction: column;
@@ -2477,83 +2477,208 @@ body {
     transform: scale(0.94);
 }
 
-/* Touch Action Buttons */
+/* Touch Action Buttons (Ergonomic Radial Thumb Cluster) */
 .touch-actions {
-    display: flex;
-    gap: 12px;
-    align-items: flex-end;
-    pointer-events: auto;
-    opacity: 0.88;
+    position: absolute;
+    right: 14px;
+    bottom: 14px;
+    width: 180px;
+    height: 180px;
+    pointer-events: none;
     touch-action: none !important;
+    z-index: 45;
 }
 
 .touch-action-btn {
-    width: 58px;
-    height: 58px;
+    position: absolute;
     border-radius: 50%;
-    border: 3px solid #5c3818;
     color: #fff;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+    box-sizing: border-box;
     user-select: none;
     -webkit-user-select: none;
     -webkit-touch-callout: none;
     touch-action: none !important;
+    pointer-events: auto;
+    cursor: pointer;
+    box-shadow: 0 5px 12px rgba(0, 0, 0, 0.45);
+    transition: transform 0.08s ease, box-shadow 0.15s ease, background 0.2s ease, border-color 0.2s ease;
 }
 
-.touch-action-btn span {
-    font-size: 18px;
-    font-weight: 700;
-    line-height: 1;
+.touch-action-btn:active {
+    transform: scale(0.92) !important;
 }
 
-.touch-action-btn small {
-    font-size: 9px;
-    font-weight: 600;
-    opacity: 0.9;
-}
-
+/* 1. Main Action / Shoot Button [A] */
 .btn-touch-a {
-    background: linear-gradient(180deg, #22c55e, #15803d);
-    border-color: #166534;
-    transition: background 0.25s, box-shadow 0.25s, transform 0.1s;
+    width: 76px;
+    height: 76px;
+    right: 4px;
+    bottom: 4px;
+    background: linear-gradient(135deg, #22c55e 0%, #15803d 100%);
+    border: 3.5px solid #86efac;
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.5), inset 0 2px 4px rgba(255, 255, 255, 0.35);
+    z-index: 3;
 }
 
 .btn-touch-a:active {
-    background: #14532d;
-    transform: scale(0.92);
+    background: #14532d !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6), inset 0 2px 6px rgba(0, 0, 0, 0.4) !important;
 }
 
-/* Dynamic Combat Mode for Button [A] */
+.btn-touch-a span {
+    font-size: 20px;
+    font-weight: 900;
+    line-height: 1;
+    color: #ffffff;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
+.btn-touch-a small {
+    font-size: 10px;
+    font-weight: 700;
+    color: #dcfce7;
+    margin-top: 2px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+/* Dynamic Combat Mode for Button [A] (Auto-Shooter / Auto-Aim) */
 .btn-touch-a.combat-mode {
-    background: linear-gradient(180deg, #ef4444, #b91c1c) !important;
+    background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%) !important;
     border-color: #fca5a5 !important;
-    box-shadow: 0 0 14px rgba(239, 68, 68, 0.8), 0 4px 8px rgba(0, 0, 0, 0.5) !important;
+    box-shadow: 0 0 18px rgba(239, 68, 68, 0.85), 0 6px 14px rgba(0, 0, 0, 0.55), inset 0 2px 4px rgba(255, 255, 255, 0.4) !important;
     animation: pulseCombatBtn 1.2s infinite alternate ease-in-out;
+}
+
+.btn-touch-a.combat-mode span {
+    color: #ffffff;
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.8);
+}
+
+.btn-touch-a.combat-mode small {
+    color: #fecaca;
 }
 
 @keyframes pulseCombatBtn {
     0% { transform: scale(1.0); }
-    100% { transform: scale(1.08); box-shadow: 0 0 20px rgba(239, 68, 68, 0.95); }
+    100% { transform: scale(1.06); box-shadow: 0 0 24px rgba(239, 68, 68, 0.95), 0 6px 14px rgba(0, 0, 0, 0.6); }
 }
 
+/* 2. Explore / Interact Button [E] (Prominent Upper-Left Companion) */
 .btn-touch-e {
-    background: linear-gradient(180deg, #3b82f6, #1d4ed8);
-    border-color: #1e40af;
+    width: 60px;
+    height: 60px;
+    right: 76px;
+    bottom: 76px;
+    background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+    border: 3px solid #38bdf8;
+    box-shadow: 0 5px 12px rgba(0, 0, 0, 0.45), 0 0 10px rgba(56, 189, 248, 0.35), inset 0 2px 3px rgba(255, 255, 255, 0.35);
+    z-index: 2;
 }
 
 .btn-touch-e:active {
-    background: #1e3a8a;
-    transform: scale(0.92);
+    background: #075985 !important;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5), inset 0 2px 4px rgba(0, 0, 0, 0.4) !important;
 }
 
-/* Auto-hide touch controls on desktop hover screens */
+.btn-touch-e span {
+    font-size: 18px;
+    font-weight: 900;
+    line-height: 1;
+    color: #ffffff;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
+.btn-touch-e small {
+    font-size: 10px;
+    font-weight: 700;
+    color: #bae6fd;
+    margin-top: 1px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+/* Glowing pulse when near an interactable target (chest, boat, npc, crop) */
+.btn-touch-e.interact-ready {
+    border-color: #67e8f9 !important;
+    box-shadow: 0 0 18px rgba(6, 182, 212, 0.9), 0 5px 12px rgba(0, 0, 0, 0.5) !important;
+    animation: pulseInteractBtn 1.1s infinite alternate ease-in-out;
+}
+
+@keyframes pulseInteractBtn {
+    0% { transform: scale(1.0); }
+    100% { transform: scale(1.07); box-shadow: 0 0 22px rgba(56, 189, 248, 1), 0 5px 12px rgba(0, 0, 0, 0.55); }
+}
+
+/* 3. Dash / Dodge Button */
+.btn-touch-dash {
+    width: 54px;
+    height: 54px;
+    right: 92px;
+    bottom: 8px;
+    background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%) !important;
+    border: 2.5px solid #2dd4bf !important;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4), inset 0 2px 3px rgba(255, 255, 255, 0.3);
+    z-index: 2;
+}
+
+.btn-touch-dash:active {
+    background: #115e59 !important;
+}
+
+.btn-touch-dash span {
+    font-size: 13px;
+    font-weight: 900;
+    line-height: 1;
+    color: #ffffff;
+}
+
+.btn-touch-dash small {
+    font-size: 9px;
+    font-weight: 700;
+    color: #ccfbf1;
+    margin-top: 1px;
+}
+
+/* 4. Guard / Parry Button */
+.btn-touch-guard {
+    width: 52px;
+    height: 52px;
+    right: 8px;
+    bottom: 94px;
+    background: linear-gradient(135deg, #b45309 0%, #d97706 100%) !important;
+    border: 2.5px solid #fbbf24 !important;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4), inset 0 2px 3px rgba(255, 255, 255, 0.3);
+    z-index: 2;
+}
+
+.btn-touch-guard:active,
+.btn-touch-guard.active {
+    background: #f59e0b !important;
+    border-color: #fde047 !important;
+    box-shadow: 0 0 16px rgba(251, 191, 36, 0.85);
+}
+
+.btn-touch-guard span {
+    font-size: 12px;
+    font-weight: 900;
+    line-height: 1;
+    color: #ffffff;
+}
+
+.btn-touch-guard small {
+    font-size: 9px;
+    font-weight: 700;
+    color: #fef3c7;
+    margin-top: 1px;
+}
+
+/* Auto-hide touch controls on desktop hover screens (unless forced visible) */
 @media (min-width: 900px) and (hover: hover) and (pointer: fine) {
-    .touch-controls-overlay {
-        display: none;
+    .touch-controls-overlay:not(.force-show) {
+        display: none !important;
     }
 }
 
@@ -3351,45 +3476,89 @@ body {
     /* Mobile Touch Skill Bar [Z, X, C, V] & [K] Class Tree */
     .touch-skills-row {
         position: absolute !important;
-        right: 10px !important;
-        bottom: 116px !important;
+        right: 12px !important;
+        bottom: 188px !important;
         display: flex !important;
         align-items: center !important;
-        gap: 5px !important;
+        gap: 6px !important;
         z-index: 46 !important;
         pointer-events: auto !important;
     }
     .touch-skill-btn {
-        width: 42px !important;
-        height: 42px !important;
+        width: 44px !important;
+        height: 44px !important;
     }
 
-    /* Bottom Right: Touch Action Buttons Cluster */
+    /* Bottom Right: Ergonomic Radial Action Cluster */
     .touch-actions {
         position: absolute !important;
-        right: 10px !important;
-        bottom: 10px !important;
-        display: grid !important;
-        grid-template-columns: repeat(2, 48px) !important;
-        grid-template-rows: repeat(2, 48px) !important;
-        gap: 6px !important;
-        align-items: center !important;
-        justify-items: center !important;
+        right: 12px !important;
+        bottom: 12px !important;
+        width: 180px !important;
+        height: 180px !important;
+        display: block !important;
+        pointer-events: none !important;
         z-index: 45 !important;
     }
     .touch-action-btn {
-        width: 46px !important;
-        height: 46px !important;
+        position: absolute !important;
+        pointer-events: auto !important;
     }
     .btn-touch-a {
-        width: 50px !important;
-        height: 50px !important;
+        width: 76px !important;
+        height: 76px !important;
+        right: 4px !important;
+        bottom: 4px !important;
     }
-    .touch-action-btn span {
-        font-size: 15px !important;
+    .btn-touch-a span {
+        font-size: 20px !important;
+        font-weight: 900 !important;
     }
-    .touch-action-btn small {
-        font-size: 8px !important;
+    .btn-touch-a small {
+        font-size: 10px !important;
+        font-weight: 700 !important;
+    }
+    .btn-touch-e {
+        width: 60px !important;
+        height: 60px !important;
+        right: 76px !important;
+        bottom: 76px !important;
+    }
+    .btn-touch-e span {
+        font-size: 18px !important;
+        font-weight: 900 !important;
+    }
+    .btn-touch-e small {
+        font-size: 10px !important;
+        font-weight: 700 !important;
+    }
+    .btn-touch-dash {
+        width: 54px !important;
+        height: 54px !important;
+        right: 92px !important;
+        bottom: 8px !important;
+    }
+    .btn-touch-dash span {
+        font-size: 13px !important;
+        font-weight: 900 !important;
+    }
+    .btn-touch-dash small {
+        font-size: 9px !important;
+        font-weight: 700 !important;
+    }
+    .btn-touch-guard {
+        width: 52px !important;
+        height: 52px !important;
+        right: 8px !important;
+        bottom: 94px !important;
+    }
+    .btn-touch-guard span {
+        font-size: 12px !important;
+        font-weight: 900 !important;
+    }
+    .btn-touch-guard small {
+        font-size: 9px !important;
+        font-weight: 700 !important;
     }
 }
 
