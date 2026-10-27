@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ฟาร์มสุขใจ - Happy Farm 2D (Stardew Style)</title>
+    <!-- Google Fonts for Thai & Retro Gaming -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Prompt:wght@400;600;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <!-- Google Identity Services (GSI) for Google Sign-In -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+
+<body>
+    <div id="game-container">
+        <!-- 2D Canvas Screen -->
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- Stardew Valley Style HUD Overlay -->
+        <div id="hud-overlay">
+            <!-- Top Left: Player Status & Multi-User Profile -->
+            <div class="hud-top-left">
+                <!-- User Account & Save Status Badge -->
+                <div class="hud-badge user-profile-badge" onclick="Auth.openAccountModal()" title="จัดการโปรไฟล์ & บันทึกเกม (Cloud Save)">
+                    <div id="hudUserAvatar" class="avatar-circle">
+                        <span class="avatar-initial">G</span>
+                    </div>
+                    <div class="user-meta-col">
+                        <div class="user-name-row">
+                            <span id="hudUserName" class="user-name-text">ผู้เล่น Guest</span>
+                            <span id="hudUserProvider" class="provider-tag"></span>
+                        </div>
+                        <div id="hudSaveBadge" class="hud-save-badge save-saved">
+                            <span class="save-icon"></span> <span class="save-text">บันทึกแล้ว</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Level & Water Gauge -->
+                <div class="hud-badge player-badge">
+                    <span id="hudLevel" class="level-tag">Lv.1</span>
+                    <div class="water-gauge">
+                        <span class="water-label">น้ำในบัว</span>
+                        <div class="water-track">
+                            <div id="waterFill" class="water-fill" style="width: 100%;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Top Right: Clock, Weather, Gold & Action Badges -->
+            <div class="hud-top-right">
+                <div class="clock-widget">
+                    <div id="hudDay" class="clock-day">วันที่ 1 ฤดูใบไม้ผลิ</div>
+                    <div id="hudTime" class="clock-time">06:00 น.</div>
+                    <div class="gold-counter">
+                        <span id="hudGold" class="gold-val">250</span>
+                        <span class="gold-unit">G</span>
+                    </div>
+                </div>
+                <div class="hud-actions-row">
+                    <button class="btn-hud-icon btn-save-quick" onclick="Auth.saveGame(null, true)" title="บันทึกเกม (Save Game)">
+                        <span></span>
+                    </button>
+                    <button class="btn-hud-icon btn-account-quick" onclick="Auth.openAccountModal()" title="บัญชีผู้เล่น & สลับโปรไฟล์">
+                        <span></span>
+                    </button>
+                    <button class="btn-hud-icon" onclick="Game.toggleModal('questModal')" title="สมุดภารกิจ (Q)">
+                        <span></span><span class="badge-key">Q</span>
+                    </button>
+                    <button class="btn-hud-icon" onclick="Game.toggleModal('hunterModal')"
+                        title="ผู้ช่วย & นายพราน (H)">
+                        <span>‍</span><span class="badge-key">H</span>
+                    </button>
+                    <button class="btn-hud-icon" onclick="Game.toggleModal('controlsModal')"
+                        title="ปุ่มควบคุม & วิธีเล่น (?)">
+                        <span>⌨</span><span class="badge-key">?</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Boss Health Bar (Appears when fighting Archdemon Kathuros) -->
+            <div id="bossHealthBar" class="boss-health-bar-container" style="display: none;">
+                <div class="boss-info-header">
+                    <div class="boss-title"> <span id="bossNameText">จอมอสูรราชาปีศาจ คาธูรอส</span></div>
+                    <div id="bossHpText" class="boss-hp-text">1200 / 1200 HP</div>
+                </div>
+                <div class="boss-hp-track">
+                    <div id="bossHpFill" class="boss-hp-fill" style="width: 100%;"></div>
+                </div>
+            </div>
+
+            <!-- Bottom Center: Hotbar -->
+            <div class="hud-bottom-center">
+                <div id="hotbarSlots" class="hotbar-container"></div>
+            </div>
+
+            <!-- Bottom Right: Vitals (HP + Energy) -->
+            <div class="hud-bottom-right">
+                <div class="vitals-container">
+                    <div class="vital-widget" title="พลังชีวิต (HP)">
+                        <div class="vital-track">
+                            <div id="hpBarFill" class="vital-fill hp-fill" style="height: 100%;"></div>
+                        </div>
+                        <div class="vital-label hp-label"></div>
+                    </div>
+                    <div class="vital-widget" title="ค่าพลังงาน (Energy)">
+                        <div class="vital-track">
+                            <div id="energyBarFill" class="vital-fill energy-fill" style="height: 100%;"></div>
+                        </div>
+                        <div class="vital-label">E</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- STORY DIALOGUE BOX (Classic RPG Text Box) -->
+        <div id="storyDialogueBox" class="story-dialogue-container" style="display: none;">
+            <div class="story-portrait-frame">
+                <canvas id="dialoguePortraitCanvas" width="48" height="48"></canvas>
+            </div>
+            <div class="story-dialogue-body">
+                <div class="story-speaker-header">
+                    <span id="dialogueSpeakerName" class="story-speaker-name">อัศวินสาว วาเลเรีย</span>
+                    <span id="dialogueSpeakerRole" class="story-speaker-role">ผู้พิทักษ์แนวหน้า</span>
+                </div>
+                <div id="dialogueText" class="story-dialogue-text">ยินดีที่ได้พบท่านชาวสวน!</div>
+                <div id="dialogueActionButtons" class="story-dialogue-actions"></div>
+            </div>
+        </div>
+
+        <!-- MODAL: General Store / Shop -->
+        <div id="shopModal" class="modal-overlay" style="display: none;">
+            <div class="modal-window">
+                <div class="modal-header">
+                    <h2>ร้านค้าเกษตรชุมชน</h2>
+                    <button class="btn-close" onclick="Game.closeAllModals()">✕</button>
+                </div>
+                <div class="modal-body">
+                    <p class="modal-desc">เลือกซื้อเมล็ดพันธุ์พืชผักและอุปกรณ์ทำฟาร์ม</p>
+                    <div id="shopItemsList" class="items-list-grid"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL: Shipping Bin / Sell Items -->
+        <div id="sellModal" class="modal-overlay" style="display: none;">
+            <div class="modal-window">
+                <div class="modal-header">
+                    <h2>กล่องส่งสินค้า (ขายผลผลิต)</h2>
+                    <button class="btn-close" onclick="Game.closeAllModals()">✕</button>
+                </div>
+                <div class="modal-body">
+                    <p class="modal-desc">คลิกเลือกผลผลิตหรือไอเทมในกระเป๋าเพื่อส่งขายเป็นเหรียญทอง</p>
+                    <div id="sellItemsList" class="items-list-grid"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL: Crafting & Kitchen -->
+        <div id="craftingModal" class="modal-overlay" style="display: none;">
+            <div class="modal-window">
+                <div class="modal-header">
+                    <h2>โรงแปรรูป & ครัวทำอาหาร</h2>
+                    <button class="btn-close" onclick="Game.closeAllModals()">✕</button>
+                </div>
+                <div class="modal-body">
+                    <p class="modal-desc">นำพืชผลและผลผลิตสัตว์มาแปรรูปเป็นอาหารและสินค้ามูลค่าสูง</p>
+                    <div id="craftingList" class="items-list-grid"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL: Inventory & Backpack -->
+        <div id="inventoryModal" class="modal-overlay" style="display: none;">
+            <div class="modal-window">
+                <div class="modal-header">
+                    <h2>ช่องเก็บของในกระเป๋าเป้</h2>
+                    <button class="btn-close" onclick="Game.closeAllModals()">✕</button>
+                </div>
+                <div class="modal-body">
+                    <p class="modal-desc">กดเลข 1-9 เพื่อถือไอเทมในแถบลัดด้านล่าง</p>
+                    <div id="inventoryGrid" class="inventory-grid"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL: Sleep & Save Dialog -->
+        <div id="sleepModal" class="modal-overlay" style="display: none;">
+            <div class="modal-window modal-compact">
+                <div class="modal-header">
+                    <h2>บ้านพักชาวสวน</h2>
+                    <button class="btn-close" onclick="Game.closeAllModals()">✕</button>
+                </div>
+                <div class="modal-body text-center">
+                    <p class="sleep-prompt">คุณต้องการเข้านอนเพื่อบันทึกเกมและเริ่มวันใหม่หรือไม่?</p>
+                    <p class="sleep-benefit">ฟื้นฟูพลังงานเต็ม 100% และพืชผลที่รดน้ำไว้จะเติบโตขึ้น</p>
+                    <div class="modal-actions">
+                        <button class="btn-primary" onclick="Game.sleepAndPassDay()">เข้านอนเลย</button>
+                        <button class="btn-secondary" onclick="Game.closeAllModals()">ยังก่อน</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL: Wardrobe & Outfits (ตู้เสื้อผ้า) -->
+        <div id="wardrobeModal" class="modal-overlay" style="display: none;">
+            <div class="modal-window">
+                <div class="modal-header">
+                    <h2>ตู้เสื้อผ้า & แต่งชุดตัวละคร</h2>
+                    <button class="btn-close" onclick="Game.closeAllModals()">✕</button>
+                </div>
+                <div class="modal-body">
+                    <div class="wardrobe-container">
+                        <div class="wardrobe-preview">
+                            <canvas id="wardrobePreviewCanvas" width="72" height="96"></canvas>
+                            <p class="preview-label">ภาพตัวอย่าง</p>
+                        </div>
+                        <div class="wardrobe-controls">
+                            <div class="control-group">
+                                <label>หมวก (Hat):</label>
+                                <div id="wardrobeHats" class="btn-picker-grid"></div>
+                            </div>
+                            <div class="control-group">
+                                <label>สีเสื้อ (Shirt):</label>
+                                <div id="wardrobeShirts" class="color-picker-grid"></div>
+                            </div>
+                            <div class="control-group">
+                                <label>กางเกง/เอี๊ยม (Pants):</label>
+                                <div id="wardrobeOveralls" class="color-picker-grid"></div>
+                            </div>
+                            <div class="control-group">
+                                <label>สีผม (Hair):</label>
+                                <div id="wardrobeHairs" class="color-picker-grid"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-actions" style="margin-top: 15px;">
+                        <button class="btn-primary" onclick="Game.saveOutfitCustomization()">บันทึกชุดที่เลือก</button>
+                        <button class="btn-secondary" onclick="Game.closeAllModals()">ปิด</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL: House Decor & Energy Upgrades (แต่งบ้าน & อัพเกรด) -->
+        <div id="houseDecorModal" class="modal-overlay" style="display: none;">
+            <div class="modal-window">
+                <div class="modal-header">
+                    <h2>อัพเกรดตกแต่งบ้าน & เฟอร์นิเจอร์</h2>
+                    <button class="btn-close" onclick="Game.closeAllModals()">✕</button>
+                </div>
+                <div class="modal-body">
+                    <p class="modal-desc">อัพเกรดบ้านพักชาวสวนเพื่อเพิ่มค่าพลังงาน Max Energy และสิ่งอำนวยความสะดวก</p>
+                    <div id="houseDecorList" class="items-list-grid"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL: Stock Shelf (จัดวางสินค้าขายในร้าน) -->
+        <div id="stockShelfModal" class="modal-overlay" style="display: none;">
+            <div class="modal-window modal-compact">
+                <div class="modal-header">
+                    <h2 id="stockShelfTitle">จัดวางสินค้าบนชั้นวางขาย</h2>
+                    <button class="btn-close" onclick="Game.closeAllModals()">✕</button>
+                </div>
+                <div class="modal-body">
+                    <p class="modal-desc">เลือกผลผลิตหรือสินค้าแปรรูปจากกระเป๋าเพื่อนำมาวางขายให้ลูกค้า NPC เข้ามาซื้อ
+                    </p>
+                    <div id="shelfInventoryList" class="shelf-inv-list"></div>
+                    <div id="shelfActionArea"
+                        style="display: none; margin-top: 12px; border-top: 2px solid #d4a373; padding-top: 10px;">
+                        <div class="shelf-input-row">
+                            <label>จำนวนที่จะวางขาย:</label>
+                            <input type="number" id="shelfStockCount" min="1" max="99" value="5" class="num-input">
+                        </div>
+                        <div class="shelf-input-row" style="margin-top: 6px;">
+                            <label>ราคาขายต่อชิ้น (G):</label>
+                            <input type="number" id="shelfStockPrice" min="1" value="25" class="num-input">
+                        </div>
+                        <div class="modal-actions" style="margin-top: 14px;">
+                            <button class="btn-primary" onclick="Game.confirmStockShelf()">วางสินค้าบนชั้น</button>
+                            <button class="btn-secondary" onclick="Game.clearShelf()">เคลียร์ชั้นวาง</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- MODAL: Hired Farm Helpers & Hunters (ศูนย์จ้างงานผู้ดูแลฟาร์ม & ป้อมนายพราน) -->
+        <div id="hunterModal" class="modal-overlay" style="display: none;">
+            <div class="modal-window">
+                <div class="modal-header">
+                    <h2>ศูนย์จ้างงานคนดูแลสวน & ป้อมนายพราน</h2>
+                    <button class="btn-close" onclick="Game.closeAllModals()">✕</button>
+                </div>
+                <div class="modal-body">
+                    <p class="modal-desc">จ้างคนดูแลสวนมารดน้ำและเก็บเกี่ยวพืชผลที่สุกแล้วให้อัตโนมัติ
+                        พร้อมจ้างนายพรานคอยยิงสกัดแมลงปีศาจ</p>
+
+                    <h3 style="color: #451a03; font-size: 13px; margin: 8px 0 6px; font-weight: 700;">‍ คนดูแลสวน &
+                        ผู้ช่วยเก็บเกี่ยวพืชผล</h3>
+                    <div id="gardenersList" class="items-list-grid"></div>
+
+                    <h3 style="color: #451a03; font-size: 13px; margin: 14px 0 6px; font-weight: 700;">
+                        นายพรานคุ้มกันฟาร์ม (ยิงสกัดแมลงปีศาจ)</h3>
+                    <div id="huntersList" class="items-list-grid"></div>
+
+                    <div class="modal-actions"
+                        style="margin-top: 15px; border-top: 2px solid #d4a373; padding-top: 12px; justify-content: space-between; align-items: center;">
+                        <button class="btn-secondary" style="background: #991b1b; border-color: #7f1d1d;"
+                            onclick="Game.triggerBugWave(true)"> เรียกฝูงแมลงปีศาจมาทดสอบยิง</button>
+                        <button class="btn-secondary" onclick="Game.closeAllModals()">ปิดหน้าต่าง</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL: Quest Log (สมุดภารกิจเนื้อเรื่อง) -->
+        <div id="questModal" class="modal-overlay" style="display: none;">
+            <div class="modal-window">
+                <div class="modal-header">
+                    <h2> สมุดภารกิจเนื้อเรื่อง (Quest Log)</h2>
+                    <button class="btn-close" onclick="Game.closeAllModals()">✕</button>
+                </div>
+                <div class="modal-body">
+                    <p class="modal-desc">ติดตามเควสต์เนื้อเรื่อง ผจญภัยสู่ผืนป่าโบราณ และกอบกู้แผ่นดินจากจอมอสูร</p>
+                    <div id="questsList"></div>
+                    <div class="modal-actions"
+                        style="margin-top: 15px; border-top: 2px solid #d4a373; padding-top: 12px; justify-content: flex-end;">
+                        <button class="btn-secondary" onclick="Game.closeAllModals()">ปิดหน้าต่าง</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL: Blacksmith Forge (โรงตีเหล็กนักผจญภัย) -->
+        <div id="forgeModal" class="modal-overlay" style="display: none;">
+            <div class="modal-window">
+                <div class="modal-header">
+                    <h2> โรงตีเหล็กสรรพาวุธ คาเอล</h2>
+                    <button class="btn-close" onclick="Game.closeAllModals()">✕</button>
+                </div>
+                <div class="modal-body">
+                    <p class="modal-desc">นำแร่เหล็ก เขี้ยวสัตว์ และไอเทมดรอปจากมอนสเตอร์มาหลอมเป็นอาวุธระดับตำนาน</p>
+                    <div id="forgeList" class="items-list-grid"></div>
+                    <div class="modal-actions"
+                        style="margin-top: 15px; border-top: 2px solid #d4a373; padding-top: 12px; justify-content: flex-end;">
+                        <button class="btn-secondary" onclick="Game.closeAllModals()">ปิดหน้าต่าง</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL: Controls & Guide (ปุ่มควบคุม & วิธีเล่น) -->
+
+        <div id="controlsModal" class="modal-overlay" style="display: none;">
+            <div class="modal-window modal-compact">
+                <div class="modal-header">
+                    <h2>⌨ ปุ่มควบคุม & วิธีเล่น</h2>
+                    <button class="btn-close" onclick="Game.closeAllModals()">✕</button>
+                </div>
+                <div class="modal-body">
+                    <div class="controls-guide-grid">
+                        <div class="control-key-card">
+                            <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>เดินสำรวจตัวละคร</span></div>
+                        <div class="control-key-card"><kbd>Space</kbd> / คลิก<span>โจมตี / เครื่องมือ</span></div>
+                        <div class="control-key-card"><kbd>E</kbd><span>คุย / เก็บพืชผล / สำรวจ</span></div>
+                        <div class="control-key-card"><kbd>1</kbd>-<kbd>9</kbd>,
+                            <kbd>0</kbd><span>เลือกช่องไอเทมแถบลัด</span></div>
+                        <div class="control-key-card"><kbd>Q</kbd><span>สมุดภารกิจเนื้อเรื่อง</span></div>
+                        <div class="control-key-card"><kbd>I</kbd><span>เปิดกระเป๋าสัมภาระ</span></div>
+                        <div class="control-key-card"><kbd>C</kbd><span>คราฟต์ & ทำอาหาร</span></div>
+                        <div class="control-key-card"><kbd>M</kbd><span>ร้านค้าชุมชน</span></div>
+                        <div class="control-key-card"><kbd>H</kbd><span>คนดูแลฟาร์ม & นายพราน</span></div>
+                        <div class="control-key-card"><kbd>Esc</kbd><span>ปิดหน้าต่างทั้งหมด</span></div>
+                    </div>
+                    <div class="modal-actions" style="margin-top: 14px; justify-content: flex-end;">
+                        <button class="btn-primary" onclick="Game.closeAllModals()">เข้าใจแล้ว</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL: Google Sign-In & Profile Selection (เข้าสู่ระบบด้วย Google) -->
+        <div id="loginModal" class="modal-overlay" style="display: none;">
+            <div class="modal-window modal-compact">
+                <div class="modal-header">
+                    <h2> เข้าสู่ระบบ ฟาร์มสุขใจ</h2>
+                    <button class="btn-close" onclick="Game.closeAllModals()">✕</button>
+                </div>
+                <div class="modal-body text-center">
+                    <p class="modal-desc">
+                        เข้าสู่ระบบด้วย Google เพื่อบันทึกความคืบหน้า พืชผล และเหรียญทองแยกตามบัญชีของคุณ (ข้อมูล User ใคร User มัน ไม่ปนกัน)
+                    </p>
+
+                    <!-- Google Official GSI Button -->
+                    <div class="login-google-box">
+                        <div id="googleSignInBtnContainer" style="display: flex; justify-content: center; margin: 15px 0;"></div>
+                    </div>
+
+                    <div class="login-divider">
+                        <span>หรือเลือกเล่นแบบออฟไลน์ / เครื่องนี้</span>
+                    </div>
+
+                    <div class="login-alt-actions">
+                        <button class="btn-primary btn-block" style="margin-bottom: 8px;" onclick="Auth.createNewNamedProfile()">
+                            <span></span> สร้างโปรไฟล์ชาวสวนใหม่
+                        </button>
+                        <button class="btn-secondary btn-block" onclick="Auth.loginAs(Auth.createGuestUser()); Game.closeAllModals();">
+                            <span></span> เล่นในฐานะ Guest (ออฟไลน์)
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL: Account & Cloud Save Management (จัดการโปรไฟล์ & คลาวด์เซฟ) -->
+        <div id="accountModal" class="modal-overlay" style="display: none;">
+            <div class="modal-window">
+                <div class="modal-header">
+                    <h2> บัญชีผู้เล่น & การบันทึกข้อมูลฟาร์ม</h2>
+                    <button class="btn-close" onclick="Game.closeAllModals()">✕</button>
+                </div>
+                <div id="accountModalBody" class="modal-body">
+                    <!-- Populated dynamically by Auth.renderAccountModal() -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Scripts -->
+    <script src="gamedata.js"></script>
+    <script src="sprites.js"></script>
+    <script src="audio.js"></script>
+    <script src="auth.js"></script>
+    <script src="game.js"></script>
+</body>
+
+</html>

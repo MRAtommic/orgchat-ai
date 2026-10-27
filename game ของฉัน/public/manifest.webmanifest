@@ -1,0 +1,37 @@
+{
+  "name": "ฟาร์มสุขใจ - Happy Farm 2D (Stardew Style)",
+  "short_name": "ฟาร์มสุขใจ",
+  "description": "เกมปลูกผักทำฟาร์มสไตล์เรโทร 16-บิต พร้อมระบบต่อสู้และจัดการร้านค้า",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#1a1612",
+  "theme_color": "#1a1612",
+  "categories": ["games", "entertainment", "simulation"],
+  "icons": [
+    {
+      "src": "./pwa-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./pwa-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "./favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
