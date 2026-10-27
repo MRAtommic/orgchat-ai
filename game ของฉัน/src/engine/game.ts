@@ -251,6 +251,9 @@ export const Game: any = {
 // ========================================================
 
 Game.init = function() {
+    if (this._initialized) return;
+    this._initialized = true;
+
     this.canvas = document.getElementById('gameCanvas');
     this.ctx = this.canvas.getContext('2d');
     this.ctx.imageSmoothingEnabled = false;
@@ -275,6 +278,7 @@ Game.init = function() {
     this.initAmbientCreatures();
     this.setupInputListeners();
     this.setupTouchControls();
+    this.setupSkillJoystickControls();
 
     // Multi-User Profile & Cloud/Local Save System
     if (typeof Auth !== 'undefined') {
@@ -2687,6 +2691,9 @@ Game.isCombatScene = function() {
 // ========================================================
 
 Game.setupInputListeners = function() {
+    if (this._inputListenersInitialized) return;
+    this._inputListenersInitialized = true;
+
     window.addEventListener('keydown', (e) => {
         // Trigger BGM on first player interaction
         SoundEngine.init();
@@ -9218,6 +9225,9 @@ Game.drawDayNightLighting = function() {
 
 
 Game.spawnParticles = function(x, y, color, count = 8) {
+    if (this.particles.length > 150) {
+        this.particles.splice(0, count);
+    }
     for (let i = 0; i < count; i++) {
         this.particles.push({
             x: x, y: y,
@@ -9247,6 +9257,9 @@ Game.drawParticles = function() {
 
 
 Game.addFloatingText = function(text, worldX, worldY, color = '#ffffff') {
+    if (this.floatingTexts.length > 35) {
+        this.floatingTexts.shift();
+    }
     if (typeof text === 'string') {
         text = text.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/ug, '').trim();
     }
@@ -20581,7 +20594,11 @@ Game.updatePlayerSkills = function(dt) {
         }
     }
 
-    this.renderActiveSkillBar();
+    this._skillBarTimer = (this._skillBarTimer || 0) + dt;
+    if (this._skillBarTimer >= 100) {
+        this._skillBarTimer = 0;
+        this.renderActiveSkillBar();
+    }
 };
 
 // Render HUD Active Skill Bar
@@ -20645,7 +20662,6 @@ Game.renderActiveSkillBar = function() {
     if (this._lastSkillBarHtml !== html) {
         this._lastSkillBarHtml = html;
         container.innerHTML = html;
-        this.setupSkillJoystickControls();
     }
 
     // Update Mobile Touch Skills Row [Z, X, C, V]
@@ -20685,19 +20701,13 @@ Game.renderActiveSkillBar = function() {
             this._lastTouchSkillsHtml = touchHtml;
             touchContainer.innerHTML = touchHtml;
         }
-
-        this.setupSkillJoystickControls();
     }
 };
 
 // Skill Joystick Aiming Controls (Mobile Drag to Aim & Desktop Mouse Drag Aim with ROV Cancel)
 Game.setupSkillJoystickControls = function() {
-    const containers = [
-        document.getElementById('activeSkillSlots'),
-        document.getElementById('touchSkillsRow')
-    ].filter(Boolean) as HTMLElement[];
-
-    if (containers.length === 0) return;
+    if (this._skillJoystickInitialized) return;
+    this._skillJoystickInitialized = true;
 
     let activeTouchId: number | null = null;
     let startX = 0;
@@ -20731,32 +20741,27 @@ Game.setupSkillJoystickControls = function() {
         }
     };
 
-    containers.forEach(container => {
-        if ((container as any)._joystickAttached) return;
-        (container as any)._joystickAttached = true;
+    // Global Delegated Touchstart for Skill Buttons
+    document.addEventListener('touchstart', (e: TouchEvent) => {
+        const slotEl = (e.target as HTMLElement)?.closest?.('.active-skill-slot, .touch-skill-btn') as HTMLElement;
+        if (!slotEl) return;
+        const slot = parseInt(slotEl.getAttribute('data-slot') || '0', 10);
+        if (!slot) return;
 
-        // --- Touch Drag / Aim Joystick ---
-        container.addEventListener('touchstart', (e: TouchEvent) => {
-            const slotEl = (e.target as HTMLElement).closest('.active-skill-slot, .touch-skill-btn') as HTMLElement;
-            if (!slotEl) return;
-            const slot = parseInt(slotEl.getAttribute('data-slot') || '0', 10);
-            if (!slot) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const touch = e.changedTouches[0];
+        activeTouchId = touch.identifier;
+        startX = touch.clientX;
+        startY = touch.clientY;
+        activeSlot = slot;
+        activeSlotEl = slotEl;
+        isDraggingAim = false;
+        this.activeSkillCancelled = false;
 
-            e.preventDefault();
-            e.stopPropagation();
-            const touch = e.changedTouches[0];
-            activeTouchId = touch.identifier;
-            startX = touch.clientX;
-            startY = touch.clientY;
-            activeSlot = slot;
-            activeSlotEl = slotEl;
-            isDraggingAim = false;
-            this.activeSkillCancelled = false;
-
-            SoundEngine.init();
-            if (SoundEngine.isBgmOn()) SoundEngine.startBgm();
-        }, { passive: false });
-    });
+        SoundEngine.init();
+        if (SoundEngine.isBgmOn()) SoundEngine.startBgm();
+    }, { passive: false });
 
     window.addEventListener('touchmove', (e: TouchEvent) => {
         if (activeTouchId === null || !activeSlotEl) return;
@@ -20839,23 +20844,21 @@ Game.setupSkillJoystickControls = function() {
     window.addEventListener('touchend', endSkillTouch, { passive: false });
     window.addEventListener('touchcancel', endSkillTouch, { passive: false });
 
-    // --- Desktop Mouse Drag to Aim or Click ---
+    // Global Delegated Mousedown for Desktop Mouse Drag
     let isMouseDown = false;
-    containers.forEach(container => {
-        container.addEventListener('mousedown', (e: MouseEvent) => {
-            const slotEl = (e.target as HTMLElement).closest('.active-skill-slot, .touch-skill-btn') as HTMLElement;
-            if (!slotEl) return;
-            const slot = parseInt(slotEl.getAttribute('data-slot') || '0', 10);
-            if (!slot) return;
+    document.addEventListener('mousedown', (e: MouseEvent) => {
+        const slotEl = (e.target as HTMLElement)?.closest?.('.active-skill-slot, .touch-skill-btn') as HTMLElement;
+        if (!slotEl) return;
+        const slot = parseInt(slotEl.getAttribute('data-slot') || '0', 10);
+        if (!slot) return;
 
-            isMouseDown = true;
-            startX = e.clientX;
-            startY = e.clientY;
-            activeSlot = slot;
-            activeSlotEl = slotEl;
-            isDraggingAim = false;
-            this.activeSkillCancelled = false;
-        });
+        isMouseDown = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        activeSlot = slot;
+        activeSlotEl = slotEl;
+        isDraggingAim = false;
+        this.activeSkillCancelled = false;
     });
 
     window.addEventListener('mousemove', (e: MouseEvent) => {
