@@ -387,6 +387,7 @@ Game.generateAllScenes = function() {
     this.scenes.greenhouse = this.generateGreenhouseMap();
     this.scenes.farmCave = this.generateFarmCaveMap();
     this.scenes.island = this.generateIslandMap();
+    this.scenes.pvp_arena = this.generatePvPArenaMap();
 
     // Set default scene
     this.loadScene('farm');
@@ -2548,7 +2549,8 @@ Game.switchScene = function(targetScene, targetTileX, targetTileY) {
         farmCave: { title: 'ถ้ำใต้ฟาร์ม (Farm Cave)', subtitle: 'แหล่งเพาะเห็ดและผลไม้อบอุ่น', sound: () => SoundEngine.miningHit() },
         greenhouse: { title: 'เรือนกระจกเกษตร (Greenhouse)', subtitle: 'ปลูกพืชผลได้ทุกฤดูกาลตลอดทั้งปี', sound: () => SoundEngine.door() },
         spire: { title: 'หอคอยผลึกมิติไร้สิ้นสุด (Infinite Crystal Spire)', subtitle: 'ท้าทายศัตรูไร้ขอบเขต & สะสมเศษเสี้ยวหอคอย', sound: () => SoundEngine.spirePortal() },
-        island_volcano: { title: 'ดันเจี้ยนภูเขาไฟเกาะสมบัติ (Volcano Dungeon)', subtitle: 'สำรวจ 10 ชั้น ลาวาเดือด & แท่นหลอมมังกรโบราณ', sound: () => SoundEngine.bossDragonBreath() }
+        island_volcano: { title: 'ดันเจี้ยนภูเขาไฟเกาะสมบัติ (Volcano Dungeon)', subtitle: 'สำรวจ 10 ชั้น ลาวาเดือด & แท่นหลอมมังกรโบราณ', sound: () => SoundEngine.bossDragonBreath() },
+        pvp_arena: { title: 'ลานประลองยุทธ์จอมราชันย์ (PvP Colosseum Arena)', subtitle: 'สนามประลองฝีมือ 1v1 & ตะลุมบอนออนไลน์ ปลอดภัยไร้การสูญเสีย', sound: () => SoundEngine.alarm() }
     };
 
 
@@ -2635,6 +2637,7 @@ Game.updateTransition = function(dt) {
             else if (sf.targetScene === 'spire') { /* keep spire monsters in this.worldMonsters */ }
             else if (sf.targetScene === 'island_volcano') { /* keep volcano monsters & boss in this.worldMonsters */ }
             else if (sf.targetScene === 'island') this.initIslandScene();
+            else if (sf.targetScene === 'pvp_arena') this.initPvPArenaScene();
             else {
                 // Non-combat zones: clean up any leftover monsters or bosses
                 this.worldMonsters = [];
@@ -2865,6 +2868,8 @@ Game.setupInputListeners = function() {
             const m = document.getElementById('activeSkillModal');
             if (m && m.style.display !== 'none') this.closeSkillTreeModal();
             else this.openSkillTreeModal();
+        } else if (e.code === 'KeyO') {
+            this.toggleMultiplayerModal();
         } else if (e.code === 'KeyR') {
             this.toggleMount();
         } else if (e.code === 'KeyT') {
@@ -3171,6 +3176,17 @@ Game.updatePlayer = function(dt) {
 
     let dx = 0;
     let dy = 0;
+
+    // Multiplayer: Smoothly interpolate remote players positions
+    if (this.remotePlayers) {
+        for (const pid in this.remotePlayers) {
+            const rp = this.remotePlayers[pid];
+            if (!rp) continue;
+            if (rp.targetX !== undefined) rp.x += (rp.targetX - rp.x) * 0.35;
+            if (rp.targetY !== undefined) rp.y += (rp.targetY - rp.y) * 0.35;
+            if (rp.chatTimer && rp.chatTimer > 0) rp.chatTimer -= dt;
+        }
+    }
 
     // Smooth 360-degree analog movement for mobile virtual joystick
     if (this.player.joystickMove) {
@@ -5657,6 +5673,297 @@ Game.toggleQuestTracker = function() {
     if (arrow) arrow.textContent = isHidden ? '▼' : '▶';
 };
 
+// ========================================================
+//  MULTIPLAYER & PVP COLISEUM ARENA SYSTEM
+// ========================================================
+
+Game.generatePvPArenaMap = function() {
+    const width = 34;
+    const height = 24;
+    const map = [];
+
+    for (let y = 0; y < height; y++) {
+        const row = [];
+        for (let x = 0; x < width; x++) {
+            const isBorder = (x <= 1 || x >= width - 2 || y <= 1 || y >= height - 2);
+            const isExit = (x >= 15 && x <= 18 && y >= height - 2);
+            const isCenterColosseum = (Math.hypot(x - 17, y - 12) <= 8.5);
+
+            let type = 'cobblestone';
+            let solid = isBorder && !isExit;
+            let interactable = isExit ? 'exit_pvp_arena' : null;
+
+            if (isBorder && !isExit) {
+                type = 'stoneWall';
+            } else if (isCenterColosseum) {
+                type = 'stone_path';
+            } else if (isExit) {
+                type = 'doorMat';
+            }
+
+            row.push({
+                x, y,
+                type,
+                solid,
+                interactable
+            });
+        }
+        map.push(row);
+    }
+
+    // Dueling Bell / Gong at top center (x: 17, y: 3)
+    if (map[3] && map[3][17]) {
+        map[3][17].type = 'bell';
+        map[3][17].solid = true;
+        map[3][17].interactable = 'pvp_bell';
+    }
+
+    // Corner Torches
+    const torches = [[4, 4], [29, 4], [4, 19], [29, 19], [11, 4], [23, 4]];
+    torches.forEach(([tx, ty]) => {
+        if (map[ty] && map[ty][tx]) {
+            map[ty][tx].solid = true;
+            map[ty][tx].type = 'lantern';
+        }
+    });
+
+    return { mapWidth: width, mapHeight: height, map };
+};
+
+Game.initPvPArenaScene = function() {
+    this.worldMonsters = [];
+    this.boss = null;
+    this.bossTelegraphs = [];
+    this.bossGroundHazards = [];
+    this.bossDashGhosts = [];
+    this.bossShockwaves = [];
+};
+
+Game.travelToPvPArena = function() {
+    this.closeAllModals();
+    SoundEngine.alarm();
+    this.switchScene('pvp_arena', 17, 18);
+    this.addFloatingText('เข้าสู่ลานประลองยุทธ์จอมราชันย์!', this.player.x, this.player.y - 25, '#fde047');
+};
+
+Game.drawRemotePlayer = function(rp: any) {
+    const rx = Math.round(rp.x - this.camera.x);
+    const ry = Math.round(rp.y - this.camera.y);
+
+    // 1. Contact shadow
+    this.ctx.fillStyle = 'rgba(15, 23, 42, 0.32)';
+    this.ctx.beginPath();
+    this.ctx.ellipse(rx + 12, ry + 27, 9, 4, 0, 0, Math.PI * 2);
+    this.ctx.fill();
+
+    // 2. Character Sprite
+    const dir = rp.direction || 'down';
+    const frame = rp.frame || 0;
+    const spr = SPRITES.player?.[dir]?.[frame] || SPRITES.player?.down?.[0];
+    if (spr) {
+        this.ctx.drawImage(spr, rx, ry);
+    }
+
+    // 3. Remote Slash Animation
+    if (rp.isAttacking) {
+        this.ctx.save();
+        this.ctx.translate(rx + 12, ry + 14);
+        let ang = 0;
+        if (dir === 'right') ang = 0;
+        else if (dir === 'down') ang = Math.PI / 2;
+        else if (dir === 'left') ang = Math.PI;
+        else ang = -Math.PI / 2;
+        this.ctx.rotate(ang);
+        this.ctx.strokeStyle = rp.comboStep === 3 ? '#facc15' : '#38bdf8';
+        this.ctx.lineWidth = rp.comboStep === 3 ? 5 : 3;
+        this.ctx.beginPath();
+        this.ctx.arc(14, 0, 24, -Math.PI / 3, Math.PI / 3);
+        this.ctx.stroke();
+        this.ctx.restore();
+    }
+
+    // 4. Overhead Player Name & HP Bar
+    const isPvP = (this.currentScene === 'pvp_arena' || this.isPvPEnabled);
+    const nameColor = isPvP ? '#f87171' : '#38bdf8';
+    this.ctx.font = 'bold 9px "Prompt", sans-serif';
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
+    const tw = this.ctx.measureText(rp.name).width;
+    this.ctx.fillRect(rx + 12 - tw / 2 - 4, ry - 18, tw + 8, 12);
+    this.ctx.fillStyle = nameColor;
+    this.ctx.fillText(rp.name, rx + 12, ry - 9);
+
+    // Mini HP Bar
+    const hpRatio = Math.max(0, Math.min(1, (rp.hp || 100) / (rp.maxHp || 100)));
+    this.ctx.fillStyle = '#0f172a';
+    this.ctx.fillRect(rx + 12 - 14, ry - 5, 28, 3.5);
+    this.ctx.fillStyle = hpRatio > 0.4 ? (isPvP ? '#ef4444' : '#22c55e') : '#e11d48';
+    this.ctx.fillRect(rx + 12 - 14, ry - 5, Math.round(28 * hpRatio), 3.5);
+    this.ctx.textAlign = 'left';
+
+    // 5. Chat Bubble (if chatting)
+    if (rp.chatMsg && rp.chatTimer && rp.chatTimer > 0) {
+        this.ctx.font = 'bold 9px "Prompt", sans-serif';
+        const msgW = this.ctx.measureText(rp.chatMsg).width;
+        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+        this.ctx.strokeStyle = '#0f172a';
+        this.ctx.lineWidth = 1;
+        this.ctx.fillRect(rx + 12 - msgW / 2 - 6, ry - 34, msgW + 12, 14);
+        this.ctx.strokeRect(rx + 12 - msgW / 2 - 6, ry - 34, msgW + 12, 14);
+        this.ctx.fillStyle = '#0f172a';
+        this.ctx.fillText(rp.chatMsg, rx + 12 - msgW / 2, ry - 24);
+    }
+};
+
+Game.receivePvPHit = function(hitData: any, attackerName: string) {
+    if (!this.player || this.player.isDead) return;
+
+    let dmg = hitData.damage || 20;
+
+    // Check Guard Stance
+    if (this.player.isGuarding) {
+        dmg = Math.round(dmg * 0.4);
+        if (typeof SoundEngine.shieldBlock === 'function') SoundEngine.shieldBlock();
+        else SoundEngine.hit();
+        this.addFloatingText('★ ปัดป้องการ์ด!', this.player.x, this.player.y - 15, '#fbbf24');
+    } else {
+        if (hitData.isCrit) SoundEngine.critHit(); else SoundEngine.hit();
+    }
+
+    this.player.hp = Math.max(0, this.player.hp - dmg);
+    this.player.flashTimer = 180;
+    this.triggerScreenShake(hitData.isCrit ? 6.5 : 4.0, 150);
+    this.triggerHitstop(45);
+    this.spawnParticles(this.player.x + 12, this.player.y + 14, '#ef4444', 12);
+    this.addFloatingText((hitData.isCrit ? 'CRIT -' : '-') + dmg + ' (' + attackerName + ')', this.player.x, this.player.y - 18, '#ef4444');
+    this.updateHpHUD();
+
+    if (this.player.hp <= 0) {
+        if (typeof (window as any).Multiplayer !== 'undefined') {
+            (window as any).Multiplayer.sendPvPDefeat(hitData.attackerId, attackerName);
+        }
+        this.addFloatingText('★ คุณพ่ายแพ้การประลองยุทธ์! ★', this.player.x - 35, this.player.y - 25, '#f87171');
+        SoundEngine.monsterDie();
+        setTimeout(() => {
+            if (this.player) {
+                this.player.hp = this.player.maxHp || 100;
+                if (this.currentScene === 'pvp_arena') {
+                    this.player.x = 6 * this.tileSize;
+                    this.player.y = 12 * this.tileSize;
+                }
+                this.updateHpHUD();
+                this.addFloatingText('ฟื้นคืนชีพพร้อมสู้ต่อ!', this.player.x, this.player.y - 15, '#4ade80');
+            }
+        }, 1500);
+    }
+};
+
+Game.openMultiplayerModal = function() {
+    this.closeAllModals();
+    this.activeModal = 'multiplayerModal';
+    const m = document.getElementById('multiplayerModal');
+    if (m) {
+        m.style.display = 'flex';
+        if (typeof (window as any).Multiplayer !== 'undefined') {
+            (window as any).Multiplayer.updateUI();
+        }
+    }
+};
+
+Game.toggleMultiplayerModal = function() {
+    const m = document.getElementById('multiplayerModal');
+    if (m && m.style.display !== 'none') {
+        this.closeAllModals();
+    } else {
+        this.openMultiplayerModal();
+    }
+};
+
+Game.switchMpTab = function(tabName: 'host' | 'join' | 'arena') {
+    const tabHost = document.getElementById('tabMpHst');
+    const tabJoin = document.getElementById('tabMpJoin');
+    const tabArena = document.getElementById('tabMpArena');
+
+    const contentHost = document.getElementById('mpTabContentHost');
+    const contentJoin = document.getElementById('mpTabContentJoin');
+    const contentArena = document.getElementById('mpTabContentArena');
+
+    if (tabHost) tabHost.className = 'mp-tab-btn' + (tabName === 'host' ? ' active' : '');
+    if (tabJoin) tabJoin.className = 'mp-tab-btn' + (tabName === 'join' ? ' active' : '');
+    if (tabArena) tabArena.className = 'mp-tab-btn' + (tabName === 'arena' ? ' active' : '');
+
+    if (contentHost) contentHost.style.display = tabName === 'host' ? 'block' : 'none';
+    if (contentJoin) contentJoin.style.display = tabName === 'join' ? 'block' : 'none';
+    if (contentArena) contentArena.style.display = tabName === 'arena' ? 'block' : 'none';
+};
+
+Game.startHostingRoom = async function() {
+    if (typeof (window as any).Multiplayer === 'undefined') return;
+    const res = await (window as any).Multiplayer.hostRoom();
+    if (res.success) {
+        this.addFloatingText('★ เปิดโลกออนไลน์สำเร็จ! รหัสห้อง: ' + res.code, this.player.x - 20, this.player.y - 25, '#4ade80');
+        SoundEngine.questComplete();
+    }
+};
+
+Game.joinFriendRoom = async function() {
+    const input = document.getElementById('mpJoinCodeInput') as HTMLInputElement;
+    const status = document.getElementById('mpJoinStatus');
+    if (!input) return;
+    const code = input.value.trim();
+    if (!code) {
+        if (status) {
+            status.textContent = 'กรุณากรอกรหัสห้อง 6 หลัก';
+            status.style.color = '#ef4444';
+        }
+        return;
+    }
+    if (status) {
+        status.textContent = 'กำลังเชื่อมต่อไปยังห้อง ' + code + '...';
+        status.style.color = '#38bdf8';
+    }
+    if (typeof (window as any).Multiplayer === 'undefined') return;
+    const res = await (window as any).Multiplayer.joinRoom(code);
+    if (res.success) {
+        if (status) {
+            status.textContent = 'เชื่อมต่อสำเร็จ! เข้าสู่โลกของห้อง ' + code;
+            status.style.color = '#4ade80';
+        }
+        this.addFloatingText('★ เชื่อมต่อสำเร็จ! เข้าสู่ห้อง ' + code, this.player.x - 20, this.player.y - 25, '#4ade80');
+        SoundEngine.bell();
+    } else {
+        if (status) {
+            status.textContent = res.error || 'เชื่อมต่อล้มเหลว';
+            status.style.color = '#ef4444';
+        }
+    }
+};
+
+Game.copyRoomCode = function() {
+    const code = (window as any).Multiplayer?.roomCode;
+    if (!code) {
+        this.addFloatingText('ยังไม่ได้เปิดห้องออนไลน์!', this.player.x, this.player.y - 15, '#f87171');
+        return;
+    }
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(code).then(() => {
+            this.addFloatingText('คัดลอกรหัสห้อง ' + code + ' แล้ว!', this.player.x, this.player.y - 15, '#4ade80');
+            SoundEngine.click();
+        });
+    } else {
+        this.addFloatingText('รหัสห้องคือ: ' + code, this.player.x, this.player.y - 15, '#fde047');
+    }
+};
+
+Game.sendMultiplayerChat = function() {
+    const input = document.getElementById('mpChatInput') as HTMLInputElement;
+    if (!input || !input.value.trim()) return;
+    if (typeof (window as any).Multiplayer !== 'undefined') {
+        (window as any).Multiplayer.sendChat(input.value.trim());
+    }
+    input.value = '';
+};
+
 Game.harvestCrop = function(tx, ty) {
     const tile = this.map[ty][tx];
     if (!tile.crop || !tile.crop.ready) return;
@@ -5813,15 +6120,30 @@ Game.updateDroppedItems = function(dt) {
                 }
             }
 
-            // Normal drops auto-magnet to player. Manual drops NEVER auto-magnet (require click or pressing E!)
+            // Normal drops auto-magnet to player only IF player has space in inventory. Manual drops NEVER auto-magnet (require click or pressing E!)
             if (item.timer > 250 && !item.manualPickup) {
                 const distToPlayer = Math.hypot((this.player.x + 12) - item.x, (this.player.y + 16) - item.y);
                 const magnetDist = (typeof this.hasRing === 'function' && this.hasRing('ring_magnet')) ? 240 : 110;
                 if (distToPlayer < magnetDist) {
-                    item.magnet = true;
+                    const canFit = this.canItemFitInInventory(item.id, item.count || 1, (item as any).quality || 0);
+                    if (canFit) {
+                        item.magnet = true;
+                    }
                 }
             }
         } else {
+            // Check if player's inventory became full mid-flight
+            const canFit = this.canItemFitInInventory(item.id, item.count || 1, (item as any).quality || 0);
+            if (!canFit) {
+                // Cancel magnet immediately and let it settle peacefully on the ground
+                item.magnet = false;
+                item.vx = 0;
+                item.vy = 0;
+                item.vz = 0;
+                item.z = 0;
+                continue;
+            }
+
             const dx = (this.player.x + 12) - item.x;
             const dy = (this.player.y + 16) - item.y;
             const dist = Math.hypot(dx, dy);
@@ -5831,13 +6153,20 @@ Game.updateDroppedItems = function(dt) {
                 item.x += (dx / dist) * pullSpeed;
                 item.y += (dy / dist) * pullSpeed;
             } else {
-                const added = this.addItemToInventory(item.id, item.count, item.name, (item as any).quality || 0);
+                const added = this.addItemToInventory(item.id, item.count, item.name, (item as any).quality || 0, true);
                 if (added) {
                     SoundEngine.itemMagnetPickup();
                     this.spawnParticles(item.x, item.y, '#facc15', 6);
                     this.addFloatingText('+' + item.count + ' ' + (item.name || item.id), this.player.x, this.player.y - 18, '#38bdf8');
+                    this.droppedItems.splice(i, 1);
+                } else {
+                    // Cannot fit in inventory: cancel magnet and let it rest on the ground
+                    item.magnet = false;
+                    item.vx = 0;
+                    item.vy = 0;
+                    item.vz = 0;
+                    item.z = 0;
                 }
-                this.droppedItems.splice(i, 1);
             }
         }
     }
@@ -5861,14 +6190,18 @@ Game.findNearbyDroppedItem = function(x: number, y: number, maxDist: number = 24
 
 Game.pickupDroppedItem = function(item: any) {
     if (!item) return false;
-    const fits = this.canItemFitInInventory(item.id, item.count || 1);
+    const fits = this.canItemFitInInventory(item.id, item.count || 1, item.quality || 0);
     if (!fits) {
-        SoundEngine.hit();
-        this.addFloatingText('กระเป๋าเต็ม! จัดช่องเก็บของก่อน', this.player.x, this.player.y - 18, '#ef4444');
+        const now = performance.now();
+        if (!this._lastFullInventoryWarning || now - this._lastFullInventoryWarning > 1500) {
+            this._lastFullInventoryWarning = now;
+            SoundEngine.hit();
+            this.addFloatingText('กระเป๋าเต็ม! จัดช่องเก็บของก่อน', this.player.x, this.player.y - 18, '#ef4444');
+        }
         return false;
     }
 
-    const added = this.addItemToInventory(item.id, item.count || 1, item.name || item.id, item.quality || 0);
+    const added = this.addItemToInventory(item.id, item.count || 1, item.name || item.id, item.quality || 0, true);
     if (added) {
         const idx = this.droppedItems.indexOf(item);
         if (idx !== -1) {
@@ -6251,6 +6584,19 @@ Game.handleTileInteract = function(type, tx, ty) {
         this.harvestMushroomBox(tx, ty);
     } else if (type === 'cave_fruit_drop') {
         this.pickupCaveFruit(tx, ty);
+    } else if (type === 'exit_pvp_arena') {
+        this.switchScene('village', 30, 25);
+        SoundEngine.door();
+        this.addFloatingText('ออกจากลานประลองยุทธ์กลับสู่หมู่บ้าน', this.player.x, this.player.y - 15, '#94a3b8');
+    } else if (type === 'pvp_bell') {
+        this.player.hp = this.player.maxHp || 100;
+        this.player.energy = this.player.maxEnergy || 100;
+        this.updateHpHUD();
+        this.updateEnergyHUD();
+        SoundEngine.bell();
+        this.triggerScreenShake(4.0, 150);
+        this.spawnParticles(this.player.x + 12, this.player.y + 14, '#fde047', 25);
+        this.addFloatingText('★ ระฆังศึกดังก้อง! ฟื้นฟู HP/Energy เต็มเปี่ยม! ★', this.player.x - 40, this.player.y - 25, '#fde047');
     } else if (type === 'sailboat_pier') {
         if (!this.player.sailboatRepaired) {
             this.openSailboatRepairModal();
@@ -7032,15 +7378,27 @@ Game.campOut = function() {
 // 8. ECONOMY, INVENTORY & XP
 // ========================================================
 
-Game.canItemFitInInventory = function(id: string, count: number = 1, ingredientsToDeduct?: Record<string, number>): boolean {
+Game.canItemFitInInventory = function(id: string, count: number = 1, qualityOrIngredients?: number | Record<string, number>, ingredientsToDeduct?: Record<string, number>): boolean {
+    let itemQuality = 0;
+    let deductMap: Record<string, number> | undefined = undefined;
+
+    if (typeof qualityOrIngredients === 'number') {
+        itemQuality = qualityOrIngredients;
+        deductMap = ingredientsToDeduct;
+    } else if (typeof qualityOrIngredients === 'object' && qualityOrIngredients !== null) {
+        deductMap = qualityOrIngredients;
+    }
+
+    if (!this.player || !Array.isArray(this.player.inventory)) return false;
+
     const maxSlots = Math.max(this.player.maxInventorySlots || 36, this.player.inventory.length);
     const isWepOrTool = (id === 'slingshot' || id === 'rifle' || id === 'dragon_rifle' || id === 'dragon_cannon' || id === 'iron_sword' || id === 'excalibur_sword' || !!(WEAPONS && WEAPONS[id]) || id === 'hoe' || id === 'water' || id === 'scythe' || id === 'fishing_rod' || id === 'axe');
 
-    // 1. Check if can stack into an existing slot (weapons/tools never stack)
+    // 1. Check if can stack into an existing slot (weapons/tools never stack, quality must match!)
     if (!isWepOrTool) {
         for (let i = 0; i < maxSlots; i++) {
             const slot = this.player.inventory[i];
-            if (slot && slot.id === id && slot.count !== undefined) {
+            if (slot && slot.id === id && slot.count !== undefined && (slot.quality || 0) === itemQuality) {
                 return true;
             }
         }
@@ -7054,9 +7412,9 @@ Game.canItemFitInInventory = function(id: string, count: number = 1, ingredients
     if (emptySlots > 0) return true;
 
     // 3. If deducting ingredients, simulate to see if any slot becomes empty
-    if (ingredientsToDeduct) {
+    if (deductMap) {
         const sim = this.player.inventory.map((s: any) => s ? { ...s } : null);
-        for (let [ingId, reqCount] of Object.entries(ingredientsToDeduct)) {
+        for (let [ingId, reqCount] of Object.entries(deductMap)) {
             let needed = reqCount;
             for (let i = 0; i < sim.length; i++) {
                 const s = sim[i];
@@ -7084,7 +7442,7 @@ Game.canItemFitInInventory = function(id: string, count: number = 1, ingredients
     return false;
 };
 
-Game.addItemToInventory = function(id, count = 1, name = '', quality: 0 | 1 | 2 | 3 = 0) {
+Game.addItemToInventory = function(id, count = 1, name = '', quality: 0 | 1 | 2 | 3 = 0, isFromWorldPickup: boolean = false) {
     const itemQuality = quality || 0;
     const maxSlots = Math.max(this.player.maxInventorySlots || 36, this.player.inventory.length);
     while (this.player.inventory.length < maxSlots) {
@@ -7135,8 +7493,19 @@ Game.addItemToInventory = function(id, count = 1, name = '', quality: 0 | 1 | 2 
             return true;
         }
     }
-    this.addFloatingText('กระเป๋าเต็มแล้ว! ของดรอปตกลงที่พื้น (กด E หรือคลิกเพื่อเก็บ)', this.player.x, this.player.y - 15, '#f59e0b');
-    this.spawnDroppedItem(id, count, this.player.x, this.player.y, itemQuality, true);
+
+    // Inventory is full!
+    const now = performance.now();
+    if (!this._lastFullInventoryWarning || now - this._lastFullInventoryWarning > 2000) {
+        this._lastFullInventoryWarning = now;
+        this.addFloatingText('กระเป๋าเต็มแล้ว! จัดช่องเก็บของก่อน (กด E หรือคลิกเพื่อเก็บ)', this.player.x, this.player.y - 15, '#f59e0b');
+        if (SoundEngine && SoundEngine.hit) SoundEngine.hit();
+    }
+
+    // Only spawn dropped item if this was NOT an already existing item lying in the world
+    if (!isFromWorldPickup) {
+        this.spawnDroppedItem(id, count, this.player.x, this.player.y, itemQuality, true);
+    }
     return false;
 };
 
@@ -8134,6 +8503,12 @@ Game.render = function() {
         this.queueCryptEntities(renderables);
     } else if (this.currentScene === 'spire') {
         this.queueSpireEntities(renderables);
+    } else if (this.currentScene === 'ancient_canopy') {
+        this.queueAncientCanopyEntities(renderables);
+    } else if (this.currentScene === 'tempest_plateau') {
+        this.queueTempestPlateauEntities(renderables);
+    } else if (this.currentScene === 'island') {
+        this.queueIslandEntities(renderables);
     } else if (this.currentScene === 'island_volcano') {
         this.queueSceneCombatEntities(renderables);
     }
@@ -8151,6 +8526,18 @@ Game.render = function() {
         depthY: this.player.y + 30,
         render: () => this.drawPlayer()
     });
+
+    // 3.5. Queue Remote Multiplayer Players
+    if (this.remotePlayers) {
+        for (const pid in this.remotePlayers) {
+            const rp = this.remotePlayers[pid];
+            if (!rp || rp.scene !== this.currentScene) continue;
+            renderables.push({
+                depthY: rp.y + 30,
+                render: () => this.drawRemotePlayer(rp)
+            });
+        }
+    }
 
     // 4. Sort and Draw all Entities by Y Depth (Back to Front)
     renderables.sort((a, b) => a.depthY - b.depthY);
@@ -11833,6 +12220,28 @@ Game.playerMeleeAttack = function(targetWorldX, targetWorldY, weapon) {
             }
         }
 
+        // Check hit on Remote Players in PvP (Multiplayer Dueling)
+        if (this.remotePlayers && (this.currentScene === 'pvp_arena' || this.isPvPEnabled)) {
+            for (const pid in this.remotePlayers) {
+                const rp = this.remotePlayers[pid];
+                if (!rp || rp.scene !== this.currentScene || rp.hp <= 0) continue;
+                const distP = Math.hypot((rp.x + 12) - originX, (rp.y + 14) - originY);
+                if (distP < attackRange + 10) {
+                    let pvpDmg = finalDamage;
+                    if (rp.isGuarding) pvpDmg = Math.round(pvpDmg * 0.4);
+                    if (typeof (window as any).Multiplayer !== 'undefined') {
+                        (window as any).Multiplayer.sendPvPHit(pid, pvpDmg, isCrit, angle, weapon.name || weapon.id);
+                    }
+                    this.triggerScreenShake(isCrit ? 6.5 : 4.0, 140);
+                    this.triggerHitstop(isCrit ? 60 : 40);
+                    if (isCrit) SoundEngine.critHit(); else SoundEngine.hit();
+                    this.spawnParticles(rp.x + 12, rp.y + 14, isCrit ? '#fde047' : '#ef4444', isCrit ? 16 : 10);
+                    this.addFloatingText((isCrit ? 'CRIT -' : '-') + pvpDmg, rp.x, rp.y - 15, isCrit ? '#fde047' : '#ef4444');
+                    break;
+                }
+            }
+        }
+
         // Check hit on Bosses
         if (this.boss && this.boss.alive) {
             const distBoss = Math.hypot((this.boss.x + 32) - originX, (this.boss.y + 32) - originY);
@@ -12486,6 +12895,27 @@ Game.updateProjectiles = function(dt) {
                             this.updateHUD();
                         }
                         break;
+                    }
+                }
+
+                // Check collision against Remote Players in PvP
+                if (!hit && p.fromPlayer && this.remotePlayers && (this.currentScene === 'pvp_arena' || this.isPvPEnabled)) {
+                    for (const pid in this.remotePlayers) {
+                        const rp = this.remotePlayers[pid];
+                        if (!rp || rp.scene !== this.currentScene || rp.hp <= 0) continue;
+                        const distP = Math.hypot((rp.x + 12) - p.x, (rp.y + 14) - p.y);
+                        if (distP < 24) {
+                            hit = true;
+                            const pvpDmg = p.damage || 25;
+                            if (typeof (window as any).Multiplayer !== 'undefined') {
+                                (window as any).Multiplayer.sendPvPHit(pid, pvpDmg, false, 0, 'ลูกธนู/เวทมนตร์');
+                            }
+                            this.triggerScreenShake(3.0, 90);
+                            SoundEngine.hit();
+                            this.spawnParticles(p.x, p.y, '#f59e0b', 8);
+                            this.addFloatingText('-' + pvpDmg, rp.x, rp.y - 12, '#ef4444');
+                            break;
+                        }
                     }
                 }
 
@@ -16616,6 +17046,18 @@ Game.drawBoss = function() {
         grad.addColorStop(0, this.boss.phase === 3 ? 'rgba(147, 51, 234, 0.65)' : 'rgba(147, 51, 234, 0.42)');
         grad.addColorStop(0.5, 'rgba(220, 38, 38, 0.25)');
         grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    } else if (this.boss.id === 'boss_sylvanus') {
+        grad.addColorStop(0, this.boss.phase === 3 ? 'rgba(34, 197, 94, 0.65)' : 'rgba(34, 197, 94, 0.42)');
+        grad.addColorStop(0.5, 'rgba(74, 222, 128, 0.28)');
+        grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    } else if (this.boss.id === 'boss_astreon') {
+        grad.addColorStop(0, this.boss.phase === 3 ? 'rgba(234, 179, 8, 0.65)' : 'rgba(234, 179, 8, 0.42)');
+        grad.addColorStop(0.5, 'rgba(56, 189, 248, 0.3)');
+        grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    } else if (this.boss.id === 'boss_karzarak') {
+        grad.addColorStop(0, this.boss.phase === 3 ? 'rgba(239, 68, 68, 0.7)' : 'rgba(239, 68, 68, 0.45)');
+        grad.addColorStop(0.5, 'rgba(249, 115, 22, 0.35)');
+        grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
     } else {
         if (this.boss.phase === 3) {
             grad.addColorStop(0, 'rgba(239, 68, 68, 0.45)');
@@ -16719,7 +17161,10 @@ Game.drawBoss = function() {
         boss_hydrakis: 'พญาไฮดรา ไฮดราคิส',
         boss_ignistron: 'มังกรลาวา อิกนิสทรอน',
         boss_frostfang: 'ไททันน้ำแข็ง ฟรอสต์แฟงก์',
-        boss_malakor: 'ลอร์ดมรณะ มาลาคอร์'
+        boss_malakor: 'ลอร์ดมรณะ มาลาคอร์',
+        boss_sylvanus: 'เทพพฤกษา ซิลวาเนีย',
+        boss_astreon: 'จ้าวพายุสายฟ้า ออสทริออน',
+        boss_karzarak: 'จอมมารลาวา คาร์ซารัค'
     };
 
     const bName = bossLabels[this.boss.id] || this.boss.name || 'บอสแห่งดินแดน';
@@ -17384,6 +17829,21 @@ Game.queueCryptEntities = function(renderables) {
 
 
 Game.queueSpireEntities = function(renderables) {
+    this.queueSceneCombatEntities(renderables);
+};
+
+
+Game.queueAncientCanopyEntities = function(renderables) {
+    this.queueSceneCombatEntities(renderables);
+};
+
+
+Game.queueTempestPlateauEntities = function(renderables) {
+    this.queueSceneCombatEntities(renderables);
+};
+
+
+Game.queueIslandEntities = function(renderables) {
     this.queueSceneCombatEntities(renderables);
 };
 
@@ -18626,6 +19086,10 @@ Game.updatePetCompanion = function(dt: number) {
             for (let i = 0; i < this.droppedItems.length; i++) {
                 const it = this.droppedItems[i];
                 if (!it || it.timer < 300) continue;
+                // Dog must never fetch manual drops (items dropped intentionally by player)
+                if (it.manualPickup) continue;
+                // Dog must only fetch if the player can actually carry it in their inventory!
+                if (!this.canItemFitInInventory(it.id, it.count || 1, it.quality || 0)) continue;
                 const d = Math.hypot(it.x - pet.x, it.y - pet.y);
                 if (d < closestDist) {
                     closestDist = d;
@@ -18640,14 +19104,19 @@ Game.updatePetCompanion = function(dt: number) {
             const distItem = Math.hypot(idx, idy);
 
             if (distItem < 18) {
+                if (!this.canItemFitInInventory(closestItem.id, closestItem.count || 1, closestItem.quality || 0)) {
+                    return;
+                }
                 const itName = closestItem.name || closestItem.id;
-                this.addItemToInventory(closestItem.id, closestItem.count || 1, itName, closestItem.quality || 0);
-                if (SoundEngine.dogBark) SoundEngine.dogBark();
-                this.spawnParticles(pet.x, pet.y, '#facc15', 12);
-                this.addFloatingText(' โฮ่ง! คาบ ' + itName + ' มาให้', pet.x, pet.y - 12, '#38bdf8');
-                const fIdx = this.droppedItems.indexOf(closestItem);
-                if (fIdx !== -1) this.droppedItems.splice(fIdx, 1);
-                this.updateHUD();
+                const added = this.addItemToInventory(closestItem.id, closestItem.count || 1, itName, closestItem.quality || 0, true);
+                if (added) {
+                    if (SoundEngine.dogBark) SoundEngine.dogBark();
+                    this.spawnParticles(pet.x, pet.y, '#facc15', 12);
+                    this.addFloatingText(' โฮ่ง! คาบ ' + itName + ' มาให้', pet.x, pet.y - 12, '#38bdf8');
+                    const fIdx = this.droppedItems.indexOf(closestItem);
+                    if (fIdx !== -1) this.droppedItems.splice(fIdx, 1);
+                    this.updateHUD();
+                }
             } else {
                 const fetchSpeed = 4.8 * (dt / 16);
                 pet.x += (idx / distItem) * Math.min(distItem, fetchSpeed);
@@ -20723,6 +21192,19 @@ Game.damageEnemiesInRadius = function(x, y, radius, dmg, text, color, proc = nul
             }
         }
     }
+    if (this.remotePlayers && (this.currentScene === 'pvp_arena' || this.isPvPEnabled)) {
+        for (const pid in this.remotePlayers) {
+            const rp = this.remotePlayers[pid];
+            if (!rp || rp.scene !== this.currentScene || rp.hp <= 0) continue;
+            if (Math.hypot((rp.x + 12) - x, (rp.y + 14) - y) <= radius) {
+                if (typeof (window as any).Multiplayer !== 'undefined') {
+                    (window as any).Multiplayer.sendPvPHit(pid, dmg, false, 0, 'สกิลพิเศษ');
+                }
+                this.addFloatingText(text, rp.x, rp.y - 12, color);
+            }
+        }
+    }
+
     if (this.boss && this.boss.alive) {
         if (Math.hypot((this.boss.x + 32) - x, (this.boss.y + 32) - y) <= radius + 30) {
             this.boss.hp -= dmg;

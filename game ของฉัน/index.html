@@ -52,6 +52,7 @@
                         <div id="hudSaveBadge" class="hud-save-badge save-saved">
                             <span class="save-text">บันทึกแล้ว</span>
                         </div>
+                        <div id="hudMultiplayerStatus" class="hud-badge mp-active" style="display: none;" onclick="Game.openMultiplayerModal()" title="ห้องออนไลน์ที่เชื่อมต่ออยู่"></div>
                     </div>
                 </div>
 
@@ -136,6 +137,9 @@
                     </button>
                     <button id="btnCampOut" class="btn-hud-icon" onclick="Game.openCampModal()" title="ตั้งแคมป์พักแรมกลางแจ้ง (T)" data-tooltip="ตั้งแคมป์ (T)">
                         <span class="btn-hud-emoji">แคมป์</span><span class="badge-key">T</span>
+                    </button>
+                    <button class="btn-hud-icon btn-hud-multiplayer" onclick="Game.openMultiplayerModal()" title="เล่นออนไลน์ & ลานประลองยุทธ์ (O)" data-tooltip="ออนไลน์ (O)">
+                        <span class="btn-hud-emoji">ออนไลน์</span><span class="badge-key">O</span>
                     </button>
                     <button class="btn-hud-icon" onclick="Game.toggleWorldMap()" title="แผนที่โลก (M)" data-tooltip="แผนที่โลก (M)">
                         <span class="btn-hud-emoji">แผนที่</span><span class="badge-key">M</span>
@@ -662,6 +666,80 @@
                         <button class="btn-secondary" style="background: #991b1b; border-color: #7f1d1d;"
                             onclick="Game.triggerBugWave(true)">เรียกฝูงแมลงปีศาจมาทดสอบยิง</button>
                         <button class="btn-secondary" onclick="Game.closeAllModals()">ปิดหน้าต่าง</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL: Multiplayer & PvP Colosseum Arena -->
+        <div id="multiplayerModal" class="modal-overlay" style="display: none;">
+            <div class="modal-content modal-multiplayer-window" style="max-width: 520px;">
+                <div class="modal-header">
+                    <div class="modal-title-row">
+                        <span class="modal-title-badge">P2P MULTIPLAYER & PVP</span>
+                        <h2>ระบบเล่นออนไลน์ & ลานประลองยุทธ์</h2>
+                    </div>
+                    <button class="btn-close" onclick="Game.closeAllModals()">✕</button>
+                </div>
+                <div class="modal-body">
+                    <div class="mp-tabs-bar">
+                        <button id="tabMpHst" class="mp-tab-btn active" onclick="Game.switchMpTab('host')">เปิดโลกของฉัน (Host)</button>
+                        <button id="tabMpJoin" class="mp-tab-btn" onclick="Game.switchMpTab('join')">เข้าร่วมโลกเพื่อน (Join)</button>
+                        <button id="tabMpArena" class="mp-tab-btn" onclick="Game.switchMpTab('arena')">ลานประลองยุทธ์ (PvP Arena)</button>
+                    </div>
+
+                    <!-- TAB 1: Host World -->
+                    <div id="mpTabContentHost" class="mp-tab-content">
+                        <p class="modal-desc" style="color: #cbd5e1;">เปิดโลกของคุณเป็นห้องออนไลน์ แล้วแชร์รหัส 6 หลักให้เพื่อนเข้ามาร่วมโลกและผจญภัยด้วยกันได้ทันที</p>
+                        <div class="mp-code-box">
+                            <span class="mp-code-label">รหัสห้องของคุณ (Room Code)</span>
+                            <div id="mpHostRoomCode" class="mp-code-digits">------</div>
+                            <button class="btn-mp-copy" onclick="Game.copyRoomCode()">คัดลอกรหัสห้อง</button>
+                        </div>
+                        <div class="mp-actions-row" style="display: flex; gap: 8px; justify-content: center; margin-top: 10px;">
+                            <button class="btn-primary" onclick="Game.startHostingRoom()">สร้างห้อง / เปิดโลกออนไลน์</button>
+                            <button class="btn-secondary" onclick="Multiplayer.disconnect()">ปิดห้องออนไลน์</button>
+                        </div>
+                    </div>
+
+                    <!-- TAB 2: Join World -->
+                    <div id="mpTabContentJoin" class="mp-tab-content" style="display: none;">
+                        <p class="modal-desc" style="color: #cbd5e1;">กรอกรหัสห้อง 6 หลักของเพื่อน เพื่อเชื่อมต่อไปยังโลกของเพื่อน</p>
+                        <div class="mp-input-group">
+                            <input id="mpJoinCodeInput" type="text" maxlength="6" placeholder="กรอกรหัสห้อง 6 หลัก เช่น 849201" class="mp-code-input" />
+                            <button class="btn-primary" onclick="Game.joinFriendRoom()">เชื่อมต่อเข้าสู่โลก</button>
+                        </div>
+                        <div id="mpJoinStatus" class="mp-join-status" style="font-size: 11px; margin-top: 6px; text-align: center;"></div>
+                    </div>
+
+                    <!-- TAB 3: PvP Arena -->
+                    <div id="mpTabContentArena" class="mp-tab-content" style="display: none;">
+                        <p class="modal-desc" style="color: #cbd5e1;">ลานประลองยุทธ์จอมราชันย์ (PvP Colosseum Arena) สำหรับท้าประลองฝีมือ 1v1 หรือตะลุมบอน ปลอดภัย ไร้การสูญเสียไอเทมเมื่อพ่ายแพ้</p>
+                        <div class="mp-arena-card">
+                            <div class="mp-arena-info">
+                                <span class="mp-arena-badge">กติกาการประลองยุทธ์</span>
+                                <ul>
+                                    <li>อาวุธ สกิล การ์ดบล็อก และการปัดป้อง (Parry) ทำงานเหมือนระบบต่อสู้ปกติ 100%</li>
+                                    <li>ผู้ชนะจะได้รับ +100 G และ +100 XP พร้อมประกาศชัยชนะลอยทั้งห้อง</li>
+                                    <li>ผู้แพ้จะฟื้นคืนชีพเต็มเลือดที่ขอบสนามทันทีโดยไม่เสียไอเทม</li>
+                                </ul>
+                            </div>
+                            <button class="btn-primary btn-enter-arena" onclick="Game.travelToPvPArena()">วาร์ปสู่ลานประลองยุทธ์ทันที</button>
+                        </div>
+                    </div>
+
+                    <!-- Connected Players Status Box -->
+                    <div class="mp-status-box">
+                        <div class="mp-status-header">
+                            <span id="mpStatusText">ยังไม่ได้เชื่อมต่อ (เล่นคนเดียว)</span>
+                        </div>
+                        <div id="mpPlayersList" class="mp-players-list"></div>
+                    </div>
+
+                    <!-- Quick Chat Row -->
+                    <div class="mp-chat-row">
+                        <input id="mpChatInput" type="text" placeholder="พิมพ์ข้อความคุยในห้อง..." maxlength="40" onkeydown="if(event.key==='Enter') Game.sendMultiplayerChat();" />
+                        <button class="btn-secondary" onclick="Game.sendMultiplayerChat()">ส่ง</button>
                     </div>
                 </div>
             </div>

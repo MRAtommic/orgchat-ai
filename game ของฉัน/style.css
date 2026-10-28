@@ -6014,3 +6014,233 @@ body {
     background: #fef3c7 !important;
     z-index: 5 !important;
 }
+
+/* ========================================================
+   MULTIPLAYER & PVP ARENA STYLES
+   ======================================================== */
+.btn-hud-multiplayer {
+    background: linear-gradient(180deg, #0284c7 0%, #0369a1 100%) !important;
+    border-color: #38bdf8 !important;
+}
+.btn-hud-multiplayer:hover {
+    background: linear-gradient(180deg, #0ea5e9 0%, #0284c7 100%) !important;
+    border-color: #7dd3fc !important;
+}
+
+.mp-active {
+    background: rgba(14, 165, 233, 0.25) !important;
+    border: 1.5px solid #38bdf8 !important;
+    color: #e0f2fe !important;
+    display: flex !important;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 7px !important;
+    border-radius: 6px;
+    font-size: 9px !important;
+    font-weight: 700;
+    cursor: pointer;
+}
+.mp-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #4ade80;
+    box-shadow: 0 0 8px #4ade80;
+    animation: pulseGlow 1.5s infinite;
+}
+
+.modal-multiplayer-window {
+    background: #0f172a !important;
+    border: 3px solid #0284c7 !important;
+    color: #f8fafc !important;
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.8) !important;
+}
+.modal-multiplayer-window .modal-header {
+    background: #1e293b !important;
+    border-bottom: 2px solid #0284c7 !important;
+}
+.modal-multiplayer-window h2 {
+    color: #38bdf8 !important;
+    margin: 0;
+    font-size: 15px;
+}
+
+.mp-tabs-bar {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid #334155;
+    padding-bottom: 8px;
+}
+.mp-tab-btn {
+    background: #1e293b;
+    border: 1.5px solid #334155;
+    color: #94a3b8;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-weight: 700;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.mp-tab-btn.active {
+    background: #0284c7;
+    border-color: #38bdf8;
+    color: #ffffff;
+}
+.mp-tab-btn:hover {
+    border-color: #38bdf8;
+    color: #ffffff;
+}
+
+.mp-code-box {
+    background: #1e293b;
+    border: 2px dashed #0284c7;
+    border-radius: 8px;
+    padding: 14px;
+    text-align: center;
+    margin: 10px 0;
+}
+.mp-code-label {
+    font-size: 11px;
+    color: #94a3b8;
+    display: block;
+    margin-bottom: 6px;
+}
+.mp-code-digits {
+    font-size: 32px;
+    font-weight: 900;
+    color: #fde047;
+    letter-spacing: 6px;
+    font-family: monospace;
+    margin-bottom: 10px;
+    text-shadow: 0 0 12px rgba(250, 204, 21, 0.4);
+}
+.btn-mp-copy {
+    background: #0369a1;
+    border: 1px solid #38bdf8;
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 5px 14px;
+    border-radius: 5px;
+    cursor: pointer;
+}
+.btn-mp-copy:hover {
+    background: #0284c7;
+}
+
+.mp-input-group {
+    display: flex;
+    gap: 8px;
+    margin: 12px 0;
+}
+.mp-code-input {
+    flex: 1;
+    background: #1e293b;
+    border: 2px solid #334155;
+    border-radius: 6px;
+    padding: 8px 12px;
+    color: #fde047;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-align: center;
+}
+.mp-code-input:focus {
+    border-color: #38bdf8;
+    outline: none;
+}
+
+.mp-arena-card {
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(185, 28, 28, 0.25) 100%);
+    border: 2px solid #ef4444;
+    border-radius: 8px;
+    padding: 12px;
+    margin: 10px 0;
+}
+.mp-arena-badge {
+    background: #b91c1c;
+    color: #ffffff;
+    font-size: 9px;
+    font-weight: 800;
+    padding: 2px 6px;
+    border-radius: 4px;
+    letter-spacing: 0.5px;
+}
+.mp-arena-info ul {
+    margin: 8px 0;
+    padding-left: 20px;
+    font-size: 11px;
+    color: #cbd5e1;
+    line-height: 1.5;
+}
+.btn-enter-arena {
+    width: 100%;
+    margin-top: 8px;
+    background: linear-gradient(180deg, #dc2626 0%, #991b1b 100%) !important;
+    border-color: #f87171 !important;
+    font-weight: 800;
+}
+
+.mp-status-box {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin: 10px 0;
+}
+.mp-status-header {
+    font-size: 11px;
+    font-weight: 700;
+    margin-bottom: 6px;
+}
+.mp-players-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.mp-player-row {
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #cbd5e1;
+    padding: 2px 0;
+}
+.mp-player-row.self {
+    color: #fde047;
+}
+.badge-role {
+    background: #0284c7;
+    color: #fff;
+    font-size: 8px;
+    padding: 1px 4px;
+    border-radius: 3px;
+}
+.badge-scene {
+    background: #334155;
+    color: #94a3b8;
+    font-size: 8px;
+    padding: 1px 4px;
+    border-radius: 3px;
+}
+
+.mp-chat-row {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+}
+.mp-chat-row input {
+    flex: 1;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 5px;
+    padding: 6px 10px;
+    color: #f8fafc;
+    font-size: 11px;
+}
+.mp-chat-row input:focus {
+    border-color: #38bdf8;
+    outline: none;
+}

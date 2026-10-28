@@ -16,6 +16,7 @@ import { SoundEngine } from './audio/soundEngine';
 import { SPRITES } from './sprites/sprites';
 import { Auth } from './auth/authManager';
 import { Game } from './engine/game';
+import { Multiplayer } from './network/multiplayer';
 
 // Bind to window global scope for HTML onclick handlers and cross-subsystem interop
 declare global {
@@ -24,6 +25,7 @@ declare global {
     Auth: any;
     SoundEngine: any;
     SPRITES: any;
+    Multiplayer: any;
   }
 }
 
@@ -31,12 +33,13 @@ declare global {
 (window as any).Auth = Auth;
 (window as any).SoundEngine = SoundEngine;
 (window as any).SPRITES = SPRITES;
+(window as any).Multiplayer = Multiplayer;
 
-export { SoundEngine, SPRITES, Auth, Game };
+export { SoundEngine, SPRITES, Auth, Game, Multiplayer };
 
 // Console banner for developers
 console.log(
-  '%c ฟาร์มสุขใจ - Happy Farm 2D %c[TypeScript + Vite]%c\nLoaded modular game engine successfully!',
+  '%c ฟาร์มสุขใจ - Happy Farm 2D %c[TypeScript + Vite + Multiplayer]%c\nLoaded modular game engine successfully!',
   'background: #2b180a; color: #fef3c7; font-size: 14px; font-weight: bold; padding: 4px 8px; border-radius: 4px;',
   'background: #3178c6; color: #fff; font-size: 12px; font-weight: bold; padding: 4px 6px; border-radius: 4px; margin-left: 4px;',
   'color: #10b981; font-weight: 600;'
