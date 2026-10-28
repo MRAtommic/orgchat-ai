@@ -1,4 +1,8 @@
-import { Peer, DataConnection } from 'peerjs';
+/* ==========================================================================
+   HAPPY FARM 2D - MULTIPLAYER SERVICE (HIGH-SPEED CLOUD RELAY & P2P)
+   Ultra-fast cross-device multiplayer working across Mobile (4G/5G) and PC
+   Bypasses NAT, Firewalls, and STUN/TURN restrictions via WSS Message Broker
+   ========================================================================== */
 
 export interface RemotePlayer {
     id: string;
@@ -37,36 +41,241 @@ export interface NetMessage {
     timestamp: number;
 }
 
-// High-reliability STUN configuration for NAT & cross-device traversal (Mobile 4G/5G <-> PC)
-const PEER_CONFIG = {
-    debug: 1,
-    config: {
-        iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' },
-            { urls: 'stun:stun3.l.google.com:19302' },
-            { urls: 'stun:stun4.l.google.com:19302' },
-            { urls: 'stun:stun.cloudflare.com:3478' }
-        ],
-        sdpSemantics: 'unified-plan'
-    }
-};
+// ── Lightweight Pure-Browser MQTT 3.1.1 Helper Functions ─────────
+function encodeString(str: string): Uint8Array {
+    const enc = new TextEncoder().encode(str);
+    const buf = new Uint8Array(2 + enc.length);
+    buf[0] = (enc.length >> 8) & 0xff;
+    buf[1] = enc.length & 0xff;
+    buf.set(enc, 2);
+    return buf;
+}
 
+function concatUint8(arrays: Uint8Array[]): Uint8Array {
+    let total = 0;
+    for (let i = 0; i < arrays.length; i++) total += arrays[i].length;
+    const res = new Uint8Array(total);
+    let off = 0;
+    for (let i = 0; i < arrays.length; i++) {
+        res.set(arrays[i], off);
+        off += arrays[i].length;
+    }
+    return res;
+}
+
+function encodeVarLength(len: number): Uint8Array {
+    const bytes: number[] = [];
+    do {
+        let digit = len % 128;
+        len = Math.floor(len / 128);
+        if (len > 0) digit |= 0x80;
+        bytes.push(digit);
+    } while (len > 0);
+    return new Uint8Array(bytes);
+}
+
+function decodeVarLength(buf: Uint8Array, offset: number): { value: number; bytesRead: number } {
+    let multiplier = 1;
+    let value = 0;
+    let bytesRead = 0;
+    let encodedByte = 0;
+    do {
+        encodedByte = buf[offset + bytesRead];
+        value += (encodedByte & 127) * multiplier;
+        multiplier *= 128;
+        bytesRead++;
+    } while ((encodedByte & 128) !== 0);
+    return { value, bytesRead };
+}
+
+function createConnectPacket(clientId: string): Uint8Array {
+    const protoName = encodeString('MQTT');
+    const protoLevel = new Uint8Array([0x04]);
+    const flags = new Uint8Array([0x02]); // Clean session
+    const keepAlive = new Uint8Array([0x00, 0x1e]); // 30s
+    const cid = encodeString(clientId);
+    const varHeader = concatUint8([protoName, protoLevel, flags, keepAlive, cid]);
+    const len = encodeVarLength(varHeader.length);
+    return concatUint8([new Uint8Array([0x10]), len, varHeader]);
+}
+
+function createSubscribePacket(topic: string, packetId = 1): Uint8Array {
+    const pktIdBuf = new Uint8Array([(packetId >> 8) & 0xff, packetId & 0xff]);
+    const topBuf = encodeString(topic);
+    const qosBuf = new Uint8Array([0x00]);
+    const payload = concatUint8([pktIdBuf, topBuf, qosBuf]);
+    const len = encodeVarLength(payload.length);
+    return concatUint8([new Uint8Array([0x82]), len, payload]);
+}
+
+function createPublishPacket(topic: string, message: string): Uint8Array {
+    const topBuf = encodeString(topic);
+    const msgBuf = new TextEncoder().encode(message);
+    const payload = concatUint8([topBuf, msgBuf]);
+    const len = encodeVarLength(payload.length);
+    return concatUint8([new Uint8Array([0x30]), len, payload]);
+}
+
+function parsePublishPacket(bytes: Uint8Array): { topic: string; message: string } {
+    const { value: remLen, bytesRead } = decodeVarLength(bytes, 1);
+    let offset = 1 + bytesRead;
+    const topLen = (bytes[offset] << 8) | bytes[offset + 1];
+    offset += 2;
+    const topic = new TextDecoder().decode(bytes.subarray(offset, offset + topLen));
+    offset += topLen;
+    const message = new TextDecoder().decode(bytes.subarray(offset, 1 + bytesRead + remLen));
+    return { topic, message };
+}
+
+// ── Ultra-Reliable WebSocket Message Relay Client ────────────────
+class CloudRelayClient {
+    public isConnected: boolean = false;
+    private ws: WebSocket | null = null;
+    private clientId: string = '';
+    private pingTimer: any = null;
+    private currentTopic: string = '';
+    private onMessageCallback: ((msg: NetMessage, topic: string) => void) | null = null;
+    private pendingMessages: string[] = [];
+    private brokerUrl: string = 'wss://broker.hivemq.com:8884/mqtt';
+
+    constructor() {
+        this.clientId = 'gf_' + Math.random().toString(36).substring(2, 10);
+    }
+
+    public connect(topic: string, onMessage: (msg: NetMessage, topic: string) => void): Promise<boolean> {
+        return new Promise((resolve) => {
+            this.disconnect();
+            this.currentTopic = topic;
+            this.onMessageCallback = onMessage;
+            let resolved = false;
+
+            try {
+                this.ws = new WebSocket(this.brokerUrl, ['mqtt']);
+                this.ws.binaryType = 'arraybuffer';
+
+                this.ws.onopen = () => {
+                    if (this.ws) {
+                        this.ws.send(createConnectPacket(this.clientId));
+                    }
+                };
+
+                this.ws.onmessage = (e: MessageEvent) => {
+                    const bytes = new Uint8Array(e.data as ArrayBuffer);
+                    const type = bytes[0] >> 4;
+
+                    if (type === 2) { // CONNACK
+                        this.isConnected = true;
+                        this.startPing();
+                        if (this.ws && this.currentTopic) {
+                            this.ws.send(createSubscribePacket(this.currentTopic));
+                        }
+                    } else if (type === 9) { // SUBACK
+                        if (!resolved) {
+                            resolved = true;
+                            resolve(true);
+                        }
+                        while (this.pendingMessages.length > 0) {
+                            const pending = this.pendingMessages.shift();
+                            if (pending) this.publish(this.currentTopic, pending);
+                        }
+                    } else if (type === 3) { // PUBLISH
+                        try {
+                            const { topic: inTopic, message } = parsePublishPacket(bytes);
+                            const parsed = JSON.parse(message);
+                            if (this.onMessageCallback) {
+                                this.onMessageCallback(parsed, inTopic);
+                            }
+                        } catch (err) {
+                            console.warn('[Cloud Relay Parse Warning]:', err);
+                        }
+                    }
+                };
+
+                this.ws.onerror = (err) => {
+                    console.warn('[Cloud Relay Error]:', err);
+                    if (!resolved) {
+                        resolved = true;
+                        resolve(false);
+                    }
+                };
+
+                this.ws.onclose = () => {
+                    this.isConnected = false;
+                    this.stopPing();
+                };
+
+                // Fast 3.5s timeout: if HiveMQ is slow, resolve with current status
+                setTimeout(() => {
+                    if (!resolved) {
+                        resolved = true;
+                        resolve(this.isConnected);
+                    }
+                }, 3500);
+            } catch (err) {
+                console.warn('[Cloud Relay Exception]:', err);
+                resolve(false);
+            }
+        });
+    }
+
+    public publish(topic: string, data: any): void {
+        const payloadStr = typeof data === 'string' ? data : JSON.stringify(data);
+        if (this.ws && this.isConnected && this.ws.readyState === WebSocket.OPEN) {
+            try {
+                this.ws.send(createPublishPacket(topic, payloadStr));
+            } catch (e) {
+                console.warn('[Cloud Relay Send Error]:', e);
+            }
+        } else {
+            if (this.pendingMessages.length < 50) {
+                this.pendingMessages.push(payloadStr);
+            }
+        }
+    }
+
+    private startPing(): void {
+        this.stopPing();
+        this.pingTimer = setInterval(() => {
+            if (this.ws && this.isConnected && this.ws.readyState === WebSocket.OPEN) {
+                this.ws.send(new Uint8Array([0xc0, 0x00])); // PINGREQ
+            }
+        }, 20000);
+    }
+
+    private stopPing(): void {
+        if (this.pingTimer) {
+            clearInterval(this.pingTimer);
+            this.pingTimer = null;
+        }
+    }
+
+    public disconnect(): void {
+        this.isConnected = false;
+        this.stopPing();
+        if (this.ws) {
+            try {
+                this.ws.close();
+            } catch (_) {}
+            this.ws = null;
+        }
+        this.pendingMessages = [];
+        this.onMessageCallback = null;
+    }
+}
+
+// ── Multiplayer Engine Service ────────────────────────────────────
 class MultiplayerService {
     public isHost: boolean = false;
     public isConnected: boolean = false;
     public isGlobalHub: boolean = false;
     public roomCode: string | null = null;
-    public myPeerId: string = '';
     public myPlayerId: string = '';
     public myPlayerName: string = 'ผู้เล่น';
-    public connectionMode: 'p2p' | 'local' | 'none' = 'none';
+    public connectionMode: 'cloud' | 'local' | 'none' = 'none';
 
-    private peer: Peer | null = null;
-    private hostConn: DataConnection | null = null;
-    private clientConns: Map<string, DataConnection> = new Map();
+    private relay: CloudRelayClient = new CloudRelayClient();
     private broadcastChannel: BroadcastChannel | null = null;
+    private currentTopic: string = '';
 
     private syncInterval: any = null;
     private cleanupInterval: any = null;
@@ -90,272 +299,80 @@ class MultiplayerService {
     }
 
     // ── Host A Room (เปิดโลกของตัวเอง) ────────────────────────
-    public hostRoom(customCode?: string): Promise<{ success: boolean; code: string; error?: string }> {
-        return new Promise((resolve) => {
-            this.disconnect();
-            this.init();
-            this.isGlobalHub = false;
-            const code = customCode || this.generateRoomCode();
-            this.roomCode = code;
-            this.isHost = true;
+    public async hostRoom(customCode?: string): Promise<{ success: boolean; code: string; error?: string }> {
+        this.disconnect();
+        this.init();
+        this.isGlobalHub = false;
+        const code = customCode || this.generateRoomCode();
+        this.roomCode = code;
+        this.isHost = true;
+        this.currentTopic = `happyfarm2d/room/${code}`;
 
-            const peerTargetId = `gamefarm-room-${code}`;
-            let resolved = false;
-
-            try {
-                this.peer = new Peer(peerTargetId, PEER_CONFIG);
-
-                this.peer.on('open', (id) => {
-                    if (resolved) return;
-                    resolved = true;
-                    this.myPeerId = id;
-                    this.isConnected = true;
-                    this.connectionMode = 'p2p';
-                    this.setupBroadcastChannel(code);
-                    this.startHeartbeat();
-                    this.updateUI();
-                    resolve({ success: true, code });
-                });
-
-                this.peer.on('connection', (conn) => {
-                    this.handleIncomingClientConnection(conn);
-                });
-
-                this.peer.on('disconnected', () => {
-                    console.warn('[Multiplayer Host]: Reconnecting to signaling server...');
-                    try { this.peer?.reconnect(); } catch (_) {}
-                });
-
-                this.peer.on('error', (err: any) => {
-                    console.warn('[Multiplayer Host Error]:', err);
-                    if (resolved) return;
-                    if (err.type === 'unavailable-id') {
-                        // ID taken, retry with new code
-                        const newCode = this.generateRoomCode();
-                        this.hostRoom(newCode).then(resolve);
-                    } else {
-                        resolved = true;
-                        // Setup local channel fallback for same-browser testing
-                        this.setupBroadcastChannel(code);
-                        this.isConnected = true;
-                        this.connectionMode = 'local';
-                        this.startHeartbeat();
-                        this.updateUI();
-                        resolve({
-                            success: true,
-                            code,
-                            error: 'เปิดห้องสำเร็จ (โหมดสำรองเครือข่าย)'
-                        });
-                    }
-                });
-            } catch (err: any) {
-                if (!resolved) {
-                    resolved = true;
-                    this.setupBroadcastChannel(code);
-                    this.isConnected = true;
-                    this.connectionMode = 'local';
-                    this.startHeartbeat();
-                    this.updateUI();
-                    resolve({ success: true, code });
-                }
-            }
+        const connected = await this.relay.connect(this.currentTopic, (msg) => {
+            this.handleNetworkMessage(msg);
         });
+
+        this.isConnected = true;
+        this.connectionMode = connected ? 'cloud' : 'local';
+        this.setupBroadcastChannel(code);
+        this.startHeartbeat();
+        this.updateUI();
+
+        return { success: true, code };
     }
 
     // ── Join A Room (เข้าร่วมโลกเพื่อนด้วยรหัส) ─────────────────
-    public joinRoom(roomCode: string, keepHubFlag?: boolean): Promise<{ success: boolean; error?: string }> {
-        return new Promise((resolve) => {
-            this.disconnect();
-            this.init();
-            if (!keepHubFlag) {
-                this.isGlobalHub = (roomCode === '999999');
-            }
-            const cleanCode = roomCode.trim().replace(/[^0-9]/g, '');
-            if (cleanCode.length < 4) {
-                resolve({ success: false, error: 'รหัสห้องต้องมีอย่างน้อย 4 หลัก' });
-                return;
-            }
+    public async joinRoom(roomCode: string, keepHubFlag?: boolean): Promise<{ success: boolean; error?: string }> {
+        this.disconnect();
+        this.init();
+        if (!keepHubFlag) {
+            this.isGlobalHub = (roomCode === '999999');
+        }
+        const cleanCode = roomCode.trim().replace(/[^0-9]/g, '');
+        if (cleanCode.length < 4) {
+            return { success: false, error: 'รหัสห้องต้องมีอย่างน้อย 4 หลัก' };
+        }
 
-            this.roomCode = cleanCode;
-            this.isHost = false;
-            const peerTargetId = `gamefarm-room-${cleanCode}`;
+        this.roomCode = cleanCode;
+        this.isHost = false;
+        this.currentTopic = `happyfarm2d/room/${cleanCode}`;
 
-            try {
-                this.peer = new Peer(PEER_CONFIG);
-                let resolved = false;
-
-                this.peer.on('open', (myId) => {
-                    this.myPeerId = myId;
-                    this.setupBroadcastChannel(cleanCode);
-
-                    if (!this.peer) return;
-                    const conn = this.peer.connect(peerTargetId, {
-                        reliable: true
-                    });
-
-                    this.hostConn = conn;
-
-                    const onConnected = () => {
-                        this.isConnected = true;
-                        this.connectionMode = 'p2p';
-                        this.startHeartbeat();
-                        this.sendJoinPacket();
-                        this.updateUI();
-                        if (!resolved) {
-                            resolved = true;
-                            resolve({ success: true });
-                        }
-                    };
-
-                    if (conn.open) {
-                        onConnected();
-                    } else {
-                        conn.on('open', onConnected);
-                    }
-
-                    conn.on('data', (data) => {
-                        this.handleNetworkMessage(data as NetMessage);
-                    });
-
-                    conn.on('close', () => {
-                        this.handlePeerDisconnect('host');
-                    });
-
-                    conn.on('error', (err: any) => {
-                        console.warn('[Multiplayer Conn Error]:', err);
-                        if (!resolved) {
-                            resolved = true;
-                            resolve({
-                                success: false,
-                                error: 'ไม่พบโฮสต์ของห้อง ' + cleanCode + ' (ตรวจสอบว่าเครื่องเพื่อนเปิดห้องอยู่)'
-                            });
-                        }
-                    });
-
-                    // 12s timeout for WebRTC cross-device ICE candidate discovery
-                    setTimeout(() => {
-                        if (!resolved) {
-                            resolved = true;
-                            if (this.hostConn && this.hostConn.open) {
-                                this.connectionMode = 'p2p';
-                                resolve({ success: true });
-                            } else {
-                                this.disconnect();
-                                resolve({
-                                    success: false,
-                                    error: 'การเชื่อมต่อห้อง ' + cleanCode + ' หมดเวลา (ไม่พบโฮสต์ หรือสัญญาณเครือข่ายบล็อกการเชื่อมต่อ P2P)'
-                                });
-                            }
-                        }
-                    }, 12000);
-                });
-
-                this.peer.on('disconnected', () => {
-                    try { this.peer?.reconnect(); } catch (_) {}
-                });
-
-                this.peer.on('error', (err: any) => {
-                    console.warn('[Multiplayer Join Peer Error]:', err);
-                    if (!resolved) {
-                        resolved = true;
-                        if (err.type === 'peer-unavailable') {
-                            resolve({
-                                success: false,
-                                error: 'ไม่พบห้องหมายเลข ' + cleanCode + ' (โปรดตรวจสอบว่าเครื่องเพื่อนเปิดห้องอยู่หรือไม่)'
-                            });
-                        } else {
-                            resolve({
-                                success: false,
-                                error: 'เกิดข้อผิดพลาดในการเชื่อมต่อ: ' + (err.type || err.message || 'เครือข่ายไม่ตอบสนอง')
-                            });
-                        }
-                    }
-                });
-            } catch (err: any) {
-                console.warn('[Multiplayer Join Exception]:', err);
-                resolve({
-                    success: false,
-                    error: 'ไม่สามารถสร้างการเชื่อมต่อได้: ' + (err.message || 'ข้อผิดพลาดระบบ')
-                });
-            }
+        const connected = await this.relay.connect(this.currentTopic, (msg) => {
+            this.handleNetworkMessage(msg);
         });
+
+        this.isConnected = true;
+        this.connectionMode = connected ? 'cloud' : 'local';
+        this.setupBroadcastChannel(cleanCode);
+        this.startHeartbeat();
+        this.sendJoinPacket();
+        this.updateUI();
+
+        return { success: true };
     }
 
     // ── Join Global Hub (ห้องรวมสาธารณะสำหรับพบปะผู้เล่นทุกคน) ───────
-    public joinGlobalHub(): Promise<{ success: boolean; isHost: boolean; error?: string }> {
-        return new Promise((resolve) => {
-            this.disconnect();
-            this.init();
-            const hubCode = '999999';
-            this.roomCode = hubCode;
-            this.isGlobalHub = true;
-            this.isHost = true;
-            const peerTargetId = `gamefarm-room-${hubCode}`;
+    public async joinGlobalHub(): Promise<{ success: boolean; isHost: boolean; error?: string }> {
+        this.disconnect();
+        this.init();
+        const hubCode = '999999';
+        this.roomCode = hubCode;
+        this.isGlobalHub = true;
+        this.isHost = true;
+        this.currentTopic = 'happyfarm2d/global_hub';
 
-            let resolved = false;
-
-            try {
-                this.peer = new Peer(peerTargetId, PEER_CONFIG);
-
-                this.peer.on('open', (id) => {
-                    if (resolved) return;
-                    resolved = true;
-                    this.myPeerId = id;
-                    this.isConnected = true;
-                    this.isHost = true;
-                    this.connectionMode = 'p2p';
-                    this.setupBroadcastChannel(hubCode);
-                    this.startHeartbeat();
-                    this.updateUI();
-                    resolve({ success: true, isHost: true });
-                });
-
-                this.peer.on('connection', (conn) => {
-                    this.handleIncomingClientConnection(conn);
-                });
-
-                this.peer.on('disconnected', () => {
-                    try { this.peer?.reconnect(); } catch (_) {}
-                });
-
-                this.peer.on('error', (err: any) => {
-                    if (resolved) return;
-                    resolved = true;
-                    if (this.peer) {
-                        try { this.peer.destroy(); } catch (_) {}
-                        this.peer = null;
-                    }
-                    // ID already taken means another player is already hosting the Hub. Join as client!
-                    this.joinRoom(hubCode, true).then((res) => {
-                        this.isGlobalHub = true;
-                        resolve({ success: res.success, isHost: false, error: res.error });
-                    });
-                });
-
-                // 4.5s timeout: if hosting takes too long, fallback to join as client
-                setTimeout(() => {
-                    if (!resolved) {
-                        resolved = true;
-                        if (this.peer) {
-                            try { this.peer.destroy(); } catch (_) {}
-                            this.peer = null;
-                        }
-                        this.joinRoom(hubCode, true).then((res) => {
-                            this.isGlobalHub = true;
-                            resolve({ success: res.success, isHost: false, error: res.error });
-                        });
-                    }
-                }, 4500);
-            } catch (err) {
-                if (!resolved) {
-                    resolved = true;
-                    this.joinRoom(hubCode, true).then((res) => {
-                        this.isGlobalHub = true;
-                        resolve({ success: res.success, isHost: false, error: res.error });
-                    });
-                }
-            }
+        const connected = await this.relay.connect(this.currentTopic, (msg) => {
+            this.handleNetworkMessage(msg);
         });
+
+        this.isConnected = true;
+        this.connectionMode = connected ? 'cloud' : 'local';
+        this.setupBroadcastChannel(hubCode);
+        this.startHeartbeat();
+        this.sendJoinPacket();
+        this.updateUI();
+
+        return { success: true, isHost: true };
     }
 
     // ── Setup Local BroadcastChannel (Zero-Config Same-Browser Sync) ──
@@ -372,44 +389,6 @@ class MultiplayerService {
                 }
             };
         }
-    }
-
-    // ── Handle Incoming Client (Host Side) ────────────────────
-    private handleIncomingClientConnection(conn: DataConnection): void {
-        const onOpen = () => {
-            this.clientConns.set(conn.peer, conn);
-            this.connectionMode = 'p2p';
-            this.sendWorldSyncPacket(conn);
-            this.updateUI();
-            const game = (window as any).Game;
-            if (game && typeof game.addFloatingText === 'function') {
-                game.addFloatingText('★ มีผู้เล่นเชื่อมต่อเข้าสู่โลกของคุณ! ★', game.player.x - 30, game.player.y - 30, '#38bdf8');
-            }
-        };
-
-        if (conn.open) {
-            onOpen();
-        } else {
-            conn.on('open', onOpen);
-        }
-
-        conn.on('data', (data) => {
-            const msg = data as NetMessage;
-            this.handleNetworkMessage(msg);
-            // Host relays message to other clients
-            this.broadcastExcept(msg, conn.peer);
-        });
-
-        conn.on('close', () => {
-            this.clientConns.delete(conn.peer);
-            this.updateUI();
-        });
-
-        conn.on('error', (err) => {
-            console.warn('[Host Client Conn Error]:', err);
-            this.clientConns.delete(conn.peer);
-            this.updateUI();
-        });
     }
 
     // ── Send Join Packet ──────────────────────────────────────
@@ -436,7 +415,7 @@ class MultiplayerService {
     }
 
     // ── Send World Sync Packet (Host to Guest) ────────────────
-    private sendWorldSyncPacket(conn?: DataConnection): void {
+    private sendWorldSyncPacket(): void {
         const game = (window as any).Game;
         if (!game) return;
 
@@ -469,11 +448,7 @@ class MultiplayerService {
             timestamp: Date.now()
         };
 
-        if (conn && conn.open) {
-            conn.send(syncMsg);
-        } else {
-            this.broadcastMessage(syncMsg);
-        }
+        this.broadcastMessage(syncMsg);
     }
 
     // ── Start Heartbeat State Broadcast (20 FPS) ──────────────
@@ -689,32 +664,17 @@ class MultiplayerService {
 
     // ── Broadcast Message to Peers & Local Channel ─────────────
     private broadcastMessage(msg: NetMessage): void {
-        // Send over WebRTC to host (if client)
-        if (this.hostConn && this.hostConn.open) {
-            this.hostConn.send(msg);
+        // 1. Send via Cloud WebSocket Relay (works everywhere!)
+        if (this.relay && this.relay.isConnected) {
+            this.relay.publish(this.currentTopic, msg);
         }
 
-        // Send over WebRTC to all clients (if host)
-        if (this.isHost) {
-            this.clientConns.forEach((conn) => {
-                if (conn.open) conn.send(msg);
-            });
-        }
-
-        // Send over BroadcastChannel
+        // 2. Send via local BroadcastChannel (for instant 0ms same-device dual-tabs)
         if (this.broadcastChannel) {
             try {
                 this.broadcastChannel.postMessage(msg);
             } catch {}
         }
-    }
-
-    private broadcastExcept(msg: NetMessage, exceptPeerId: string): void {
-        this.clientConns.forEach((conn, peerId) => {
-            if (peerId !== exceptPeerId && conn.open) {
-                conn.send(msg);
-            }
-        });
     }
 
     // ── Clean Stale Remote Players (after 6 seconds timeout) ───
@@ -731,19 +691,6 @@ class MultiplayerService {
         }
     }
 
-    private handlePeerDisconnect(type: string): void {
-        console.log('[Multiplayer Disconnect]:', type);
-        if (this.isGlobalHub && !this.isHost && this.isConnected) {
-            console.log('[Global Hub]: Reconnecting to hub host...');
-            setTimeout(() => {
-                if (this.isGlobalHub) {
-                    this.joinGlobalHub();
-                }
-            }, 1200);
-        }
-        this.updateUI();
-    }
-
     // ── Disconnect / Leave ────────────────────────────────────
     public disconnect(): void {
         this.isConnected = false;
@@ -755,19 +702,8 @@ class MultiplayerService {
         if (this.syncInterval) clearInterval(this.syncInterval);
         if (this.cleanupInterval) clearInterval(this.cleanupInterval);
 
-        if (this.hostConn) {
-            try { this.hostConn.close(); } catch {}
-            this.hostConn = null;
-        }
-
-        this.clientConns.forEach(c => {
-            try { c.close(); } catch {}
-        });
-        this.clientConns.clear();
-
-        if (this.peer) {
-            try { this.peer.destroy(); } catch {}
-            this.peer = null;
+        if (this.relay) {
+            this.relay.disconnect();
         }
 
         if (this.broadcastChannel) {
@@ -813,7 +749,7 @@ class MultiplayerService {
         const statusEl = document.getElementById('mpStatusText');
         if (statusEl) {
             if (this.isConnected) {
-                const modeText = this.connectionMode === 'p2p' ? 'P2P ออนไลน์จริง' : 'จำลองเครื่องเดียวกัน';
+                const modeText = this.connectionMode === 'cloud' ? 'ออนไลน์ข้ามเครื่อง (Cloud Relay)' : 'จำลองเครื่องเดียวกัน';
                 if (this.isGlobalHub) {
                     statusEl.textContent = `อยู่ในห้องโถงชุมนุมส่วนกลาง (Global Hub - ${modeText}) - นักผจญภัยออนไลน์ในห้อง ${count + 1} คน`;
                     statusEl.style.color = '#38bdf8';

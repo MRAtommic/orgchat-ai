@@ -2490,8 +2490,8 @@ body {
     position: absolute;
     right: 14px;
     bottom: 14px;
-    width: 200px;
-    height: 200px;
+    width: 175px;
+    height: 150px;
     pointer-events: none;
     touch-action: none !important;
     z-index: 45;
@@ -2522,8 +2522,8 @@ body {
 
 /* 1. Main Action / Shoot Button [A] */
 .btn-touch-a {
-    width: 76px;
-    height: 76px;
+    width: 72px;
+    height: 72px;
     right: 4px;
     bottom: 4px;
     background: linear-gradient(135deg, #22c55e 0%, #15803d 100%);
@@ -2575,12 +2575,12 @@ body {
     100% { transform: scale(1.06); box-shadow: 0 0 24px rgba(239, 68, 68, 0.95), 0 6px 14px rgba(0, 0, 0, 0.6); }
 }
 
-/* 2. Explore / Interact Button [E] (Prominent Upper-Left Companion) */
+/* 2. Explore / Interact Button [E] (Above Attack Button) */
 .btn-touch-e {
-    width: 60px;
-    height: 60px;
-    right: 76px;
-    bottom: 76px;
+    width: 52px;
+    height: 52px;
+    right: 10px;
+    bottom: 84px;
     background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
     border: 3px solid #38bdf8;
     box-shadow: 0 5px 12px rgba(0, 0, 0, 0.45), 0 0 10px rgba(56, 189, 248, 0.35), inset 0 2px 3px rgba(255, 255, 255, 0.35);
@@ -2593,7 +2593,7 @@ body {
 }
 
 .btn-touch-e span {
-    font-size: 18px;
+    font-size: 17px;
     font-weight: 900;
     line-height: 1;
     color: #ffffff;
@@ -2601,7 +2601,7 @@ body {
 }
 
 .btn-touch-e small {
-    font-size: 10px;
+    font-size: 9.5px;
     font-weight: 700;
     color: #bae6fd;
     margin-top: 1px;
@@ -2620,12 +2620,12 @@ body {
     100% { transform: scale(1.07); box-shadow: 0 0 22px rgba(56, 189, 248, 1), 0 5px 12px rgba(0, 0, 0, 0.55); }
 }
 
-/* 3. Dash / Dodge Button */
+/* 3. Dash / Dodge Button (Left of Attack Button) */
 .btn-touch-dash {
-    width: 54px;
-    height: 54px;
-    right: 92px;
-    bottom: 8px;
+    width: 50px;
+    height: 50px;
+    right: 86px;
+    bottom: 6px;
     background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%) !important;
     border: 2.5px solid #2dd4bf !important;
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4), inset 0 2px 3px rgba(255, 255, 255, 0.3);
@@ -2650,12 +2650,12 @@ body {
     margin-top: 1px;
 }
 
-/* 4. Guard / Parry Button */
+/* 4. Guard / Parry Button (Above Dash, Left of Interact) */
 .btn-touch-guard {
-    width: 64px;
-    height: 64px;
-    right: 20px;
-    bottom: 104px;
+    width: 54px;
+    height: 54px;
+    right: 80px;
+    bottom: 68px;
     background: linear-gradient(135deg, #b45309 0%, #d97706 100%) !important;
     border: 3px solid #fbbf24 !important;
     box-shadow: 0 5px 14px rgba(0, 0, 0, 0.5), inset 0 2px 4px rgba(255, 255, 255, 0.35);
@@ -2695,8 +2695,8 @@ body {
    ======================================================== */
 .touch-skills-row {
     position: absolute;
-    right: 12px;
-    bottom: 120px;
+    right: 14px;
+    bottom: 156px;
     display: flex;
     align-items: flex-start;
     gap: 8px;
@@ -2973,16 +2973,16 @@ body {
 /* Sleek Single-Line Skill Name Pill */
 .touch-skill-pill {
     position: absolute;
-    bottom: -18px;
+    bottom: -11px;
     left: 50%;
     transform: translateX(-50%);
-    font-size: 9.5px;
+    font-size: 8px;
     font-weight: 800;
     color: #f8fafc;
     background: rgba(15, 23, 42, 0.94);
     border: 1px solid rgba(255, 255, 255, 0.16);
     border-radius: 999px;
-    padding: 1.5px 7px;
+    padding: 1px 5px;
     white-space: nowrap;
     letter-spacing: 0.2px;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95);
@@ -3647,34 +3647,39 @@ body {
     /* Mobile Touch Skill Bar [Z, X, C, V] & [K] Class Tree */
     .touch-skills-row {
         position: absolute !important;
-        right: 12px !important;
-        bottom: 156px !important;
+        right: 10px !important;
+        bottom: 154px !important;
         display: flex !important;
         align-items: flex-start !important;
-        gap: 8px !important;
+        gap: 6px !important;
         z-index: 46 !important;
         pointer-events: auto !important;
     }
     .touch-skill-btn {
+        width: 46px !important;
+        height: 46px !important;
+    }
+    .touch-skill-btn.touch-skill-ult {
         width: 50px !important;
         height: 50px !important;
     }
-    .touch-skill-btn.touch-skill-ult {
-        width: 56px !important;
-        height: 56px !important;
-    }
     .touch-skill-class-btn {
-        width: 52px !important;
-        height: 50px !important;
+        width: 48px !important;
+        height: 46px !important;
+    }
+    .touch-skill-pill {
+        bottom: -11px !important;
+        font-size: 8px !important;
+        padding: 1px 5px !important;
     }
 
-    /* Bottom Right: Ergonomic Radial Action Cluster */
+    /* Bottom Right: Ergonomic Radial Action Cluster (Non-overlapping, thumb-friendly) */
     .touch-actions {
         position: absolute !important;
-        right: 12px !important;
-        bottom: 12px !important;
-        width: 180px !important;
-        height: 180px !important;
+        right: 10px !important;
+        bottom: 10px !important;
+        width: 160px !important;
+        height: 142px !important;
         display: block !important;
         pointer-events: none !important;
         z-index: 45 !important;
@@ -3684,60 +3689,73 @@ body {
         pointer-events: auto !important;
     }
     .btn-touch-a {
-        width: 76px !important;
-        height: 76px !important;
+        width: 70px !important;
+        height: 70px !important;
         right: 4px !important;
         bottom: 4px !important;
     }
     .btn-touch-a span {
-        font-size: 20px !important;
+        font-size: 19px !important;
         font-weight: 900 !important;
     }
     .btn-touch-a small {
-        font-size: 10px !important;
+        font-size: 9.5px !important;
         font-weight: 700 !important;
     }
     .btn-touch-e {
-        width: 60px !important;
-        height: 60px !important;
-        right: 76px !important;
-        bottom: 76px !important;
+        width: 50px !important;
+        height: 50px !important;
+        right: 10px !important;
+        bottom: 82px !important;
     }
     .btn-touch-e span {
-        font-size: 18px !important;
+        font-size: 16px !important;
         font-weight: 900 !important;
     }
     .btn-touch-e small {
-        font-size: 10px !important;
-        font-weight: 700 !important;
-    }
-    .btn-touch-dash {
-        width: 54px !important;
-        height: 54px !important;
-        right: 92px !important;
-        bottom: 8px !important;
-    }
-    .btn-touch-dash span {
-        font-size: 13px !important;
-        font-weight: 900 !important;
-    }
-    .btn-touch-dash small {
         font-size: 9px !important;
         font-weight: 700 !important;
     }
+    .btn-touch-dash {
+        width: 48px !important;
+        height: 48px !important;
+        right: 84px !important;
+        bottom: 6px !important;
+    }
+    .btn-touch-dash span {
+        font-size: 12px !important;
+        font-weight: 900 !important;
+    }
+    .btn-touch-dash small {
+        font-size: 8.5px !important;
+        font-weight: 700 !important;
+    }
     .btn-touch-guard {
-        width: 64px !important;
-        height: 64px !important;
-        right: 20px !important;
-        bottom: 104px !important;
+        width: 52px !important;
+        height: 52px !important;
+        right: 78px !important;
+        bottom: 66px !important;
     }
     .btn-touch-guard span {
-        font-size: 13px !important;
+        font-size: 11.5px !important;
         font-weight: 900 !important;
     }
     .btn-touch-guard small {
-        font-size: 10px !important;
+        font-size: 8.5px !important;
         font-weight: 800 !important;
+    }
+}
+
+/* Ultra-compact landscape viewports (e.g. height <= 340px) */
+@media (max-height: 340px) {
+    .touch-actions {
+        transform: scale(0.82) !important;
+        transform-origin: bottom right !important;
+    }
+    .touch-skills-row {
+        bottom: 126px !important;
+        transform: scale(0.82) !important;
+        transform-origin: bottom right !important;
     }
 }
 
@@ -6555,29 +6573,7 @@ body {
    ========================================================================== */
 
 .btn-touch-customize {
-    position: absolute;
-    top: 60px;
-    right: 14px;
-    background: rgba(15, 23, 42, 0.75);
-    border: 1px solid #475569;
-    border-radius: 6px;
-    color: #94a3b8;
-    font-size: 10px;
-    font-weight: 700;
-    padding: 3px 8px;
-    cursor: pointer;
-    z-index: 46;
-    pointer-events: auto;
-    transition: all 0.2s ease;
-    touch-action: none;
-    user-select: none;
-    -webkit-user-select: none;
-}
-.btn-touch-customize:hover,
-.btn-touch-customize:active {
-    background: rgba(30, 41, 59, 0.95);
-    color: #38bdf8;
-    border-color: #38bdf8;
+    display: none !important;
 }
 
 .touch-layout-editor-bar {

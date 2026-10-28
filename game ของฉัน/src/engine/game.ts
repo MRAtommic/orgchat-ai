@@ -5678,6 +5678,7 @@ Game.applyTouchScale = function(scale: number) {
 
 Game.saveTouchControlsLayout = function() {
     const layoutData: any = {
+        version: 2,
         scale: this.touchControlsScale || 1.0,
         buttons: {}
     };
@@ -5733,6 +5734,11 @@ Game.applySavedTouchLayout = function() {
         const raw = localStorage.getItem('gamefarm_touch_layout');
         if (!raw) return;
         const layout = JSON.parse(raw);
+        // Invalidate older bugged layouts
+        if (!layout || layout.version !== 2) {
+            localStorage.removeItem('gamefarm_touch_layout');
+            return;
+        }
         if (layout.scale) {
             this.setTouchControlsScale(layout.scale);
         }
@@ -6760,10 +6766,12 @@ Game.drawActiveQuestTracker = function() {
     }
 
     const isMobile = this.width <= 900 || this.height <= 560;
-    const rightMargin = isMobile ? 175 : 198;
-    const boxW = isMobile ? Math.min(230, Math.max(180, this.width - rightMargin - 190)) : 230;
-    const boxH = 52;
-    const boxX = Math.max(190, this.width - rightMargin - boxW);
+    const leftMargin = isMobile ? 220 : 250;
+    const rightMargin = isMobile ? 150 : 190;
+    const availableW = Math.max(140, this.width - leftMargin - rightMargin);
+    const boxW = Math.min(230, Math.max(150, Math.min(availableW, 230)));
+    const boxH = 50;
+    const boxX = Math.round(leftMargin + Math.max(0, (availableW - boxW) / 2));
     const boxY = isMobile ? 6 : 10;
     this._questTrackerBox = { x: boxX, y: boxY, w: boxW, h: boxH };
 
