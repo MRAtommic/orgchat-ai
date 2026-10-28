@@ -683,13 +683,33 @@
                 </div>
                 <div class="modal-body">
                     <div class="mp-tabs-bar">
-                        <button id="tabMpHst" class="mp-tab-btn active" onclick="Game.switchMpTab('host')">เปิดโลกของฉัน (Host)</button>
+                        <button id="tabMpHub" class="mp-tab-btn active" onclick="Game.switchMpTab('hub')">ห้องรวมสาธารณะ (Global Hub)</button>
+                        <button id="tabMpHst" class="mp-tab-btn" onclick="Game.switchMpTab('host')">เปิดโลกของฉัน (Host)</button>
                         <button id="tabMpJoin" class="mp-tab-btn" onclick="Game.switchMpTab('join')">เข้าร่วมโลกเพื่อน (Join)</button>
                         <button id="tabMpArena" class="mp-tab-btn" onclick="Game.switchMpTab('arena')">ลานประลองยุทธ์ (PvP Arena)</button>
                     </div>
 
+
+                    <!-- TAB 0: Global Hub (ห้องรวมสาธารณะ) -->
+                    <div id="mpTabContentHub" class="mp-tab-content">
+                        <p class="modal-desc" style="color: #cbd5e1;">ห้องโถงชุมนุมส่วนกลางที่ไม่ต้องใช้รหัสห้อง ทุกคนสามารถกดเข้ามารวมตัว พูดคุย แลกเปลี่ยน อวดอุปกรณ์ และนัดประลองยุทธ์กันได้ทันที</p>
+                        <div class="mp-hub-card">
+                            <div class="mp-hub-info">
+                                <span class="mp-hub-badge">GLOBAL ADVENTURERS GUILD HALL</span>
+                                <h3 style="color: #38bdf8; margin: 8px 0 4px 0; font-size: 14px;">ห้องโถงชุมนุมนักผจญภัยส่วนกลาง (Global Hub)</h3>
+                                <p style="font-size: 11px; color: #cbd5e1; margin: 0 0 10px 0; line-height: 1.5;">
+                                    ศูนย์กลางพบปะสังสรรค์ของผู้เล่นทั่วโลก เชื่อมต่อหากันแบบ P2P อัตโนมัติไร้เซิร์ฟเวอร์คั่นกลาง ภายในห้องโถงมีน้ำพุศักดิ์สิทธิ์ฟื้นฟูพลังชีวิตและพลังงานเต็มเปี่ยม พร้อมประตูมิติเชื่อมต่อตรงสู่ลานประลองยุทธ์ PvP, ฟาร์มสุขสันต์ และหมู่บ้านศิลาสุขาวดี
+                                </p>
+                            </div>
+                            <div style="display: flex; gap: 8px;">
+                                <button class="btn-primary btn-enter-hub" onclick="Game.enterGlobalHub()">เข้าสู่ห้องโถงชุมนุมส่วนกลางทันที (Enter Hub)</button>
+                                <button class="btn-secondary" style="margin-top: 8px; white-space: nowrap;" onclick="Multiplayer.disconnect()">ออกจากห้องรวม</button>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- TAB 1: Host World -->
-                    <div id="mpTabContentHost" class="mp-tab-content">
+                    <div id="mpTabContentHost" class="mp-tab-content" style="display: none;">
                         <p class="modal-desc" style="color: #cbd5e1;">เปิดโลกของคุณเป็นห้องออนไลน์ แล้วแชร์รหัส 6 หลักให้เพื่อนเข้ามาร่วมโลกและผจญภัยด้วยกันได้ทันที</p>
                         <div class="mp-code-box">
                             <span class="mp-code-label">รหัสห้องของคุณ (Room Code)</span>

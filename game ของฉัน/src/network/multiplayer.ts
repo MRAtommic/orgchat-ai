@@ -39,6 +39,7 @@ export interface NetMessage {
 class MultiplayerService {
     public isHost: boolean = false;
     public isConnected: boolean = false;
+    public isGlobalHub: boolean = false;
     public roomCode: string | null = null;
     public myPeerId: string = '';
     public myPlayerId: string = '';
@@ -75,6 +76,7 @@ class MultiplayerService {
         return new Promise((resolve) => {
             this.disconnect();
             this.init();
+            this.isGlobalHub = false;
             const code = customCode || this.generateRoomCode();
             this.roomCode = code;
             this.isHost = true;
@@ -126,10 +128,13 @@ class MultiplayerService {
     }
 
     // ── Join A Room (เข้าร่วมโลกเพื่อนด้วยรหัส) ─────────────────
-    public joinRoom(roomCode: string): Promise<{ success: boolean; error?: string }> {
+    public joinRoom(roomCode: string, keepHubFlag?: boolean): Promise<{ success: boolean; error?: string }> {
         return new Promise((resolve) => {
             this.disconnect();
             this.init();
+            if (!keepHubFlag) {
+                this.isGlobalHub = (roomCode === '999999');
+            }
             const cleanCode = roomCode.trim().replace(/[^0-9]/g, '');
             if (cleanCode.length < 4) {
                 resolve({ success: false, error: 'รหัสห้องต้องมีอย่างน้อย 4 หลัก' });
@@ -223,6 +228,80 @@ class MultiplayerService {
                 this.sendJoinPacket();
                 this.updateUI();
                 resolve({ success: true });
+            }
+        });
+    }
+
+    // ── Join Global Hub (ห้องรวมสาธารณะสำหรับพบปะผู้เล่นทุกคน) ───────
+    public joinGlobalHub(): Promise<{ success: boolean; isHost: boolean; error?: string }> {
+        return new Promise((resolve) => {
+            this.disconnect();
+            this.init();
+            const hubCode = '999999';
+            this.roomCode = hubCode;
+            this.isGlobalHub = true;
+            this.isHost = true;
+            const peerTargetId = `gamefarm-room-${hubCode}`;
+
+            let resolved = false;
+
+            try {
+                this.peer = new Peer(peerTargetId, {
+                    debug: 1
+                });
+
+                this.peer.on('open', (id) => {
+                    if (resolved) return;
+                    resolved = true;
+                    this.myPeerId = id;
+                    this.isConnected = true;
+                    this.isHost = true;
+                    this.setupBroadcastChannel(hubCode);
+                    this.startHeartbeat();
+                    this.updateUI();
+                    resolve({ success: true, isHost: true });
+                });
+
+                this.peer.on('connection', (conn) => {
+                    this.handleIncomingClientConnection(conn);
+                });
+
+                this.peer.on('error', (err: any) => {
+                    if (resolved) return;
+                    resolved = true;
+                    if (this.peer) {
+                        try { this.peer.destroy(); } catch (_) {}
+                        this.peer = null;
+                    }
+                    // ID already taken means another player is already hosting the Hub. Join as client!
+                    this.joinRoom(hubCode, true).then((res) => {
+                        this.isGlobalHub = true;
+                        resolve({ success: res.success, isHost: false, error: res.error });
+                    });
+                });
+
+                // 3.5s timeout fallback
+                setTimeout(() => {
+                    if (!resolved) {
+                        resolved = true;
+                        if (this.peer) {
+                            try { this.peer.destroy(); } catch (_) {}
+                            this.peer = null;
+                        }
+                        this.joinRoom(hubCode, true).then((res) => {
+                            this.isGlobalHub = true;
+                            resolve({ success: res.success, isHost: false, error: res.error });
+                        });
+                    }
+                }, 3500);
+            } catch (err) {
+                if (!resolved) {
+                    resolved = true;
+                    this.joinRoom(hubCode, true).then((res) => {
+                        this.isGlobalHub = true;
+                        resolve({ success: res.success, isHost: false, error: res.error });
+                    });
+                }
             }
         });
     }
@@ -570,6 +649,14 @@ class MultiplayerService {
 
     private handlePeerDisconnect(type: string): void {
         console.log('[Multiplayer Disconnect]:', type);
+        if (this.isGlobalHub && !this.isHost && this.isConnected) {
+            console.log('[Global Hub]: Reconnecting to hub host...');
+            setTimeout(() => {
+                if (this.isGlobalHub) {
+                    this.joinGlobalHub();
+                }
+            }, 1200);
+        }
         this.updateUI();
     }
 
@@ -577,6 +664,7 @@ class MultiplayerService {
     public disconnect(): void {
         this.isConnected = false;
         this.isHost = false;
+        this.isGlobalHub = false;
         this.roomCode = null;
 
         if (this.syncInterval) clearInterval(this.syncInterval);
@@ -621,7 +709,11 @@ class MultiplayerService {
             if (this.isConnected && this.roomCode) {
                 badge.style.display = 'flex';
                 badge.className = 'hud-badge mp-active';
-                badge.innerHTML = `<span class="mp-dot"></span><span>ห้อง: ${this.roomCode} (${count + 1} คน)</span>`;
+                if (this.isGlobalHub) {
+                    badge.innerHTML = `<span class="mp-dot" style="background:#38bdf8;"></span><span>ห้องรวม (${count + 1} คน)</span>`;
+                } else {
+                    badge.innerHTML = `<span class="mp-dot"></span><span>ห้อง: ${this.roomCode} (${count + 1} คน)</span>`;
+                }
             } else {
                 badge.style.display = 'none';
             }
@@ -636,10 +728,15 @@ class MultiplayerService {
         const statusEl = document.getElementById('mpStatusText');
         if (statusEl) {
             if (this.isConnected) {
-                statusEl.textContent = this.isHost
-                    ? `โฮสต์โลกออนไลน์ (ห้อง ${this.roomCode}) - มีผู้เล่นอื่นร่วมโลก ${count} คน`
-                    : `เชื่อมต่อในโลกห้อง ${this.roomCode} สำเร็จ!`;
-                statusEl.style.color = '#4ade80';
+                if (this.isGlobalHub) {
+                    statusEl.textContent = `อยู่ในห้องโถงชุมนุมส่วนกลาง (Global Hub) - นักผจญภัยออนไลน์ในห้อง ${count + 1} คน`;
+                    statusEl.style.color = '#38bdf8';
+                } else {
+                    statusEl.textContent = this.isHost
+                        ? `โฮสต์โลกออนไลน์ (ห้อง ${this.roomCode}) - มีผู้เล่นอื่นร่วมโลก ${count} คน`
+                        : `เชื่อมต่อในโลกห้อง ${this.roomCode} สำเร็จ!`;
+                    statusEl.style.color = '#4ade80';
+                }
             } else {
                 statusEl.textContent = 'ยังไม่ได้เชื่อมต่อ (เล่นคนเดียว)';
                 statusEl.style.color = '#94a3b8';

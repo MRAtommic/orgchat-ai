@@ -5788,6 +5788,17 @@ body {
     width: 92%;
 }
 
+.volcano-forge-window .modal-header {
+    background: linear-gradient(90deg, #431407 0%, #7c2d12 100%) !important;
+    border-bottom: 2px solid #ea580c !important;
+    color: #fed7aa !important;
+}
+
+.volcano-forge-window .modal-header h2 span {
+    color: #fed7aa !important;
+    text-shadow: 0 0 10px rgba(249, 115, 22, 0.6);
+}
+
 .volcano-forge-bar {
     display: flex;
     align-items: center;
@@ -5980,12 +5991,17 @@ body {
     height: 100dvh !important;
     background: rgba(15, 23, 42, 0.78) !important;
     backdrop-filter: blur(5px) !important;
-    display: flex !important;
+    display: flex;
     align-items: center !important;
     justify-content: center !important;
     z-index: 1000 !important;
     padding: 8px !important;
     box-sizing: border-box !important;
+}
+.modal-overlay[style*="display: none"],
+.modal-overlay[hidden],
+.modal-overlay.hidden {
+    display: none !important;
 }
 .modal-content {
     max-width: 95vw !important;
@@ -5998,7 +6014,7 @@ body {
     flex-shrink: 0 !important;
     position: sticky !important;
     top: 0 !important;
-    background: #fef3c7 !important;
+    background: #fef3c7;
     z-index: 5 !important;
 }
 .modal-body {
@@ -6011,7 +6027,7 @@ body {
     flex-shrink: 0 !important;
     position: sticky !important;
     bottom: 0 !important;
-    background: #fef3c7 !important;
+    background: #fef3c7;
     z-index: 5 !important;
 }
 
@@ -6150,6 +6166,30 @@ body {
 .mp-code-input:focus {
     border-color: #38bdf8;
     outline: none;
+}
+
+.mp-hub-card {
+    background: linear-gradient(135deg, rgba(2, 132, 199, 0.15) 0%, rgba(30, 58, 138, 0.25) 100%);
+    border: 2px solid #0284c7;
+    border-radius: 8px;
+    padding: 12px;
+    margin: 10px 0;
+}
+.mp-hub-badge {
+    background: #0284c7;
+    color: #ffffff;
+    font-size: 9px;
+    font-weight: 800;
+    padding: 2px 6px;
+    border-radius: 4px;
+    letter-spacing: 0.5px;
+}
+.btn-enter-hub {
+    width: 100%;
+    margin-top: 8px;
+    background: linear-gradient(180deg, #0284c7 0%, #0369a1 100%) !important;
+    border-color: #38bdf8 !important;
+    font-weight: 800;
 }
 
 .mp-arena-card {

@@ -317,6 +317,17 @@ Game.init = function() {
     // Start Game Loop
     this.lastTime = performance.now();
     requestAnimationFrame((t) => this.gameLoop(t));
+
+    // Support debug opening from URL query
+    try {
+        const params = new URLSearchParams(window.location.search);
+        const targetModal = params.get('openModal');
+        if (targetModal === 'volcanoForgeModal') {
+            setTimeout(() => this.openVolcanoForgeModal(), 300);
+        } else if (targetModal) {
+            setTimeout(() => this.openModal(targetModal), 300);
+        }
+    } catch (e) {}
 };
 
 
@@ -388,6 +399,7 @@ Game.generateAllScenes = function() {
     this.scenes.farmCave = this.generateFarmCaveMap();
     this.scenes.island = this.generateIslandMap();
     this.scenes.pvp_arena = this.generatePvPArenaMap();
+    this.scenes.global_hub = this.generateGlobalHubMap();
 
     // Set default scene
     this.loadScene('farm');
@@ -2550,7 +2562,8 @@ Game.switchScene = function(targetScene, targetTileX, targetTileY) {
         greenhouse: { title: 'เรือนกระจกเกษตร (Greenhouse)', subtitle: 'ปลูกพืชผลได้ทุกฤดูกาลตลอดทั้งปี', sound: () => SoundEngine.door() },
         spire: { title: 'หอคอยผลึกมิติไร้สิ้นสุด (Infinite Crystal Spire)', subtitle: 'ท้าทายศัตรูไร้ขอบเขต & สะสมเศษเสี้ยวหอคอย', sound: () => SoundEngine.spirePortal() },
         island_volcano: { title: 'ดันเจี้ยนภูเขาไฟเกาะสมบัติ (Volcano Dungeon)', subtitle: 'สำรวจ 10 ชั้น ลาวาเดือด & แท่นหลอมมังกรโบราณ', sound: () => SoundEngine.bossDragonBreath() },
-        pvp_arena: { title: 'ลานประลองยุทธ์จอมราชันย์ (PvP Colosseum Arena)', subtitle: 'สนามประลองฝีมือ 1v1 & ตะลุมบอนออนไลน์ ปลอดภัยไร้การสูญเสีย', sound: () => SoundEngine.alarm() }
+        pvp_arena: { title: 'ลานประลองยุทธ์จอมราชันย์ (PvP Colosseum Arena)', subtitle: 'สนามประลองฝีมือ 1v1 & ตะลุมบอนออนไลน์ ปลอดภัยไร้การสูญเสีย', sound: () => SoundEngine.alarm() },
+        global_hub: { title: 'ห้องโถงชุมนุมนักผจญภัย (Adventurers Grand Guild Hall)', subtitle: 'ศูนย์กลางพบปะสังสรรค์ผู้เล่นทั่วโลก พูดคุย แลกเปลี่ยน และประลองยุทธ์', sound: () => SoundEngine.bell() }
     };
 
 
@@ -2638,6 +2651,7 @@ Game.updateTransition = function(dt) {
             else if (sf.targetScene === 'island_volcano') { /* keep volcano monsters & boss in this.worldMonsters */ }
             else if (sf.targetScene === 'island') this.initIslandScene();
             else if (sf.targetScene === 'pvp_arena') this.initPvPArenaScene();
+            else if (sf.targetScene === 'global_hub') this.initGlobalHubScene();
             else {
                 // Non-combat zones: clean up any leftover monsters or bosses
                 this.worldMonsters = [];
@@ -5746,6 +5760,146 @@ Game.travelToPvPArena = function() {
     this.addFloatingText('เข้าสู่ลานประลองยุทธ์จอมราชันย์!', this.player.x, this.player.y - 25, '#fde047');
 };
 
+Game.generateGlobalHubMap = function() {
+    const width = 32;
+    const height = 22;
+    const map: any[][] = [];
+
+    for (let y = 0; y < height; y++) {
+        const row = [];
+        for (let x = 0; x < width; x++) {
+            const isTopWall = (y <= 2);
+            const isLeftWall = (x <= 1 && (y < 9 || y > 12));
+            const isRightWall = (x >= width - 2 && (y < 9 || y > 12));
+            const isBottomWall = (y >= height - 2 && (x < 14 || x > 17));
+
+            const isSouthExit = (y >= height - 2 && x >= 14 && x <= 17);
+            const isWestExit = (x <= 1 && y >= 9 && y <= 12);
+            const isEastExit = (x >= width - 2 && y >= 9 && y <= 12);
+
+            const isCenterCarpet = (x >= 13 && x <= 18 && y >= 3 && y <= 19) || (y >= 10 && y <= 11 && x >= 2 && x <= 29);
+
+            let type = 'floorWood';
+            let solid = false;
+            let interactable: string | null = null;
+
+            if (isTopWall) {
+                type = 'wallManor';
+                solid = true;
+            } else if (isLeftWall || isRightWall || isBottomWall) {
+                type = 'stoneWall';
+                solid = true;
+            } else if (isSouthExit) {
+                type = 'doorMat';
+                solid = false;
+                interactable = 'exit_hub_to_village';
+            } else if (isWestExit) {
+                type = 'doorMat';
+                solid = false;
+                interactable = 'exit_hub_to_farm';
+            } else if (isEastExit) {
+                type = 'runeTile';
+                solid = false;
+                interactable = 'exit_hub_to_pvp';
+            } else if (isCenterCarpet) {
+                type = 'floorCarpet';
+            }
+
+            row.push({
+                x, y,
+                type,
+                solid,
+                interactable
+            });
+        }
+        map.push(row);
+    }
+
+    // Sacred Healing & Wishing Fountain at center (x: 15..16, y: 10..11)
+    for (let fy = 10; fy <= 11; fy++) {
+        for (let fx = 15; fx <= 16; fx++) {
+            if (map[fy] && map[fy][fx]) {
+                map[fy][fx].solid = true;
+                map[fy][fx].type = 'darkStone';
+                map[fy][fx].interactable = 'hub_fountain';
+            }
+        }
+    }
+
+    // Guild Bulletin / Reception Counter at (x: 14..17, y: 3..4)
+    for (let cy = 3; cy <= 4; cy++) {
+        for (let cx = 14; cx <= 17; cx++) {
+            if (map[cy] && map[cy][cx]) {
+                map[cy][cx].solid = true;
+                map[cy][cx].interactable = 'hub_board';
+            }
+        }
+    }
+
+    // Left Banquet Gathering Tables at (x: 5..8, y: 5..6)
+    for (let ty = 5; ty <= 6; ty++) {
+        for (let tx = 5; tx <= 8; tx++) {
+            if (map[ty] && map[ty][tx]) {
+                map[ty][tx].solid = true;
+            }
+        }
+    }
+
+    // Right Banquet Gathering Tables at (x: 23..26, y: 5..6)
+    for (let ty = 5; ty <= 6; ty++) {
+        for (let tx = 23; tx <= 26; tx++) {
+            if (map[ty] && map[ty][tx]) {
+                map[ty][tx].solid = true;
+            }
+        }
+    }
+
+    // Torches & Sconces along walls
+    const torches = [
+        [3, 2], [9, 2], [13, 2], [18, 2], [22, 2], [28, 2],
+        [3, 19], [13, 19], [18, 19], [28, 19],
+        [2, 8], [2, 13], [29, 8], [29, 13]
+    ];
+    torches.forEach(([tx, ty]) => {
+        if (map[ty] && map[ty][tx]) {
+            map[ty][tx].solid = true;
+            map[ty][tx].type = 'lantern';
+        }
+    });
+
+    return { mapWidth: width, mapHeight: height, map };
+};
+
+Game.initGlobalHubScene = function() {
+    this.worldMonsters = [];
+    this.boss = null;
+    this.bossTelegraphs = [];
+    this.bossGroundHazards = [];
+    this.bossDashGhosts = [];
+    this.bossShockwaves = [];
+    if (this.projectiles) this.projectiles = this.projectiles.filter((p: any) => !p.fromBoss);
+    const bossBar = document.getElementById('bossHealthBar');
+    if (bossBar) bossBar.style.display = 'none';
+};
+
+Game.enterGlobalHub = async function() {
+    this.closeAllModals();
+    SoundEngine.bell();
+    this.addFloatingText('กำลังเชื่อมต่อเข้าสู่ห้องโถงชุมนุมส่วนกลาง...', this.player.x, this.player.y - 20, '#38bdf8');
+    if (typeof (window as any).Multiplayer !== 'undefined') {
+        const res = await (window as any).Multiplayer.joinGlobalHub();
+        if (res.success) {
+            this.switchScene('global_hub', 15, 14);
+            SoundEngine.bell();
+            this.addFloatingText('★ ยินดีต้อนรับสู่ห้องโถงชุมนุมนักผจญภัยส่วนกลาง! ★', this.player.x - 45, this.player.y - 25, '#38bdf8');
+        } else {
+            this.addFloatingText('ไม่สามารถเชื่อมต่อห้องรวมได้: ' + (res.error || 'กรุณาลองใหม่'), this.player.x, this.player.y - 20, '#f87171');
+        }
+    } else {
+        this.switchScene('global_hub', 15, 14);
+    }
+};
+
 Game.drawRemotePlayer = function(rp: any) {
     const rx = Math.round(rp.x - this.camera.x);
     const ry = Math.round(rp.y - this.camera.y);
@@ -5864,8 +6018,16 @@ Game.openMultiplayerModal = function() {
     const m = document.getElementById('multiplayerModal');
     if (m) {
         m.style.display = 'flex';
-        if (typeof (window as any).Multiplayer !== 'undefined') {
-            (window as any).Multiplayer.updateUI();
+        const mp = (window as any).Multiplayer;
+        if (mp) {
+            mp.updateUI();
+            if (mp.isConnected && !mp.isGlobalHub && mp.isHost) {
+                this.switchMpTab('host');
+            } else if (mp.isConnected && !mp.isGlobalHub && !mp.isHost) {
+                this.switchMpTab('join');
+            } else {
+                this.switchMpTab('hub');
+            }
         }
     }
 };
@@ -5879,19 +6041,23 @@ Game.toggleMultiplayerModal = function() {
     }
 };
 
-Game.switchMpTab = function(tabName: 'host' | 'join' | 'arena') {
+Game.switchMpTab = function(tabName: 'hub' | 'host' | 'join' | 'arena') {
+    const tabHub = document.getElementById('tabMpHub');
     const tabHost = document.getElementById('tabMpHst');
     const tabJoin = document.getElementById('tabMpJoin');
     const tabArena = document.getElementById('tabMpArena');
 
+    const contentHub = document.getElementById('mpTabContentHub');
     const contentHost = document.getElementById('mpTabContentHost');
     const contentJoin = document.getElementById('mpTabContentJoin');
     const contentArena = document.getElementById('mpTabContentArena');
 
+    if (tabHub) tabHub.className = 'mp-tab-btn' + (tabName === 'hub' ? ' active' : '');
     if (tabHost) tabHost.className = 'mp-tab-btn' + (tabName === 'host' ? ' active' : '');
     if (tabJoin) tabJoin.className = 'mp-tab-btn' + (tabName === 'join' ? ' active' : '');
     if (tabArena) tabArena.className = 'mp-tab-btn' + (tabName === 'arena' ? ' active' : '');
 
+    if (contentHub) contentHub.style.display = tabName === 'hub' ? 'block' : 'none';
     if (contentHost) contentHost.style.display = tabName === 'host' ? 'block' : 'none';
     if (contentJoin) contentJoin.style.display = tabName === 'join' ? 'block' : 'none';
     if (contentArena) contentArena.style.display = tabName === 'arena' ? 'block' : 'none';
@@ -6585,9 +6751,36 @@ Game.handleTileInteract = function(type, tx, ty) {
     } else if (type === 'cave_fruit_drop') {
         this.pickupCaveFruit(tx, ty);
     } else if (type === 'exit_pvp_arena') {
-        this.switchScene('village', 30, 25);
+        const mp = (window as any).Multiplayer;
+        const returnScene = (mp && mp.isGlobalHub) ? 'global_hub' : 'village';
+        const rx = returnScene === 'global_hub' ? 28 : 30;
+        const ry = returnScene === 'global_hub' ? 11 : 25;
+        this.switchScene(returnScene, rx, ry);
         SoundEngine.door();
-        this.addFloatingText('ออกจากลานประลองยุทธ์กลับสู่หมู่บ้าน', this.player.x, this.player.y - 15, '#94a3b8');
+        this.addFloatingText(returnScene === 'global_hub' ? 'กลับสู่ห้องโถงชุมนุมนักผจญภัยส่วนกลาง' : 'ออกจากลานประลองยุทธ์กลับสู่หมู่บ้าน', this.player.x, this.player.y - 15, '#94a3b8');
+    } else if (type === 'exit_hub_to_farm') {
+        this.switchScene('farm', 16, 12);
+        SoundEngine.door();
+        this.addFloatingText('ออกจากห้องรวม กลับสู่ฟาร์มสุขสันต์', this.player.x, this.player.y - 15, '#38bdf8');
+    } else if (type === 'exit_hub_to_village') {
+        this.switchScene('village', 25, 25);
+        SoundEngine.door();
+        this.addFloatingText('ออกจากห้องรวม สู่หมู่บ้านศิลาสุขาวดี', this.player.x, this.player.y - 15, '#38bdf8');
+    } else if (type === 'exit_hub_to_pvp') {
+        this.switchScene('pvp_arena', 17, 18);
+        SoundEngine.alarm();
+        this.addFloatingText('ก้าวเข้าสู่ลานประลองยุทธ์จอมราชันย์!', this.player.x, this.player.y - 15, '#fde047');
+    } else if (type === 'hub_board') {
+        this.openMultiplayerModal();
+        SoundEngine.click();
+    } else if (type === 'hub_fountain') {
+        this.player.hp = this.player.maxHp || 100;
+        this.player.energy = this.player.maxEnergy || 100;
+        this.updateHpHUD();
+        this.updateEnergyHUD();
+        SoundEngine.water();
+        this.spawnParticles(this.player.x + 12, this.player.y + 14, '#38bdf8', 25);
+        this.addFloatingText('★ น้ำพุศักดิ์สิทธิ์แห่งโถงสมาคม ฟื้นฟู HP และ Energy เต็มเปี่ยม! ★', this.player.x - 50, this.player.y - 25, '#38bdf8');
     } else if (type === 'pvp_bell') {
         this.player.hp = this.player.maxHp || 100;
         this.player.energy = this.player.maxEnergy || 100;
@@ -10356,6 +10549,14 @@ Game.openModal = function(modalType) {
     } else if (modalType === 'campModal') {
         const m = document.getElementById('campModal');
         if (m) m.style.display = 'flex';
+    } else if (modalType === 'volcanoForgeModal' || modalType === 'volcanoForge') {
+        this.openVolcanoForgeModal();
+    } else if (modalType === 'pirateShopModal' || modalType === 'pirateShop') {
+        this.openPirateShopModal();
+    } else if (modalType === 'sailboatRepairModal') {
+        this.openSailboatRepairModal();
+    } else if (modalType === 'multiplayerModal') {
+        this.openMultiplayerModal();
     } else {
         const fallbackEl = document.getElementById(modalType);
         if (fallbackEl) fallbackEl.style.display = 'flex';
@@ -10366,7 +10567,10 @@ Game.openModal = function(modalType) {
 Game.closeModal = function(modalType?: string) {
     if (modalType) {
         const el = document.getElementById(modalType);
-        if (el) el.style.display = 'none';
+        if (el) {
+            el.style.display = 'none';
+            el.style.setProperty('display', 'none', 'important');
+        }
         if (this.activeModal === modalType) this.activeModal = null;
     } else {
         this.closeAllModals();
@@ -10378,7 +10582,11 @@ Game.closeModal = function(modalType?: string) {
 Game.closeAllModals = function() {
     this.activeModal = null;
     this.currentOpenChestId = null;
-    document.querySelectorAll('.modal-overlay').forEach(el => (el as HTMLElement).style.display = 'none');
+    document.querySelectorAll('.modal-overlay').forEach(el => {
+        const htmlEl = el as HTMLElement;
+        htmlEl.style.display = 'none';
+        htmlEl.style.setProperty('display', 'none', 'important');
+    });
     this.closeDialogue();
     if (this.player && this.player.outfit) {
         SPRITES.updatePlayerAppearance(this.player.outfit);
@@ -23196,26 +23404,36 @@ Game.openVolcanoForgeModal = function() {
     if (!modal) return;
     this.renderVolcanoForgeModal();
     modal.style.display = 'flex';
+    modal.style.setProperty('display', 'flex', 'important');
 };
 
 Game.renderVolcanoForgeModal = function() {
     const modal = document.getElementById('volcanoForgeModal');
     const countEl = document.getElementById('volcanoForgeCinderCount');
     const container = document.getElementById('volcanoForgeRecipeList');
-    if (!modal || !container || typeof VOLCANO_FORGE_RECIPES === 'undefined') return;
+    const recipes = (typeof VOLCANO_FORGE_RECIPES !== 'undefined' ? VOLCANO_FORGE_RECIPES : null) 
+        || (this.volcanoForgeRecipes) 
+        || ((window as any).VOLCANO_FORGE_RECIPES);
+    if (!modal || !container || !recipes) return;
 
-    const cinderCount = this.getItemCount('cinder_shard');
+    const cinderCount = typeof this.getItemCount === 'function' ? this.getItemCount('cinder_shard') : 0;
     if (countEl) countEl.textContent = String(cinderCount);
 
     let html = '';
-    Object.values(VOLCANO_FORGE_RECIPES).forEach((recipe: any) => {
+    const recipeList = Object.values(recipes);
+    if (recipeList.length === 0) {
+        container.innerHTML = '<div style="color: #cbd5e1; text-align: center; padding: 20px; grid-column: 1 / -1;">ไม่มีสูตรหลอมในขณะนี้</div>';
+        return;
+    }
+
+    recipeList.forEach((recipe: any) => {
         let canCraft = cinderCount >= recipe.costCinderShards;
         let matReqStr = `${recipe.costCinderShards} เศษผลึกเพลิง`;
 
         if (recipe.materials) {
             for (const [matId, matCount] of Object.entries(recipe.materials)) {
-                const has = this.getItemCount(matId);
-                const matName = (WORLD_ITEMS as any)[matId]?.name || matId;
+                const has = typeof this.getItemCount === 'function' ? this.getItemCount(matId) : 0;
+                const matName = (WORLD_ITEMS as any)?.[matId]?.name || (window as any).WORLD_ITEMS?.[matId]?.name || matId;
                 matReqStr += ` + ${has}/${matCount} ${matName}`;
                 if (has < (matCount as number)) canCraft = false;
             }
