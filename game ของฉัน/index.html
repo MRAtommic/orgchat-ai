@@ -47,6 +47,7 @@
                     <div class="user-meta-col">
                         <div class="user-name-row">
                             <span id="hudUserName" class="user-name-text">ผู้เล่น Guest</span>
+                            <span id="hudUserTitle" class="badge-title" onclick="event.stopPropagation(); Game.openTitlesModal();" title="คลิกเพื่อเลือกฉายาเกียรติยศ">[นักผจญภัยฝึกหัด]</span>
                             <span id="hudUserProvider" class="provider-tag"></span>
                         </div>
                         <div id="hudSaveBadge" class="hud-save-badge save-saved">
@@ -98,6 +99,7 @@
                     <div class="clock-row-top">
                         <div id="hudDay" class="clock-day">วันที่ 1 ฤดูใบไม้ผลิ</div>
                         <div id="hudWeather" class="hud-weather-tag" title="สภาพอากาศปัจจุบัน">แจ่มใส</div>
+                        <div id="hudFortuneBadge" class="hud-fortune-tag" onclick="Game.openFortuneModal()" title="คลิกดูคำทำนายดวงชะตาประจำวันและโชคลาภ">★ <span id="hudFortuneText">พรดวงดาว</span></div>
                     </div>
                     <div id="hudTime" class="clock-time">06:00 น.</div>
                     <div class="gold-counter">
@@ -1352,6 +1354,65 @@
                         <span style="margin-left: auto; color: #facc15; font-size: 13px;">ยอดปล่องภูเขาไฟ ชั้น 10</span>
                     </div>
                     <div id="volcanoForgeRecipeList" class="volcano-forge-grid"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL: Daily Fortune & Horoscope (คำทำนายและดวงชะตาประจำวัน) -->
+        <div id="fortuneModal" class="modal-overlay" style="display: none;">
+            <div class="modal-window modal-medium modal-fortune-window">
+                <div class="modal-header">
+                    <h2><span>หอพยากรณ์ดวงชะตาแห่งแสงดาว (Celestial Starlight Sanctuary)</span></h2>
+                    <button class="btn-close" onclick="Game.closeModal('fortuneModal')">&#x2715;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="fortune-tarot-card">
+                        <div class="tarot-icon-badge">★</div>
+                        <h3 id="fortuneCardTitle" class="tarot-title">คำทำนายแห่งดวงดาว</h3>
+                        <p id="fortuneCardDesc" class="tarot-desc">กำลังอ่านคำทำนายของผืนฟ้ายามอรุณรุ่ง...</p>
+                        <div class="fortune-meta-row">
+                            <div class="fortune-meta-box">
+                                <span class="fortune-meta-label">กิจกรรมนำโชคประจำวัน:</span>
+                                <span id="fortuneCardActivity" class="fortune-meta-val">-</span>
+                            </div>
+                            <div class="fortune-meta-box">
+                                <span class="fortune-meta-label">สีมงคลเสริมพลัง:</span>
+                                <span id="fortuneCardColor" class="fortune-meta-val">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL: Zul the Void Merchant (พ่อค้าเร่แห่งมิติมืด) -->
+        <div id="voidShopModal" class="modal-overlay" style="display: none;">
+            <div class="modal-window modal-medium void-shop-window">
+                <div class="modal-header">
+                    <h2><span>ซูล พ่อค้าเร่ไร้มิติ (Zul, The Void Merchant)</span></h2>
+                    <button class="btn-close" onclick="Game.closeModal('voidShopModal')">&#x2715;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="void-shop-banner">
+                        <p class="void-flavor-text">"ข้ามิติข้ามกาลเวลามาพบเจ้า... สินค้าเหล่านี้แลกด้วยทองคำอันล้ำค่าของโลกเจ้าเท่านั้น"</p>
+                    </div>
+                    <div id="voidShopItemsList" class="void-items-grid"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL: Hunter Titles & Achievements (ฉายาเกียรติยศกิลด์นักล่า) -->
+        <div id="titlesModal" class="modal-overlay" style="display: none;">
+            <div class="modal-window modal-medium titles-modal-window">
+                <div class="modal-header">
+                    <h2><span>ทำเนียบฉายาเกียรติยศ (Hunter's Hall of Titles)</span></h2>
+                    <button class="btn-close" onclick="Game.closeModal('titlesModal')">&#x2715;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="titles-info-banner">
+                        <span>ปราบมอนสเตอร์และบอสทั่วอาณาจักรเพื่อปลดล็อกฉายาอันทรงเกียรติ พร้อมแสดงเหนือตัวละครทั้งในโลกเดี่ยวและฮับรวมผู้เล่นออนไลน์</span>
+                    </div>
+                    <div id="titlesListGrid" class="titles-grid"></div>
                 </div>
             </div>
         </div>

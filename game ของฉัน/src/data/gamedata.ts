@@ -40,7 +40,8 @@ export const CROPS: Record<string, CropData> = {
   coconut: { id: 'coconut', name: 'มะพร้าวน้ำหอม', seedName: 'ลูกมะพร้าวเพาะชำ', buyPrice: 60, sellPrice: 150, growDays: 4, xp: 25, levelReq: 3, category: 'fruit' },
   banana: { id: 'banana', name: 'กล้วยหอมทอง (Golden Banana)', seedName: 'หน่อกล้วยทอง', buyPrice: 55, sellPrice: 140, growDays: 3, xp: 20, levelReq: 3, category: 'fruit' },
   golden_melon: { id: 'golden_melon', name: 'เมลอนทองคำเกาะโจรสลัด', seedName: 'เมล็ดเมลอนทองคำ', buyPrice: 120, sellPrice: 420, growDays: 5, xp: 45, levelReq: 4, category: 'fruit' },
-  starfruit: { id: 'starfruit', name: 'ผลไม้ดวงดาวแคริบเบียน', seedName: 'เมล็ดผลไม้ดาว', buyPrice: 150, sellPrice: 550, growDays: 6, xp: 60, levelReq: 5, category: 'fruit' }
+  starfruit: { id: 'starfruit', name: 'ผลไม้ดวงดาวแคริบเบียน', seedName: 'เมล็ดผลไม้ดาว', buyPrice: 150, sellPrice: 550, growDays: 6, xp: 60, levelReq: 5, category: 'fruit' },
+  cosmic_fruit: { id: 'cosmic_fruit', name: 'ผลไม้ดวงดาวจักรวาล', seedName: 'เมล็ดพันธุ์ดาราจักร', buyPrice: 400, sellPrice: 1500, growDays: 3, xp: 85, levelReq: 3, category: 'fruit' }
 };
 
 export const ANIMALS: Record<string, AnimalData> = {
@@ -546,6 +547,13 @@ export const WORLD_ITEMS: Record<string, MaterialItem> = {
   stone: { id: 'stone', name: 'ก้อนหินเนื้อแน่น', sellPrice: 4, desc: 'หินธรรมชาติจากการขุดเหมือง ใช้ก่อสร้างและประดิษฐ์เครื่องจักร' },
   copper_ore: { id: 'copper_ore', name: 'แร่ทองแดงบริสุทธิ์', sellPrice: 20, desc: 'แร่โลหะสีส้ม พบในเหมืองชั้นต้น ใช้สร้างสปริงเกอร์และเครื่องแปรรูป' },
   star_core: { id: 'star_core', name: 'แก่นผลึกดวงดาว', sellPrice: 500, desc: 'อัญมณีเรืองแสงล้ำค่าจากเหมืองชั้นลึกที่สุด มีพลังงานเวทมหาศาล' },
+  phoenix_feather: { id: 'phoenix_feather', name: 'ขนนกฟีนิกซ์ศักดิ์สิทธิ์ (Phoenix Feather)', sellPrice: 2000, desc: 'ขนนกเรืองแสงสีทองอร่าม หากพลังชีวิตหมดลงจะชุบชีวิตฟื้นคืนชีพเต็ม 100% ทันที!' },
+  void_elixir: { id: 'void_elixir', name: 'โอสถแห่งความว่างเปล่า (Void Elixir)', sellPrice: 500, energyRestore: 100, hpRestore: 100, desc: 'โอสถสีม่วงเรืองแสง ดื่มเพื่อฟื้นฟู HP/Energy เต็มเปี่ยมและวิ่งเร็วขึ้น 60 วินาที' },
+  mystery_geode: { id: 'mystery_geode', name: 'หินผลึกปิดผนึกปริศนา (Mystery Geode)', sellPrice: 150, desc: 'หินเปลือกแข็งเรืองแสง นำไปกะเทาะที่โรงตีเหล็กหรือกดสำรวจเพื่อลุ้นรับอัญมณีล้ำค่า!' },
+  ancient_relic: { id: 'ancient_relic', name: 'โบราณวัตถุแห่งอารยธรรมสาบสูญ', sellPrice: 850, desc: 'โบราณวัตถุแกะสลักลวดลายลึกลับ นักสะสมและนักประวัติศาสตร์ให้ราคาสูงยิ่ง' },
+  star_shard: { id: 'star_shard', name: 'เศษอุกกาบาตดวงดาว (Star Shard)', sellPrice: 350, desc: 'เศษหินอุกกาบาตเรืองแสงสีฟ้าอมม่วง ปล่อยไอความร้อนจากห้วงอวกาศ' },
+  cosmic_fruit_seed: { id: 'cosmic_fruit_seed', name: 'เมล็ดพันธุ์ดาราจักร (Cosmic Star Seed)', sellPrice: 200, desc: 'เมล็ดพืชเรืองแสง ปลูกได้ทุกฤดู โตเร็ว ให้ผลไม้ดวงดาวมูลค่ามหาศาล' },
+  cosmic_fruit: { id: 'cosmic_fruit', name: 'ผลไม้ดวงดาวจักรวาล (Cosmic Star Fruit)', sellPrice: 1500, energyRestore: 120, hpRestore: 120, desc: 'ผลไม้สีทองอร่ามดั่งแสงดารา กลิ่นหอมฟุ้ง รับประทานฟื้นฟูพลังทั้งหมด!' },
 
   // Machines & Sprinklers
   sprinkler_basic: { id: 'sprinkler_basic', name: 'สปริงเกอร์รดน้ำพื้นฐาน', sellPrice: 120, desc: 'วางในฟาร์มเพื่อรดน้ำแปลงดิน 4 ช่องรอบตัวอัตโนมัติทุกเช้า' },

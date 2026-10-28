@@ -15,6 +15,7 @@ export interface RemotePlayer {
     maxHp: number;
     weaponId: string;
     weaponName?: string;
+    title?: string;
     isAttacking?: boolean;
     isGuarding?: boolean;
     isDashing?: boolean;
@@ -441,6 +442,7 @@ class MultiplayerService {
             maxHp: game.player.maxHp || 100,
             weaponId: weaponId,
             weaponName: weaponName,
+            title: game.player.title || 'นักผจญภัยฝึกหัด',
             isAttacking: !!game.meleeSlashAnim,
             comboStep: game.player.comboStep || 1,
             isGuarding: !!game.player.isGuarding,
@@ -485,6 +487,7 @@ class MultiplayerService {
                 existing.comboStep = p.comboStep;
                 existing.isGuarding = p.isGuarding;
                 existing.isDashing = p.isDashing;
+                existing.title = p.title;
                 existing.lastSeen = Date.now();
             } else {
                 game.remotePlayers[msg.senderId] = {

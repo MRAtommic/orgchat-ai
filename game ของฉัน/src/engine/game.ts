@@ -136,7 +136,10 @@ export const Game: any = {
             refrigerator: false,
             tea_table: false,
             persian_rug: false
-        }
+        },
+        hunterKills: 0,
+        title: 'นักผจญภัยฝึกหัด',
+        unlockedTitles: ['นักผจญภัยฝึกหัด']
     },
 
     // Wardrobe temporary preview state
@@ -191,7 +194,20 @@ export const Game: any = {
         hour: 6,
         minute: 0,
         timer: 0,
-        weather: 'sun' // 'sun', 'rain', 'thunder', 'snow'
+        weather: 'sun', // 'sun', 'rain', 'thunder', 'snow'
+        fortune: {
+            id: 'starlight',
+            name: 'พรแห่งดวงดาว (Starlight Blessing)',
+            desc: 'อัญมณีและแร่หายากดรอป x2! โอกาสได้ผลผลิตทองคำพุ่งสูง',
+            color: '#facc15',
+            luckyActivity: 'การลงเหมือง & ตกปลาล่าสมบัติ',
+            luckyColor: 'สีทองอร่าม (Gold)'
+        }
+    },
+    combo: {
+        count: 0,
+        timer: 0,
+        highestCombo: 0
     },
     lightningFlashTimer: 0,
 
@@ -2700,7 +2716,7 @@ Game.drawTransition = function() {
 };
 
 Game.isCombatScene = function() {
-    return ['farm', 'forest', 'cave', 'cave_depths', 'swamp', 'volcano', 'frost_peak', 'crypt', 'spire', 'ancient_canopy', 'tempest_plateau', 'island', 'island_volcano'].includes(this.currentScene);
+    return ['farm', 'forest', 'cave', 'cave_depths', 'swamp', 'volcano', 'frost_peak', 'crypt', 'spire', 'ancient_canopy', 'tempest_plateau', 'island', 'island_volcano', 'pvp_arena'].includes(this.currentScene);
 };
 
 
@@ -3755,7 +3771,7 @@ Game.isItemEdible = function(item: any) {
     if (['bread', 'cheese', 'cake', 'cookie', 'pizza', 'grilled_fish', 'spicy_fish_soup', 
          'milk', 'demon_elixir', 'health_potion', 'antidote_serum', 'bacon',
          'farmer_stew', 'vigor_juice', 'herbal_defense_soup',
-         'carrot', 'tomato', 'corn', 'strawberry', 'cabbage', 'pumpkin', 'sugarcane',
+         'carrot', 'tomato', 'corn', 'strawberry', 'cabbage', 'pumpkin', 'sugarcane', 'cosmic_fruit', 'void_elixir',
          'carp', 'tilapia', 'catfish', 'salmon', 'golden_salmon', 'golden_carp', 'ancient_glowfish'].includes(id)) {
         return true;
     }
@@ -3835,6 +3851,10 @@ Game.getItemConsumableStats = function(item: any) {
         hpRestore = 50; energyRestore = 110; hungerRestore = 60; thirstRestore = 20;
     } else if (id === 'sacred_purification_tea') {
         hpRestore = 90; energyRestore = 150; hungerRestore = 30; thirstRestore = 80; isDrink = true;
+    } else if (id === 'void_elixir') {
+        hpRestore = 100; energyRestore = 100; hungerRestore = 40; thirstRestore = 80; isDrink = true;
+    } else if (id === 'cosmic_fruit') {
+        hpRestore = 120; energyRestore = 120; hungerRestore = 100; thirstRestore = 100;
     }
 
     if (this.player.houseUpgrades && this.player.houseUpgrades.refrigerator) {
@@ -5937,6 +5957,12 @@ Game.drawRemotePlayer = function(rp: any) {
     }
 
     // 4. Overhead Player Name & HP Bar
+    if (rp.title) {
+        this.ctx.font = 'bold 8.5px "Prompt", sans-serif';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillStyle = '#fde047';
+        this.ctx.fillText('[' + rp.title + ']', rx + 12, ry - 21);
+    }
     const isPvP = (this.currentScene === 'pvp_arena' || this.isPvPEnabled);
     const nameColor = isPvP ? '#f87171' : '#38bdf8';
     this.ctx.font = 'bold 9px "Prompt", sans-serif';
@@ -5993,6 +6019,7 @@ Game.receivePvPHit = function(hitData: any, attackerName: string) {
     this.updateHpHUD();
 
     if (this.player.hp <= 0) {
+        if (this.checkPhoenixRevive()) return;
         if (typeof (window as any).Multiplayer !== 'undefined') {
             (window as any).Multiplayer.sendPvPDefeat(hitData.attackerId, attackerName);
         }
@@ -6781,6 +6808,24 @@ Game.handleTileInteract = function(type, tx, ty) {
         SoundEngine.water();
         this.spawnParticles(this.player.x + 12, this.player.y + 14, '#38bdf8', 25);
         this.addFloatingText('★ น้ำพุศักดิ์สิทธิ์แห่งโถงสมาคม ฟื้นฟู HP และ Energy เต็มเปี่ยม! ★', this.player.x - 50, this.player.y - 25, '#38bdf8');
+    } else if (type === 'meteorite_rock') {
+        const farmMap = this.scenes.farm.map;
+        if (farmMap[ty] && farmMap[ty][tx]) {
+            farmMap[ty][tx].type = 'grass';
+            farmMap[ty][tx].solid = false;
+            farmMap[ty][tx].interactable = null;
+            SoundEngine.miningHit();
+            this.triggerScreenShake(5.0, 200);
+            this.spawnParticles(tx * 32 + 16, ty * 32 + 16, '#c084fc', 30);
+            this.addItemToInventory('star_shard', 2, 'เศษอุกกาบาตดวงดาว');
+            this.addItemToInventory('star_core', 1, 'แก่นผลึกดวงดาว');
+            this.addItemToInventory('mystery_geode', 2, 'หินผลึกปิดผนึกปริศนา');
+            this.addItemToInventory('gold_ore', 3, 'แร่ทองคำดิบ');
+            this.addFloatingText('★ กะเทาะอุกกาบาตสำเร็จ! ได้รับ Star Shard, Star Core & Geodes! ★', this.player.x - 60, this.player.y - 25, '#c084fc');
+            this.updateHUD();
+        }
+    } else if (type === 'npc_zul') {
+        this.openVoidShopModal();
     } else if (type === 'pvp_bell') {
         this.player.hp = this.player.maxHp || 100;
         this.player.energy = this.player.maxEnergy || 100;
@@ -7395,6 +7440,10 @@ Game.sleepAndPassDay = function(forceWarpToBed = false) {
         this.addFloatingText(' เช้าวันใหม่! ตื่นจากการตั้งแคมป์พร้อมลุยสำรวจต่อ!', this.player.x - 30, this.player.y - 25, '#38bdf8');
     }
 
+    // Roll Daily Fortune & Cosmic World Anomalies
+    this.rollDailyFortune();
+    this.rollDailyWorldAnomaly();
+
     //  Sprinkler Automation: Water surrounding tiles on farm every morning
     const farmMap = this.scenes.farm.map;
     if (this.placedSprinklers && this.placedSprinklers.length > 0) {
@@ -7565,6 +7614,428 @@ Game.campOut = function() {
 
     // Pass day right on the spot (zero warping)
     this.sleepAndPassDay(false);
+};
+
+// ========================================================
+// 7.5 DAILY FORTUNES, WORLD ANOMALIES & PRESTIGE TITLES
+// ========================================================
+
+Game.FORTUNES = {
+    starlight: {
+        id: 'starlight',
+        name: 'พรแห่งดวงดาว (Starlight Blessing)',
+        desc: 'อัญมณีและแร่หายากดรอป x2! โอกาสได้ผลผลิตทองคำพุ่งสูง',
+        color: '#facc15',
+        luckyActivity: 'การลงเหมือง & ตกปลาล่าสมบัติ',
+        luckyColor: 'สีทองอร่าม (Gold)'
+    },
+    bloodmoon: {
+        id: 'bloodmoon',
+        name: 'จันทราสีเลือด (Crimson Blood Moon)',
+        desc: 'มอนสเตอร์ดรอปทอง x2, EXP x1.5, โอกาสคริติคอล +25%',
+        color: '#ef4444',
+        luckyActivity: 'การล่ามอนสเตอร์ & พิชิตบอส',
+        luckyColor: 'สีแดงเลือดนก (Crimson)'
+    },
+    bountiful: {
+        id: 'bountiful',
+        name: 'พงไพรผลิบาน (Nature\'s Bounty)',
+        desc: 'พืชผลทุกแปลงโตเร็วขึ้น 1 วัน และโอกาสเก็บเกี่ยวได้ผลคูณ 2 สูงถึง 35%',
+        color: '#22c55e',
+        luckyActivity: 'การทำฟาร์ม & แปรรูปผลผลิต',
+        luckyColor: 'สีเขียวมรกต (Emerald)'
+    },
+    hephaestus: {
+        id: 'hephaestus',
+        name: 'ค้อนเทพแห่งการหลอม (Hephaestus Fortune)',
+        desc: 'ลดการใช้พลังงานลง 35%, พลังโจมตี +20% ฟันทะลุเกราะ',
+        color: '#f97316',
+        luckyActivity: 'การคราฟต์ & ลงดันเจี้ยนภูเขาไฟ',
+        luckyColor: 'สีส้มเพลิง (Flame)'
+    },
+    serenity: {
+        id: 'serenity',
+        name: 'สายลมสงบสุข (Tranquil Serenity)',
+        desc: 'ความเร็วเคลื่อนที่ +20%, ราคาสินค้าในร้านลด 15%',
+        color: '#38bdf8',
+        luckyActivity: 'การเดินทางสำรวจ & ชอปปิงในหมู่บ้าน',
+        luckyColor: 'สีฟ้าคราม (Sky Blue)'
+    }
+};
+
+Game.rollDailyFortune = function() {
+    const keys = Object.keys(this.FORTUNES);
+    const chosen = keys[Math.floor(Math.random() * keys.length)];
+    this.time.fortune = this.FORTUNES[chosen];
+
+    const badge = document.getElementById('hudFortuneText');
+    if (badge) {
+        badge.textContent = this.time.fortune.name.split(' ')[0];
+    }
+    const tag = document.getElementById('hudFortuneBadge');
+    if (tag) {
+        tag.style.borderColor = this.time.fortune.color;
+        tag.style.color = this.time.fortune.color;
+    }
+    this.addFloatingText('★ คำทำนายประจำวัน: ' + this.time.fortune.name + ' ★', this.player.x - 50, this.player.y - 30, this.time.fortune.color);
+};
+
+Game.openFortuneModal = function() {
+    this.closeAllModals();
+    this.activeModal = 'fortuneModal';
+    const m = document.getElementById('fortuneModal');
+    if (!m) return;
+    const f = this.time.fortune || this.FORTUNES.starlight;
+
+    const titleEl = document.getElementById('fortuneCardTitle');
+    const descEl = document.getElementById('fortuneCardDesc');
+    const actEl = document.getElementById('fortuneCardActivity');
+    const colEl = document.getElementById('fortuneCardColor');
+
+    if (titleEl) {
+        titleEl.textContent = f.name;
+        titleEl.style.color = f.color;
+    }
+    if (descEl) descEl.textContent = f.desc;
+    if (actEl) actEl.textContent = f.luckyActivity;
+    if (colEl) colEl.textContent = f.luckyColor;
+
+    m.style.display = 'flex';
+    SoundEngine.questComplete();
+};
+
+Game.rollDailyWorldAnomaly = function() {
+    if (Math.random() > 0.35) return;
+
+    const anomalies = ['meteorite', 'void_trader', 'fairy', 'treasure_goblin'];
+    const chosen = anomalies[Math.floor(Math.random() * anomalies.length)];
+
+    if (chosen === 'meteorite') {
+        const farmMap = this.scenes.farm.map;
+        const fx = Math.floor(10 + Math.random() * 15);
+        const fy = Math.floor(8 + Math.random() * 10);
+        if (farmMap[fy] && farmMap[fy][fx] && !farmMap[fy][fx].solid && !farmMap[fy][fx].crop) {
+            farmMap[fy][fx].type = 'darkStone';
+            farmMap[fy][fx].solid = true;
+            farmMap[fy][fx].interactable = 'meteorite_rock';
+            SoundEngine.alarm();
+            this.triggerScreenShake(7.0, 350);
+            this.addFloatingText('★ มีเสียงระเบิดก้องกังวาน! อุกกาบาตลึกลับตกลงในแปลงฟาร์มของคุณ! ★', this.player.x - 70, this.player.y - 40, '#c084fc');
+        }
+    } else if (chosen === 'void_trader') {
+        const vm = this.scenes.village.map;
+        if (vm[18] && vm[18][32]) {
+            vm[18][32].solid = true;
+            vm[18][32].type = 'npc_zul';
+            vm[18][32].interactable = 'npc_zul';
+            SoundEngine.bell();
+            this.addFloatingText('★ พ่อค้าพเนจรเร่ร่อนลึกลับ Zul เดินทางมาถึงจัตุรัสกลางหมู่บ้าน! ★', this.player.x - 70, this.player.y - 40, '#a855f7');
+        }
+    } else if (chosen === 'fairy') {
+        let found = false;
+        const farmMap = this.scenes.farm.map;
+        for (let y = 0; y < this.scenes.farm.mapHeight && !found; y++) {
+            for (let x = 0; x < this.scenes.farm.mapWidth && !found; x++) {
+                const t = farmMap[y][x];
+                if (t.crop && !t.crop.ready) {
+                    t.crop.daysGrown = 99;
+                    t.crop.stage = 3;
+                    t.crop.ready = true;
+                    found = true;
+                    this.spawnParticles(x * 32 + 16, y * 32 + 16, '#facc15', 30);
+                }
+            }
+        }
+        if (found) {
+            SoundEngine.questComplete();
+            this.addFloatingText('★ นางฟ้าแห่งพงไพรเสด็จเยือนยามราตรี! พืชผลของคุณสุกงอมทันที! ★', this.player.x - 70, this.player.y - 40, '#38bdf8');
+        }
+    } else if (chosen === 'treasure_goblin') {
+        this.addFloatingText('★ มีผู้พบเห็นก็อบลินสมบัติเร่ร่อนในป่าโบราณ! ★', this.player.x - 55, this.player.y - 40, '#fde047');
+    }
+};
+
+Game.openVoidShopModal = function() {
+    this.closeAllModals();
+    this.activeModal = 'voidShopModal';
+    const m = document.getElementById('voidShopModal');
+    if (!m) return;
+
+    const list = document.getElementById('voidShopItemsList');
+    if (list) {
+        const items = [
+            { id: 'phoenix_feather', price: 1500 },
+            { id: 'void_elixir', price: 350 },
+            { id: 'mystery_geode', price: 120 },
+            { id: 'cosmic_fruit_seed', price: 250 },
+            { id: 'diamond_crystal', price: 400 }
+        ];
+
+        let html = '';
+        items.forEach(it => {
+            const data = (WORLD_ITEMS as any)[it.id];
+            if (!data) return;
+            html += `
+            <div class="void-item-card">
+                <div class="void-item-info">
+                    <h4>${data.name}</h4>
+                    <p>${data.desc || ''}</p>
+                    <span class="void-price">ราคา: ${it.price} G</span>
+                </div>
+                <button class="btn-primary" onclick="Game.buyVoidItem('${it.id}', ${it.price})">ซื้อไอเทม</button>
+            </div>`;
+        });
+        list.innerHTML = html;
+    }
+
+    m.style.display = 'flex';
+    SoundEngine.bell();
+};
+
+Game.buyVoidItem = function(id: string, price: number) {
+    if ((this.player.gold || 0) < price) {
+        this.addFloatingText('ทองไม่เพียงพอ! ต้องการ ' + price + ' G', this.player.x, this.player.y - 15, '#ef4444');
+        SoundEngine.errorClick();
+        return;
+    }
+    const data = (WORLD_ITEMS as any)[id];
+    const name = data ? data.name : id;
+    const added = this.addItemToInventory(id, 1, name);
+    if (added) {
+        this.player.gold -= price;
+        this.updateHUD();
+        SoundEngine.coin();
+        this.addFloatingText('★ ซื้อ ' + name + ' สำเร็จ! (-' + price + ' G)', this.player.x, this.player.y - 20, '#a855f7');
+    }
+};
+
+Game.crackMysteryGeode = function() {
+    const hasGeode = (this.player.inventory || []).some((it: any) => it && it.id === 'mystery_geode' && it.count > 0);
+    if (!hasGeode) {
+        this.addFloatingText('ไม่มีหินผลึกปิดผนึกปริศนาในกระเป๋า!', this.player.x, this.player.y - 15, '#f87171');
+        return;
+    }
+    this.removeItemFromInventory('mystery_geode', 1);
+    SoundEngine.miningHit();
+    this.triggerScreenShake(4.0, 150);
+    this.spawnParticles(this.player.x + 16, this.player.y + 16, '#38bdf8', 25);
+
+    const r = Math.random();
+    if (r < 0.15) {
+        this.addItemToInventory('ancient_relic', 1, 'โบราณวัตถุแห่งอารยธรรมสาบสูญ');
+        this.addFloatingText('★ แจ็กพอต! พบโบราณวัตถุสาบสูญ! ★', this.player.x - 30, this.player.y - 25, '#fde047');
+        SoundEngine.questComplete();
+    } else if (r < 0.35) {
+        this.addItemToInventory('diamond_crystal', 1, 'เพชรคริสตัลโบราณ');
+        this.addFloatingText('★ กะเทาะพบเพชรคริสตัลโบราณ! ★', this.player.x - 25, this.player.y - 25, '#38bdf8');
+    } else if (r < 0.60) {
+        this.addItemToInventory('star_shard', 1, 'เศษอุกกาบาตดวงดาว');
+        this.addFloatingText('★ กะเทาะพบเศษอุกกาบาตดวงดาว! ★', this.player.x - 25, this.player.y - 25, '#c084fc');
+    } else if (r < 0.80) {
+        this.addItemToInventory('ruby_gem', 2, 'อัญมณีทับทิมเวทมนตร์');
+        this.addFloatingText('★ กะเทาะพบทับทิมเวทมนตร์ x2! ★', this.player.x - 25, this.player.y - 25, '#ef4444');
+    } else {
+        this.addItemToInventory('gold_ore', 3, 'แร่ทองคำดิบ');
+        this.addFloatingText('★ กะเทาะพบแร่ทองคำดิบ x3! ★', this.player.x - 25, this.player.y - 25, '#facc15');
+    }
+    this.updateHUD();
+};
+
+Game.openTitlesModal = function() {
+    this.closeAllModals();
+    this.activeModal = 'titlesModal';
+    const m = document.getElementById('titlesModal');
+    if (!m) return;
+
+    const grid = document.getElementById('titlesListGrid');
+    if (grid) {
+        const allTitles = [
+            { title: 'นักผจญภัยฝึกหัด', req: 'เริ่มต้นการผจญภัย' },
+            { title: 'นักล่าสัตว์ร้าย', req: 'สังหารมอนสเตอร์ครบ 15 ตัว' },
+            { title: 'ผู้ชำนาญการศึก', req: 'สังหารมอนสเตอร์ครบ 50 ตัว' },
+            { title: 'จอมสังหารเงามืด', req: 'สังหารมอนสเตอร์ครบ 120 ตัว' },
+            { title: 'ยอดนักล่ามังกร', req: 'สังหารมอนสเตอร์ครบ 250 ตัว' },
+            { title: 'เทพสงครามไร้พ่าย', req: 'สังหารมอนสเตอร์ครบ 500 ตัว' },
+            { title: 'แชมเปียนโคลิเซียม', req: 'คว้าชัยในลานประลองยุทธ์ PvP' },
+            { title: 'คหบดีไร่สุขสันต์', req: 'ครอบครองเงินสะสม 50,000 G' },
+            { title: 'ผู้พิชิตดันเจี้ยนภูเขาไฟ', req: 'สำรวจชั้น 10 ดันเจี้ยนภูเขาไฟ' }
+        ];
+
+        let html = '';
+        const unlocked = this.player.unlockedTitles || ['นักผจญภัยฝึกหัด'];
+        const curTitle = this.player.title || 'นักผจญภัยฝึกหัด';
+
+        allTitles.forEach(t => {
+            const isUnlocked = unlocked.includes(t.title);
+            const isEquipped = curTitle === t.title;
+
+            html += `
+            <div class="title-card ${isUnlocked ? 'unlocked' : 'locked'} ${isEquipped ? 'equipped' : ''}" 
+                 onclick="${isUnlocked ? `Game.equipTitle('${t.title}')` : ''}">
+                <div class="title-header">
+                    <span class="title-name">[ ${t.title} ]</span>
+                    ${isEquipped ? '<span class="title-badge equipped">กำลังใช้งาน</span>' : isUnlocked ? '<span class="title-badge ready">สวมใส่</span>' : '<span class="title-badge lock">ล็อค</span>'}
+                </div>
+                <div class="title-req">${t.req}</div>
+            </div>`;
+        });
+        grid.innerHTML = html;
+    }
+
+    m.style.display = 'flex';
+    SoundEngine.click();
+};
+
+Game.equipTitle = function(title: string) {
+    this.player.title = title;
+    SoundEngine.questComplete();
+    this.addFloatingText('★ สวมใส่ฉายา [' + title + '] สำเร็จ! ★', this.player.x - 35, this.player.y - 25, '#fde047');
+    this.openTitlesModal();
+};
+
+Game.checkPhoenixRevive = function(): boolean {
+    const inv = this.player.inventory || [];
+    const idx = inv.findIndex((it: any) => it && it.id === 'phoenix_feather' && (it.count || 1) > 0);
+    if (idx !== -1) {
+        this.removeItemFromInventory('phoenix_feather', 1);
+        this.player.isDead = false;
+        this.player.hp = this.player.maxHp || 150;
+        this.player.energy = this.player.maxEnergy || 100;
+        this.player.invincibleTimer = 2200;
+        this.updateHpHUD();
+        this.updateEnergyHUD();
+        this.updateHUD();
+        SoundEngine.questComplete();
+        this.triggerScreenShake(10.0, 400);
+        this.spawnParticles(this.player.x + 12, this.player.y + 14, '#facc15', 50);
+        this.addFloatingText('★ ขนนกฟีนิกซ์เปล่งแสง! ชุบชีวิตคุณฟื้นคืนชีพเต็มเปี่ยม! ★', this.player.x - 70, this.player.y - 35, '#fde047');
+        return true;
+    }
+    return false;
+};
+
+Game.registerComboHit = function(isCrit: boolean = false) {
+    if (!this.combo) {
+        this.combo = { count: 0, timer: 0, highestCombo: 0 };
+    }
+    this.combo.count++;
+    this.combo.timer = 3200;
+    if (this.combo.count > (this.combo.highestCombo || 0)) {
+        this.combo.highestCombo = this.combo.count;
+    }
+
+    const count = this.combo.count;
+    if (count === 5) {
+        this.addFloatingText('★ 5 HITS! COMBO (+10% SPD) ★', this.player.x - 20, this.player.y - 35, '#4ade80');
+        SoundEngine.click();
+    } else if (count === 10) {
+        this.addFloatingText('★ 10 HITS! FRENZY! (+25% DMG & GOLD) ★', this.player.x - 35, this.player.y - 35, '#facc15');
+        SoundEngine.critHit();
+        this.triggerScreenShake(3.0, 100);
+    } else if (count === 20) {
+        this.addFloatingText('★ 20 HITS! RAMPAGE! (+50% DMG & GOLD) ★', this.player.x - 45, this.player.y - 35, '#f97316');
+        SoundEngine.bell();
+        this.triggerScreenShake(5.0, 150);
+    } else if (count === 30 || count % 20 === 0) {
+        this.addFloatingText('★ ' + count + ' HITS! GODLIKE! (MAX CRIT x2) ★', this.player.x - 55, this.player.y - 40, '#ef4444');
+        SoundEngine.alarm();
+        this.triggerScreenShake(7.0, 250);
+        this.spawnParticles(this.player.x + 12, this.player.y + 14, '#ef4444', 30);
+    }
+};
+
+Game.getComboDamageMultiplier = function(): number {
+    if (!this.combo || this.combo.count < 5 || this.combo.timer <= 0) return 1.0;
+    if (this.combo.count >= 30) return 2.0;
+    if (this.combo.count >= 20) return 1.5;
+    if (this.combo.count >= 10) return 1.25;
+    return 1.1;
+};
+
+Game.getComboGoldMultiplier = function(): number {
+    if (!this.combo || this.combo.count < 10 || this.combo.timer <= 0) return 1.0;
+    if (this.combo.count >= 30) return 2.0;
+    if (this.combo.count >= 20) return 1.5;
+    return 1.25;
+};
+
+Game.updateCombatCombo = function(dt: number) {
+    if (this.combo && this.combo.timer > 0) {
+        this.combo.timer -= dt;
+        if (this.combo.timer <= 0) {
+            if (this.combo.count >= 10) {
+                this.addFloatingText('คอมโบสิ้นสุด (' + this.combo.count + ' Hits)', this.player.x, this.player.y - 20, '#94a3b8');
+            }
+            this.combo.count = 0;
+            this.combo.timer = 0;
+        }
+    }
+};
+
+Game.drawComboCounter = function() {
+    if (!this.combo || this.combo.count < 2 || this.combo.timer <= 0) return;
+    const ctx = this.ctx;
+    ctx.save();
+    const x = this.width - 24;
+    const y = this.height - 80;
+
+    const ratio = Math.max(0, Math.min(1, this.combo.timer / 3200));
+    const count = this.combo.count;
+
+    let tierText = 'COMBO';
+    let tierColor = '#38bdf8';
+    if (count >= 30) { tierText = 'GODLIKE!'; tierColor = '#ef4444'; }
+    else if (count >= 20) { tierText = 'RAMPAGE!'; tierColor = '#f97316'; }
+    else if (count >= 10) { tierText = 'FRENZY!'; tierColor = '#facc15'; }
+    else if (count >= 5) { tierText = 'NICE!'; tierColor = '#4ade80'; }
+
+    ctx.textAlign = 'right';
+    ctx.font = '900 22px "Prompt", sans-serif';
+    ctx.fillStyle = tierColor;
+    ctx.shadowColor = tierColor;
+    ctx.shadowBlur = 10;
+    ctx.fillText(count + ' HITS', x, y);
+
+    ctx.font = 'bold 11px "Prompt", sans-serif';
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowBlur = 4;
+    ctx.fillText(tierText, x, y + 14);
+
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.7)';
+    ctx.fillRect(x - 90, y + 18, 90, 4);
+    ctx.fillStyle = tierColor;
+    ctx.fillRect(x - 90, y + 18, Math.round(90 * ratio), 4);
+
+    ctx.restore();
+};
+
+Game.registerMonsterKill = function(type: string) {
+    this.player.hunterKills = (this.player.hunterKills || 0) + 1;
+    this.player.unlockedTitles = this.player.unlockedTitles || ['นักผจญภัยฝึกหัด'];
+
+    const kills = this.player.hunterKills;
+    let newTitle: string | null = null;
+
+    if (kills >= 500 && !this.player.unlockedTitles.includes('เทพสงครามไร้พ่าย')) {
+        newTitle = 'เทพสงครามไร้พ่าย';
+    } else if (kills >= 250 && !this.player.unlockedTitles.includes('ยอดนักล่ามังกร')) {
+        newTitle = 'ยอดนักล่ามังกร';
+    } else if (kills >= 120 && !this.player.unlockedTitles.includes('จอมสังหารเงามืด')) {
+        newTitle = 'จอมสังหารเงามืด';
+    } else if (kills >= 50 && !this.player.unlockedTitles.includes('ผู้ชำนาญการศึก')) {
+        newTitle = 'ผู้ชำนาญการศึก';
+    } else if (kills >= 15 && !this.player.unlockedTitles.includes('นักล่าสัตว์ร้าย')) {
+        newTitle = 'นักล่าสัตว์ร้าย';
+    }
+
+    if (newTitle) {
+        this.player.unlockedTitles.push(newTitle);
+        this.player.title = newTitle;
+        SoundEngine.questComplete();
+        this.triggerScreenShake(6.0, 200);
+        this.addFloatingText('★ ปลดล็อกฉายาใหม่: [' + newTitle + ']! ★', this.player.x - 50, this.player.y - 45, '#fde047');
+        this.spawnParticles(this.player.x + 12, this.player.y + 14, '#fde047', 25);
+    }
 };
 
 // ========================================================
@@ -8765,6 +9236,7 @@ Game.render = function() {
     this.drawParticles();
     this.drawAmbientEffects();
     this.drawFloatingTexts();
+    this.drawComboCounter();
 
     // 9. Dropped Physical Items & Ambient Critters
     this.drawDroppedItems();
@@ -9776,6 +10248,19 @@ Game.drawPlayer = function() {
 
         this.ctx.restore();
     }
+
+    // Overhead Prestige Title for Local Player
+    if (this.player.title) {
+        this.ctx.save();
+        this.ctx.font = 'bold 9px "Prompt", sans-serif';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillStyle = '#fde047';
+        this.ctx.shadowColor = '#d97706';
+        this.ctx.shadowBlur = 4;
+        const titleY = py - (isCombatZone || isDamaged ? 22 : 10);
+        this.ctx.fillText('[' + this.player.title + ']', px + 12, titleY);
+        this.ctx.restore();
+    }
 };
 
 
@@ -10463,6 +10948,21 @@ Game.updateClockHUD = function() {
             wText = 'หิมะตก';
         }
         weatherEl.textContent = wText;
+    }
+
+    const fortuneEl = document.getElementById('hudFortuneText');
+    if (fortuneEl && this.time.fortune) {
+        fortuneEl.textContent = this.time.fortune.name.split(' ')[0];
+    }
+    const tagEl = document.getElementById('hudFortuneBadge');
+    if (tagEl && this.time.fortune) {
+        tagEl.style.borderColor = this.time.fortune.color;
+        tagEl.style.color = this.time.fortune.color;
+    }
+
+    const userTitleEl = document.getElementById('hudUserTitle');
+    if (userTitleEl) {
+        userTitleEl.textContent = `[${this.player.title || 'นักผจญภัยฝึกหัด'}]`;
     }
 };
 
@@ -11693,6 +12193,15 @@ Game.showItemDetailCard = function(item) {
                 consumeBtn.style.display = 'inline-block';
                 consumeBtn.textContent = 'สวมใส่อุปกรณ์รองนี้ (Equip Shield/Gear)';
                 consumeBtn.onclick = () => this.equipShield(item.id);
+            } else if (item.id === 'mystery_geode') {
+                consumeBtn.style.display = 'inline-block';
+                consumeBtn.textContent = 'กะเทาะหินปริศนานี้ (Crack Geode)';
+                consumeBtn.onclick = () => {
+                    this.crackMysteryGeode();
+                    this.renderInventoryModal();
+                    const card = document.getElementById('inventoryItemDetailCard');
+                    if (card) card.style.display = 'none';
+                };
             } else if (this.isItemEdible(item)) {
                 consumeBtn.style.display = 'inline-block';
                 const stats = this.getItemConsumableStats(item);
@@ -12210,6 +12719,21 @@ Game.findNearestCombatTarget = function(maxDist = 720) {
         }
     }
 
+    // 4. Remote Players in PvP Arena & PvP Mode
+    if ((this.currentScene === 'pvp_arena' || this.isPvPEnabled) && this.remotePlayers) {
+        for (const pid in this.remotePlayers) {
+            const rp = this.remotePlayers[pid];
+            if (!rp || rp.scene !== this.currentScene || rp.hp <= 0) continue;
+            const rx = rp.x + 12;
+            const ry = rp.y + 14;
+            const d = Math.hypot(rx - px, ry - py);
+            if (d < minDist) {
+                minDist = d;
+                nearest = { x: rx, y: ry, dist: d, type: 'player', entity: rp };
+            }
+        }
+    }
+
     return nearest;
 };
 
@@ -12354,8 +12878,11 @@ Game.playerMeleeAttack = function(targetWorldX, targetWorldY, weapon) {
             const m = this.worldMonsters[mIdx];
             const dist = Math.hypot((m.x + 14) - originX, (m.y + 12) - originY);
             if (dist < attackRange) {
-                m.hp -= finalDamage;
-                this.applyRuneCombatProc(m, finalDamage);
+                const comboMult = this.getComboDamageMultiplier();
+                const actualDmg = Math.round(finalDamage * comboMult);
+                m.hp -= actualDmg;
+                this.registerComboHit(isCrit);
+                this.applyRuneCombatProc(m, actualDmg);
                 m.flashTimer = 160;
                 m.squashX = 1.35;
                 m.squashY = 0.72;
@@ -12398,29 +12925,40 @@ Game.playerMeleeAttack = function(targetWorldX, targetWorldY, weapon) {
                 this.addFloatingText((isCrit ? ' CRIT -' : ' -') + finalDamage, m.x, m.y - 12, isCrit ? '#fde047' : '#ef4444');
 
                 if (m.hp <= 0) {
+                    this.registerMonsterKill(m.type);
                     SoundEngine.monsterDie();
                     this.spawnParticles(m.x + 14, m.y + 12, '#7e22ce', 20);
                     const cfg = WORLD_MONSTERS[m.type];
                     if (cfg) {
-                        const goldMult = (typeof this.hasRing === 'function' && this.hasRing('ring_lucky')) ? 1.35 : 1.0;
+                        let goldMult = (typeof this.hasRing === 'function' && this.hasRing('ring_lucky')) ? 1.35 : 1.0;
+                        if (this.time.fortune?.id === 'bloodmoon') goldMult *= 2.0;
+                        goldMult *= this.getComboGoldMultiplier();
+
                         const earnedGold = Math.round(cfg.gold * goldMult);
                         this.player.gold += earnedGold;
-                        this.addXp(cfg.xp);
+                        const xpMult = (this.time.fortune?.id === 'bloodmoon') ? 1.5 : 1.0;
+                        this.addXp(Math.round(cfg.xp * xpMult));
                         cfg.drops.forEach(d => {
-                            const dropBonus = (typeof this.hasRing === 'function' && this.hasRing('ring_lucky')) ? 0.15 : 0.0;
+                            let dropBonus = (typeof this.hasRing === 'function' && this.hasRing('ring_lucky')) ? 0.15 : 0.0;
+                            if (this.time.fortune?.id === 'starlight') dropBonus += 0.35;
                             if (Math.random() <= d.chance + dropBonus) {
                                 this.spawnDroppedItem(d.item, 1, m.x, m.y);
                                 const dName = (WORLD_ITEMS && WORLD_ITEMS[d.item]?.name) || d.item;
                                 this.addFloatingText('ดรอป: ' + dName, m.x, m.y - 12, '#facc15');
                             }
                         });
+                        // 12% chance to drop Mystery Geode from monsters
+                        if (Math.random() < 0.12) {
+                            this.spawnDroppedItem('mystery_geode', 1, m.x + 8, m.y + 8);
+                            this.addFloatingText('★ ดรอป: หินผลึกปิดผนึกปริศนา! ★', m.x - 20, m.y - 25, '#38bdf8');
+                        }
                         if (m.type === 'shadow_wolf') {
                             this.player.questProgress.wolvesKilled = (this.player.questProgress.wolvesKilled || 0) + 1;
                         }
                         if (this.currentScene === 'cave') {
                             this.player.questProgress.caveMonstersDefeated = (this.player.questProgress.caveMonstersDefeated || 0) + 1;
                         }
-                        this.addFloatingText('+' + earnedGold + ' G ' + cfg.name + ' ถูกปราบ! (+' + cfg.xp + ' XP)' + (goldMult > 1 ? ' (โชคลาภ)' : ''), m.x - 20, m.y - 20, '#4ade80');
+                        this.addFloatingText('+' + earnedGold + ' G ' + cfg.name + ' ถูกปราบ! (+' + Math.round(cfg.xp * xpMult) + ' XP)' + (goldMult > 1 ? ' (โชคลาภ)' : ''), m.x - 20, m.y - 20, '#4ade80');
                     }
                     this.worldMonsters.splice(mIdx, 1);
                     this.updateHUD();
@@ -12454,8 +12992,11 @@ Game.playerMeleeAttack = function(targetWorldX, targetWorldY, weapon) {
         if (this.boss && this.boss.alive) {
             const distBoss = Math.hypot((this.boss.x + 32) - originX, (this.boss.y + 32) - originY);
             if (distBoss < attackRange + 30) {
-                this.boss.hp -= finalDamage;
-                this.applyRuneCombatProc(this.boss, finalDamage);
+                const comboMult = this.getComboDamageMultiplier();
+                const actualDmg = Math.round(finalDamage * comboMult);
+                this.boss.hp -= actualDmg;
+                this.registerComboHit(isCrit);
+                this.applyRuneCombatProc(this.boss, actualDmg);
                 this.boss.flashTimer = 180;
                 this.boss.squashX = 1.25;
                 this.boss.squashY = 0.8;
@@ -14112,6 +14653,7 @@ Game.damagePlayer = function(amount, source = null) {
             this.updateHpHUD();
 
             if (this.player.hp <= 0 && !this.player.isDead) {
+                if (this.checkPhoenixRevive()) return;
                 this.player.isDead = true;
                 this.player.hp = 0;
                 SoundEngine.youDied();
@@ -14199,6 +14741,7 @@ Game.damagePlayer = function(amount, source = null) {
     this.updateHUD();
 
     if (this.player.hp <= 0 && !this.player.isDead) {
+        if (this.checkPhoenixRevive()) return;
         this.player.isDead = true;
         this.player.hp = 0;
         SoundEngine.youDied();
@@ -18684,6 +19227,7 @@ Game.gameLoop = function(timestamp) {
 
         this.updatePlayer(dt);
         this.updatePetCompanion(dt);
+        this.updateCombatCombo(dt);
         this.updateMachines(dt);
         this.updateAnimals(dt);
         this.updateShopNPCs(dt);
@@ -21450,6 +21994,19 @@ Game.damageEnemiesInLine = function(x1, y1, x2, y2, width, dmg, text, color) {
             }
         }
     }
+    if (this.remotePlayers && (this.currentScene === 'pvp_arena' || this.isPvPEnabled)) {
+        for (const pid in this.remotePlayers) {
+            const rp = this.remotePlayers[pid];
+            if (!rp || rp.scene !== this.currentScene || rp.hp <= 0) continue;
+            if (checkLineHit(rp.x + 12, rp.y + 14)) {
+                if (typeof (window as any).Multiplayer !== 'undefined') {
+                    (window as any).Multiplayer.sendPvPHit(pid, dmg, false, 0, 'สกิลเส้นตรง');
+                }
+                this.addFloatingText(text, rp.x, rp.y - 12, color);
+            }
+        }
+    }
+
     if (this.boss && this.boss.alive) {
         if (checkLineHit(this.boss.x + 32, this.boss.y + 32)) {
             this.boss.hp -= dmg;
