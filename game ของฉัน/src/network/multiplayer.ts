@@ -37,6 +37,22 @@ export interface NetMessage {
     timestamp: number;
 }
 
+// High-reliability STUN configuration for NAT & cross-device traversal (Mobile 4G/5G <-> PC)
+const PEER_CONFIG = {
+    debug: 1,
+    config: {
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' },
+            { urls: 'stun:stun.cloudflare.com:3478' }
+        ],
+        sdpSemantics: 'unified-plan'
+    }
+};
+
 class MultiplayerService {
     public isHost: boolean = false;
     public isConnected: boolean = false;
@@ -45,6 +61,7 @@ class MultiplayerService {
     public myPeerId: string = '';
     public myPlayerId: string = '';
     public myPlayerName: string = 'ผู้เล่น';
+    public connectionMode: 'p2p' | 'local' | 'none' = 'none';
 
     private peer: Peer | null = null;
     private hostConn: DataConnection | null = null;
@@ -83,15 +100,17 @@ class MultiplayerService {
             this.isHost = true;
 
             const peerTargetId = `gamefarm-room-${code}`;
+            let resolved = false;
 
             try {
-                this.peer = new Peer(peerTargetId, {
-                    debug: 1
-                });
+                this.peer = new Peer(peerTargetId, PEER_CONFIG);
 
                 this.peer.on('open', (id) => {
+                    if (resolved) return;
+                    resolved = true;
                     this.myPeerId = id;
                     this.isConnected = true;
+                    this.connectionMode = 'p2p';
                     this.setupBroadcastChannel(code);
                     this.startHeartbeat();
                     this.updateUI();
@@ -102,28 +121,43 @@ class MultiplayerService {
                     this.handleIncomingClientConnection(conn);
                 });
 
+                this.peer.on('disconnected', () => {
+                    console.warn('[Multiplayer Host]: Reconnecting to signaling server...');
+                    try { this.peer?.reconnect(); } catch (_) {}
+                });
+
                 this.peer.on('error', (err: any) => {
                     console.warn('[Multiplayer Host Error]:', err);
+                    if (resolved) return;
                     if (err.type === 'unavailable-id') {
                         // ID taken, retry with new code
                         const newCode = this.generateRoomCode();
                         this.hostRoom(newCode).then(resolve);
                     } else {
-                        // Fallback to BroadcastChannel for local/offline testing
+                        resolved = true;
+                        // Setup local channel fallback for same-browser testing
                         this.setupBroadcastChannel(code);
                         this.isConnected = true;
+                        this.connectionMode = 'local';
                         this.startHeartbeat();
                         this.updateUI();
-                        resolve({ success: true, code });
+                        resolve({
+                            success: true,
+                            code,
+                            error: 'เปิดห้องสำเร็จ (โหมดสำรองเครือข่าย)'
+                        });
                     }
                 });
-            } catch (err) {
-                console.warn('[Multiplayer Host Exception]:', err);
-                this.setupBroadcastChannel(code);
-                this.isConnected = true;
-                this.startHeartbeat();
-                this.updateUI();
-                resolve({ success: true, code });
+            } catch (err: any) {
+                if (!resolved) {
+                    resolved = true;
+                    this.setupBroadcastChannel(code);
+                    this.isConnected = true;
+                    this.connectionMode = 'local';
+                    this.startHeartbeat();
+                    this.updateUI();
+                    resolve({ success: true, code });
+                }
             }
         });
     }
@@ -147,10 +181,7 @@ class MultiplayerService {
             const peerTargetId = `gamefarm-room-${cleanCode}`;
 
             try {
-                this.peer = new Peer({
-                    debug: 1
-                });
-
+                this.peer = new Peer(PEER_CONFIG);
                 let resolved = false;
 
                 this.peer.on('open', (myId) => {
@@ -164,8 +195,9 @@ class MultiplayerService {
 
                     this.hostConn = conn;
 
-                    conn.on('open', () => {
+                    const onConnected = () => {
                         this.isConnected = true;
+                        this.connectionMode = 'p2p';
                         this.startHeartbeat();
                         this.sendJoinPacket();
                         this.updateUI();
@@ -173,7 +205,13 @@ class MultiplayerService {
                             resolved = true;
                             resolve({ success: true });
                         }
-                    });
+                    };
+
+                    if (conn.open) {
+                        onConnected();
+                    } else {
+                        conn.on('open', onConnected);
+                    }
 
                     conn.on('data', (data) => {
                         this.handleNetworkMessage(data as NetMessage);
@@ -183,52 +221,62 @@ class MultiplayerService {
                         this.handlePeerDisconnect('host');
                     });
 
-                    conn.on('error', (err) => {
+                    conn.on('error', (err: any) => {
                         console.warn('[Multiplayer Conn Error]:', err);
-                        // Still active via BroadcastChannel if local
                         if (!resolved) {
                             resolved = true;
-                            this.isConnected = true;
-                            this.startHeartbeat();
-                            this.sendJoinPacket();
-                            this.updateUI();
-                            resolve({ success: true });
+                            resolve({
+                                success: false,
+                                error: 'ไม่พบโฮสต์ของห้อง ' + cleanCode + ' (ตรวจสอบว่าเครื่องเพื่อนเปิดห้องอยู่)'
+                            });
                         }
                     });
 
-                    // Timeout fallback to BroadcastChannel
+                    // 12s timeout for WebRTC cross-device ICE candidate discovery
                     setTimeout(() => {
                         if (!resolved) {
                             resolved = true;
-                            this.isConnected = true;
-                            this.startHeartbeat();
-                            this.sendJoinPacket();
-                            this.updateUI();
-                            resolve({ success: true });
+                            if (this.hostConn && this.hostConn.open) {
+                                this.connectionMode = 'p2p';
+                                resolve({ success: true });
+                            } else {
+                                this.disconnect();
+                                resolve({
+                                    success: false,
+                                    error: 'การเชื่อมต่อห้อง ' + cleanCode + ' หมดเวลา (ไม่พบโฮสต์ หรือสัญญาณเครือข่ายบล็อกการเชื่อมต่อ P2P)'
+                                });
+                            }
                         }
-                    }, 4000);
+                    }, 12000);
                 });
 
-                this.peer.on('error', (err) => {
+                this.peer.on('disconnected', () => {
+                    try { this.peer?.reconnect(); } catch (_) {}
+                });
+
+                this.peer.on('error', (err: any) => {
                     console.warn('[Multiplayer Join Peer Error]:', err);
-                    this.setupBroadcastChannel(cleanCode);
-                    this.isConnected = true;
-                    this.startHeartbeat();
-                    this.sendJoinPacket();
-                    this.updateUI();
                     if (!resolved) {
                         resolved = true;
-                        resolve({ success: true });
+                        if (err.type === 'peer-unavailable') {
+                            resolve({
+                                success: false,
+                                error: 'ไม่พบห้องหมายเลข ' + cleanCode + ' (โปรดตรวจสอบว่าเครื่องเพื่อนเปิดห้องอยู่หรือไม่)'
+                            });
+                        } else {
+                            resolve({
+                                success: false,
+                                error: 'เกิดข้อผิดพลาดในการเชื่อมต่อ: ' + (err.type || err.message || 'เครือข่ายไม่ตอบสนอง')
+                            });
+                        }
                     }
                 });
-            } catch (err) {
+            } catch (err: any) {
                 console.warn('[Multiplayer Join Exception]:', err);
-                this.setupBroadcastChannel(cleanCode);
-                this.isConnected = true;
-                this.startHeartbeat();
-                this.sendJoinPacket();
-                this.updateUI();
-                resolve({ success: true });
+                resolve({
+                    success: false,
+                    error: 'ไม่สามารถสร้างการเชื่อมต่อได้: ' + (err.message || 'ข้อผิดพลาดระบบ')
+                });
             }
         });
     }
@@ -247,9 +295,7 @@ class MultiplayerService {
             let resolved = false;
 
             try {
-                this.peer = new Peer(peerTargetId, {
-                    debug: 1
-                });
+                this.peer = new Peer(peerTargetId, PEER_CONFIG);
 
                 this.peer.on('open', (id) => {
                     if (resolved) return;
@@ -257,6 +303,7 @@ class MultiplayerService {
                     this.myPeerId = id;
                     this.isConnected = true;
                     this.isHost = true;
+                    this.connectionMode = 'p2p';
                     this.setupBroadcastChannel(hubCode);
                     this.startHeartbeat();
                     this.updateUI();
@@ -265,6 +312,10 @@ class MultiplayerService {
 
                 this.peer.on('connection', (conn) => {
                     this.handleIncomingClientConnection(conn);
+                });
+
+                this.peer.on('disconnected', () => {
+                    try { this.peer?.reconnect(); } catch (_) {}
                 });
 
                 this.peer.on('error', (err: any) => {
@@ -281,7 +332,7 @@ class MultiplayerService {
                     });
                 });
 
-                // 3.5s timeout fallback
+                // 4.5s timeout: if hosting takes too long, fallback to join as client
                 setTimeout(() => {
                     if (!resolved) {
                         resolved = true;
@@ -294,7 +345,7 @@ class MultiplayerService {
                             resolve({ success: res.success, isHost: false, error: res.error });
                         });
                     }
-                }, 3500);
+                }, 4500);
             } catch (err) {
                 if (!resolved) {
                     resolved = true;
@@ -325,11 +376,22 @@ class MultiplayerService {
 
     // ── Handle Incoming Client (Host Side) ────────────────────
     private handleIncomingClientConnection(conn: DataConnection): void {
-        conn.on('open', () => {
+        const onOpen = () => {
             this.clientConns.set(conn.peer, conn);
+            this.connectionMode = 'p2p';
             this.sendWorldSyncPacket(conn);
             this.updateUI();
-        });
+            const game = (window as any).Game;
+            if (game && typeof game.addFloatingText === 'function') {
+                game.addFloatingText('★ มีผู้เล่นเชื่อมต่อเข้าสู่โลกของคุณ! ★', game.player.x - 30, game.player.y - 30, '#38bdf8');
+            }
+        };
+
+        if (conn.open) {
+            onOpen();
+        } else {
+            conn.on('open', onOpen);
+        }
 
         conn.on('data', (data) => {
             const msg = data as NetMessage;
@@ -339,6 +401,12 @@ class MultiplayerService {
         });
 
         conn.on('close', () => {
+            this.clientConns.delete(conn.peer);
+            this.updateUI();
+        });
+
+        conn.on('error', (err) => {
+            console.warn('[Host Client Conn Error]:', err);
             this.clientConns.delete(conn.peer);
             this.updateUI();
         });
@@ -390,6 +458,9 @@ class MultiplayerService {
             senderName: this.myPlayerName,
             roomCode: this.roomCode || '',
             payload: {
+                scene: game.currentScene,
+                hostX: Math.round(game.player.x),
+                hostY: Math.round(game.player.y),
                 weather: game.currentWeather,
                 dayTime: game.time,
                 day: game.day,
@@ -535,6 +606,16 @@ class MultiplayerService {
         } else if (msg.type === 'world_sync' && !this.isHost) {
             // Apply host's world state
             const sync = msg.payload;
+            if (sync.scene && game.currentScene !== sync.scene) {
+                const targetTileX = Math.round((sync.hostX || 480) / 32);
+                const targetTileY = Math.round((sync.hostY || 384) / 32);
+                if (typeof game.switchScene === 'function') {
+                    game.switchScene(sync.scene, targetTileX, targetTileY);
+                    if (typeof game.addFloatingText === 'function') {
+                        game.addFloatingText(`★ เดินทางมาถึงโลกของ ${msg.senderName}! ★`, game.player.x - 30, game.player.y - 30, '#38bdf8');
+                    }
+                }
+            }
             if (sync.weather && game.currentWeather !== sync.weather) {
                 game.currentWeather = sync.weather;
             }
@@ -669,6 +750,7 @@ class MultiplayerService {
         this.isHost = false;
         this.isGlobalHub = false;
         this.roomCode = null;
+        this.connectionMode = 'none';
 
         if (this.syncInterval) clearInterval(this.syncInterval);
         if (this.cleanupInterval) clearInterval(this.cleanupInterval);
@@ -731,13 +813,14 @@ class MultiplayerService {
         const statusEl = document.getElementById('mpStatusText');
         if (statusEl) {
             if (this.isConnected) {
+                const modeText = this.connectionMode === 'p2p' ? 'P2P ออนไลน์จริง' : 'จำลองเครื่องเดียวกัน';
                 if (this.isGlobalHub) {
-                    statusEl.textContent = `อยู่ในห้องโถงชุมนุมส่วนกลาง (Global Hub) - นักผจญภัยออนไลน์ในห้อง ${count + 1} คน`;
+                    statusEl.textContent = `อยู่ในห้องโถงชุมนุมส่วนกลาง (Global Hub - ${modeText}) - นักผจญภัยออนไลน์ในห้อง ${count + 1} คน`;
                     statusEl.style.color = '#38bdf8';
                 } else {
                     statusEl.textContent = this.isHost
-                        ? `โฮสต์โลกออนไลน์ (ห้อง ${this.roomCode}) - มีผู้เล่นอื่นร่วมโลก ${count} คน`
-                        : `เชื่อมต่อในโลกห้อง ${this.roomCode} สำเร็จ!`;
+                        ? `โฮสต์โลกออนไลน์ (ห้อง ${this.roomCode} - ${modeText}) - มีผู้เล่นอื่นร่วมโลก ${count} คน`
+                        : `เชื่อมต่อในโลกห้อง ${this.roomCode} (${modeText}) สำเร็จ!`;
                     statusEl.style.color = '#4ade80';
                 }
             } else {
@@ -752,7 +835,15 @@ class MultiplayerService {
             if (game && game.remotePlayers) {
                 for (const pid in game.remotePlayers) {
                     const rp = game.remotePlayers[pid];
-                    html += `<div class="mp-player-row"><span class="mp-circle">●</span> <b>${rp.name}</b> <span class="badge-scene">${rp.scene}</span></div>`;
+                    html += `
+                    <div class="mp-player-row" style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span class="mp-circle" style="color: #4ade80;">●</span>
+                            <b>${rp.name}</b>
+                            <span class="badge-scene">${rp.scene}</span>
+                        </div>
+                        <button class="btn-primary" onclick="Game.warpToPlayer('${pid}')" style="font-size: 10px; padding: 2px 8px; border-radius: 4px; cursor: pointer;">วาร์ปไปหา</button>
+                    </div>`;
                 }
             }
             playersListEl.innerHTML = html;

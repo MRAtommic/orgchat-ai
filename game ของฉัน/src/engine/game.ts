@@ -2982,8 +2982,20 @@ Game.setupInputListeners = function() {
         const rect = this.canvas.getBoundingClientRect();
         const scaleX = this.canvas.width / rect.width;
         const scaleY = this.canvas.height / rect.height;
-        const worldX = (e.clientX - rect.left) * scaleX + this.camera.x;
-        const worldY = (e.clientY - rect.top) * scaleY + this.camera.y;
+        const canvasX = (e.clientX - rect.left) * scaleX;
+        const canvasY = (e.clientY - rect.top) * scaleY;
+
+        // Check if clicking directly on the canvas quest tracker box to toggle Quest Modal
+        if (this._questTrackerBox) {
+            const qb = this._questTrackerBox;
+            if (canvasX >= qb.x && canvasX <= qb.x + qb.w && canvasY >= qb.y && canvasY <= qb.y + qb.h) {
+                this.toggleModal('questModal');
+                return;
+            }
+        }
+
+        const worldX = canvasX + this.camera.x;
+        const worldY = canvasY + this.camera.y;
 
         const tileX = Math.floor(worldX / this.tileSize);
         const tileY = Math.floor(worldY / this.tileSize);
@@ -3108,8 +3120,23 @@ Game.setupInputListeners = function() {
         const rect = this.canvas.getBoundingClientRect();
         const scaleX = this.canvas.width / rect.width;
         const scaleY = this.canvas.height / rect.height;
-        const worldX = (e.clientX - rect.left) * scaleX + this.camera.x;
-        const worldY = (e.clientY - rect.top) * scaleY + this.camera.y;
+        const canvasX = (e.clientX - rect.left) * scaleX;
+        const canvasY = (e.clientY - rect.top) * scaleY;
+
+        // Show hand pointer and tooltip hint when hovering over canvas quest tracker box
+        if (this._questTrackerBox) {
+            const qb = this._questTrackerBox;
+            if (canvasX >= qb.x && canvasX <= qb.x + qb.w && canvasY >= qb.y && canvasY <= qb.y + qb.h) {
+                this.canvas.style.cursor = 'pointer';
+                this.canvas.title = 'คลิกเพื่อดูสมุดภารกิจทั้งหมด (Quest Log)';
+                return;
+            } else if (this.canvas.title) {
+                this.canvas.title = '';
+            }
+        }
+
+        const worldX = canvasX + this.camera.x;
+        const worldY = canvasY + this.camera.y;
 
         this.mouseTile.x = Math.floor(worldX / this.tileSize);
         this.mouseTile.y = Math.floor(worldY / this.tileSize);
@@ -5609,94 +5636,10 @@ Game.toggleMusic = function() {
 
 
 Game.updateQuestTrackerHUD = function() {
-    const trackerEl = document.getElementById('hudQuestTracker');
-    if (!trackerEl || !this.player) return;
-
-    const curQuestId = this.player.currentQuestId || 'q1';
-    const qData = (typeof QUESTS !== 'undefined' && QUESTS[curQuestId]) ? QUESTS[curQuestId] : null;
-    if (!qData) {
-        trackerEl.style.display = 'none';
-        return;
-    }
-    trackerEl.style.display = 'block';
-
-    const titleEl = document.getElementById('questTrackerTitle');
-    const objEl = document.getElementById('questTrackerObjective');
-    const subObjEl = document.getElementById('questTrackerSubObjective');
-    const hintEl = document.getElementById('questTrackerHint');
-
-    if (titleEl) {
-        const parts = qData.title.split(':');
-        titleEl.textContent = (parts[0] || 'ภารกิจ') + ': ' + (parts[1] || '').trim();
-    }
-
-    const qp = this.player.questProgress || {};
-    let objText = '';
-    let subText = '';
-    let hintText = '';
-    let isComplete = false;
-
-    if (qData.id === 'q1') {
-        const bugs = qp.bugsDefeated || 0;
-        const spores = this.getItemCount('blight_spore');
-        objText = 'กำจัดแมลงปีศาจ (' + bugs + ' / 3)';
-        subText = 'เก็บสปอร์กลายพันธุ์ (' + spores + ' / 2)';
-        isComplete = bugs >= 3 && spores >= 2;
-        hintText = isComplete ? 'ไปพบนายกเทศมนตรีกิลเบิร์ตที่คฤหาสน์หมู่บ้าน' : 'ปราบแมลงปีศาจที่บุกเข้ามาในไร่';
-    } else if (qData.id === 'q2') {
-        const spores = this.getItemCount('blight_spore');
-        const herbs = this.getItemCount('starflower_herb');
-        objText = 'สปอร์กลายพันธุ์ (' + spores + ' / 3)';
-        subText = 'สมุนไพรดวงดาว (' + herbs + ' / 2)';
-        isComplete = spores >= 3 && herbs >= 2;
-        hintText = isComplete ? 'นำวัตถุดิบส่งให้หมอยาลิเลียนที่คลินิก' : 'เก็บสมุนไพรดวงดาวในป่าเอลเดอร์วู้ด';
-    } else if (qData.id === 'q3') {
-        const wolves = qp.wolvesKilled || 0;
-        const rubies = this.getItemCount('ruby_gem');
-        objText = 'กำจัดหมาป่าเงา (' + wolves + ' / 3)';
-        subText = 'ขุดแร่ทับทิม (' + rubies + ' / 2)';
-        isComplete = wolves >= 3 && rubies >= 2;
-        hintText = isComplete ? 'รายงานผู้กองวาเลเรียที่ประตูปราการเหนือ' : 'ล่าหมาป่าในป่า และขุดแร่ในถ้ำ';
-    } else if (qData.id === 'q4') {
-        const caveBugs = qp.caveMonstersDefeated || 0;
-        const manas = this.getItemCount('mana_crystal');
-        objText = 'ปราบมอนสเตอร์ถ้ำ (' + caveBugs + ' / 3)';
-        subText = 'ขุดผลึกมานา (' + manas + ' / 2)';
-        isComplete = caveBugs >= 3 && manas >= 2;
-        hintText = isComplete ? 'กลับไปรายงานผู้เฒ่าเอลดริน' : 'ลงสำรวจถ้ำผลึกหินทางตะวันออกเฉียงเหนือ';
-    } else if (qData.targetBoss) {
-        const bossDead = !!(this.player.defeatedBosses && this.player.defeatedBosses[qData.targetBoss]);
-        objText = 'ปราบมหาบอส ' + qData.targetBoss.replace('boss_', '').toUpperCase();
-        isComplete = bossDead;
-        hintText = isComplete ? 'สำเร็จภารกิจ! รับรางวัลอันทรงเกียรติ' : 'เตรียมอาหารบัฟและอาวุธให้พร้อมก่อนบุก';
-    } else {
-        objText = qData.desc.substring(0, 36) + '...';
-        hintText = 'ดูรายละเอียดเพิ่มเติมในสมุดเควสต์ (ESC)';
-    }
-
-    if (objEl) {
-        objEl.textContent = objText;
-        objEl.style.color = isComplete ? '#4ade80' : '#f8fafc';
-    }
-    if (subObjEl) {
-        if (subText) {
-            subObjEl.style.display = 'block';
-            subObjEl.textContent = subText;
-            subObjEl.style.color = isComplete ? '#4ade80' : '#e2e8f0';
-        } else {
-            subObjEl.style.display = 'none';
-        }
-    }
-    if (hintEl) {
-        if (!this.player.sailboatRepaired && this.currentScene === 'village') {
-            hintEl.textContent = '[เป้าหมาย]: ซ่อมเรือใบที่ท่าเรือ (ไม้ 20, เหล็ก 5, 500 G) เพื่อข้ามสู่เกาะ';
-            hintEl.style.color = '#38bdf8';
-        } else {
-            hintEl.textContent = hintText;
-            hintEl.style.color = isComplete ? '#fde047' : '#94a3b8';
-        }
-    }
+    // Canvas Game.drawActiveQuestTracker takes precedence with live navigational compass and zero HUD layout collision
+    return;
 };
+
 
 Game.toggleQuestTracker = function() {
     const body = document.getElementById('questTrackerBody');
@@ -6092,10 +6035,14 @@ Game.switchMpTab = function(tabName: 'hub' | 'host' | 'join' | 'arena') {
 
 Game.startHostingRoom = async function() {
     if (typeof (window as any).Multiplayer === 'undefined') return;
+    this.addFloatingText('กำลังเปิดโลกออนไลน์...', this.player.x, this.player.y - 20, '#38bdf8');
     const res = await (window as any).Multiplayer.hostRoom();
     if (res.success) {
         this.addFloatingText('★ เปิดโลกออนไลน์สำเร็จ! รหัสห้อง: ' + res.code, this.player.x - 20, this.player.y - 25, '#4ade80');
         SoundEngine.questComplete();
+    } else {
+        this.addFloatingText('เปิดห้องไม่สำเร็จ: ' + (res.error || 'โปรดลองใหม่'), this.player.x, this.player.y - 20, '#ef4444');
+        SoundEngine.errorClick();
     }
 };
 
@@ -6129,7 +6076,28 @@ Game.joinFriendRoom = async function() {
             status.textContent = res.error || 'เชื่อมต่อล้มเหลว';
             status.style.color = '#ef4444';
         }
+        this.addFloatingText('เชื่อมต่อไม่สำเร็จ: ' + (res.error || 'ไม่พบห้อง'), this.player.x, this.player.y - 20, '#ef4444');
+        SoundEngine.errorClick();
     }
+};
+
+Game.warpToPlayer = function(playerId: string) {
+    if (!this.remotePlayers || !this.remotePlayers[playerId]) {
+        this.addFloatingText('ไม่พบผู้เล่นนี้ในห้อง', this.player.x, this.player.y - 15, '#f87171');
+        return;
+    }
+    const rp = this.remotePlayers[playerId];
+    const targetTileX = Math.round(rp.x / 32) || 16;
+    const targetTileY = Math.round(rp.y / 32) || 12;
+    this.closeAllModals();
+    if (this.currentScene !== rp.scene) {
+        this.switchScene(rp.scene, targetTileX, targetTileY);
+    } else {
+        this.player.x = rp.x;
+        this.player.y = rp.y;
+    }
+    SoundEngine.bell();
+    this.addFloatingText('★ วาร์ปมาหา ' + rp.name + ' สำเร็จ! ★', this.player.x - 30, this.player.y - 25, '#38bdf8');
 };
 
 Game.copyRoomCode = function() {
@@ -6552,13 +6520,18 @@ Game.drawActiveQuestTracker = function() {
         }
     }
 
-    if (!activeQ) return;
+    if (!activeQ) {
+        this._questTrackerBox = null;
+        return;
+    }
 
-    const boxW = 230;
+    const isMobile = this.width <= 900 || this.height <= 560;
+    const rightMargin = isMobile ? 175 : 198;
+    const boxW = isMobile ? Math.min(230, Math.max(180, this.width - rightMargin - 190)) : 230;
     const boxH = 52;
-    // Position to the left of the clock/actions widget (186px from right) with a clean 12px gap so they never collide!
-    const boxX = this.width - 198 - boxW;
-    const boxY = 10;
+    const boxX = Math.max(190, this.width - rightMargin - boxW);
+    const boxY = isMobile ? 6 : 10;
+    this._questTrackerBox = { x: boxX, y: boxY, w: boxW, h: boxH };
 
     this.ctx.save();
     this.ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
