@@ -5044,6 +5044,9 @@ Game.setupTouchControls = function() {
         touchOverlay.style.display = isTouchDevice ? 'flex' : 'none';
     }
     this.checkOrientationNotice();
+    if (typeof (this as any).applySavedTouchLayout === 'function') {
+        (this as any).applySavedTouchLayout();
+    }
     if (this._touchControlsInitialized) return;
     this._touchControlsInitialized = true;
 
@@ -5103,8 +5106,20 @@ Game.setupTouchControls = function() {
         };
 
         const handleJoystickStart = (e: TouchEvent) => {
-            if (dpadTouchId !== null) return;
+            if (dpadTouchId !== null || this.isTouchLayoutEditing) return;
             const touch = e.changedTouches[0];
+
+            // If in combat scene and tapped directly on an enemy, attack instead of moving!
+            if (this.isCombatScene()) {
+                const wx = touch.clientX + this.camera.x;
+                const wy = touch.clientY + this.camera.y;
+                const nearest = typeof this.findNearestCombatTarget === 'function' ? this.findNearestCombatTarget(120) : null;
+                if (nearest && Math.hypot(nearest.x - wx, nearest.y - wy) < 50) {
+                    this.playerAttackAt(wx, wy);
+                    return;
+                }
+            }
+
             dpadTouchId = touch.identifier;
 
             // Dynamically position joystick base around thumb (with safe padding from screen edges)
@@ -5288,7 +5303,7 @@ Game.setupTouchControls = function() {
     };
 
     window.addEventListener('touchstart', (e: TouchEvent) => {
-        if (!this.canvas || this.activeModal || this.activeDialogue) return;
+        if (!this.canvas || this.activeModal || this.activeDialogue || this.isTouchLayoutEditing) return;
 
         for (let i = 0; i < e.changedTouches.length; i++) {
             const t = e.changedTouches[i];
@@ -5297,8 +5312,13 @@ Game.setupTouchControls = function() {
             // Only shoot if touching the game canvas directly (never intercept hotbar, menus, or modals!)
             if (t.target !== this.canvas) continue;
 
-            // Also ignore touches on the left 48% of screen (virtual joystick thumb area)
-            if (t.clientX < window.innerWidth * 0.48 && t.clientY > 55) continue;
+            // Only ignore touches strictly inside the lower-left virtual joystick zone
+            const jZone = document.getElementById('virtualJoystickZone');
+            const jRect = jZone ? jZone.getBoundingClientRect() : null;
+            if (jRect && t.clientX >= jRect.left && t.clientX <= jRect.right &&
+                t.clientY >= jRect.top && t.clientY <= jRect.bottom) {
+                continue;
+            }
 
             e.preventDefault();
             canvasShootTouchId = t.identifier;
@@ -5421,6 +5441,10 @@ Game.setupTouchControls = function() {
                     // Shoot towards movement direction or facing direction
                     let dirX = 0;
                     let dirY = 0;
+                    if (this.player.joystickMove) {
+                        dirX = this.player.joystickMove.x;
+                        dirY = this.player.joystickMove.y;
+                    }
                     if (this.keys.up) dirY -= 1;
                     if (this.keys.down) dirY += 1;
                     if (this.keys.left) dirX -= 1;
@@ -5444,6 +5468,7 @@ Game.setupTouchControls = function() {
         };
 
         const pressA = (e: Event) => {
+            if (this.isTouchLayoutEditing) return;
             e.preventDefault();
             SoundEngine.init();
             if (SoundEngine.isBgmOn()) SoundEngine.startBgm();
@@ -5467,6 +5492,7 @@ Game.setupTouchControls = function() {
         };
 
         const releaseA = (e: Event) => {
+            if (this.isTouchLayoutEditing) return;
             e.preventDefault();
             isHoldingA = false;
             btnA.classList.remove('active');
@@ -5494,6 +5520,7 @@ Game.setupTouchControls = function() {
         let isHoldingE = false;
 
         const pressE = (e: Event) => {
+            if (this.isTouchLayoutEditing) return;
             e.preventDefault();
             SoundEngine.init();
             if (SoundEngine.isBgmOn()) SoundEngine.startBgm();
@@ -5515,6 +5542,7 @@ Game.setupTouchControls = function() {
         };
 
         const releaseE = (e: Event) => {
+            if (this.isTouchLayoutEditing) return;
             e.preventDefault();
             isHoldingE = false;
             btnE.classList.remove('active');
@@ -5536,10 +5564,12 @@ Game.setupTouchControls = function() {
     const btnDash = document.getElementById('touchBtnDash');
     if (btnDash) {
         btnDash.addEventListener('touchstart', (e: Event) => {
+            if (this.isTouchLayoutEditing) return;
             e.preventDefault();
             this.playerDash();
         }, { passive: false });
         btnDash.addEventListener('click', (e: Event) => {
+            if (this.isTouchLayoutEditing) return;
             e.preventDefault();
             this.playerDash();
         });
@@ -5549,11 +5579,13 @@ Game.setupTouchControls = function() {
     const btnGuard = document.getElementById('touchBtnGuard');
     if (btnGuard) {
         const pressGuard = (e: Event) => {
+            if (this.isTouchLayoutEditing) return;
             e.preventDefault();
             this.startPlayerGuard();
             btnGuard.classList.add('active');
         };
         const releaseGuard = (e: Event) => {
+            if (this.isTouchLayoutEditing) return;
             e.preventDefault();
             this.stopPlayerGuard();
             btnGuard.classList.remove('active');
@@ -5593,6 +5625,208 @@ Game.setupTouchControls = function() {
             if (te.cancelable) te.preventDefault();
             (el as HTMLElement).click();
         }, { passive: false });
+    });
+};
+
+Game.isTouchLayoutEditing = false;
+Game.touchControlsScale = 1.0;
+
+Game.openTouchLayoutEditor = function() {
+    this.closeAllModals();
+    this.isTouchLayoutEditing = true;
+    const bar = document.getElementById('touchLayoutEditorBar');
+    if (bar) bar.style.display = 'flex';
+    const touchOverlay = document.getElementById('touchControls');
+    if (touchOverlay) {
+        touchOverlay.classList.add('force-show');
+        touchOverlay.classList.add('is-editing-layout');
+        touchOverlay.style.display = 'flex';
+    }
+    this.setupTouchLayoutDraggables();
+    this.addFloatingText('★ โหมดตั้งปุ่ม: แตะลากปุ่มเพื่อย้ายตำแหน่งอิสระ ★', this.player.x - 50, this.player.y - 30, '#38bdf8');
+};
+
+Game.closeTouchLayoutEditor = function() {
+    this.isTouchLayoutEditing = false;
+    const bar = document.getElementById('touchLayoutEditorBar');
+    if (bar) bar.style.display = 'none';
+    const touchOverlay = document.getElementById('touchControls');
+    if (touchOverlay) {
+        touchOverlay.classList.remove('is-editing-layout');
+    }
+};
+
+Game.setTouchControlsScale = function(scale: number) {
+    this.touchControlsScale = scale;
+    const btns = document.querySelectorAll('.btn-scale-tag');
+    btns.forEach((b: any) => {
+        b.classList.toggle('active', b.textContent.includes(Math.round(scale * 100) + '%'));
+    });
+    this.applyTouchScale(scale);
+};
+
+Game.applyTouchScale = function(scale: number) {
+    const actionBtns = document.querySelectorAll('.touch-action-btn');
+    actionBtns.forEach((b: any) => {
+        b.style.transform = `scale(${scale})`;
+    });
+    const skills = document.getElementById('touchSkillsRow');
+    if (skills) skills.style.transform = `scale(${scale})`;
+    const joystick = document.getElementById('virtualJoystickBase');
+    if (joystick) joystick.style.transform = `translate(-50%, -50%) scale(${scale})`;
+};
+
+Game.saveTouchControlsLayout = function() {
+    const layoutData: any = {
+        scale: this.touchControlsScale || 1.0,
+        buttons: {}
+    };
+
+    const draggableIds = ['touchBtnGuard', 'touchBtnA', 'touchBtnDash', 'touchBtnE', 'virtualJoystickBase', 'touchSkillsRow'];
+    draggableIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            const rect = el.getBoundingClientRect();
+            layoutData.buttons[id] = {
+                right: window.innerWidth - rect.right,
+                bottom: window.innerHeight - rect.bottom,
+                left: rect.left,
+                top: rect.top
+            };
+        }
+    });
+
+    try {
+        localStorage.setItem('gamefarm_touch_layout', JSON.stringify(layoutData));
+    } catch (_) {}
+
+    this.closeTouchLayoutEditor();
+    SoundEngine.questComplete();
+    this.addFloatingText('★ บันทึกตำแหน่งและขนาดปุ่มควบคุมเรียบร้อยแล้ว! ★', this.player.x - 55, this.player.y - 30, '#4ade80');
+};
+
+Game.resetTouchControlsLayout = function() {
+    try {
+        localStorage.removeItem('gamefarm_touch_layout');
+    } catch (_) {}
+
+    const draggableIds = ['touchBtnGuard', 'touchBtnA', 'touchBtnDash', 'touchBtnE', 'virtualJoystickBase', 'touchSkillsRow'];
+    draggableIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.style.left = '';
+            el.style.top = '';
+            el.style.right = '';
+            el.style.bottom = '';
+            el.style.transform = '';
+        }
+    });
+
+    this.setTouchControlsScale(1.0);
+    this.closeTouchLayoutEditor();
+    SoundEngine.bell();
+    this.addFloatingText('★ รีเซ็ตตำแหน่งและขนาดปุ่มสู่ค่าเริ่มต้นแล้ว ★', this.player.x - 50, this.player.y - 30, '#facc15');
+};
+
+Game.applySavedTouchLayout = function() {
+    try {
+        const raw = localStorage.getItem('gamefarm_touch_layout');
+        if (!raw) return;
+        const layout = JSON.parse(raw);
+        if (layout.scale) {
+            this.setTouchControlsScale(layout.scale);
+        }
+        if (layout.buttons) {
+            for (const id in layout.buttons) {
+                const b = layout.buttons[id];
+                const el = document.getElementById(id);
+                if (el && b) {
+                    if (id === 'virtualJoystickBase') {
+                        el.style.left = `${b.left + 62}px`;
+                        el.style.top = `${b.top + 62}px`;
+                        el.style.bottom = 'auto';
+                    } else if (b.right !== undefined && b.bottom !== undefined) {
+                        el.style.right = `${Math.max(4, Math.min(window.innerWidth - 60, b.right))}px`;
+                        el.style.bottom = `${Math.max(4, Math.min(window.innerHeight - 60, b.bottom))}px`;
+                        el.style.left = 'auto';
+                        el.style.top = 'auto';
+                    }
+                }
+            }
+        }
+    } catch (_) {}
+};
+
+Game.setupTouchLayoutDraggables = function() {
+    if (this._layoutDraggablesSetup) return;
+    this._layoutDraggablesSetup = true;
+
+    const draggableIds = ['touchBtnGuard', 'touchBtnA', 'touchBtnDash', 'touchBtnE', 'virtualJoystickBase', 'touchSkillsRow'];
+    draggableIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+
+        let startX = 0;
+        let startY = 0;
+        let initialRight = 0;
+        let initialBottom = 0;
+        let isDragging = false;
+        let touchId: number | null = null;
+
+        el.addEventListener('touchstart', (e: TouchEvent) => {
+            if (!Game.isTouchLayoutEditing) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const t = e.changedTouches[0];
+            touchId = t.identifier;
+            startX = t.clientX;
+            startY = t.clientY;
+            const rect = el.getBoundingClientRect();
+            initialRight = window.innerWidth - rect.right;
+            initialBottom = window.innerHeight - rect.bottom;
+            isDragging = true;
+        }, { passive: false });
+
+        window.addEventListener('touchmove', (e: TouchEvent) => {
+            if (!Game.isTouchLayoutEditing || !isDragging || touchId === null) return;
+            for (let i = 0; i < e.touches.length; i++) {
+                if (e.touches[i].identifier === touchId) {
+                    e.preventDefault();
+                    const dx = e.touches[i].clientX - startX;
+                    const dy = e.touches[i].clientY - startY;
+
+                    if (id === 'virtualJoystickBase') {
+                        const newLeft = e.touches[i].clientX;
+                        const newTop = e.touches[i].clientY;
+                        el.style.left = `${newLeft}px`;
+                        el.style.top = `${newTop}px`;
+                        el.style.bottom = 'auto';
+                    } else {
+                        const newRight = Math.max(4, Math.min(window.innerWidth - 70, initialRight - dx));
+                        const newBottom = Math.max(4, Math.min(window.innerHeight - 70, initialBottom - dy));
+                        el.style.right = `${newRight}px`;
+                        el.style.bottom = `${newBottom}px`;
+                        el.style.left = 'auto';
+                        el.style.top = 'auto';
+                    }
+                    break;
+                }
+            }
+        }, { passive: false });
+
+        const endDrag = (e: TouchEvent) => {
+            if (!isDragging) return;
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                if (e.changedTouches[i].identifier === touchId) {
+                    isDragging = false;
+                    touchId = null;
+                    break;
+                }
+            }
+        };
+
+        window.addEventListener('touchend', endDrag);
+        window.addEventListener('touchcancel', endDrag);
     });
 };
 
@@ -10795,13 +11029,8 @@ Game.updateHUD = function() {
         const hVal = this.player.hunger !== undefined ? this.player.hunger : 100;
         const hMax = this.player.maxHunger || 100;
         const hPercent = Math.max(0, Math.min(100, (hVal / hMax) * 100));
-        if (isMobile) {
-            hungerBar.style.width = hPercent + '%';
-            hungerBar.style.height = '100%';
-        } else {
-            hungerBar.style.height = hPercent + '%';
-            hungerBar.style.width = '100%';
-        }
+        hungerBar.style.width = hPercent + '%';
+        hungerBar.style.height = '100%';
         if (hPercent < 25) hungerBar.style.backgroundColor = '#ef4444';
         else if (hPercent < 50) hungerBar.style.backgroundColor = '#f59e0b';
         else hungerBar.style.backgroundColor = '#f97316';
@@ -10812,13 +11041,8 @@ Game.updateHUD = function() {
         const tVal = this.player.thirst !== undefined ? this.player.thirst : 100;
         const tMax = this.player.maxThirst || 100;
         const tPercent = Math.max(0, Math.min(100, (tVal / tMax) * 100));
-        if (isMobile) {
-            thirstBar.style.width = tPercent + '%';
-            thirstBar.style.height = '100%';
-        } else {
-            thirstBar.style.height = tPercent + '%';
-            thirstBar.style.width = '100%';
-        }
+        thirstBar.style.width = tPercent + '%';
+        thirstBar.style.height = '100%';
         if (tPercent < 25) thirstBar.style.backgroundColor = '#ef4444';
         else if (tPercent < 50) thirstBar.style.backgroundColor = '#38bdf8';
         else thirstBar.style.backgroundColor = '#06b6d4';

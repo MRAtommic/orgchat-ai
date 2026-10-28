@@ -533,18 +533,24 @@ body {
     filter: drop-shadow(0 0 4px #c084fc);
 }
 
-/* Bottom Right Vitals (Compact Sleek 60px Vials) */
-.hud-bottom-right {
-    position: absolute;
-    bottom: 8px;
-    right: 8px;
+/* Survival Badge (Hunger F & Thirst W in Top-Left Flex Flow) */
+.survival-badge {
+    background: rgba(15, 23, 42, 0.90);
+    border: 1.5px solid #475569;
+    border-radius: 6px;
+    padding: 3px 8px;
+    box-shadow: 1px 2px 4px rgba(0,0,0,0.4);
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
     pointer-events: auto;
 }
 
-.vitals-container {
+.survival-vitals {
     display: flex;
-    gap: 6px;
-    align-items: flex-end;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
 }
 
 .vital-widget {
@@ -2295,9 +2301,11 @@ body {
 .virtual-joystick-zone {
     position: absolute;
     left: 0;
-    top: 55px;
-    width: 48%;
     bottom: 0;
+    width: 32%;
+    max-width: 250px;
+    height: 52%;
+    max-height: 250px;
     pointer-events: auto;
     touch-action: none !important;
     -webkit-touch-callout: none !important;
@@ -2482,8 +2490,8 @@ body {
     position: absolute;
     right: 14px;
     bottom: 14px;
-    width: 180px;
-    height: 180px;
+    width: 200px;
+    height: 200px;
     pointer-events: none;
     touch-action: none !important;
     z-index: 45;
@@ -2644,13 +2652,13 @@ body {
 
 /* 4. Guard / Parry Button */
 .btn-touch-guard {
-    width: 52px;
-    height: 52px;
-    right: 8px;
-    bottom: 94px;
+    width: 64px;
+    height: 64px;
+    right: 20px;
+    bottom: 104px;
     background: linear-gradient(135deg, #b45309 0%, #d97706 100%) !important;
-    border: 2.5px solid #fbbf24 !important;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4), inset 0 2px 3px rgba(255, 255, 255, 0.3);
+    border: 3px solid #fbbf24 !important;
+    box-shadow: 0 5px 14px rgba(0, 0, 0, 0.5), inset 0 2px 4px rgba(255, 255, 255, 0.35);
     z-index: 2;
 }
 
@@ -3477,11 +3485,11 @@ body {
         padding: 2px 6px !important;
     }
     .player-badge {
-        padding: 2px 6px !important;
+        padding: 3px 6px !important;
         gap: 6px !important;
     }
     .vital-gauge-col {
-        min-width: 62px !important;
+        min-width: 66px !important;
     }
     .vital-gauge-val {
         font-size: 8px !important;
@@ -3490,45 +3498,25 @@ body {
         height: 6px !important;
     }
 
-    /* Move Vitals (HP, E, F, W) under player badge at TOP-LEFT */
-    .hud-bottom-right {
-        position: absolute !important;
-        top: 76px !important;
-        left: 8px !important;
-        bottom: auto !important;
-        right: auto !important;
-        z-index: 35 !important;
+    /* Survival Badge sits neatly below player badge in flex flow with zero overlap */
+    .survival-badge {
+        padding: 2px 6px !important;
+        margin-top: 1px !important;
     }
-    .vitals-container {
-        flex-direction: row !important;
-        background: rgba(30, 41, 59, 0.95) !important;
-        padding: 3px 6px !important;
-        border-radius: 6px !important;
-        border: 1px solid #475569 !important;
-        gap: 6px !important;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4) !important;
+    .survival-vitals {
+        gap: 8px !important;
     }
-    .vital-widget {
-        flex-direction: row !important;
-        align-items: center !important;
+    .survival-vitals .vital-widget {
         gap: 3px !important;
     }
-    .vital-track {
+    .survival-vitals .vital-track {
         width: 38px !important;
-        height: 9px !important;
-        border-radius: 3px !important;
-        align-items: stretch !important;
-        justify-content: flex-start !important;
-        padding: 1px !important;
-        overflow: hidden !important;
+        height: 7px !important;
     }
-    .vital-fill {
-        height: 100% !important;
-        transition: width 0.2s ease, background-color 0.25s ease !important;
-    }
-    .vital-label {
-        font-size: 8px !important;
-        font-weight: 700 !important;
+    .survival-vitals .vital-label {
+        font-size: 7.5px !important;
+        width: 13px !important;
+        height: 13px !important;
     }
 
     /* Top Right: Compact clock & essential action icons */
@@ -3540,33 +3528,37 @@ body {
         pointer-events: auto !important;
     }
     .clock-widget {
-        width: 125px !important;
+        width: 136px !important;
         padding: 2px 6px !important;
     }
     .clock-day {
-        font-size: 9px !important;
+        font-size: 8.5px !important;
+    }
+    .hud-fortune-tag {
+        font-size: 7.5px !important;
+        padding: 1px 3px !important;
     }
     .clock-time {
-        font-size: 13px !important;
+        font-size: 12px !important;
         margin: 0 !important;
     }
     .gold-counter {
         padding: 1px 4px !important;
     }
     .gold-val {
-        font-size: 11px !important;
+        font-size: 10px !important;
     }
     .hud-actions-row {
         width: auto !important;
-        gap: 3px !important;
-        margin-top: 3px !important;
+        gap: 2px !important;
+        margin-top: 2px !important;
     }
     .hud-actions-row .btn-hud-icon {
-        width: 30px !important;
-        height: 30px !important;
+        width: 27px !important;
+        height: 27px !important;
     }
     .hud-actions-row .btn-hud-emoji {
-        font-size: 8.5px !important;
+        font-size: 7.5px !important;
     }
     .btn-hud-fullscreen {
         background: linear-gradient(180deg, #38bdf8, #0284c7) !important;
@@ -3589,12 +3581,11 @@ body {
         display: none !important;
     }
 
-    /* Quest Tracker: compact and neat */
+    /* Quest Tracker: elegantly handled on canvas with navigational arrow and compass */
+    #hudQuestTracker,
+    .quest-tracker-widget,
     .hud-quest-tracker {
-        top: 6px !important;
-        max-width: 220px !important;
-        font-size: 10px !important;
-        padding: 3px 6px !important;
+        display: none !important;
     }
 
     /* Bottom: D-Pad on Left */
@@ -3657,7 +3648,7 @@ body {
     .touch-skills-row {
         position: absolute !important;
         right: 12px !important;
-        bottom: 196px !important;
+        bottom: 156px !important;
         display: flex !important;
         align-items: flex-start !important;
         gap: 8px !important;
@@ -3735,18 +3726,18 @@ body {
         font-weight: 700 !important;
     }
     .btn-touch-guard {
-        width: 52px !important;
-        height: 52px !important;
-        right: 8px !important;
-        bottom: 94px !important;
+        width: 64px !important;
+        height: 64px !important;
+        right: 20px !important;
+        bottom: 104px !important;
     }
     .btn-touch-guard span {
-        font-size: 12px !important;
+        font-size: 13px !important;
         font-weight: 900 !important;
     }
     .btn-touch-guard small {
-        font-size: 9px !important;
-        font-weight: 700 !important;
+        font-size: 10px !important;
+        font-weight: 800 !important;
     }
 }
 
@@ -5905,8 +5896,13 @@ body {
 
 /* ========================================================
    DYNAMIC RPG QUEST TRACKER & RESPONSIVE MODAL ENHANCEMENT
+   (Canvas Game.drawActiveQuestTracker takes precedence)
    ======================================================== */
+#hudQuestTracker,
 .quest-tracker-widget {
+    display: none !important;
+}
+.quest-tracker-widget-hidden {
     background: rgba(15, 23, 42, 0.90);
     border: 2px solid #b45309;
     border-radius: 8px;
@@ -6551,4 +6547,138 @@ body {
 .title-req {
     font-size: 11px;
     color: #94a3b8;
+}
+
+
+/* ==========================================================================
+   MOBILE CONTROLS CUSTOMIZER & LAYOUT EDITOR
+   ========================================================================== */
+
+.btn-touch-customize {
+    position: absolute;
+    top: 60px;
+    right: 14px;
+    background: rgba(15, 23, 42, 0.75);
+    border: 1px solid #475569;
+    border-radius: 6px;
+    color: #94a3b8;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 3px 8px;
+    cursor: pointer;
+    z-index: 46;
+    pointer-events: auto;
+    transition: all 0.2s ease;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+.btn-touch-customize:hover,
+.btn-touch-customize:active {
+    background: rgba(30, 41, 59, 0.95);
+    color: #38bdf8;
+    border-color: #38bdf8;
+}
+
+.touch-layout-editor-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: rgba(15, 23, 42, 0.94);
+    border-bottom: 2px solid #38bdf8;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.75);
+    z-index: 9999;
+    padding: 8px 16px;
+    display: flex;
+    justify-content: center;
+    backdrop-filter: blur(8px);
+}
+.layout-editor-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    max-width: 960px;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.layout-editor-title {
+    display: flex;
+    flex-direction: column;
+}
+.editor-main-title {
+    font-size: 13px;
+    font-weight: 800;
+    color: #38bdf8;
+}
+.editor-sub-title {
+    font-size: 10px;
+    color: #94a3b8;
+}
+.layout-editor-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.layout-scale-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(30, 41, 59, 0.8);
+    border: 1px solid #475569;
+    border-radius: 6px;
+    padding: 2px 6px;
+}
+.scale-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: #cbd5e1;
+}
+.btn-scale-tag {
+    background: #1e293b;
+    border: 1px solid #475569;
+    color: #f1f5f9;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.btn-scale-tag.active {
+    background: #0284c7;
+    border-color: #38bdf8;
+    color: #fff;
+}
+.layout-btn-group {
+    display: flex;
+    gap: 6px;
+}
+.btn-save-layout {
+    font-size: 11px !important;
+    padding: 4px 10px !important;
+}
+.btn-reset-layout, .btn-close-layout {
+    font-size: 11px !important;
+    padding: 4px 10px !important;
+}
+
+/* Edit Mode Visual Indicator */
+.touch-controls-overlay.is-editing-layout {
+    background: rgba(15, 23, 42, 0.35);
+    pointer-events: auto !important;
+}
+.touch-controls-overlay.is-editing-layout .touch-action-btn,
+.touch-controls-overlay.is-editing-layout .virtual-joystick-base,
+.touch-controls-overlay.is-editing-layout .touch-skills-row {
+    outline: 2px dashed #38bdf8 !important;
+    outline-offset: 4px !important;
+    cursor: move !important;
+    touch-action: none !important;
+    pointer-events: auto !important;
+}
+.touch-controls-overlay.is-editing-layout .virtual-joystick-base {
+    opacity: 0.9 !important;
+    display: flex !important;
 }
