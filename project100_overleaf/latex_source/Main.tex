@@ -1,0 +1,107 @@
+\documentclass{Class/project_report}
+\setTHSarabunFont
+\usepackage{amssymb}
+\usepackage{pifont}
+\usepackage{enumitem}
+\usepackage{float}
+\geometry{a4paper,top=1.5in,bottom=1in,left=1.5in,right=1in}
+\pagestyle{plain} % ตั้งค่า pagestyle เริ่มต้น
+\newcolumntype{L}{>{\RaggedRight\arraybackslash}X} 
+\newcolumntype{C}{>{\centering\arraybackslash}X}
+\newcommand{\cmark}{\ensuremath{\checkmark}}
+\newcommand{\xmark}{\ensuremath{\times}}
+% Define full Thai alphabet for page numbering beyond 10
+\makeatletter
+\def\@thaialph#1{%
+  \ifcase#1\or ก\or ข\or ค\or ง\or จ\or ฉ\or ช\or ซ\or ฌ\or ญ\or ฎ\or ฏ\or ฐ\or ฑ\or ฒ\or ณ\or ด\or ต\or ถ\or ท\or ธ\or น\or บ\or ป\or ผ\or ฝ\or พ\or ฟ\or ภ\or ม\or ย\or ร\or ล\or ว\or ศ\or ษ\or ส\or ห\or ฬ\or อ\or ฮ\else ?\fi
+}
+\def\thaialph#1{\expandafter\@thaialph\csname c@#1\endcsname}
+\def\thaiAlph#1{\expandafter\@thaialph\csname c@#1\endcsname}
+\makeatother
+
+\begin{document}
+
+    % Setup for Figures (centered label and text)
+    \captionsetup[figure]{
+      font={normalsize},
+      labelfont={bold16pt},
+      labelsep=quad,
+      justification=centering,
+      singlelinecheck=false,
+      name={ภาพที่} % Add this line
+    }
+    % Setup for Tables (raggedright label and text)
+    \captionsetup[table]{
+      font={normalsize},
+      labelfont={bold16pt},
+      labelsep=quad,
+      justification=raggedright,
+      singlelinecheck=false,
+      skip=8pt,
+      indention=0.9in,
+      name={ตารางที่} % Add this line
+    }
+
+
+    
+    \input{Project_000_Cover}
+
+    
+    \input{Project_001_Certificate1} % กรณีไม่มีที่ปรึกษาร่วม (เลือกใบรับรองเพียงใบเดียว)
+    % \input{Project_001_Certificate2} % กรณีมีที่ปรึกษาร่วม
+
+    
+    \newpage
+    \thaiPageStyle
+    \setcounter{page}{2}
+    \fontSixTeen
+    \justifying
+    \input{Project_002_Abstract}
+    \newgeometry{a4paper,top=1.5in,bottom=1in,left=1.5in,right=1in,includehead}
+    \setTHSarabunFont
+    \fontsize{16}{16}\selectfont
+    \thaiPageStyle
+    \customTOCthai
+    \newpage
+    \customLOFthai
+    \newpage
+    \begingroup
+    \linespread{0.93}\selectfont
+    \fancyhead[C]{\textbf{สารบัญตาราง (ต่อ)}\\[4pt]\textbf{ตารางที่}\hfill\textbf{หน้า}}
+    \customLOTthai
+    \endgroup
+    \clearpage % ขึ้นหน้าใหม่หลังจากหน้าที่มีการปรับ margin
+    \restoregeometry % คืนค่า geometry กลับเป็นค่าเริ่มต้น
+    \fancyhf{} % ล้างการตั้งค่า fancyhdr ของหน้าที่ปรับ
+    \setTHSarabunFont
+    \fontsize{16}{16}\selectfont
+    \thaiPageStyle
+    
+    \newpage
+    \setlength{\headheight}{0cm}
+    \setcounter{page}{1}
+    \arabicPageTopRight % ตั้งค่าต่อไปใช้สไตล์อารบิกมุมขวาบน
+    \customTOCarabic
+    \input{Project_010_Chapter1}
+    \input{Project_020_Chapter2}
+    \input{Project_030_Chapter3}
+    \input{Project_040_Chapter4}
+    \input{Project_050_Chapter5}
+
+    \newgeometry{a4paper,top=1.2in,bottom=1in,left=1.5in,right=1in,includehead}
+    \setTHSarabunFont
+    \fontsize{16}{16}\selectfont
+    \arabicPageTopRight
+    \nocite{*}
+    \setlength\bibitemsep{4pt}
+    \printbibliography[heading=mybibheading]
+    \clearpage % ขึ้นหน้าใหม่หลังจากหน้าที่มีการปรับ margin
+    \restoregeometry % คืนค่า geometry กลับเป็นค่าเริ่มต้น
+    \fancyhf{} % ล้างการตั้งค่า fancyhdr ของหน้าที่ปรับ
+    \setlength{\headsep}{0in}
+    
+    \appendixTitlePage
+    \input{Project_101_AppendixA}
+    \input{Project_102_AppendixB}
+
+\end{document}
