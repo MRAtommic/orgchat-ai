@@ -80,3 +80,7 @@ canvas-vampire-survivors/
 
 # Project 100 Overleaf thesis package and scripts
 !project100_overleaf/**
+
+# ข้อมูลสำรองส่วนตัวสำหรับการย้ายเครื่อง (ป้องกันกุญแจและข้อมูลลูกค้ารั่วไหล)
+ข้อมูลทั้งหมดของฉัน/
+*.zip
