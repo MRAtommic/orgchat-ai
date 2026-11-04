@@ -48,10 +48,25 @@ _executor = ThreadPoolExecutor(max_workers=10)
 
 # ─── SocketIO & Limiter instances (initialized via init_app in factory) ──
 # CORS origins: ใช้ BASE_URL จาก env ถ้ามี, ไม่อย่างนั้น fallback wildcard (dev only)
+def is_production() -> bool:
+    """True เมื่อรันบน production (APP_ENV/FLASK_ENV=production หรือมี Railway env)"""
+    env = (os.environ.get("APP_ENV") or os.environ.get("FLASK_ENV") or "").strip().lower()
+    if env in ("production", "prod"):
+        return True
+    if env in ("development", "dev", "testing", "test"):
+        return False
+    return bool(os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RAILWAY_ENVIRONMENT_NAME"))
+
+
 def _build_cors_origins() -> list | str:
     raw = os.environ.get("CORS_ALLOWED_ORIGINS", "").strip()
     if raw:
         if raw == "*":
+            if is_production():
+                raise RuntimeError(
+                    "CORS_ALLOWED_ORIGINS='*' ไม่อนุญาตใน production — "
+                    "ระบุ origin จริง เช่น https://yourdomain.com"
+                )
             return "*"
         return [o.strip() for o in raw.split(",") if o.strip()]
     base = os.environ.get("BASE_URL", "").rstrip("/")
@@ -62,7 +77,12 @@ def _build_cors_origins() -> list | str:
         if railway and railway != base:
             origins.append(railway)
         return origins
-    return "*"  # dev fallback เท่านั้น — ต้องตั้ง BASE_URL ใน production
+    if is_production():
+        raise RuntimeError(
+            "BASE_URL (หรือ CORS_ALLOWED_ORIGINS) ไม่ได้ตั้งค่าใน production — "
+            "ปฏิเสธการสตาร์ทแทนการใช้ wildcard CORS ร่วมกับ credentials"
+        )
+    return "*"  # dev fallback เท่านั้น
 
 _cors_origins = _build_cors_origins()
 socketio = SocketIO(cors_allowed_origins=_cors_origins, async_mode='threading', max_http_payload_size=2*1024*1024)
@@ -91,19 +111,42 @@ def _store_oauth_state(state: str, data: dict):
         _OAUTH_STATES[state] = data
 
 
+_RECENT_POPPED_STATES: dict = {}  # state -> (data, timestamp) for duplicate request resilience
+
+
 def _pop_oauth_state(state: str) -> dict | None:
-    """ดึงและลบ OAuth state จาก DB."""
+    """ดึง OAuth state จาก DB/Memory (ทนต่อการส่งคำขอซ้ำ/prefetch ภายใน 300 วินาที)."""
+    now = time.time()
+    if state in _RECENT_POPPED_STATES:
+        cached_data, cached_ts = _RECENT_POPPED_STATES[state]
+        if now - cached_ts < 300:
+            return cached_data
+
     try:
         result = database.oauth_state_pop(state)
         if result is not None:
+            _RECENT_POPPED_STATES[state] = (result, now)
+            for k in list(_RECENT_POPPED_STATES.keys()):
+                if now - _RECENT_POPPED_STATES[k][1] > 600:
+                    _RECENT_POPPED_STATES.pop(k, None)
             return result
     except Exception as _e:
         logger.warning(f"[oauth_state] DB pop failed, falling back to memory: {_e}")
-    # Fallback: ลองจาก memory เผื่อ DB ล้มเหลว
-    entry = _OAUTH_STATES.pop(state, None)
+    entry = _OAUTH_STATES.get(state)
     if entry and entry.get("expires", 0) > time.time():
+        _RECENT_POPPED_STATES[state] = (entry, now)
         return entry
     return None
+
+
+def _delete_oauth_state(state: str):
+    """ลบ OAuth state หลังจากใช้งานเสร็จสิ้นแล้ว."""
+    try:
+        database.oauth_state_delete(state)
+    except Exception:
+        pass
+    _OAUTH_STATES.pop(state, None)
+    _RECENT_POPPED_STATES.pop(state, None)
 
 # ─── OAuth2 Availability ─────────────────────────────────────
 try:
@@ -715,3 +758,37 @@ def validate_csrf_token(token_to_check: str) -> bool:
         return False
     return hmac.compare_digest(expected_token, str(token_to_check))
 
+
+
+# ===============================================================
+# Signed File Access Tokens (LINE crawler previews & external sharing)
+# ===============================================================
+
+def generate_file_token(filename: str, purpose: str = "preview", expires_in: int = 86400 * 30) -> str:
+    """Generate a tamper-proof HMAC token for file access (e.g. LINE crawler thumbnail preview)."""
+    import hashlib
+    secret = (os.environ.get("FLASK_SECRET_KEY") or os.environ.get("SECRET_KEY") or "orgchat-file-secret-key-file").encode()
+    clean_fn = filename.replace("\\", "/").split("/")[-1]
+    exp = int(time.time()) + expires_in
+    data = f"{clean_fn}:{purpose}:{exp}".encode()
+    sig = hmac.new(secret, data, hashlib.sha256).hexdigest()[:32]
+    return f"{exp}_{sig}"
+
+
+def verify_file_token(filename: str, purpose: str, token: str) -> bool:
+    """Verify HMAC token and expiration."""
+    if not token or "_" not in token:
+        return False
+    try:
+        import hashlib
+        clean_fn = filename.replace("\\", "/").split("/")[-1]
+        secret = (os.environ.get("FLASK_SECRET_KEY") or os.environ.get("SECRET_KEY") or "orgchat-file-secret-key-file").encode()
+        exp_str, sig = token.split("_", 1)
+        exp = int(exp_str)
+        if time.time() > exp:
+            return False
+        expected_data = f"{clean_fn}:{purpose}:{exp}".encode()
+        expected_sig = hmac.new(secret, expected_data, hashlib.sha256).hexdigest()[:32]
+        return hmac.compare_digest(sig, expected_sig)
+    except Exception:
+        return False

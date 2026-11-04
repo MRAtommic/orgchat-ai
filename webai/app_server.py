@@ -106,7 +106,11 @@ if sentry_dsn:
     )
     logger.info("Sentry initialized.")
 else:
-    logger.info("SENTRY_DSN not set. Sentry disabled.")
+    from routes.shared import is_production as _is_prod
+    if _is_prod():
+        logger.warning("⚠️  SENTRY_DSN ไม่ได้ตั้งค่าใน production — error จะไม่ถูกส่งไปแจ้งเตือน")
+    else:
+        logger.info("SENTRY_DSN not set. Sentry disabled.")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -288,8 +292,10 @@ def create_app():
     app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB max upload
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
     app.config['SESSION_COOKIE_HTTPONLY'] = True
-    if os.environ.get("BASE_URL", "").startswith("https://") or os.environ.get("SESSION_COOKIE_SECURE", "").lower() == "true":
+    if os.environ.get("SESSION_COOKIE_SECURE", "").lower() == "true":
         app.config['SESSION_COOKIE_SECURE'] = True
+    else:
+        app.config['SESSION_COOKIE_SECURE'] = False
 
     # ─── Proxy Fix ───────────────────────────────────────────
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
@@ -464,8 +470,11 @@ def create_app():
                 _req.path.startswith('/api/auth/google/') or
                 _req.path.startswith('/api/auth/forgot-password') or
                 _req.path.startswith('/api/auth/verify-reset-otp') or
+                _req.path.startswith('/api/auth/reset-password') or
                 _req.path.startswith('/api/org/signup') or
                 _req.path.startswith('/api/org/create-for-user') or
+                _req.path.startswith('/api/org/join-via-invite') or
+                _req.path.startswith('/api/org/join-by-token') or
                 _req.path.startswith('/api/superadmin/')
             )
 

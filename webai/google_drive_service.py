@@ -2864,7 +2864,8 @@ class GoogleWorkspaceManager:
                     if wht_rate_val and str(wht_rate_val).strip() != '-':
                         try:
                             final_rate_num = float(str(wht_rate_val).replace('%', '').strip())
-                        except Exception: pass
+                        except (ValueError, TypeError) as _rate_err:
+                            logger.warning(f"[WHT] อ่านอัตราหัก ณ ที่จ่ายไม่ได้ ({wht_rate_val!r}): {_rate_err}")
                     
                     # If AI missed the rate but got the amount, calculate it!
                     if (not final_rate_num or final_rate_num <= 0) and wht_amt > 0:
@@ -3470,7 +3471,8 @@ class GoogleWorkspaceManager:
                             self.sheets_service.spreadsheets().batchUpdate(spreadsheetId=self.spreadsheet_id, body={'requests': [{'deleteSheet': {'sheetId': s_id}}]}).execute()
                             logger.info(f"🗑 Deleted default sheet: {title}")
                             break
-            except Exception: pass
+            except Exception as _del_err:
+                logger.debug(f"[Sheets] ลบชีตเริ่มต้นไม่สำเร็จ (ข้ามได้): {_del_err}")
         except Exception as e:
             logger.error(f"Logging error: {e}")
             return {"ok": False, "error": str(e)}

@@ -45,6 +45,7 @@ from routes.shared import (
     get_current_org_id, is_admin,
     _is_safe_url, _get_gemini_api_key,
     validate_uploaded_file,
+    generate_file_token,
 )
 from routes.chat import send_line_push_notification
 
@@ -293,22 +294,27 @@ def manage_posts():
                         portal_url = f"{_base_url}/#feed"
 
                         is_announcement = category and category.lower() in ["announcement", "ประกาศ", "news", "ทั่วไป", "general", "it help"]
+                        # Fetch customized Flex Card settings for this organization
+                        _flex_cfg = database.get_org_flex_settings(_oid) if hasattr(database, 'get_org_flex_settings') else {}
+
                         if is_announcement:
-                            primary_color = "#2563EB"
-                            badge_bg = "#EFF6FF"
-                            header_bg = "#1B2838"
-                            header_icon = "📢"
-                            header_title = "ประกาศใหม่"
-                            header_sub = "NEW ANNOUNCEMENT"
-                            alt_prefix = "📢 ประกาศใหม่"
+                            primary_color = _flex_cfg.get("primary_color") or "#2563EB"
+                            badge_bg = _flex_cfg.get("badge_bg") or "#EFF6FF"
+                            header_bg = _flex_cfg.get("header_bg") or "#1B2838"
+                            header_icon = _flex_cfg.get("header_icon") or "📢"
+                            header_title = _flex_cfg.get("header_title") or "ประกาศใหม่"
+                            header_sub = _flex_cfg.get("header_sub") or "NEW ANNOUNCEMENT"
+                            alt_prefix = f"{header_icon} {header_title}"
                         else:
-                            primary_color = "#7C3AED"
+                            primary_color = _flex_cfg.get("feed_primary_color") or "#7C3AED"
                             badge_bg = "#F5F3FF"
-                            header_bg = "#7C3AED"
-                            header_icon = "✨"
-                            header_title = "โพสต์ใหม่ใน Feed"
-                            header_sub = "NEW FEED POST"
-                            alt_prefix = "✨ โพสต์ใหม่"
+                            header_bg = _flex_cfg.get("feed_header_bg") or "#7C3AED"
+                            header_icon = _flex_cfg.get("feed_header_icon") or "✨"
+                            header_title = _flex_cfg.get("feed_header_title") or "โพสต์ใหม่ใน Feed"
+                            header_sub = _flex_cfg.get("feed_header_sub") or "NEW FEED POST"
+                            alt_prefix = f"{header_icon} {header_title}"
+                        
+                        portal_btn_label = _flex_cfg.get("portal_button_text") or "💬 ดูในระบบ OrgChat"
 
                         # 1) Parse Attachments (Images and Documents/Files)
                         image_urls = []
@@ -472,10 +478,13 @@ def manage_posts():
                         # Add Image Box if images exist (NOTE: cornerRadius is on box, NOT on image for LINE Flex compliance)
                         if image_urls:
                             primary_img = image_urls[0]
+                            img_fn = primary_img.split("/")[-1].split("?")[0]
+                            preview_tok = generate_file_token(img_fn, "preview")
+                            preview_img_url = f"{primary_img}?preview_token={preview_tok}"
                             img_box_contents = [
                                 {
                                     "type": "image",
-                                    "url": primary_img,
+                                    "url": preview_img_url,
                                     "size": "full",
                                     "aspectRatio": "16:9",
                                     "aspectMode": "cover",
@@ -713,7 +722,7 @@ def manage_posts():
                             else:
                                 footer_contents.append({
                                     "type": "button",
-                                    "action": {"type": "uri", "label": "💬 ดูในระบบ OrgChat", "uri": portal_url},
+                                    "action": {"type": "uri", "label": portal_btn_label, "uri": portal_url},
                                     "style": "secondary",
                                     "height": "sm",
                                     "margin": "sm"
@@ -730,7 +739,7 @@ def manage_posts():
                             # Secondary button: View in OrgChat
                             footer_contents.append({
                                 "type": "button",
-                                "action": {"type": "uri", "label": "💬 ดูในระบบ OrgChat", "uri": portal_url},
+                                "action": {"type": "uri", "label": portal_btn_label, "uri": portal_url},
                                 "style": "secondary",
                                 "height": "sm",
                                 "margin": "sm"
@@ -747,7 +756,7 @@ def manage_posts():
                             # Secondary button: View in OrgChat
                             footer_contents.append({
                                 "type": "button",
-                                "action": {"type": "uri", "label": "💬 ดูในระบบ OrgChat", "uri": portal_url},
+                                "action": {"type": "uri", "label": portal_btn_label, "uri": portal_url},
                                 "style": "secondary",
                                 "height": "sm",
                                 "margin": "sm"
@@ -940,6 +949,254 @@ def update_delete_post(pid):
 
     database.update_post(pid, content, category, link)
     database.log_event(f"Post updated: ID {pid}", user=user, org_id=org_id)
+
+    # 📢 In-app Notification & LINE Flex Card Broadcast for edited post
+    try:
+        profile = database.get_user_profile(user) if hasattr(database, "get_user_profile") else {}
+        display_name = profile.get("display_name") or user
+        content_preview = (content or "").strip()[:50]
+        notification_db.notify_org_members_except(
+            org_id,
+            user,
+            'social',
+            f'📝 แก้ไขประกาศ/โพสต์: {content_preview}...',
+            f'แก้ไขโดย {display_name}',
+            link='#feed'
+        )
+    except Exception as ne:
+        logger.warning(f"In-app notification error for post edit: {ne}")
+
+    def _broadcast_post_edit_to_line():
+        try:
+            _oid = org_id
+            _tok = billing._get_line_token()
+            if not _tok:
+                return
+            import requests as _req
+            _groups = database.get_line_groups_for_org(_oid) or []
+            if not _groups:
+                return
+            _base_url = (os.environ.get("BASE_URL") or os.environ.get("PUBLIC_URL") or "https://openchat.sbs").rstrip('/')
+            portal_url = f"{_base_url}/#feed"
+
+            _flex_cfg = database.get_org_flex_settings(_oid) if hasattr(database, 'get_org_flex_settings') else {}
+            primary_color = _flex_cfg.get("primary_color") or "#2563EB"
+            header_bg = _flex_cfg.get("header_bg") or "#1B2838"
+            header_title = _flex_cfg.get("header_title") or "ประกาศ / โพสต์"
+            portal_btn_label = _flex_cfg.get("portal_button_text") or "💬 ดูในระบบ OrgChat"
+
+            # Parse images from post if any
+            attachments = post.get("attachments") or []
+            image_urls = []
+            for att in attachments:
+                att_path = att.get("path", "")
+                att_type = (att.get("type") or "").lower()
+                att_name_lower = (att.get("name") or "").lower()
+                if att_type.startswith("image/") or att_name_lower.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp")):
+                    if att_path:
+                        image_urls.append(att_path if att_path.startswith("http") else f"{_base_url}{att_path}")
+
+            raw_content = (content or "").strip()
+            display_text = raw_content[:300] if raw_content else "มีการแก้ไขเนื้อหาโพสต์"
+
+            body_contents = [
+                {
+                    "type": "box",
+                    "layout": "horizontal",
+                    "contents": [
+                        {
+                            "type": "text",
+                            "text": f"✏️ [แก้ไขแล้ว] {(category or 'GENERAL').upper()}",
+                            "size": "xxs",
+                            "color": "#D97706",
+                            "weight": "bold"
+                        }
+                    ],
+                    "backgroundColor": "#FEF3C7",
+                    "cornerRadius": "20px",
+                    "paddingAll": "6px",
+                    "paddingStart": "12px",
+                    "paddingEnd": "12px",
+                    "width": "180px",
+                    "justifyContent": "center"
+                },
+                {
+                    "type": "text",
+                    "text": display_text,
+                    "wrap": True,
+                    "size": "sm",
+                    "color": "#374151",
+                    "margin": "lg"
+                }
+            ]
+
+            if image_urls:
+                primary_img = image_urls[0]
+                img_fn = primary_img.split("/")[-1].split("?")[0]
+                preview_tok = generate_file_token(img_fn, "preview")
+                preview_img_url = f"{primary_img}?preview_token={preview_tok}"
+                body_contents.append({
+                    "type": "box",
+                    "layout": "vertical",
+                    "contents": [
+                        {
+                            "type": "image",
+                            "url": preview_img_url,
+                            "size": "full",
+                            "aspectRatio": "16:9",
+                            "aspectMode": "cover",
+                            "action": {
+                                "type": "uri",
+                                "label": "ดูรูปภาพเต็ม",
+                                "uri": primary_img
+                            }
+                        }
+                    ],
+                    "cornerRadius": "12px",
+                    "margin": "lg"
+                })
+
+            # Author & Timestamp Footer
+            body_contents.append({
+                "type": "box",
+                "layout": "horizontal",
+                "contents": [
+                    {
+                        "type": "box",
+                        "layout": "vertical",
+                        "contents": [
+                            {
+                                "type": "text",
+                                "text": (display_name or user or "U")[:2].upper(),
+                                "size": "xxs",
+                                "color": "#FFFFFF",
+                                "weight": "bold",
+                                "align": "center"
+                            }
+                        ],
+                        "backgroundColor": primary_color,
+                        "cornerRadius": "100px",
+                        "width": "22px",
+                        "height": "22px",
+                        "justifyContent": "center"
+                    },
+                    {
+                        "type": "box",
+                        "layout": "vertical",
+                        "contents": [
+                            {
+                                "type": "text",
+                                "text": f"แก้ไขโดย: {display_name or user}",
+                                "size": "xs",
+                                "color": "#1F2937",
+                                "weight": "bold"
+                            },
+                            {
+                                "type": "text",
+                                "text": "อัปเดตล่าสุดเมื่อสักครู่",
+                                "size": "xxs",
+                                "color": "#9CA3AF"
+                            }
+                        ],
+                        "margin": "sm"
+                    }
+                ],
+                "margin": "xl",
+                "alignItems": "center"
+            })
+
+            bubble = {
+                "type": "bubble",
+                "size": "mega",
+                "header": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "contents": [
+                        {
+                            "type": "box",
+                            "layout": "horizontal",
+                            "contents": [
+                                {
+                                    "type": "text",
+                                    "text": "📝",
+                                    "size": "xl",
+                                    "flex": 0
+                                },
+                                {
+                                    "type": "box",
+                                    "layout": "vertical",
+                                    "contents": [
+                                        {
+                                            "type": "text",
+                                            "text": f"แก้ไข{header_title}",
+                                            "weight": "bold",
+                                            "color": "#FFFFFF",
+                                            "size": "lg"
+                                        },
+                                        {
+                                            "type": "text",
+                                            "text": "POST UPDATED",
+                                            "size": "xxs",
+                                            "color": "#94A3B8",
+                                            "weight": "bold"
+                                        }
+                                    ],
+                                    "margin": "md",
+                                    "flex": 1
+                                }
+                            ],
+                            "alignItems": "center"
+                        }
+                    ],
+                    "backgroundColor": header_bg,
+                    "paddingAll": "20px"
+                },
+                "body": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "contents": body_contents,
+                    "paddingAll": "20px"
+                },
+                "footer": {
+                    "type": "box",
+                    "layout": "vertical",
+                    "contents": [
+                        {
+                            "type": "button",
+                            "style": "secondary",
+                            "action": {
+                                "type": "uri",
+                                "label": portal_btn_label,
+                                "uri": portal_url
+                            },
+                            "color": "#E5E7EB",
+                            "height": "sm"
+                        }
+                    ],
+                    "paddingAll": "16px",
+                    "paddingTop": "0px"
+                }
+            }
+
+            from routes.line_webhook import clean_flex_payload
+            flex_msg = {
+                "type": "flex",
+                "altText": f"📝 มีการแก้ไขประกาศ/โพสต์: {display_text[:40]}",
+                "contents": clean_flex_payload(bubble)
+            }
+            headers = {"Content-Type": "application/json", "Authorization": f"Bearer {_tok}"}
+            for g in _groups:
+                gid = g.get("group_id") if isinstance(g, dict) else g
+                if gid:
+                    try:
+                        _req.post("https://api.line.me/v2/bot/message/push", headers=headers, json={"to": gid, "messages": [flex_msg]}, timeout=10)
+                    except Exception as ge:
+                        logger.error(f"❌ [LINE Post Edit Group Push] Exception for {gid}: {ge}")
+        except Exception as e:
+            logger.error(f"❌ [LINE Post Edit Broadcast] Exception: {e}")
+
+    threading.Thread(target=_broadcast_post_edit_to_line, daemon=True).start()
+
     return jsonify({"ok": True})
 
 
@@ -1472,8 +1729,16 @@ def kanban_update_card(card_id):
     if not old_card:
         return jsonify({"ok": False, "error": "ไม่พบบทความ"}), 404
         
+    if data.get("column_id") is not None:
+        try:
+            _target_col = int(data["column_id"])
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "column_id ไม่ถูกต้อง"}), 400
+        if not database.kanban_get_column(_target_col, org_id=org_id):
+            return jsonify({"ok": False, "error": "ไม่พบ column ปลายทางในองค์กรของคุณ"}), 403
+
     database.kanban_update_card(card_id, **data)
-    
+
     current_user = session.get("user", "System")
     assignees_raw = data.get("assignee", "")
     if isinstance(assignees_raw, str):
@@ -1544,6 +1809,9 @@ def kanban_move_card(card_id):
     new_position = data.get("position", 0)
     if new_column_id is None:
         return jsonify({"ok": False, "error": "Missing column_id"}), 400
+    # column ปลายทางต้องเป็นของ org เดียวกัน — กันย้ายการ์ดข้ามองค์กร
+    if not database.kanban_get_column(int(new_column_id), org_id=org_id):
+        return jsonify({"ok": False, "error": "ไม่พบ column ปลายทางในองค์กรของคุณ"}), 403
     ok = database.kanban_move_card(card_id, int(new_column_id), int(new_position))
     
     # Also update 'is_done' if passed (for automatic status on move to Done column)

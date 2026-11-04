@@ -148,9 +148,19 @@ def get_post(post_id: int) -> dict | None:
     """ดึงโพสต์เดียว — ใช้ตรวจ ownership ก่อน update/delete"""
     conn = _get_conn()
     conn.row_factory = sqlite3.Row
-    row = conn.execute("SELECT id, author, content, category FROM posts WHERE id=?", (post_id,)).fetchone()
+    row = conn.execute("SELECT id, author, content, category, link, attachments, organization_id FROM posts WHERE id=?", (post_id,)).fetchone()
     conn.close()
-    return dict(row) if row else None
+    if not row:
+        return None
+    d = dict(row)
+    if d.get("attachments") and isinstance(d["attachments"], str):
+        try:
+            d["attachments"] = json.loads(d["attachments"])
+        except Exception:
+            d["attachments"] = []
+    elif not d.get("attachments"):
+        d["attachments"] = []
+    return d
 
 
 def check_post_access(post_id: int, org_id: int = 1) -> bool:
@@ -776,43 +786,9 @@ def wiki_delete_page(page_id: int, org_id: int = 1) -> bool:
     conn.close()
     return ok
 
-def kanban_get_card(card_id: int) -> dict | None:
-    conn = _get_conn()
-    conn.row_factory = sqlite3.Row
-    row = conn.execute("SELECT * FROM kanban_cards WHERE id = ?", (card_id,)).fetchone()
-    conn.close()
-    return dict(row) if row else None
-
-def kanban_get_column(column_id: int, org_id: int = 1) -> dict | None:
-    conn = _get_conn()
-    conn.row_factory = sqlite3.Row
-    row = conn.execute("SELECT * FROM kanban_columns WHERE id = ? AND org_id = ?", (column_id, org_id)).fetchone()
-    conn.close()
-    if not row:
-        # Fallback dummy column for standard Kanban 1/2/3/4 board setup
-        return {"id": column_id, "name": f"Column {column_id}", "org_id": org_id, "position": column_id}
-    return dict(row)
-
-def kanban_update_card(card_id: int, **kwargs) -> bool:
-    conn = _get_conn()
-    cur = conn.cursor()
-    allowed_cols = {"title", "description", "column_id", "position", "assignee", "due_date", "priority", "is_done"}
-    fields = []
-    params = []
-    for k, v in kwargs.items():
-        if k in allowed_cols:
-            fields.append(f"{k} = ?")
-            params.append(v)
-    if not fields:
-        conn.close()
-        return False
-    fields.append("updated_at = CURRENT_TIMESTAMP")
-    params.append(card_id)
-    cur.execute(f"UPDATE kanban_cards SET {', '.join(fields)} WHERE id = ?", params)
-    ok = cur.rowcount > 0
-    conn.commit()
-    conn.close()
-    return ok
+# NOTE: kanban_get_card / kanban_get_column / kanban_update_card are defined once above.
+# (Duplicate definitions were removed: the later get_column returned a fake column for any
+# id, defeating org-ownership checks, and the later update_card dropped labels/color.)
 
 
 
