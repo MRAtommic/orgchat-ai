@@ -1396,6 +1396,18 @@ def init_db(conn=None):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_usage_tracking_org_ym ON usage_tracking(org_id, year_month)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_quotations_org_created ON quotations(org_id, created_at)")
 
+    # คอลัมน์ที่ migration ก่อนหน้านี้พยายามเพิ่มก่อนที่ตารางจะถูกสร้าง (ฐานข้อมูลใหม่จึงขาดคอลัมน์และบางหน้าล่มด้วย "no such column")
+    # เพิ่มซ้ำตรงนี้หลังสร้างทุกตารางแล้ว (idempotent: ถ้ามีอยู่แล้วจะข้ามเงียบ ๆ)
+    for _tbl, _col, _ddl in (
+        ("user_settings", "clearance_level", "TEXT DEFAULT 'employee'"),
+    ):
+        try:
+            _have = {r[1] for r in cursor.execute(f"PRAGMA table_info({_tbl})").fetchall()}
+            if _col not in _have:
+                cursor.execute(f"ALTER TABLE {_tbl} ADD COLUMN {_col} {_ddl}")
+        except sqlite3.OperationalError:
+            pass
+
     conn.commit()
 
     try:

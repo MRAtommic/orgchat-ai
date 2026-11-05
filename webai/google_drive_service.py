@@ -1454,7 +1454,7 @@ class GoogleWorkspaceManager:
         except Exception as e:
             logger.error(f"⚠️ ensure_essential_sheets error: {e}")
 
-    def upload_file(self, file_content, filename, mimetype, folder_id=None, org_id=None, username=None):
+    def upload_file(self, file_content, filename, mimetype, folder_id=None, org_id=None, username=None, make_public=True):
         """Uploads file with [org_N/]Year/Month/Day folder structure."""
         if org_id or username:
             self.set_context(username=username, org_id=org_id)
@@ -1483,14 +1483,16 @@ class GoogleWorkspaceManager:
             file_id = file.get('id')
             
             # Automatically grant public reader permission ('anyone') so preview iframe works seamlessly
-            try:
-                self.drive_service.permissions().create(
-                    fileId=file_id,
-                    body={'role': 'reader', 'type': 'anyone'},
-                    supportsAllDrives=True
-                ).execute()
-            except Exception as perm_err:
-                logger.warning(f"⚠️ Could not set public permission on file {file_id}: {perm_err}")
+            # (make_public=False สำหรับเอกสารที่จำกัดสิทธิ์ — ไม่เปิดลิงก์สาธารณะ)
+            if make_public:
+                try:
+                    self.drive_service.permissions().create(
+                        fileId=file_id,
+                        body={'role': 'reader', 'type': 'anyone'},
+                        supportsAllDrives=True
+                    ).execute()
+                except Exception as perm_err:
+                    logger.warning(f"⚠️ Could not set public permission on file {file_id}: {perm_err}")
 
             return file.get('webViewLink'), None
         except Exception as e:

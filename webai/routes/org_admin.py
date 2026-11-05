@@ -22,7 +22,7 @@ from datetime import datetime
 from flask import Blueprint, Response, jsonify, request, session
 
 import database
-from db import org_security
+from db import org_security, org_features
 from routes.shared import get_current_org_id, login_required, org_admin_required
 
 org_admin_bp = Blueprint("org_admin", __name__)
@@ -315,3 +315,93 @@ def org_audit_export():
     fn = f"org_{org_id}_audit_{datetime.now():%Y%m%d_%H%M}.csv"
     return Response(("﻿" + buf.getvalue()).encode("utf-8"), mimetype="text/csv",
                     headers={"Content-Disposition": f"attachment; filename={fn}"})
+
+
+# ───────────────────────── สิทธิ์เอกสารตามแผนก ─────────────────────────
+@org_admin_bp.route("/api/org/access/categories", methods=["GET"])
+@org_admin_required
+def access_categories():
+    org_id = get_current_org_id()
+    depts = [d.get("name") for d in (database.get_org_departments(org_id) or []) if d.get("name")]
+    return jsonify({"ok": True, "categories": org_features.list_org_categories(org_id), "departments": depts})
+
+
+@org_admin_bp.route("/api/org/access/categories/<int:cat_id>/departments", methods=["POST"])
+@org_admin_required
+def set_access_departments(cat_id):
+    org_id = get_current_org_id()
+    if not org_features.category_in_org(cat_id, org_id):
+        return jsonify({"ok": False, "error": "ไม่พบหมวดนี้ในองค์กร"}), 404
+    data = request.get_json(silent=True) or {}
+    deps = data.get("departments")
+    if not isinstance(deps, list):
+        return jsonify({"ok": False, "error": "รูปแบบข้อมูลไม่ถูกต้อง"}), 400
+    saved = org_features.set_category_departments(cat_id, deps)
+    _audit("CATEGORY_DEPT_ACCESS", f"category={cat_id} departments={','.join(saved) or '(ทุกคน)'}")
+    return jsonify({"ok": True, "departments": saved})
+
+
+# ───────────────────────── แดชบอร์ดการใช้งานต่อแผนก ─────────────────────────
+@org_admin_bp.route("/api/org/usage-dashboard", methods=["GET"])
+@org_admin_required
+def usage_dashboard():
+    try:
+        days = int(request.args.get("days", 30))
+        minutes = int(request.args.get("minutes", 5))
+    except ValueError:
+        return jsonify({"ok": False, "error": "พารามิเตอร์ไม่ถูกต้อง"}), 400
+    return jsonify({"ok": True, **org_features.department_usage(get_current_org_id(), days, minutes)})
+
+
+# ───────────────────────── คำขออนุมัติ (เว็บ) ─────────────────────────
+@org_admin_bp.route("/api/org/approvals", methods=["GET"])
+@org_admin_required
+def list_approvals():
+    status = request.args.get("status") or None
+    if status and status not in ("pending", "approved", "rejected"):
+        return jsonify({"ok": False, "error": "สถานะไม่ถูกต้อง"}), 400
+    return jsonify({"ok": True, "requests": org_features.list_requests(get_current_org_id(), status)})
+
+
+@org_admin_bp.route("/api/org/approvals/<int:req_id>/decide", methods=["POST"])
+@org_admin_required
+def decide_approval(req_id):
+    org_id = get_current_org_id()
+    req = org_features.get_request(req_id)
+    if not req or int(req["org_id"]) != int(org_id):
+        return jsonify({"ok": False, "error": "ไม่พบคำขอ"}), 404
+    data = request.get_json(silent=True) or {}
+    status = "approved" if data.get("decision") == "approve" else "rejected" if data.get("decision") == "reject" else None
+    if not status:
+        return jsonify({"ok": False, "error": "ต้องระบุ decision เป็น approve หรือ reject"}), 400
+    me = session.get("user")
+    if not org_features.can_decide(org_id, me, req):
+        return jsonify({"ok": False, "error": "ไม่มีสิทธิ์พิจารณาคำขอนี้ (หรือเป็นคำขอของตัวเอง)"}), 403
+    if not org_features.decide_request(req_id, status, me, note=str(data.get("note") or "")):
+        return jsonify({"ok": False, "error": "คำขอนี้ถูกพิจารณาไปแล้ว"}), 409
+    import threading
+    threading.Thread(target=org_features.append_to_sheet, args=(org_features.get_request(req_id),), daemon=True).start()
+    _audit("APPROVAL_DECIDED", f"request={req_id} status={status}")
+    return jsonify({"ok": True, "status": status})
+
+
+# ───────────────────────── Rich Menu ตามบทบาท ─────────────────────────
+@org_admin_bp.route("/api/org/line/richmenus", methods=["GET"])
+@org_admin_required
+def richmenu_status():
+    return jsonify({"ok": True, "menus": org_features.get_menu_ids(get_current_org_id())})
+
+
+@org_admin_bp.route("/api/org/line/richmenus/setup", methods=["POST"])
+@org_admin_required
+def richmenu_setup():
+    import line_rich_menu
+    from routes.line_webhook import get_channel_access_token
+    org_id = get_current_org_id()
+    token = get_channel_access_token(org_id)
+    if not token:
+        return jsonify({"ok": False, "error": "ยังไม่ได้ตั้งค่า LINE Channel Access Token"}), 400
+    res = line_rich_menu.setup_menus(org_id, token)
+    _audit("LINE_RICHMENU_SETUP", f"ok={res['ok']} roles={','.join(res['menus'])}")
+    return jsonify(res), (200 if res["menus"] else 502)
+

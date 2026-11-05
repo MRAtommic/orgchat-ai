@@ -67,19 +67,38 @@ from knowledge_harvester import KnowledgeHarvester
 
 # ─── Logging ─────────────────────────────────────────────────
 from logging.handlers import RotatingFileHandler
+_LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+try:
+    os.makedirs(_LOG_DIR, exist_ok=True)
+except Exception:
+    _LOG_DIR = os.path.dirname(os.path.abspath(__file__))
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout),
         RotatingFileHandler(
-            "bot_debug.log", encoding="utf-8",
+            os.path.join(_LOG_DIR, "app.log"), encoding="utf-8",
             maxBytes=5 * 1024 * 1024,  # 5 MB ต่อไฟล์
             backupCount=3              # เก็บย้อนหลัง 3 ไฟล์ = สูงสุด 20 MB
         )
     ]
 )
 logger = logging.getLogger("OrgChatAI")
+
+# บันทึก exception ที่ไม่ถูกจับ (รวมถึงใน thread) ลงไฟล์ log เพื่อให้ตามหาสาเหตุย้อนหลังได้
+def _log_uncaught(exc_type, exc, tb):
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc, tb); return
+    logger.critical("UNCAUGHT EXCEPTION", exc_info=(exc_type, exc, tb))
+sys.excepthook = _log_uncaught
+try:
+    import threading as _thr_hook
+    def _log_thread_exc(args):
+        logger.error("UNCAUGHT THREAD EXCEPTION in %s", getattr(args.thread, "name", "?"), exc_info=(args.exc_type, args.exc_value, args.exc_traceback))
+    _thr_hook.excepthook = _log_thread_exc
+except Exception:
+    pass
 
 # Mute repetitive background noise from scheduler
 logging.getLogger("apscheduler").setLevel(logging.WARNING)
@@ -300,6 +319,18 @@ def create_app():
             logger.warning(">>> FLASK_SECRET_KEY not set - using random key (sessions reset on restart). Set it in .env!")
             
     app.secret_key = _secret
+
+    # ⚠️ หลายโปรเซส (gunicorn/waitress หลาย worker) ต้องใช้ Redis เก็บสถานะร่วมกัน
+    # (ตัวจำกัดอัตราคำขอ, โทเค็นรอ 2FA, OTP, ผู้ใช้ออนไลน์ อยู่ในหน่วยความจำของแต่ละโปรเซส) ไม่เช่นนั้นจะพังแบบเงียบ ๆ
+    try:
+        _workers = int(os.environ.get("WEB_CONCURRENCY") or os.environ.get("GUNICORN_WORKERS") or 1)
+    except ValueError:
+        _workers = 1
+    if _workers > 1 and not os.environ.get("REDIS_URL", "").strip():
+        raise RuntimeError(
+            f"CONFIG ERROR: WEB_CONCURRENCY={_workers} (หลายโปรเซส) แต่ไม่ได้ตั้ง REDIS_URL — สถานะ 2FA/rate-limit จะไม่ตรงกันระหว่างโปรเซส "
+            "ตั้ง REDIS_URL หรือรันโปรเซสเดียว"
+        )
     app.config['TEMPLATES_AUTO_RELOAD'] = True
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
     app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB max upload
@@ -384,7 +415,7 @@ def create_app():
         # 🛡️ Content-Security-Policy — restrict resource origins
         csp_parts = [
             "default-src 'self'",
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com https://accounts.google.com https://apis.google.com https://js.stripe.com https://cdn.socket.io https://static.cloudflareinsights.com https://api.qrserver.com",
+            "script-src 'self' 'unsafe-inline'" + (" 'unsafe-eval'" if os.environ.get("CSP_ALLOW_EVAL", "").strip() in ("1", "true", "yes") else "") + " https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com https://accounts.google.com https://apis.google.com https://js.stripe.com https://cdn.socket.io https://static.cloudflareinsights.com https://api.qrserver.com",
             "style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://fonts.googleapis.com https://unpkg.com https://accounts.google.com",
             "img-src 'self' data: blob: https: http:",
             "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com data:",
@@ -392,6 +423,8 @@ def create_app():
             "frame-src 'self' https://accounts.google.com https://js.stripe.com https://drive.google.com https://docs.google.com",
             "object-src 'none'",
             "base-uri 'self'",
+            "frame-ancestors 'self'",
+            "form-action 'self' https://accounts.google.com https://access.line.me https://checkout.stripe.com",
         ]
         response.headers.setdefault("Content-Security-Policy", "; ".join(csp_parts))
 
@@ -1044,6 +1077,36 @@ try:
         except Exception as _e:
             logger.warning(f"[Scheduled DB Maintenance] error: {_e}")
 
+    # 🧹 ล้างแจ้งเตือนเก่า: อ่านแล้วเกิน 30 วัน หรือไม่ว่าอ่านหรือยังเกิน 90 วัน (กันตารางบวมจนหน้าแจ้งเตือนช้า)
+    def _scheduled_notifications_cleanup():
+        try:
+            _c = database._get_conn()
+            try:
+                a = _c.execute("DELETE FROM notifications WHERE COALESCE(is_read,0)=1 AND timestamp < datetime('now','-30 days')").rowcount
+                b = _c.execute("DELETE FROM notifications WHERE timestamp < datetime('now','-90 days')").rowcount
+                _c.commit()
+            finally:
+                _c.close()
+            if a or b:
+                logger.info(f"🧹 [Notifications Cleanup] removed {a} read (>30d) + {b} old (>90d) notifications")
+        except Exception as _e:
+            logger.warning(f"[Notifications Cleanup] error: {_e}")
+
+    _scheduler.add_job(_scheduled_notifications_cleanup, 'cron', hour=3, minute=15, id='notifications_cleanup')
+
+    # 📥 กู้เหตุการณ์ LINE ที่ค้างจากการรีสตาร์ต/ล่มกลางคัน (กล่องขาเข้าถาวร) — รันทันทีหลังเริ่มระบบ 20 วินาที แล้วทุก 1 นาที
+    def _scheduled_line_inbox_recover():
+        try:
+            import line_inbox
+            from routes.line_webhook import process_line_event
+            n = line_inbox.recover(process_line_event)
+            if n:
+                logging.getLogger("OrgChatAI").warning(f"[line-inbox] re-processing {n} unfinished LINE event(s)")
+        except Exception as _e:
+            logging.getLogger("OrgChatAI").error(f"[line-inbox] recover failed: {_e}")
+    from datetime import datetime as _dt_ib, timedelta as _td_ib
+    _scheduler.add_job(_scheduled_line_inbox_recover, 'interval', minutes=1, id='line_inbox_recover',
+                       next_run_time=_dt_ib.now() + _td_ib(seconds=20), max_instances=1, coalesce=True)
     _scheduler.add_job(_scheduled_db_wal_checkpoint, 'cron', hour=3, minute=30, id='db_wal_checkpoint')
     _scheduler.add_job(_scheduled_db_wal_checkpoint, 'cron', day_of_week='sun', hour=3, minute=0, id='db_optimize')
 

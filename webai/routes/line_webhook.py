@@ -43,6 +43,10 @@ from reconciliation_service import ReconciliationService
 import settings_manager
 from redis_manager import RedisManager
 import web_crawler
+import line_approvals
+import line_inbox
+import line_rich_menu
+from db import org_features
 import tts_engine
 
 from routes.shared import (
@@ -165,6 +169,50 @@ def send_line_push_notification(target_username, title, text, fields=None, flex_
             logger.error(f"❌ [LINE Push Failed] HTTP {res.status_code}: {res.text}")
     except Exception as e:
         logger.error(f"❌ [LINE Push Error]: {e}")
+
+
+def _line_push_message(line_user_id, message):
+    """ส่งข้อความ/การ์ดหาผู้ใช้ LINE (ใช้กับระบบอนุมัติ)"""
+    token = get_channel_access_token()
+    if not token or not line_user_id:
+        return
+    r = requests.post("https://api.line.me/v2/bot/message/push",
+                      headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
+                      json={"to": line_user_id, "messages": [message]}, timeout=10)
+    if r.status_code != 200:
+        logger.error(f"[LINE push] HTTP {r.status_code}: {r.text[:200]}")
+
+
+def _line_push_text(username, text):
+    lid = database.get_line_id_by_username(username)
+    if lid:
+        _line_push_message(lid, {"type": "text", "text": text})
+
+
+def _line_sources_footer(sources, answer_text="") -> str:
+    """ท้ายคำตอบใน LINE: รายการแหล่งอ้างอิง (ชื่อไฟล์ + ตำแหน่ง + ลิงก์ Drive ถ้ามี)"""
+    try:
+        if not sources or "ยังไม่พบข้อมูล" in (answer_text or "") or "ไม่พบข้อมูล" in (answer_text or ""):
+            return ""
+        lines, seen = [], set()
+        for s in sources:
+            if s.get("type") == "image":
+                continue
+            name = (s.get("name") or s.get("source") or "").strip()
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            loc = (s.get("location") or "").strip()
+            line = f"• {name}" + (f" ({loc})" if loc and loc != "Document" else "")
+            link = s.get("drive_link") or ""
+            if link.startswith("https://drive.google.com/") or link.startswith("https://docs.google.com/"):
+                line += "\n  🔗 " + link
+            lines.append(line)
+            if len(lines) >= 3:
+                break
+        return ("\n\n📎 แหล่งอ้างอิง:\n" + "\n".join(lines)) if lines else ""
+    except Exception:
+        return ""
 
 
 def get_line_config(org_id: int = None):
@@ -1298,6 +1346,9 @@ def process_line_event(event_data):
                     ok, err = google_manager.move_row_between_sheets(from_sheet, int(row), to_sheet)
                     if ok:
                         reply_to_line(reply_token, f"✅ ย้ายข้อมูลสำเร็จแล้วค่ะพี่!\n\n📂 ย้ายจาก: '{from_sheet}'\n➡️ ไปยังชีตใหม่: '{to_sheet}'\n\nน้องพั้นทำการลบแถวเดิมและย้ายไปต่อชีตใหม่ พร้อมกระทบยอดบัญชีเรียบร้อยค่ะ ✨💖")
+            elif parsed.get('action') in ['approve_expense', 'reject_expense']:
+                reply_to_line(reply_token, line_approvals.handle_decision(
+                    parsed.get('action'), parsed.get('id'), user_id, _line_push_text))
             elif parsed.get('action') in ['approve_leave', 'reject_leave']:
                 leave_id = parsed.get('id')
                 status = "approved" if parsed.get('action') == 'approve_leave' else "rejected"
@@ -1350,6 +1401,7 @@ def process_line_event(event_data):
                 approver_display = approver_username or "ผู้ดูแลระบบ"
                 ok = database.update_leave_status(leave_id, status, approver_display, note="อนุมัติผ่าน LINE")
                 if ok:
+                    line_approvals.log_leave_decision(leave, status, approver_display, leave_org_id)
                     status_text = "อนุมัติ" if status == "approved" else "ปฏิเสธ"
                     status_badge = "อนุมัติแล้ว ✅" if status == "approved" else "ปฏิเสธแล้ว ❌"
                     reply_to_line(reply_token, f"✅ ดำเนินการ{status_text}คำขอลา #{leave_id} เรียบร้อยแล้วค่ะ!")
@@ -2116,7 +2168,19 @@ def line_webhook():
         if _is_duplicate_webhook_event(event):
             logger.info(f"⏭️ [LINE Webhook] Skipping duplicate event delivery: {event.get('webhookEventId')}")
             continue
-        threading.Thread(target=process_line_event, args=(event,), daemon=True).start()
+        # บันทึกลงกล่องขาเข้าถาวรก่อนตอบ 200 — ถ้ารีสตาร์ตกลางคัน ระบบจะประมวลผลต่อให้ (ดู line_inbox.py)
+        try:
+            _eid, _is_new = line_inbox.accept(event)
+        except Exception as _ib_e:
+            logger.error(f"[LINE Webhook] inbox unavailable, processing without durability: {_ib_e}")
+            _eid, _is_new = None, True
+        if not _is_new:
+            logger.info(f"⏭️ [LINE Webhook] Event {_eid} already in inbox — skipping duplicate")
+            continue
+        if _eid:
+            threading.Thread(target=line_inbox.run, args=(_eid, event, process_line_event), daemon=True).start()
+        else:
+            threading.Thread(target=process_line_event, args=(event,), daemon=True).start()
     return 'OK'
 
 
@@ -2290,6 +2354,32 @@ def process_line_command(text, user_id, reply_token, group_id=None):
             return
 
     text_lower = text.lower().strip()
+
+    # ── เมนูตามบทบาท + อนุมัติเบิกจ่าย (แชตส่วนตัวที่ผูกบัญชีแล้วเท่านั้น) ─────────
+    if not group_id and username:
+        try:
+            line_rich_menu.ensure_user_menu(user_id, username, _line_org_id, get_channel_access_token(_line_org_id))
+        except Exception as _rm_e:
+            logger.debug(f"rich menu ensure skipped: {_rm_e}")
+        _exp_cmd = org_features.parse_expense_command(text.strip())
+        if _exp_cmd:
+            _res = line_approvals.submit_expense(username, _line_org_id, _exp_cmd[0], _exp_cmd[1], _line_push_message)
+            if not _res.get("ok"):
+                reply_to_line(reply_token, f"⚠️ {_res.get('error', 'สร้างคำขอไม่สำเร็จ')}")
+            elif _res["no_approver"]:
+                reply_to_line(reply_token, f"บันทึกคำขอเบิก #{_res['id']} แล้ว แต่ยังไม่มีผู้อนุมัติที่ผูก LINE ไว้ค่ะ "
+                                           "กรุณาแจ้งแอดมินให้กำหนดหัวหน้า/ผูกบัญชี LINE ของผู้อนุมัติ")
+            else:
+                reply_to_line(reply_token, f"📨 ส่งคำขอเบิก #{_res['id']} ให้ {', '.join(_res['notified'])} พิจารณาแล้วค่ะ "
+                                           "เมื่อมีผลพั้นจะแจ้งกลับทันที")
+            return
+        if text.strip() in ("เบิก", "ขอเบิก", "เบิกจ่าย", "ขอเบิกเงิน"):
+            reply_to_line(reply_token, "💰 วิธีขอเบิกจ่าย\nพิมพ์: เบิก <จำนวนเงิน> <รายการ>\nเช่น: เบิก 500 ค่าเดินทาง\n"
+                                       "ระบบจะส่งให้หัวหน้าอนุมัติ แล้วแจ้งผลกลับที่นี่ค่ะ")
+            return
+        if text.strip() in ("รออนุมัติ", "รายการรออนุมัติ", "คำขอรออนุมัติ"):
+            reply_to_line(reply_token, line_approvals.pending_summary(username, _line_org_id))
+            return
     try:
         with open('scratch/debug_log.txt', 'a', encoding='utf-8') as df:
             df.write(f"Received text: '{text}'\n")
@@ -3600,9 +3690,12 @@ def process_line_command(text, user_id, reply_token, group_id=None):
                 ai_response = sanitize_ai_output(ai_response)
                 ai_response = convert_markdown_tables_to_text(ai_response)
 
-                # Save bot response to database
-                database.save_message(role="bot", text=ai_response, username=sender_username, org_id=_line_org_id)
+                # Save bot response to database (พร้อมแหล่งอ้างอิง เพื่อให้แดชบอร์ดนับคำตอบที่มีที่มา)
+                _src_for_db = [s for s in (sources or []) if isinstance(s, dict)]
+                database.save_message(role="bot", text=ai_response, sources=_src_for_db or None,
+                                      username=sender_username, org_id=_line_org_id)
 
+                ai_response = ai_response + _line_sources_footer(_src_for_db, ai_response)
                 reply_to_line(reply_token, ai_response, quick_reply=quick_reply)
             except Exception as e:
                 logger.error(f"AI Generation failed: {e}")

@@ -345,6 +345,8 @@
                 background-size: 200% 100%; animation: plan-sk 1.4s infinite; border-radius: 1rem;
             }
             @keyframes plan-sk { to { background-position: -200% 0; } }
+            /* โหมดมืด: โครงโหลดสีเทาอ่อนจ้าเกินไป ดูเหมือนจอพัง → ใช้โทนมืด */
+            .dark .plan-sk { background: linear-gradient(90deg, #1e293b 25%, #273449 50%, #1e293b 75%); background-size: 200% 100%; }
 
             /* Badges */
             .plan-badge { display: inline-flex; align-items: center; gap: .25rem;

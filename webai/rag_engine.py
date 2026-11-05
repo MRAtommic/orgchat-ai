@@ -37,7 +37,6 @@ except ImportError:
     PDF_SUPPORTED = False
 
 os.environ["ANONYMIZED_TELEMETRY"] = "False"
-os.environ["CHROMA_API_IMPL"] = "chromadb.api.segment.SegmentAPI"
 try:
     import chromadb
     from chromadb.utils import embedding_functions
@@ -85,7 +84,8 @@ _DATA_ROOT.mkdir(parents=True, exist_ok=True)
 UPLOAD_DIR = _DATA_ROOT / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 
-CHROMA_DIR = _DATA_ROOT / "chroma_db"
+CHROMA_DIR = _DATA_ROOT / "chroma_db"          # โฟลเดอร์ Chroma รุ่นเก่า (ต้องใช้ hnswlib) — คงไว้เป็นข้อมูลสำรอง ไม่เขียนทับ
+CHROMA_V2_DIR = _DATA_ROOT / "chroma_v2"       # ที่เก็บเวกเตอร์ปัจจุบัน (ChromaDB 1.x)
 CHROMA_DIR.mkdir(exist_ok=True)
 
 META_FILE = _DATA_ROOT / "file_meta.json"
@@ -274,7 +274,7 @@ class FastEmbedEmbeddingFunction(embedding_functions.EmbeddingFunction):
         try:
             from fastembed import TextEmbedding
             # Define a local cache directory to avoid Windows Temp permission issues
-            local_cache = os.path.join(os.getcwd(), "fastembed_cache")
+            local_cache = os.path.join(str(BASE_DIR), "fastembed_cache")  # อิงโฟลเดอร์โปรเจกต์ ไม่ใช่ cwd (กันโหลดโมเดลไม่เจอเมื่อสตาร์ตจากที่อื่น)
             if not os.path.exists(local_cache):
                 os.makedirs(local_cache, exist_ok=True)
             self.model = TextEmbedding(model_name=model_name, cache_dir=local_cache)
@@ -488,6 +488,230 @@ class PurePythonVectorStore:
             "distances": [[item[1] for item in top_results]]
         }
 
+# ─────────────────────────────────────────────────────────────────────────────
+# ChromaStore — เก็บเวกเตอร์ด้วย ChromaDB 1.x (ไม่ต้องใช้ hnswlib) โดยมี interface เดียวกับ PurePythonVectorStore
+#   • ฝั่งเราคำนวณ embedding เอง (ไม่ผูก embedding_function กับ Chroma)
+#   • แปลง where-filter ที่โค้ดเดิมส่งมา (ซึ่ง PurePythonVectorStore ยอมรับแบบหลวม) ให้เป็นรูปแบบที่ Chroma รับได้:
+#       - $and/$or ที่มีสมาชิกเดียว → ถอดเป็นเงื่อนไขเดียว
+#       - {"$eq": None}/ค่าว่าง → จับคู่กับค่าว่าง "" (หรือไม่ตรงเลยสำหรับคีย์ตัวเลข)
+#       - เทียบชนิดข้อมูลตามคีย์ (organization_id = int, นอกนั้น = str) เหมือนการเทียบแบบ str() ของตัวเดิม
+#   • ครั้งแรกที่คอลเลกชันว่าง จะนำเข้าจากไฟล์สำรอง chroma_db_fallback.json (มี embedding อยู่แล้ว ไม่เสียค่า API)
+# ─────────────────────────────────────────────────────────────────────────────
+_TRUE, _FALSE = object(), object()
+_INT_KEYS = {"organization_id"}
+
+
+def _coerce_value(key, v):
+    """ปรับค่าให้ชนิดตรงกับที่เก็บ  คืน _FALSE ถ้าเป็นค่าที่ไม่มีทางตรง"""
+    if key in _INT_KEYS:
+        if v is None or v == "":
+            return _FALSE
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return _FALSE
+    if v is None:
+        return ""
+    return str(v)
+
+
+def _norm_where(w):
+    """คืน dict ที่ Chroma รับได้, _TRUE (ไม่กรอง) หรือ _FALSE (ไม่ตรงอะไรเลย)"""
+    if w is None or w == {}:
+        return _TRUE
+    if not isinstance(w, dict):
+        return _FALSE
+    if len(w) > 1:
+        return _norm_where({"$and": [{k: v} for k, v in w.items()]})
+    (key, val), = w.items()
+    if key in ("$and", "$or"):
+        if not isinstance(val, list):
+            return _FALSE
+        subs = [_norm_where(s) for s in val]
+        if key == "$and":
+            if any(s is _FALSE for s in subs):
+                return _FALSE
+            subs = [s for s in subs if s is not _TRUE]
+            if not subs:
+                return _TRUE
+        else:
+            if any(s is _TRUE for s in subs):
+                return _TRUE
+            subs = [s for s in subs if s is not _FALSE]
+            if not subs:
+                return _FALSE
+        return subs[0] if len(subs) == 1 else {key: subs}
+    # leaf
+    if isinstance(val, dict):
+        parts = []
+        for op, ov in val.items():
+            if op == "$eq":
+                c = _coerce_value(key, ov)
+                if c is _FALSE:
+                    return _FALSE
+                parts.append({key: c})
+            elif op == "$ne":
+                c = _coerce_value(key, ov)
+                if c is _FALSE:
+                    continue  # ≠ ค่าที่ไม่มีทางตรง = จริงเสมอ
+                parts.append({key: {"$ne": c}})
+            elif op in ("$in", "$nin"):
+                if not isinstance(ov, list):
+                    return _FALSE
+                vals = []
+                for x in ov:
+                    c = _coerce_value(key, x)
+                    if c is not _FALSE and c not in vals:
+                        vals.append(c)
+                if not vals:
+                    if op == "$in":
+                        return _FALSE
+                    continue
+                parts.append({key: {op: vals}})
+            else:
+                return _FALSE
+        if not parts:
+            return _TRUE
+        return parts[0] if len(parts) == 1 else {"$and": parts}
+    c = _coerce_value(key, val)
+    return _FALSE if c is _FALSE else {key: c}
+
+
+def _clean_meta(meta):
+    out = {}
+    for k, v in (meta or {}).items():
+        if v is None:
+            v = "" if k not in _INT_KEYS else None
+        if v is None:
+            continue
+        if k in _INT_KEYS:
+            try:
+                v = int(v)
+            except (TypeError, ValueError):
+                continue
+        elif not isinstance(v, (str, int, float, bool)):
+            v = str(v)
+        out[k] = v
+    return out
+
+
+class ChromaStore:
+    """ChromaDB-backed vector store (same interface as PurePythonVectorStore)."""
+    _EMPTY_GET = {"ids": [], "documents": [], "metadatas": []}
+
+    def __init__(self, ef, collection):
+        self.ef = ef
+        self._col = collection
+
+    @classmethod
+    def open(cls, ef, path, name, seed_json=None):
+        client = chromadb.PersistentClient(path=str(path), settings=chromadb.config.Settings(anonymized_telemetry=False))
+        col = client.get_or_create_collection(name=name, metadata={"hnsw:space": "cosine"})
+        store = cls(ef, col)
+        if seed_json and col.count() == 0:
+            store._seed_from_json(Path(seed_json))
+        return store
+
+    def _seed_from_json(self, path):
+        try:
+            if not path.exists():
+                return
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            ok = 0
+            # ไฟล์สำรองอาจมีเวกเตอร์หลายขนาดปนกัน (เคยเปลี่ยนโมเดล embedding) — Chroma รับได้ขนาดเดียวต่อคอลเลกชัน
+            # ใช้ขนาดที่พบมากที่สุดเป็นหลัก ส่วนชิ้นที่ขนาดไม่ตรงจะคำนวณ embedding ใหม่จากข้อความด้วยโมเดลปัจจุบัน
+            from collections import Counter as _Counter
+            dims = _Counter(len(d["embedding"]) for d in data if d.get("embedding"))
+            target = dims.most_common(1)[0][0] if dims else None
+            fixed = skipped = 0
+            # โมเดลในเครื่อง (FastEmbed) คำนวณใหม่ได้ฟรี และไลบรารีรุ่นใหม่เปลี่ยนวิธีรวมเวกเตอร์ (CLS → mean pooling)
+            # ทำให้เวกเตอร์เก่าที่เก็บไว้ไม่ตรงกับเวกเตอร์คำค้นปัจจุบัน → คำนวณใหม่ทั้งหมดเพื่อให้ค้นหาแม่นยำ
+            _reembed_all = isinstance(self.ef, FastEmbedEmbeddingFunction)
+            for d in data:
+                if d.get("document") and (_reembed_all or (d.get("embedding") and len(d["embedding"]) != target)):
+                    try:
+                        e = self.ef([d["document"]])[0]
+                        e = e.tolist() if hasattr(e, "tolist") else [float(x) for x in e]
+                        if _reembed_all or len(e) == target:
+                            d["embedding"] = e
+                            fixed += 1
+                            continue
+                    except Exception:
+                        pass
+                    d["embedding"] = None
+                    skipped += 1
+            if fixed or skipped:
+                logger.warning(f"⚠️ Mixed embedding sizes in {path.name}: re-embedded {fixed} chunk(s), skipped {skipped}")
+            for i in range(0, len(data), 100):
+                batch = [d for d in data[i:i + 100] if d.get("embedding") and d.get("document")]
+                if not batch:
+                    continue
+                self._col.upsert(ids=[d["id"] for d in batch], documents=[d["document"] for d in batch],
+                                 embeddings=[d["embedding"] for d in batch],
+                                 metadatas=[_clean_meta(d.get("metadata")) or {"source": ""} for d in batch])
+                ok += len(batch)
+            logger.warning(f"✅ Imported {ok}/{len(data)} chunks from {path.name} into ChromaDB (one-time migration)")
+        except Exception as e:
+            logger.error(f"⚠️ Seeding ChromaDB from {path.name} failed: {e}")
+
+    # ---- interface ----
+    def count(self) -> int:
+        return self._col.count()
+
+    def upsert(self, documents, ids, metadatas):
+        embs = self.ef(documents)
+        embs = [e.tolist() if hasattr(e, "tolist") else [float(x) for x in e] for e in embs]
+        self._col.upsert(ids=list(ids), documents=list(documents), embeddings=embs,
+                         metadatas=[_clean_meta(m) or {"source": ""} for m in metadatas])
+
+    def get(self, where=None, include=None, limit=None, **kw):
+        w = _norm_where(where)
+        if w is _FALSE:
+            return dict(self._EMPTY_GET)
+        args = {"include": [i for i in (include or ["documents", "metadatas"]) if i in ("documents", "metadatas", "embeddings")]}
+        if w is not _TRUE:
+            args["where"] = w
+        if limit is not None:
+            args["limit"] = limit
+        r = self._col.get(**args)
+        return {"ids": r.get("ids") or [], "documents": r.get("documents") or [], "metadatas": r.get("metadatas") or []}
+
+    def query(self, query_texts, n_results=4, where=None):
+        empty = {"documents": [[]], "metadatas": [[]], "distances": [[]]}
+        if not query_texts:
+            return empty
+        w = _norm_where(where)
+        if w is _FALSE:
+            return empty
+        try:
+            q = self.ef(query_texts)
+        except Exception as e:
+            logger.error(f"❌ Chroma query embedding error: {e}")
+            return empty
+        q = [x.tolist() if hasattr(x, "tolist") else [float(v) for v in x] for x in q]
+        args = {"query_embeddings": q[:1], "n_results": max(1, min(int(n_results), max(1, self._col.count()))),
+                "include": ["documents", "metadatas", "distances"]}
+        if w is not _TRUE:
+            args["where"] = w
+        r = self._col.query(**args)
+        return {"documents": r["documents"], "metadatas": r["metadatas"], "distances": r["distances"]}
+
+    def update(self, ids, metadatas):
+        self._col.update(ids=list(ids), metadatas=[_clean_meta(m) or {"source": ""} for m in metadatas])
+
+    def delete(self, ids=None, where=None):
+        if ids:
+            self._col.delete(ids=list(ids))
+        elif where:
+            w = _norm_where(where)
+            if w is _FALSE:
+                return
+            if w is _TRUE:
+                raise ValueError("refusing to delete everything via empty filter")
+            self._col.delete(where=w)
+
+
 class KnowledgeBase:
     def __init__(self):
         # Use absolute path for ChromaDB
@@ -541,35 +765,33 @@ class KnowledgeBase:
             print("✅ Pure Python Vector Store Fallback ready.", flush=True)
             return
 
-        _chroma_settings = chromadb.config.Settings(
-            anonymized_telemetry=False,
-            chroma_api_impl="chromadb.api.segment.SegmentAPI",
-        )
+        if os.environ.get("VECTOR_BACKEND", "chroma").strip().lower() == "python":
+            logger.warning("VECTOR_BACKEND=python — using Pure Python Vector Store")
+            self._ephemeral = True
+            self.collection = PurePythonVectorStore(ef, BASE_DIR / "chroma_db_fallback.json")
+            return
 
-        def _open_persistent():
-            _result = [None]
-            _err = [None]
+        def _open_store():
+            _result, _err = [None], [None]
             def _run():
                 try:
-                    _result[0] = chromadb.PersistentClient(path=str(CHROMA_DIR), settings=_chroma_settings)
+                    _result[0] = ChromaStore.open(ef, CHROMA_V2_DIR, f"org_knowledge_{self.provider}",
+                                                  seed_json=BASE_DIR / "chroma_db_fallback.json")
                 except Exception as e:
                     _err[0] = e
             t = threading.Thread(target=_run, daemon=True)
             t.start()
-            t.join(timeout=15)
+            t.join(timeout=60)
             if t.is_alive() or _result[0] is None:
                 return None, _err[0] or "Timeout"
             return _result[0], None
 
         try:
-            client, err = _open_persistent()
-            if client is None:
-                raise Exception(f"ChromaDB persistent client timed out or failed: {err}")
-            self.collection = client.get_or_create_collection(
-                name=f"org_knowledge_{self.provider}",
-                embedding_function=ef,
-                metadata={"hnsw:space": "cosine"},
-            )
+            store, err = _open_store()
+            if store is None:
+                raise Exception(f"ChromaDB store failed to open: {err}")
+            self.collection = store
+            logger.info(f"✅ ChromaDB ready ({store.count()} chunks)")
         except Exception as e:
             print(f"⚠️ ChromaDB Error/Timeout detected: {e}. Falling back to Pure Python Vector Store.", flush=True)
             self._ephemeral = True
@@ -590,14 +812,13 @@ class KnowledgeBase:
             logger.warning("✅ [FALLBACK] KnowledgeBase API Key updated for pure Python store.")
             return
 
+        if isinstance(self.collection, ChromaStore):
+            self.collection.ef = ef
+            logger.info("✅ KnowledgeBase API Key อัปเดตแล้ว (ChromaDB)")
+            return
         if chromadb is not None:
             try:
-                client = chromadb.PersistentClient(path=str(CHROMA_DIR))
-                self.collection = client.get_or_create_collection(
-                    name=f"org_knowledge_{self.provider}",
-                    embedding_function=ef,
-                    metadata={"hnsw:space": "cosine"},
-                )
+                self.collection = ChromaStore.open(ef, CHROMA_V2_DIR, f"org_knowledge_{self.provider}")
                 logger.info("✅ KnowledgeBase API Key อัปเดตแล้ว collection รีเซ็ตเรียบร้อย")
                 return
             except Exception as e:
@@ -627,7 +848,8 @@ class KnowledgeBase:
             self.collection.upsert(documents=chunks, ids=ids, metadatas=metadatas)
         except Exception as e:
             err_msg = str(e).lower()
-            if self._ephemeral and isinstance(self.collection, PurePythonVectorStore):
+            if isinstance(self.collection, (PurePythonVectorStore, ChromaStore)):
+                # ไม่ลบ/สร้างคอลเลกชันใหม่เอง (กันข้อมูลหายเมื่อเปลี่ยนโมเดล embedding) — ให้แจ้งข้อผิดพลาดแทน
                 raise e
             # Only recreate if it's a GENUINE dimension mismatch (e.g. model changed)
             # Standard Chroma dimension error contains 'Expected' and 'got'
@@ -809,7 +1031,7 @@ class KnowledgeBase:
                                 vector_results.append(item_dict)
                 # If ChromaDB collection:
                 elif hasattr(self.collection, 'get'):
-                    all_c = self.collection.get(where=where, limit=100, include=['documents', 'metadatas'])
+                    all_c = self.collection.get(where=where, limit=3000, include=['documents', 'metadatas'])
                     docs = all_c.get('documents', []) or []
                     metas = all_c.get('metadatas', []) or []
                     for doc_text, meta in zip(docs, metas):
@@ -904,6 +1126,14 @@ class FileProcessor:
         doc = fitz.open(str(path))
         for i, page in enumerate(doc, 1):
             text = page.get_text()
+            if len((text or "").strip()) < 20:
+                # หน้าสแกน (ไม่มีชั้นข้อความ) → OCR
+                try:
+                    import ocr_service
+                    if ocr_service.available():
+                        text = ocr_service.ocr_pdf_page(page) or text
+                except Exception as _ocr_e:
+                    logger.warning(f"OCR fallback failed on page {i}: {_ocr_e}")
             page_chunks = _chunk_text(text)
             for chunk in page_chunks:
                 chunks.append(chunk)
@@ -1009,19 +1239,21 @@ class FileProcessor:
 
     @staticmethod
     def _parse_image(path: Path) -> tuple[list[str], list[dict]]:
+        # คืนลิสต์ว่างเมื่อ OCR ใช้ไม่ได้/อ่านไม่ออก — เดิมคืนข้อความ "[OCR unavailable]" ซึ่งถูกนำเข้าเป็นความรู้ปนเปื้อนคลัง
         if not IMAGE_SUPPORTED:
-            return ["[OCR unavailable]"], [{"location": "error"}]
+            return [], []
         try:
-            import pytesseract
-        except (ImportError, Exception):
-            return ["[OCR unavailable — pytesseract not installed]"], [{"location": "error"}]
-        try:
+            import ocr_service
+            if not ocr_service.available():
+                logger.warning(f"OCR unavailable for {path.name}: {ocr_service.configure()['msg']}")
+                return [], []
             img = Image.open(str(path))
-            text = pytesseract.image_to_string(img, lang="tha+eng")
-            chunks = _chunk_text(text) or ["[No text found in image]"]
+            text = ocr_service.ocr_image(img)
+            chunks = _chunk_text(text)
             return chunks, [{"location": "Image OCR"}] * len(chunks)
         except Exception as e:
-            return [f"[OCR Error: {e}]"], [{"location": "error"}]
+            logger.error(f"OCR error for {path.name}: {e}")
+            return [], []
 
     @staticmethod
     def _parse_pptx(path: Path) -> tuple[list[str], list[dict]]:
@@ -1227,6 +1459,19 @@ def ingest_file(file_path: Path, original_name: str, department: str = "General"
     _save_meta(meta)
     return {"status": "ok", "file_id": fid, "name": original_name, "chunks": len(chunks),
             "department": department, "category_id": category_id, "organization_id": org_id}
+
+
+def set_file_drive_link(file_id: str, link: str) -> bool:
+    """เก็บลิงก์ Google Drive ของไฟล์ต้นฉบับไว้ใน metadata เพื่อแสดงในแหล่งอ้างอิง"""
+    try:
+        m = _load_meta()
+        if file_id in m:
+            m[file_id]["drive_link"] = link or ""
+            _save_meta(m)
+            return True
+    except Exception as e:
+        logger.warning(f"set_file_drive_link failed: {e}")
+    return False
 
 
 def ingest_text(text: str, source_name: str, department: str = "General", category_id: int = None, org_id: int = 1) -> dict:
@@ -1492,6 +1737,10 @@ def retrieve_context(question: str, where: dict = None) -> tuple[str, list[dict]
     detailed_sources = []
     seen_source_keys = set()
     
+    try:
+        _meta_all = _load_meta()
+    except Exception:
+        _meta_all = {}
     for idx, r in enumerate(results, 1):
         loc = r.get("location", "Document")
         dept = r.get("department", "General")
@@ -1509,7 +1758,8 @@ def retrieve_context(question: str, where: dict = None) -> tuple[str, list[dict]
                 "name": src,
                 "location": loc,
                 "department": dept,
-                "type": r.get("type", "file")
+                "type": r.get("type", "file"),
+                "drive_link": (_meta_all.get(fid) or {}).get("drive_link", ""),
             })
             seen_source_keys.add(source_key)
         

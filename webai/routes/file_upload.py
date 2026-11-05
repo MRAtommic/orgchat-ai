@@ -158,6 +158,8 @@ def upload():
         def run_ingest(path, name, d, cat, _oid=_ingest_org_id):
             try:
                 result = rag_engine.ingest_file(path, original_name=name, department=d, category_id=cat, org_id=_oid)
+                if result and result.get("status") == "ok":
+                    _backup_to_drive(result.get("file_id"), path, name, cat, _oid, user)
                 if result and result.get("status") not in ("duplicate", "error", "empty"):
                     # Send LINE push notification only to the mapped LINE groups of the organization
                     _tok = get_channel_access_token()
@@ -189,6 +191,36 @@ def upload():
         database.log_event(f"Started uploading file: {orig_name}", user=user, org_id=org_id)
 
     return jsonify({"ok": True, "results": results, "msg": "ไฟล์กำลังถูกประมวลผลในพื้นหลัง"})
+
+
+def _backup_to_drive(file_id, path, name, category_id, org_id, username):
+    """อัปโหลดสำเนาต้นฉบับขึ้น Google Drive ขององค์กร แล้วเก็บลิงก์ไว้ให้แหล่งอ้างอิงกดเปิดได้
+    ล้มเหลวได้เงียบๆ (ไม่กระทบการนำเข้า) — ถ้าไม่ได้เชื่อม Drive จะใช้ตัวดูในระบบแทน
+    หมวดที่จำกัดสิทธิ์/แผนก จะไม่เปิดลิงก์สาธารณะ"""
+    try:
+        from db import org_features
+        from google_drive_service import google_manager
+        import mimetypes
+        if not file_id:
+            return
+        google_manager.set_context(username=username, org_id=org_id)
+        try:
+            if not google_manager.drive_service:
+                return
+            open_cat = org_features.category_is_open(category_id)
+            with open(path, "rb") as fh:
+                content = fh.read()
+            mt = mimetypes.guess_type(name)[0] or "application/octet-stream"
+            link, err = google_manager.upload_file(content, name, mt, org_id=org_id, username=username, make_public=open_cat)
+            if link:
+                rag_engine.set_file_drive_link(file_id, link)
+                logger.info(f"[Upload] KB file '{name}' backed up to Drive (public={open_cat})")
+            else:
+                logger.info(f"[Upload] Drive backup skipped for '{name}': {err}")
+        finally:
+            google_manager.clear_context()
+    except Exception as e:
+        logger.info(f"[Upload] Drive backup skipped for '{name}': {e}")
 
 
 @file_bp.route("/api/files")

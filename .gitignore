@@ -88,3 +88,14 @@ canvas-vampire-survivors/
 *.bak*
 *.db*
 *.db.*
+
+# app logs
+logs/
+
+# Chroma & OCR trained data
+webai/chroma_v2/
+webai/tessdata/
+_backup_*
+*.bak
+tools/healthcheck_state.json
+webai/tools/healthcheck_state.json

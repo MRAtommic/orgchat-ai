@@ -878,7 +878,7 @@ async function loadWhtSummary() {
     </div>
     <div class="bg-white dark:bg-surface-900 rounded-2xl border border-surface-200 dark:border-surface-800 p-4 text-center">
       <p class="text-xs font-black text-surface-400 uppercase mb-1">ภาษีที่หักรวม</p>
-      <p class="text-2xl font-black text-red-600">฿${_fmt(d.total_wht)}</p>
+      <p class="text-2xl font-black ${Number(d.total_wht) > 0 ? 'text-amber-600' : 'text-surface-900 dark:text-white'}">฿${_fmt(d.total_wht)}</p>
     </div>`;
   if (!el) return;
   if (!d.items?.length) {

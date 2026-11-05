@@ -612,6 +612,7 @@ def auth_google_status():
         },
         "personal": {
             "connected": personal_info['connected'],
+            "needs_reconnect": personal_info.get('needs_reconnect', False),
             "email": personal_info.get('email'),
             "spreadsheet_url": _sheet_url(personal_info.get('spreadsheet_id')),
             "drive_folder_url": _drive_url(personal_info.get('drive_folder_id')),

@@ -722,11 +722,15 @@ class GoogleOAuth2Service:
                 'spreadsheet_id': None,
                 'drive_folder_id': None
             }
+        # โทเค็นส่วนตัวที่ไม่มี refresh token ใช้ต่ออายุไม่ได้ (หมดอายุใน ~1 ชั่วโมง) และระบบข้ามมันอยู่แล้วใน resolve_google_token
+        # จึงต้องไม่รายงานว่า "เชื่อมต่ออยู่" ให้ผู้ใช้เข้าใจผิด แต่บอกว่าต้องเชื่อมต่อใหม่
+        usable = bool(token_data.get('refresh_token'))
         return {
-            'connected': True,
+            'connected': usable,
+            'needs_reconnect': not usable,
             'email': token_data.get('google_email'),
-            'spreadsheet_id': token_data.get('spreadsheet_id'),
-            'drive_folder_id': token_data.get('drive_folder_id'),
+            'spreadsheet_id': token_data.get('spreadsheet_id') if usable else None,
+            'drive_folder_id': token_data.get('drive_folder_id') if usable else None,
             'updated_at': token_data.get('updated_at')
         }
 

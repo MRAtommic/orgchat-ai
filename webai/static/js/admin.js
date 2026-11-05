@@ -153,20 +153,16 @@ async function loadAuditLogsUI() {
         tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-4 text-center text-surface-400">ยังไม่มีประวัติการใช้งานในระบบ</td></tr>`;
         return;
       }
+      const _esc = (t) => (window.escapeHtml ? window.escapeHtml(t == null ? '' : String(t)) : String(t == null ? '' : t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])));
       tbody.innerHTML = res.logs.map(log => {
-        let actionBadgeClass = 'bg-surface-100 text-surface-700 dark:bg-surface-800 dark:text-surface-300';
-        if (log.action === 'CHAT_QUERY') actionBadgeClass = 'bg-brand-500/10 text-brand-600 border border-brand-500/20';
-        else if (log.action === 'USER_LOGIN') actionBadgeClass = 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20';
-        else if (log.action.includes('CLEARANCE') || log.action.includes('ACCESS')) actionBadgeClass = 'bg-purple-500/10 text-purple-600 border border-purple-500/20';
-        else if (log.action.includes('DELETE')) actionBadgeClass = 'bg-rose-500/10 text-rose-600 border border-rose-500/20';
-
+        const info = window.auditActionInfo ? window.auditActionInfo(log.action) : { text: log.action, cls: 'bg-surface-100 text-surface-700' };
         return `
           <tr class="hover:bg-surface-50 dark:hover:bg-surface-800/40 transition-colors">
             <td class="px-3 py-2 text-[11px] text-surface-500 whitespace-nowrap">${log.timestamp ? new Date(log.timestamp).toLocaleString('th-TH') : '-'}</td>
-            <td class="px-3 py-2 font-bold text-surface-900 dark:text-white">${log.username}</td>
-            <td class="px-3 py-2"><span class="px-2 py-0.5 rounded text-[10px] font-black uppercase ${actionBadgeClass}">${log.action}</span></td>
-            <td class="px-3 py-2 max-w-xs truncate" title="${log.details || ''}">${log.details || '-'}</td>
-            <td class="px-3 py-2 text-[11px] text-surface-400 font-mono">${log.ip_address || '-'}</td>
+            <td class="px-3 py-2 font-bold text-surface-900 dark:text-white">${_esc(log.username)}</td>
+            <td class="px-3 py-2"><span title="${_esc(log.action)}" class="px-2 py-0.5 rounded text-[10px] font-bold whitespace-nowrap ${info.cls}">${_esc(info.text)}</span></td>
+            <td class="px-3 py-2 max-w-xs truncate" title="${_esc(log.details)}">${_esc(log.details) || '-'}</td>
+            <td class="px-3 py-2 text-[11px] text-surface-400 font-mono">${_esc(log.ip_address) || '-'}</td>
           </tr>
         `;
       }).join('');

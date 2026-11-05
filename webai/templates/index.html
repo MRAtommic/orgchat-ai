@@ -21,6 +21,21 @@
     if (typeof tailwind === 'undefined') {
       console.warn("Tailwind CDN not loaded yet. Waiting...");
     }
+    function togglePasswordVisibility(inputId, btn) {
+      const input = typeof inputId === 'string' ? document.getElementById(inputId) : inputId;
+      if (!input) return;
+      const isPassword = input.type === 'password';
+      input.type = isPassword ? 'text' : 'password';
+      if (btn) {
+        btn.innerHTML = `<i data-lucide="${isPassword ? 'eye-off' : 'eye'}" class="w-4 h-4"></i>`;
+        btn.setAttribute('title', isPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน');
+        btn.setAttribute('aria-label', isPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน');
+        if (window.lucide && typeof lucide.createIcons === 'function') {
+          lucide.createIcons();
+        }
+      }
+    }
+    window.togglePasswordVisibility = togglePasswordVisibility;
   </script>
   <script>
     if (typeof tailwind !== 'undefined') {
@@ -134,7 +149,7 @@
       });
     }
   </script>
-  <link rel="stylesheet" href="/static/css/components.css?v=7.1" />
+  <link rel="stylesheet" href="/static/css/components.css?v=7.2" />
   <link rel="stylesheet" href="/static/css/mobile.css?v=1.2" />
   <script>
     // Immediate Theme & Sidebar Check
@@ -152,6 +167,15 @@
   </script>
   <script src="https://unpkg.com/mobile-drag-drop@2.3.0/index.min.js"></script>
   <link rel="stylesheet" href="https://unpkg.com/mobile-drag-drop@2.3.0/default.css">
+<style id="settings-ui-style">
+.settings-nav-btn{display:flex;align-items:center;gap:.5rem;white-space:nowrap;flex-shrink:0;padding:.5rem .8rem;border-radius:.85rem;font-size:.75rem;font-weight:700;color:rgb(100 116 139);transition:all .15s ease;border:1px solid transparent}
+.settings-nav-btn:hover{background:rgb(241 245 249);color:rgb(15 23 42)}
+.dark .settings-nav-btn:hover{background:rgb(30 41 59);color:#fff}
+.settings-nav-btn.active{background:#fff;color:rgb(37 99 235);border-color:rgb(226 232 240);box-shadow:0 1px 2px rgb(0 0 0/.05)}
+.dark .settings-nav-btn.active{background:rgb(30 41 59);color:rgb(147 197 253);border-color:rgb(51 65 85)}
+#view-settings input:focus,#view-settings textarea:focus{box-shadow:0 0 0 3px rgb(59 130 246/.15)}
+@media (max-width:640px){ #view-settings .p-6{padding:1rem}}
+</style>
 </head>
 
 <body class="h-full h-[100dvh] overflow-hidden bg-surface-50 dark:bg-surface-950 dark:text-surface-100">
@@ -186,9 +210,14 @@
               </div>
               <div class="space-y-1.5">
                 <label class="text-[11px] font-bold text-surface-600 dark:text-surface-300 px-1">รหัสผ่าน</label>
-                <div class="relative">
-                  <i data-lucide="key" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400"></i>
-                  <input id="loginPassword" type="password" placeholder="ระบุรหัสผ่านของคุณ" class="input-field w-full pl-11 py-3 text-sm" />
+                <div class="relative flex items-center">
+                  <i data-lucide="key" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400 pointer-events-none"></i>
+                  <input id="loginPassword" type="password" placeholder="ระบุรหัสผ่านของคุณ" class="input-field w-full pl-11 pr-11 py-3 text-sm" />
+                  <button type="button" onclick="togglePasswordVisibility('loginPassword', this)"
+                    class="absolute right-3.5 top-1/2 -translate-y-1/2 p-1.5 text-surface-400 hover:text-surface-600 dark:hover:text-surface-200 transition-colors focus:outline-none rounded-lg"
+                    title="แสดงรหัสผ่าน" aria-label="แสดงรหัสผ่าน">
+                    <i data-lucide="eye" class="w-4 h-4"></i>
+                  </button>
                 </div>
               </div>
               <div id="loginError"
@@ -3015,36 +3044,62 @@
               <div class="w-7 h-7 rounded-lg bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center">
                 <i data-lucide="settings" class="w-4 h-4 text-brand-600"></i>
               </div>
-              <h2 class="font-bold text-sm text-surface-900 dark:text-white">การตั้งค่า</h2>
+              <div><h2 class="font-bold text-sm text-surface-900 dark:text-white leading-tight">การตั้งค่า</h2><p class="text-[10px] text-surface-400 leading-tight hidden sm:block">จัดการบัญชี ความปลอดภัย และการเชื่อมต่อของคุณ</p></div>
             </div>
           </header>
-          <div class="p-6 flex-1 min-h-0 overflow-y-auto w-full max-w-2xl space-y-5 custom-scrollbar">
+          <div id="settingsScroll" class="p-4 sm:p-6 flex-1 min-h-0 overflow-y-auto w-full max-w-5xl space-y-5 custom-scrollbar scroll-smooth">
+            <!-- ── Hero โปรไฟล์ ── -->
+            <div class="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand-600 via-brand-700 to-indigo-700 p-5 sm:p-7 text-white shadow-lg shadow-brand-900/10">
+              <div class="absolute -right-12 -top-12 w-56 h-56 rounded-full bg-white/10 blur-3xl pointer-events-none"></div>
+              <div class="absolute -left-10 -bottom-16 w-48 h-48 rounded-full bg-indigo-300/20 blur-3xl pointer-events-none"></div>
+              <div class="relative flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-5">
+                <div id="mySettingsAvatar" class="w-16 h-16 sm:w-20 sm:h-20 rounded-3xl bg-white/20 ring-2 ring-white/40 text-white flex items-center justify-center text-2xl font-black flex-shrink-0 overflow-hidden backdrop-blur-sm">
+                  <i data-lucide="user" class="w-7 h-7"></i>
+                </div>
+                <div class="min-w-0 flex-1">
+                  <div id="mySettingsUsernameLabel" class="font-black text-xl sm:text-2xl leading-tight truncate">—</div>
+                  <div id="mySettingsHandleLabel" class="text-xs font-mono text-white/70 mt-0.5">@—</div>
+                </div>
+                <div class="flex items-stretch gap-2.5 flex-shrink-0">
+                  <div class="px-3.5 py-2 rounded-2xl bg-white/95 dark:bg-surface-900/90 text-surface-800 dark:text-surface-100 shadow-sm min-w-[92px]">
+                    <div class="text-[9px] font-black uppercase tracking-widest text-surface-400 mb-1 flex items-center gap-1"><i data-lucide="shield" class="w-3 h-3"></i> สิทธิ์</div>
+                    <div id="myRoleBadge" class="text-sm font-bold">—</div>
+                  </div>
+                  <div class="px-3.5 py-2 rounded-2xl bg-white/95 dark:bg-surface-900/90 text-surface-800 dark:text-surface-100 shadow-sm min-w-[104px]">
+                    <div class="text-[9px] font-black uppercase tracking-widest text-surface-400 mb-1 flex items-center gap-1"><i data-lucide="activity" class="w-3 h-3"></i> สถานะ</div>
+                    <div id="myStatusBadge" class="text-sm font-bold">—</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ── เมนูลัดภายในหน้า + คอลัมน์เนื้อหา ── -->
+            <div class="lg:grid lg:grid-cols-[180px_minmax(0,1fr)] lg:gap-6 items-start">
+              <nav id="settingsNav" aria-label="หมวดการตั้งค่า"
+                class="flex lg:flex-col gap-1.5 overflow-x-auto lg:overflow-visible no-scrollbar -mx-1 px-1 pb-2 lg:pb-0 mb-4 lg:mb-0 lg:sticky lg:top-0 sticky top-0 z-[5] bg-surface-50/85 dark:bg-surface-950/85 backdrop-blur py-2 lg:bg-transparent lg:backdrop-blur-none">
+                <button type="button" data-settings-target="myAccountCard" class="settings-nav-btn"><i data-lucide="user-circle" class="w-4 h-4"></i><span>โปรไฟล์</span></button>
+                <button type="button" data-settings-target="set-security" class="settings-nav-btn"><i data-lucide="shield-check" class="w-4 h-4"></i><span>ความปลอดภัย</span></button>
+                <button type="button" data-settings-target="set-connect" class="settings-nav-btn"><i data-lucide="link-2" class="w-4 h-4"></i><span>การเชื่อมต่อ</span></button>
+                <button type="button" data-settings-target="set-notify" class="settings-nav-btn"><i data-lucide="bell" class="w-4 h-4"></i><span>การแจ้งเตือน</span></button>
+                <button type="button" data-settings-target="set-app" class="settings-nav-btn"><i data-lucide="smartphone" class="w-4 h-4"></i><span>มือถือ & แอป</span></button>
+              </nav>
+              <div id="settingsCol" class="space-y-5 min-w-0">
+
 
             <!-- ── บัญชีของฉัน ── -->
-            <div id="myAccountCard" class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-2xl overflow-hidden shadow-sm">
+            <div id="myAccountCard" class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-2xl overflow-hidden shadow-sm scroll-mt-16">
               <!-- Header -->
               <div class="px-6 py-4 border-b border-surface-100 dark:border-surface-800 flex items-center gap-3">
                 <div class="w-7 h-7 rounded-lg bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center">
                   <i data-lucide="user-circle" class="w-4 h-4 text-brand-600"></i>
                 </div>
-                <h3 class="font-black text-sm uppercase tracking-widest text-surface-900 dark:text-white">บัญชีของฉัน</h3>
+                <div><h3 class="font-black text-sm uppercase tracking-widest text-surface-900 dark:text-white leading-tight">โปรไฟล์ของฉัน</h3><p class="text-[11px] text-surface-400 leading-tight">ชื่อที่แสดง หมายเหตุ และสิทธิ์การใช้งาน</p></div>
                 <span id="mySettingsLoading" class="ml-auto text-[10px] text-surface-400 flex items-center gap-1">
                   <i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i> กำลังโหลด
                 </span>
               </div>
 
               <div class="p-6 space-y-5">
-                <!-- Avatar + Username -->
-                <div class="flex items-center gap-4">
-                  <div id="mySettingsAvatar" class="w-14 h-14 rounded-2xl bg-brand-600 text-white flex items-center justify-center text-white text-xl font-black flex-shrink-0 overflow-hidden">
-                    <i data-lucide="user" class="w-6 h-6"></i>
-                  </div>
-                  <div>
-                    <div id="mySettingsUsernameLabel" class="font-black text-base text-surface-900 dark:text-white">—</div>
-                    <div id="mySettingsHandleLabel" class="text-xs font-mono text-surface-400">@—</div>
-                  </div>
-                </div>
-
                 <!-- ชื่อที่แสดง -->
                 <div>
                   <label class="block text-[10px] font-black uppercase tracking-widest text-surface-400 mb-2 ml-1 flex items-center gap-2">
@@ -3057,22 +3112,6 @@
                       class="px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-xl transition-colors">
                       บันทึก
                     </button>
-                  </div>
-                </div>
-
-                <!-- Role + Status (read-only) -->
-                <div class="grid grid-cols-2 gap-3">
-                  <div class="p-3.5 bg-surface-50 dark:bg-surface-800/50 rounded-2xl border border-surface-100 dark:border-surface-700">
-                    <div class="text-[9px] font-black uppercase tracking-widest text-surface-400 mb-1.5 flex items-center gap-1">
-                      <i data-lucide="shield" class="w-3 h-3"></i> สิทธิ์ (Role)
-                    </div>
-                    <div id="myRoleBadge" class="text-sm font-bold text-surface-700 dark:text-surface-200">—</div>
-                  </div>
-                  <div class="p-3.5 bg-surface-50 dark:bg-surface-800/50 rounded-2xl border border-surface-100 dark:border-surface-700">
-                    <div class="text-[9px] font-black uppercase tracking-widest text-surface-400 mb-1.5 flex items-center gap-1">
-                      <i data-lucide="activity" class="w-3 h-3"></i> สถานะบัญชี
-                    </div>
-                    <div id="myStatusBadge" class="text-sm font-bold">—</div>
                   </div>
                 </div>
 
@@ -3101,16 +3140,45 @@
                   </div>
                 </div>
 
+
+              </div>
+            </div>
+            <!-- /โปรไฟล์ -->
+
+            <!-- ── ความปลอดภัย ── -->
+            <div id="set-security" class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-2xl overflow-hidden shadow-sm scroll-mt-16">
+              <div class="px-6 py-4 border-b border-surface-100 dark:border-surface-800 flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-900/30 flex items-center justify-center">
+                  <i data-lucide="shield-check" class="w-4 h-4 text-emerald-600"></i>
+                </div>
+                <div><h3 class="font-black text-sm uppercase tracking-widest text-surface-900 dark:text-white leading-tight">ความปลอดภัย</h3>
+                <p class="text-[11px] text-surface-400 leading-tight">รหัสผ่านและการยืนยันตัวตนสองชั้น</p></div>
+              </div>
+              <div class="p-6 space-y-5">
                 <!-- เปลี่ยนรหัสผ่าน -->
-                <div class="border-t border-surface-100 dark:border-surface-800 pt-5">
+                <div>
                   <div class="text-[10px] font-black uppercase tracking-widest text-surface-400 mb-3 flex items-center gap-2">
                     <i data-lucide="key-round" class="w-3 h-3"></i> เปลี่ยนรหัสผ่าน
                   </div>
                   <div class="space-y-2">
-                    <input id="myCurrentPw" type="password" placeholder="รหัสผ่านปัจจุบัน (ถ้ามี)"
-                      class="w-full bg-surface-50 dark:bg-surface-950 border border-surface-200 dark:border-surface-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-transparent text-surface-900 dark:text-white">
-                    <input id="myNewPw" type="password" placeholder="รหัสผ่านใหม่ (อย่างน้อย 4 ตัว)"
-                      class="w-full bg-surface-50 dark:bg-surface-950 border border-surface-200 dark:border-surface-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-transparent text-surface-900 dark:text-white">
+                    <div class="relative flex items-center">
+                      <input id="myCurrentPw" type="password" placeholder="รหัสผ่านปัจจุบัน (ถ้ามี)"
+                        class="w-full bg-surface-50 dark:bg-surface-950 border border-surface-200 dark:border-surface-700 rounded-xl pl-3 pr-10 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-transparent text-surface-900 dark:text-white">
+                      <button type="button" onclick="togglePasswordVisibility('myCurrentPw', this)"
+                        class="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-surface-400 hover:text-surface-600 dark:hover:text-surface-200 transition-colors focus:outline-none rounded-lg"
+                        title="แสดงรหัสผ่าน" aria-label="แสดงรหัสผ่าน">
+                        <i data-lucide="eye" class="w-4 h-4"></i>
+                      </button>
+                    </div>
+                    <div class="relative flex items-center">
+                      <input id="myNewPw" type="password" placeholder="รหัสผ่านใหม่ (อย่างน้อย 4 ตัว)"
+                        class="w-full bg-surface-50 dark:bg-surface-950 border border-surface-200 dark:border-surface-700 rounded-xl pl-3 pr-10 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-transparent text-surface-900 dark:text-white">
+                      <button type="button" onclick="togglePasswordVisibility('myNewPw', this)"
+                        class="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-surface-400 hover:text-surface-600 dark:hover:text-surface-200 transition-colors focus:outline-none rounded-lg"
+                        title="แสดงรหัสผ่าน" aria-label="แสดงรหัสผ่าน">
+                        <i data-lucide="eye" class="w-4 h-4"></i>
+                      </button>
+                    </div>
                     <button onclick="changeMyPassword()"
                       class="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-black uppercase tracking-widest rounded-xl transition-colors flex items-center justify-center gap-2">
                       <i data-lucide="key-round" class="w-3.5 h-3.5"></i> เปลี่ยนรหัสผ่าน
@@ -3166,7 +3234,7 @@
             <!-- /บัญชีของฉัน -->
 
             <!-- Connected Accounts Section (Google & LINE SSO) -->
-            <div class="space-y-4">
+            <div id="set-connect" class="space-y-4 scroll-mt-16">
               <div class="flex items-center gap-2 px-1">
                 <i data-lucide="link-2" class="w-4 h-4 text-brand-600"></i>
                 <h3 class="font-black text-sm uppercase tracking-widest text-surface-900 dark:text-white">การเชื่อมต่อบัญชีเข้าสู่ระบบ (Connected Accounts & SSO)</h3>
@@ -3296,8 +3364,8 @@
 
 
             <!-- PWA & OS Notification Settings -->
-            <div class="p-6 bg-white dark:bg-surface-900 border border-surface-200 rounded-xl space-y-4">
-              <h3 class="font-bold text-sm mb-1 uppercase text-surface-500 flex items-center gap-2">
+            <div id="set-notify" class="scroll-mt-16 bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-2xl p-6 space-y-4 shadow-sm">
+              <h3 class="font-black text-sm uppercase tracking-widest text-surface-900 dark:text-white flex items-center gap-2">
                 <i data-lucide="bell" class="w-4 h-4 text-brand-600"></i> Push Notifications
               </h3>
               <p class="text-xs text-surface-400">อนุญาตให้ระบบส่งการแจ้งเตือนไปยังมือถือหรือคอมพิวเตอร์ของคุณ
@@ -3327,8 +3395,9 @@
 
 
             <!-- QR Login Scanner (New) -->
-            <div class="p-6 bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl space-y-4">
-              <h3 class="font-bold text-sm mb-1 uppercase text-surface-500 flex items-center gap-2">
+            <div id="set-app" class="grid md:grid-cols-2 gap-5 scroll-mt-16">
+            <div class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-2xl p-6 space-y-4 shadow-sm">
+              <h3 class="font-black text-sm uppercase tracking-widest text-surface-900 dark:text-white flex items-center gap-2">
                 <i data-lucide="qr-code" class="w-4 h-4 text-emerald-600"></i> QR Login Scanner
               </h3>
               <p class="text-xs text-surface-400">ใช้มือถือเครื่องนี้สแกน QR Code บนหน้าจอคอมพิวเตอร์เพื่อเข้าสู่ระบบทันที</p>
@@ -3341,8 +3410,8 @@
 
             <!-- App Installation Section -->
             <div id="pwaInstallSection"
-              class="p-6 bg-white dark:bg-surface-900 border border-surface-200 rounded-xl space-y-4">
-              <h3 class="font-bold text-sm mb-1 uppercase text-surface-500 flex items-center gap-2">
+              class="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-2xl p-6 space-y-4 shadow-sm">
+              <h3 class="font-black text-sm uppercase tracking-widest text-surface-900 dark:text-white flex items-center gap-2">
                 <i data-lucide="smartphone" class="w-4 h-4 text-brand-600"></i> ดาวน์โหลด/ติดตั้ง APK (ผ่าน PWA)
               </h3>
               <p class="text-xs text-surface-400">ติดตั้งแอป OrgChat ลงในหน้าจอโฮมเพื่อการใช้งานที่สะดวกเหมือนแอปมือถือ
@@ -3355,6 +3424,10 @@
             </div>
 
 
+
+                      </div>
+              </div>
+            </div>
 
           </div>
         </section>
@@ -4645,11 +4718,19 @@
                 </button>
                 <button id="orgTab-security" onclick="switchOrgTab('security')"
                   class="org-tab whitespace-nowrap shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white hover:bg-surface-200/50 dark:hover:bg-surface-700/40">
-                  <i data-lucide="shield-check" class="w-4 h-4 shrink-0"></i>ความปลอดภัย
+                  <i data-lucide="shield-check" class="w-4 h-4 shrink-0"></i>นโยบายความปลอดภัย
                 </button>
                 <button id="orgTab-lifecycle" onclick="switchOrgTab('lifecycle')"
                   class="org-tab whitespace-nowrap shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white hover:bg-surface-200/50 dark:hover:bg-surface-700/40">
-                  <i data-lucide="user-cog" class="w-4 h-4 shrink-0"></i>จัดการสมาชิกขั้นสูง
+                  <i data-lucide="user-cog" class="w-4 h-4 shrink-0"></i>นำเข้า / ลาออก / คำเชิญ
+                </button>
+                <button id="orgTab-usage" onclick="switchOrgTab('usage')"
+                  class="org-tab whitespace-nowrap shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white hover:bg-surface-200/50 dark:hover:bg-surface-700/40">
+                  <i data-lucide="bar-chart-3" class="w-4 h-4 shrink-0"></i>แดชบอร์ดแผนก
+                </button>
+                <button id="orgTab-access" onclick="switchOrgTab('access')"
+                  class="org-tab whitespace-nowrap shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white hover:bg-surface-200/50 dark:hover:bg-surface-700/40">
+                  <i data-lucide="lock-keyhole" class="w-4 h-4 shrink-0"></i>สิทธิ์เอกสาร & อนุมัติ
                 </button>
                 <button id="orgTab-logs" onclick="switchOrgTab('logs')"
                   class="org-tab whitespace-nowrap shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white hover:bg-surface-200/50 dark:hover:bg-surface-700/40">
@@ -5667,6 +5748,8 @@
               <div id="orgTabContent-overview" class="hidden space-y-4"></div>
               <div id="orgTabContent-security" class="hidden space-y-4"></div>
               <div id="orgTabContent-lifecycle" class="hidden space-y-4"></div>
+              <div id="orgTabContent-usage" class="hidden space-y-4"></div>
+              <div id="orgTabContent-access" class="hidden space-y-4"></div>
 
               <!-- Tab: Audit Logs -->
               <div id="orgTabContent-logs" class="hidden space-y-4">
@@ -6122,6 +6205,7 @@
           <div class="flex-1 relative bg-surface-100 dark:bg-surface-950 overflow-hidden cursor-crosshair" id="whiteboardContainer">
             <canvas id="whiteboardCanvas" class="absolute inset-0 w-full h-full"></canvas>
             <canvas id="whiteboardOverlay" class="absolute inset-0 w-full h-full pointer-events-auto"></canvas>
+            <div id="wbHint" class="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full bg-white/80 dark:bg-surface-900/80 backdrop-blur border border-surface-200/60 dark:border-surface-700/60 text-[11px] font-semibold text-surface-500 dark:text-surface-300 pointer-events-none shadow-sm transition-opacity duration-500">✏️ ลากเมาส์/นิ้วเพื่อวาด • เลือกเครื่องมือและสีที่แถบด้านล่าง • ทุกคนในทีมเห็นพร้อมกัน</div>
             
             <!-- Toolbar -->
             <div class="wb-toolbar absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 p-2.5 bg-white/90 dark:bg-surface-900/90 backdrop-blur-xl border border-surface-200/30 dark:border-surface-800/30 rounded-2xl shadow-2xl z-20">
@@ -6148,7 +6232,7 @@
               </div>
 
               <div class="wb-toolbar-section flex items-center gap-2 px-1">
-                <div onclick="setWhiteboardColor('#000000', this)" class="wb-color-btn w-6 h-6 rounded-full border-2 border-white shadow-sm cursor-pointer ring-2 ring-brand-500" style="background: #000000;" data-color="#000000"></div>
+                <div onclick="setWhiteboardColor('auto', this)" title="สีอัตโนมัติ (ตัดกับพื้นกระดาน)" class="wb-color-btn w-6 h-6 rounded-full border-2 border-white shadow-sm cursor-pointer ring-2 ring-brand-500" style="background: linear-gradient(135deg,#0f172a 50%,#f8fafc 50%);" data-color="auto"></div>
                 <div onclick="setWhiteboardColor('#ef4444', this)" class="wb-color-btn w-6 h-6 rounded-full border-2 border-white shadow-sm cursor-pointer" style="background: #ef4444;" data-color="#ef4444"></div>
                 <div onclick="setWhiteboardColor('#3b82f6', this)" class="wb-color-btn w-6 h-6 rounded-full border-2 border-white shadow-sm cursor-pointer" style="background: #3b82f6;" data-color="#3b82f6"></div>
                 <div onclick="setWhiteboardColor('#10b981', this)" class="wb-color-btn w-6 h-6 rounded-full border-2 border-white shadow-sm cursor-pointer" style="background: #10b981;" data-color="#10b981"></div>
@@ -8184,7 +8268,7 @@
                 <h2 id="companyNameLabel" class="text-xl font-bold text-slate-950">
                     {{ biz_profile.business_name_th if (biz_profile and biz_profile.business_name_th) else (org_info.name if org_info else 'ชื่อบริษัทของคุณ') }}
                 </h2>
-                <p id="companyNameEnLabel" class="text-xs text-slate-400 font-medium mt-1">{{ biz_profile.business_name_en if (biz_profile and biz_profile.business_name_en) else 'Your Company English Name' }}</p>
+                <p id="companyNameEnLabel" class="text-xs text-slate-400 font-medium mt-1">{{ biz_profile.business_name_en if (biz_profile and biz_profile.business_name_en) else '' }}</p>
                 <p id="companyPhoneLabel" class="text-xs text-slate-500 font-semibold mt-2 flex items-center gap-1">
                     <i data-lucide="phone" class="w-3.5 h-3.5 text-slate-400"></i> {{ biz_profile.phone if (biz_profile and biz_profile.phone) else '-' }}
                 </p>
@@ -8627,7 +8711,7 @@
                                             {{ biz_profile.business_name_th if (biz_profile and biz_profile.business_name_th) else (org_info.name if org_info else 'ชื่อบริษัทของคุณ') }}
                                         </p>
                                         <p id="expenseFormCompanyNameEnLabel" class="text-[10px] text-slate-400">
-                                            {{ biz_profile.business_name_en if (biz_profile and biz_profile.business_name_en) else 'Your Company English Name' }}
+                                            {{ biz_profile.business_name_en if (biz_profile and biz_profile.business_name_en) else '' }}
                                         </p>
                                     </div>
                                     <button class="text-xs font-semibold text-slate-500 hover:text-slate-800 bg-white hover:bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 transition">เปลี่ยนธุรกิจ</button>
@@ -10501,17 +10585,22 @@
   <script src="/static/js/core.js?v=4.4"></script>
   <script src="/static/js/sound-fx.js?v=1.0"></script>
   <script src="/static/js/appearance.js?v=1.0"></script>
-  <script src="/static/js/chat.js?v=8.4"></script>
+  <script src="/static/js/chat.js?v=8.9"></script>
+  <script src="/static/js/audit_labels.js?v=1.0"></script>
+  <script src="/static/js/ui_polish.js?v=1.0"></script>
+  <script src="/static/js/org_tabs_ui.js?v=1.0"></script>
+  <script src="/static/js/settings_ui.js?v=1.0"></script>
+  <script src="/static/js/org_features.js?v=1.0"></script>
   <script src="/static/js/org_admin.js?v=1.1"></script>
   <script src="/static/js/line-oa.js?v=1.2"></script>
   <script src="/static/js/billing.js?v=4.0"></script>
   <script src="/static/js/kb.js?v=4.2"></script>
-  <script src="/static/js/admin.js?v=4.1"></script>
+  <script src="/static/js/admin.js?v=4.2"></script>
   <script src="/static/js/attendance.js?v=2.0"></script>
   <script src="/static/js/line-groups-modal.js?v=4.1"></script>
   <script src="/static/js/plans-modal.js?v=4.1"></script>
-  <script src="/static/js/sheets-reconcile.js?v=4.1"></script>
-  <script src="/static/js/financial-dashboard.js?v=4.6"></script>
+  <script src="/static/js/sheets-reconcile.js?v=4.2"></script>
+  <script src="/static/js/financial-dashboard.js?v=4.7"></script>
   <!-- 🌩️ Weather Detail Modal -->
   <div id="weatherDetailModal" class="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-xl hidden flex items-center justify-center animate-in fade-in duration-500 p-0 sm:p-4">
     <div class="bg-white dark:bg-surface-900 w-full h-full sm:w-[95%] sm:max-w-xl sm:h-auto flex flex-col sm:rounded-2xl shadow-[0_0_100px_rgba(0,0,0,0.5)] overflow-hidden border border-white/20">
@@ -11169,19 +11258,19 @@
       </div>
       <div class="flex-1 min-w-0">
         <h4 class="font-bold text-xs text-surface-900 dark:text-white mb-1">การคุ้มครองข้อมูลส่วนบุคคล (PDPA)</h4>
-        <p class="text-[11px] text-surface-500 leading-relaxed">
+        <p class="text-[11px] text-surface-500 leading-snug sm:leading-relaxed line-clamp-2 sm:line-clamp-none">
           เราใช้คุกกี้เพื่อเพิ่มประสิทธิภาพการใช้งาน จดจำการตั้งค่า และรักษาความปลอดภัยให้กับบัญชีของคุณ 
         </p>
       </div>
     </div>
-    <div class="mt-3 sm:mt-4 flex flex-wrap items-center gap-2 justify-end">
-      <button type="button" onclick="window.pdpaConsent.saveConsent(true, false, false)" class="px-3 py-1.5 rounded-xl text-xs font-bold text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition">
+    <div class="mt-2.5 sm:mt-4 grid grid-cols-3 sm:flex sm:flex-wrap items-center gap-1.5 sm:gap-2 sm:justify-end">
+      <button type="button" onclick="window.pdpaConsent.saveConsent(true, false, false)" class="px-2 sm:px-3 py-2 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-bold text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition">
         ปฏิเสธทั้งหมด
       </button>
-      <button type="button" onclick="window.pdpaConsent.openSettings()" class="px-3 py-1.5 rounded-xl text-xs font-bold text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition">
+      <button type="button" onclick="window.pdpaConsent.openSettings()" class="px-2 sm:px-3 py-2 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-bold text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition">
         ตั้งค่าคุกกี้
       </button>
-      <button type="button" onclick="window.pdpaConsent.saveConsent(true, true, true)" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition">
+      <button type="button" onclick="window.pdpaConsent.saveConsent(true, true, true)" class="px-2 sm:px-3.5 py-2 sm:py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] sm:text-xs font-bold shadow-sm transition">
         ยินยอมทั้งหมด
       </button>
     </div>
@@ -11406,8 +11495,13 @@
         <p class="text-xs text-surface-400">ไม่มีการใช้งานเกินกำหนดเวลา กรุณาป้อนรหัสผ่านเพื่อปลดล็อก</p>
       </div>
       <form onsubmit="event.preventDefault(); window.sessionLock.unlock(document.getElementById('lockScreenPassword').value);" class="space-y-4">
-        <div>
-          <input type="password" id="lockScreenPassword" placeholder="รหัสผ่านของคุณ" required class="w-full px-4 py-3 rounded-2xl bg-surface-800/80 border border-surface-700 text-white text-xs text-center tracking-widest focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
+        <div class="relative flex items-center">
+          <input type="password" id="lockScreenPassword" placeholder="รหัสผ่านของคุณ" required class="w-full pl-4 pr-11 py-3 rounded-2xl bg-surface-800/80 border border-surface-700 text-white text-xs text-center tracking-widest focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
+          <button type="button" onclick="togglePasswordVisibility('lockScreenPassword', this)"
+            class="absolute right-3.5 top-1/2 -translate-y-1/2 p-1.5 text-surface-400 hover:text-white transition-colors focus:outline-none rounded-lg"
+            title="แสดงรหัสผ่าน" aria-label="แสดงรหัสผ่าน">
+            <i data-lucide="eye" class="w-4 h-4"></i>
+          </button>
         </div>
         <button type="submit" class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-2xl shadow-lg shadow-indigo-600/30 transition">
           ปลดล็อกหน้าจอ

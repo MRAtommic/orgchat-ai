@@ -1981,13 +1981,21 @@ function appendMessage(role, html, sources = [], scroll = true, msgId = null) {
           }
           const safeName = (s.name || s.source || 'Document').replace(/'/g, "\\'");
           const safeLoc = (s.location || '').replace(/'/g, "\\'");
+          const driveHref = (typeof s.drive_link === 'string' && /^https:\/\/(drive|docs)\.google\.com\//.test(s.drive_link)) ? s.drive_link : '';
+          const driveBtn = driveHref ? `
+            <a href="${driveHref}" target="_blank" rel="noopener noreferrer" title="เปิดไฟล์ต้นฉบับใน Google Drive"
+              class="inline-flex items-center gap-1 -ml-1 px-2 py-1 rounded-md bg-white dark:bg-surface-800 text-brand-600 dark:text-brand-400 text-[11px] font-medium border border-surface-200 dark:border-surface-700 hover:border-brand-400 transition-colors">
+              <i data-lucide="external-link" class="w-3 h-3"></i><span>Drive</span>
+            </a>` : '';
           return `
+            <span class="inline-flex items-center gap-1">
             <button onclick="openPdfViewer('${s.file_id}', '${safeName}', '${safeLoc}')" 
               class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 text-[11px] font-medium border border-surface-200 dark:border-surface-700 hover:border-surface-400 dark:hover:border-surface-500 transition-colors">
               <i data-lucide="${FILE_LUCIDE[s.type] || 'file-text'}" class="w-3 h-3 text-surface-500"></i>
               <span class="truncate max-w-[130px]">${s.name || s.source || 'Document'}</span>
               ${s.location && s.location !== 'Document' ? `<span class="opacity-50 text-[10px]">#${s.location}</span>` : ''}
-            </button>
+            </button>${driveBtn}
+            </span>
           `;
         }).join('')}
       </div>` : '';
@@ -9778,7 +9786,7 @@ let _orgLogsCache = [];
 let _orgDepartmentsCache = [];
 
 function switchOrgTab(tab) {
-  ['members', 'tree', 'departments', 'leave', 'attendance', 'google', 'business', 'peak', 'announcements', 'categories', 'overview', 'security', 'lifecycle', 'logs'].forEach(t => {
+  ['members', 'tree', 'departments', 'leave', 'attendance', 'google', 'business', 'peak', 'announcements', 'categories', 'overview', 'security', 'lifecycle', 'usage', 'access', 'logs'].forEach(t => {
     const btn = $(`orgTab-${t}`);
     const content = $(`orgTabContent-${t}`);
     const active = t === tab;
@@ -9813,6 +9821,8 @@ function switchOrgTab(tab) {
   if (tab === 'overview' && typeof window.loadOrgOverview === 'function') window.loadOrgOverview();
   if (tab === 'security' && typeof window.loadOrgSecurity === 'function') window.loadOrgSecurity();
   if (tab === 'lifecycle' && typeof window.loadOrgLifecycle === 'function') window.loadOrgLifecycle();
+  if (tab === 'usage' && typeof window.loadOrgUsage === 'function') window.loadOrgUsage();
+  if (tab === 'access' && typeof window.loadOrgAccess === 'function') window.loadOrgAccess();
 }
 
 // ─── Organization Departments JS ───
@@ -11220,10 +11230,18 @@ function _renderMySettings(d) {
   // Avatar
   const avatarEl = $('mySettingsAvatar');
   if (avatarEl) {
-    if (d.avatar_url) {
-      avatarEl.innerHTML = `<img src="${d.avatar_url}" class="w-full h-full object-cover" onerror="this.parentElement.innerHTML='<span class=\\'text-xl font-black\\'>${(d.display_name||d.username).charAt(0).toUpperCase()}</span>'">`;
+    const initial = String(d.display_name || d.username || '?').charAt(0).toUpperCase();
+    const showInitial = () => { avatarEl.textContent = ''; const sp = document.createElement('span'); sp.className = 'text-2xl font-black'; sp.textContent = initial; avatarEl.appendChild(sp); };
+    if (d.avatar_url && /^(https?:\/\/|\/)/i.test(String(d.avatar_url))) {
+      avatarEl.textContent = '';
+      const img = document.createElement('img');
+      img.className = 'w-full h-full object-cover';
+      img.alt = '';
+      img.onerror = showInitial;
+      img.src = d.avatar_url;
+      avatarEl.appendChild(img);
     } else {
-      avatarEl.innerHTML = `<span class="text-xl font-black">${(d.display_name || d.username || '?').charAt(0).toUpperCase()}</span>`;
+      showInitial();
     }
   }
   if ($('mySettingsUsernameLabel')) $('mySettingsUsernameLabel').textContent = d.display_name || d.username;
@@ -11261,16 +11279,15 @@ function _renderMySettings(d) {
       { key: 'can_claim_expense', label: 'เบิกจ่ายค่าใช้จ่าย', desc: 'ยื่นคำขอเบิกเงินและส่งสลิปค่าใช้จ่าย' },
     ];
 
+    permsEl.className = 'grid sm:grid-cols-2 gap-2';
     permsEl.innerHTML = perms.map(p => {
       const on = !!d[p.key];
-      return `<div class="flex items-center justify-between p-3 rounded-xl border ${on ? 'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/50 dark:bg-emerald-900/10' : 'border-surface-100 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/30'}">
-        <div>
-          <div class="text-xs font-bold text-surface-800 dark:text-white">${p.label}</div>
-          <div class="text-[10px] text-surface-400">${p.desc}</div>
+      return `<div title="${p.desc}" class="flex items-center gap-2.5 p-2.5 rounded-xl border transition-colors ${on ? 'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/60 dark:bg-emerald-900/10' : 'border-surface-100 dark:border-surface-700 bg-surface-50/70 dark:bg-surface-800/30 opacity-70'}">
+        <span class="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black flex-shrink-0 ${on ? 'bg-emerald-500 text-white' : 'bg-surface-200 dark:bg-surface-700 text-surface-400'}">${on ? '✓' : '–'}</span>
+        <div class="min-w-0">
+          <div class="text-xs font-bold text-surface-800 dark:text-white truncate">${p.label}</div>
+          <div class="text-[10px] text-surface-400 truncate">${p.desc}</div>
         </div>
-        <span class="${on ? 'text-emerald-600 dark:text-emerald-400' : 'text-surface-300 dark:text-surface-600'} text-lg">
-          ${on ? '✓' : '—'}
-        </span>
       </div>`;
     }).join('');
   }
@@ -14770,7 +14787,9 @@ let wbCanvas, wbCtx, wbOverlay, wbOverlayCtx;
 let wbInitialized = false;
 let isDrawing = false;
 let startX = 0, startY = 0, lastX = 0, lastY = 0;
-let wbColor = '#000000';
+// ธีมจริงที่แสดงอยู่ (state.theme อาจเป็น 'auto' ตามระบบ จึงดูจากคลาส .dark ที่ใช้งานจริง)
+function wbIsDark() { return document.documentElement.classList.contains('dark') || (state.theme === 'auto' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches); }
+let wbColor = 'auto'; // 'auto' = สีหมึกที่ตัดกับพื้นตามธีม (ดำบนพื้นสว่าง / ขาวบนพื้นมืด)
 let wbBrushSize = 3;
 let wbTool = 'pencil'; 
 let wbCursors = {}; // { username: { x, y, color } }
@@ -14800,6 +14819,7 @@ function initWhiteboard() {
   };
 
   const onDown = (e) => {
+    const _h = document.getElementById('wbHint'); if (_h) { _h.style.opacity = '0'; }
     isDrawing = true;
     [startX, startY] = getPos(e);
     [lastX, lastY] = [startX, startY];
@@ -14819,7 +14839,7 @@ function initWhiteboard() {
     }
 
     if (!isDrawing) return;
-    const color = wbTool === 'eraser' ? (state.theme === 'dark' ? '#0a0a0a' : '#ffffff') : wbColor;
+    const color = wbTool === 'eraser' ? (wbIsDark() ? '#0a0a0a' : '#ffffff') : wbColor;
     
     if (wbTool === 'pencil' || wbTool === 'eraser') {
       renderShape(wbCtx, 'line', lastX, lastY, x, y, color, wbBrushSize);
@@ -14951,7 +14971,7 @@ function drawCursors() {
     const x = c.x * wbCanvas.width;
     const y = c.y * wbCanvas.height;
     
-    wbOverlayCtx.fillStyle = c.color;
+    wbOverlayCtx.fillStyle = (c.color === 'auto' || c.color === '#000000') ? '#3b82f6' : c.color;
     wbOverlayCtx.beginPath();
     wbOverlayCtx.arc(x, y, 5, 0, Math.PI * 2);
     wbOverlayCtx.fill();
@@ -14987,6 +15007,8 @@ function resizeWhiteboard() {
 
 function renderShape(ctx, type, x0, y0, x1, y1, color, size, text = '') {
   if(!ctx) return;
+  // สี 'auto' (และดำเดิม #000000 จากไคลเอนต์รุ่นเก่า) → เลือกให้ตัดกับพื้นกระดานของธีมปัจจุบัน ไม่งั้นหมึกดำบนพื้นมืดจะมองไม่เห็น
+  if (color === 'auto' || color === '#000000') color = wbIsDark() ? '#f8fafc' : '#0f172a';
   ctx.beginPath();
   ctx.strokeStyle = color;
   ctx.fillStyle = color;
@@ -15017,7 +15039,7 @@ function renderShape(ctx, type, x0, y0, x1, y1, color, size, text = '') {
   if (ctx === wbOverlayCtx) {
     for (const user in wbCursors) {
       const c = wbCursors[user];
-      ctx.fillStyle = c.color;
+      ctx.fillStyle = (c.color === 'auto' || c.color === '#000000') ? '#3b82f6' : c.color;
       ctx.beginPath();
       ctx.arc(c.x, c.y, 4, 0, Math.PI * 2);
       ctx.fill();
@@ -15063,7 +15085,7 @@ function downloadWhiteboard() {
   tempCanvas.width = wbCanvas.width;
   tempCanvas.height = wbCanvas.height;
   const tempCtx = tempCanvas.getContext('2d');
-  tempCtx.fillStyle = state.theme === 'dark' ? '#0a0a0a' : '#ffffff';
+  tempCtx.fillStyle = wbIsDark() ? '#0a0a0a' : '#ffffff';
   tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
   tempCtx.drawImage(wbCanvas, 0, 0);
   const link = document.createElement('a');

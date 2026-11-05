@@ -5806,7 +5806,9 @@ def export_audit_logs_csv():
     res = database.get_audit_logs(org_id=org_id, limit=5000, offset=0)
     if isinstance(res, dict):
         logs = res.get("logs", [])
-    elif isinstance(res, (tuple, list)):
+    elif isinstance(res, list):          # AuditLogList (list ของแถว) — ห้ามใช้ res[0] เพราะจะได้แค่แถวแรก
+        logs = list(res)
+    elif isinstance(res, tuple):
         logs = res[0]
     else:
         logs = []

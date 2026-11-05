@@ -238,7 +238,7 @@
                 <h2 id="companyNameLabel" class="text-xl font-extrabold text-surface-950 tracking-tight">
                     {{ biz_profile.business_name_th if (biz_profile and biz_profile.business_name_th) else (org_info.name if org_info else 'ชื่อบริษัทของคุณ') }}
                 </h2>
-                <p id="companyNameEnLabel" class="text-xs text-surface-400 font-medium mt-1">{{ biz_profile.business_name_en if (biz_profile and biz_profile.business_name_en) else 'Your Company English Name' }}</p>
+                <p id="companyNameEnLabel" class="text-xs text-surface-400 font-medium mt-1">{{ biz_profile.business_name_en if (biz_profile and biz_profile.business_name_en) else '' }}</p>
                 <p id="companyPhoneLabel" class="text-xs text-surface-500 font-semibold mt-2 flex items-center gap-1">
                     <i data-lucide="phone" class="w-3.5 h-3.5 text-surface-400"></i> {{ biz_profile.phone if (biz_profile and biz_profile.phone) else '-' }}
                 </p>
@@ -735,7 +735,7 @@
                                             {{ biz_profile.business_name_th if (biz_profile and biz_profile.business_name_th) else (org_info.name if org_info else 'ชื่อบริษัทของคุณ') }}
                                         </p>
                                         <p id="editModalCompanyNameEnLabel" class="text-[10px] text-surface-400">
-                                            {{ biz_profile.business_name_en if (biz_profile and biz_profile.business_name_en) else 'Your Company English Name' }}
+                                            {{ biz_profile.business_name_en if (biz_profile and biz_profile.business_name_en) else '' }}
                                         </p>
                                     </div>
                                     <button class="text-xs font-semibold text-brand-600 hover:text-brand-800 bg-white hover:bg-brand-50 px-3 py-1.5 rounded-lg border border-surface-200 hover:border-brand-300 transition">เปลี่ยนธุรกิจ</button>

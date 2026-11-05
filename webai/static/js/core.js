@@ -911,6 +911,23 @@ window.openMobileChat = function () {
 };
 window.openMobileChat.isPlaceholder = true;
 
+// ─── Password Visibility Toggle ──────────────
+function togglePasswordVisibility(inputId, btn) {
+  const input = typeof inputId === 'string' ? document.getElementById(inputId) : inputId;
+  if (!input) return;
+  const isPassword = input.type === 'password';
+  input.type = isPassword ? 'text' : 'password';
+  if (btn) {
+    btn.innerHTML = `<i data-lucide="${isPassword ? 'eye-off' : 'eye'}" class="w-4 h-4"></i>`;
+    btn.setAttribute('title', isPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน');
+    btn.setAttribute('aria-label', isPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน');
+    if (window.lucide && typeof lucide.createIcons === 'function') {
+      lucide.createIcons();
+    }
+  }
+}
+window.togglePasswordVisibility = togglePasswordVisibility;
+
 // ─── AI Summary Logic ────────────────────────
 async function renderSummary() {
   const contentArea = $('summaryContentArea');

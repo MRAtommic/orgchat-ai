@@ -596,7 +596,27 @@ def get_categories(username=None, org_id=None):
                 "created_at": r[5],
                 "access_level": acc
             })
+    # สิทธิ์ตามแผนก: หมวดที่จำกัดเฉพาะบางแผนกจะถูกซ่อนจากคนนอกแผนก (มีผลกับการค้นหา RAG ทุกช่องทาง)
+    try:
+        from db import org_features as _of
+        result = _of.filter_categories_by_department(username, org_id, result)
+    except Exception as _e:
+        # ล้มเหลวแบบปลอดภัย: ถ้าตรวจไม่ได้ ให้ซ่อนหมวดที่มีการจำกัดแผนกทั้งหมด ไม่ใช่เปิดทั้งหมด
+        print(f"[dept-filter] error, failing closed: {_e}")
+        return [c for c in result if not _has_dept_restriction(c.get("id"))]
     return result
+
+
+def _has_dept_restriction(cat_id) -> bool:
+    try:
+        conn = _get_conn()
+        try:
+            r = conn.execute("SELECT 1 FROM kb_category_departments WHERE category_id = ? LIMIT 1", (cat_id,)).fetchone()
+            return bool(r)
+        finally:
+            conn.close()
+    except Exception:
+        return True
 
 def _is_system_admin(username):
     """Quick check if username is system admin (role=admin in user_settings)."""

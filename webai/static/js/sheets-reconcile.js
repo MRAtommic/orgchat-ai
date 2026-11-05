@@ -63,7 +63,7 @@
                         const p = data.biz_profile || {};
                         const o = data.org_info || {};
                         const nameTh = p.business_name_th || o.name || 'ชื่อบริษัทของคุณ';
-                        const nameEn = p.business_name_en || 'Your Company English Name';
+                        const nameEn = p.business_name_en || '';
                         const phone = p.phone || '-';
                         
                         const lblTh = document.getElementById('companyNameLabel');
@@ -1044,6 +1044,24 @@
         }
 
         function showError(msg) {
-            document.getElementById('catList').innerHTML =
-                `<div class="text-center py-8 text-rose-400 text-sm">เกิดข้อผิดพลาด: ${escHtml(msg)}</div>`;
+            const box = document.getElementById('catList');
+            if (!box) return;
+            const text = String(msg || '');
+            // กรณียังไม่เชื่อม Google → การ์ดอธิบาย + ปุ่มพาไปเชื่อม (แทนข้อความแดงที่ไม่มีทางไปต่อ)
+            if (/ยังไม่ได้เชื่อมต่อ Google/.test(text)) {
+                const isAdmin = !!(window.IS_ORG_ADMIN || document.getElementById('nav-org-mobile'));
+                box.innerHTML = `
+                  <div class="text-center py-8 px-4">
+                    <div class="w-12 h-12 mx-auto mb-3 rounded-2xl bg-amber-50 dark:bg-amber-900/20 text-amber-600 flex items-center justify-center text-2xl">🔗</div>
+                    <div class="font-black text-sm text-surface-800 dark:text-white mb-1">ยังไม่ได้เชื่อมต่อ Google Drive / Sheets</div>
+                    <p class="text-xs text-surface-500 mb-4 leading-relaxed">แดชบอร์ดนี้ดึงข้อมูลรายจ่ายจาก Google Sheets ขององค์กร<br>เชื่อมต่อครั้งเดียวแล้วตัวเลขจะขึ้นอัตโนมัติ</p>
+                    ${isAdmin
+                      ? '<button type="button" id="goConnectGoogleBtn" class="px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold">ไปเชื่อมต่อ Google (จัดการองค์กร)</button>'
+                      : '<div class="text-[11px] text-surface-400">กรุณาแจ้งผู้ดูแลองค์กรให้เชื่อมต่อ Google ที่หน้า "จัดการองค์กร"</div>'}
+                  </div>`;
+                const b = document.getElementById('goConnectGoogleBtn');
+                if (b) b.addEventListener('click', () => { try { showView('org'); switchOrgTab('google'); } catch (e) { /* ignore */ } });
+                return;
+            }
+            box.innerHTML = `<div class="text-center py-8 text-surface-500 text-sm">ดึงข้อมูลไม่สำเร็จ: ${escHtml(msg)}<br><button type="button" onclick="location.reload()" class="mt-3 px-3 py-1.5 rounded-xl border border-surface-200 dark:border-surface-700 text-xs font-bold">ลองใหม่</button></div>`;
         }

@@ -7,6 +7,7 @@
     <title>สมัครใช้งาน — OrgChat AI</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Sarabun:wght@300;400;500;600&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
     <style>
         body { font-family: 'Sarabun', 'Outfit', sans-serif; }
         .input-field {
@@ -107,11 +108,25 @@
                         </div>
                         <div>
                             <label class="block text-xs font-semibold text-slate-600 mb-1.5">รหัสผ่าน</label>
-                            <input type="password" id="password" class="input-field" placeholder="อย่างน้อย 8 ตัวอักษร" autocomplete="new-password" required>
+                            <div class="relative flex items-center">
+                                <input type="password" id="password" class="input-field pr-10" placeholder="อย่างน้อย 8 ตัวอักษร" autocomplete="new-password" required>
+                                <button type="button" onclick="togglePasswordVisibility('password', this)"
+                                    class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none p-1"
+                                    title="แสดงรหัสผ่าน" aria-label="แสดงรหัสผ่าน">
+                                    <i data-lucide="eye" class="w-4 h-4"></i>
+                                </button>
+                            </div>
                         </div>
                         <div>
                             <label class="block text-xs font-semibold text-slate-600 mb-1.5">ยืนยันรหัสผ่าน</label>
-                            <input type="password" id="confirm_password" class="input-field" placeholder="พิมพ์รหัสผ่านอีกครั้ง" autocomplete="new-password" required>
+                            <div class="relative flex items-center">
+                                <input type="password" id="confirm_password" class="input-field pr-10" placeholder="พิมพ์รหัสผ่านอีกครั้ง" autocomplete="new-password" required>
+                                <button type="button" onclick="togglePasswordVisibility('confirm_password', this)"
+                                    class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none p-1"
+                                    title="แสดงรหัสผ่าน" aria-label="แสดงรหัสผ่าน">
+                                    <i data-lucide="eye" class="w-4 h-4"></i>
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -346,6 +361,25 @@
             const el = document.getElementById('error-msg');
             el.textContent = msg;
             el.classList.remove('hidden');
+        }
+
+        function togglePasswordVisibility(inputId, btn) {
+            const input = typeof inputId === 'string' ? document.getElementById(inputId) : inputId;
+            if (!input) return;
+            const isPassword = input.type === 'password';
+            input.type = isPassword ? 'text' : 'password';
+            if (btn) {
+                btn.innerHTML = `<i data-lucide="${isPassword ? 'eye-off' : 'eye'}" class="w-4 h-4"></i>`;
+                btn.setAttribute('title', isPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน');
+                btn.setAttribute('aria-label', isPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน');
+                if (window.lucide && typeof lucide.createIcons === 'function') {
+                    lucide.createIcons();
+                }
+            }
+        }
+        window.togglePasswordVisibility = togglePasswordVisibility;
+        if (window.lucide && typeof lucide.createIcons === 'function') {
+            document.addEventListener('DOMContentLoaded', () => lucide.createIcons());
         }
     </script>
 </body>

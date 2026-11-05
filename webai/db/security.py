@@ -124,16 +124,29 @@ def get_security_audit_metrics(org_id: int = 1, days: int = 30) -> dict:
     conn.row_factory = sqlite3.Row
     try:
         cursor = conn.cursor()
+        # audit_logs มี 2 โครงสร้างในโปรเจกต์ (เดิม: action/details, ใหม่: event_type/...) ฐานข้อมูลจริงเป็นแบบเดิม
+        # จึงต้องอ่านคอลัมน์ที่มีอยู่จริง ไม่เช่นนั้นหน้า Security Audit ล่มด้วย 'no such column: event_type'
+        cols = {r[1] for r in cursor.execute('PRAGMA table_info(audit_logs)').fetchall()}
+        ET = 'event_type' if 'event_type' in cols else 'action'
+        TOK = '{TOK}' if '{TOK}' in cols else '0'
+        DEPT = 'department' if 'department' in cols else "'General'"
+        MODEL = 'ai_model' if 'ai_model' in cols else "''"
+        # ชื่อกิจกรรมแบบเดิมที่ระบบบันทึกจริง (USER_LOGIN ฯลฯ) ให้นับรวมกับชื่อแบบใหม่
+        LOGIN_OK = "('login_success', 'USER_LOGIN', 'USER_LOGIN_2FA')"
+        LOGIN_FAIL = "('login_failed', 'USER_LOGIN_FAILED', 'LOGIN_FAILED')"
+        LOCKOUT = "('account_lockout', 'ACCOUNT_LOCKOUT', 'ACCOUNT_LOCKED')"
+        LOGIN_ALL = "('login_success','USER_LOGIN','USER_LOGIN_2FA','login_failed','USER_LOGIN_FAILED','LOGIN_FAILED','account_lockout','ACCOUNT_LOCKOUT','ACCOUNT_LOCKED')"
+        AI_EV = "('ai_chat', 'ai_rag_query', 'AI_CHAT', 'AI_RAG_QUERY')"
         
         # 1. High-level totals
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT 
-                COUNT(CASE WHEN event_type IN ('login_success', 'login_failed', 'account_lockout') THEN 1 END) as total_logins,
-                COUNT(CASE WHEN event_type = 'login_success' THEN 1 END) as successful_logins,
-                COUNT(CASE WHEN event_type = 'login_failed' THEN 1 END) as failed_logins,
-                COUNT(CASE WHEN event_type = 'account_lockout' THEN 1 END) as lockout_incidents,
-                COUNT(CASE WHEN event_type IN ('ai_chat', 'ai_rag_query') THEN 1 END) as total_ai_requests,
-                COALESCE(SUM(CASE WHEN event_type IN ('ai_chat', 'ai_rag_query') THEN tokens_used ELSE 0 END), 0) as total_tokens
+                COUNT(CASE WHEN {ET} IN {LOGIN_ALL} THEN 1 END) as total_logins,
+                COUNT(CASE WHEN {ET} IN {LOGIN_OK} THEN 1 END) as successful_logins,
+                COUNT(CASE WHEN {ET} IN {LOGIN_FAIL} THEN 1 END) as failed_logins,
+                COUNT(CASE WHEN {ET} IN {LOCKOUT} THEN 1 END) as lockout_incidents,
+                COUNT(CASE WHEN {ET} IN {AI_EV} THEN 1 END) as total_ai_requests,
+                COALESCE(SUM(CASE WHEN {ET} IN {AI_EV} THEN {TOK} ELSE 0 END), 0) as total_tokens
             FROM audit_logs
             WHERE org_id = ? AND timestamp >= ?
         """, (org_id, since_date))
@@ -141,20 +154,20 @@ def get_security_audit_metrics(org_id: int = 1, days: int = 30) -> dict:
         totals = dict(totals_row) if totals_row else {}
         
         # 2. Department AI Usage Breakdown
-        cursor.execute("""
-            SELECT department, COUNT(*) as count, COALESCE(SUM(tokens_used), 0) as tokens
+        cursor.execute(f"""
+            SELECT {DEPT} AS department, COUNT(*) as count, COALESCE(SUM({TOK}), 0) as tokens
             FROM audit_logs
-            WHERE org_id = ? AND event_type IN ('ai_chat', 'ai_rag_query') AND timestamp >= ?
-            GROUP BY department
+            WHERE org_id = ? AND {ET} IN {AI_EV} AND timestamp >= ?
+            GROUP BY {DEPT}
             ORDER BY count DESC
         """, (org_id, since_date))
         dept_usage = [dict(r) for r in cursor.fetchall()]
         
         # 3. AI Model Distribution
-        cursor.execute("""
-            SELECT COALESCE(NULLIF(ai_model, ''), 'Gemini-3.6-Flash') as model, COUNT(*) as count
+        cursor.execute(f"""
+            SELECT COALESCE(NULLIF({MODEL}, ''), 'AI') as model, COUNT(*) as count
             FROM audit_logs
-            WHERE org_id = ? AND event_type IN ('ai_chat', 'ai_rag_query') AND timestamp >= ?
+            WHERE org_id = ? AND {ET} IN {AI_EV} AND timestamp >= ?
             GROUP BY model
             ORDER BY count DESC
         """, (org_id, since_date))
@@ -162,12 +175,12 @@ def get_security_audit_metrics(org_id: int = 1, days: int = 30) -> dict:
         
         # 4. Daily Timeline (past 14 days)
         timeline_since = (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%d 00:00:00")
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT 
                 DATE(timestamp) as date_str,
-                COUNT(CASE WHEN event_type = 'login_success' THEN 1 END) as logins,
-                COUNT(CASE WHEN event_type = 'login_failed' THEN 1 END) as failed_logins,
-                COUNT(CASE WHEN event_type IN ('ai_chat', 'ai_rag_query') THEN 1 END) as ai_requests
+                COUNT(CASE WHEN {ET} IN {LOGIN_OK} THEN 1 END) as logins,
+                COUNT(CASE WHEN {ET} IN {LOGIN_FAIL} THEN 1 END) as failed_logins,
+                COUNT(CASE WHEN {ET} IN {AI_EV} THEN 1 END) as ai_requests
             FROM audit_logs
             WHERE org_id = ? AND timestamp >= ?
             GROUP BY date_str
@@ -176,7 +189,7 @@ def get_security_audit_metrics(org_id: int = 1, days: int = 30) -> dict:
         timeline = [dict(r) for r in cursor.fetchall()]
         
         # 5. Top IP Addresses
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT ip_address, COUNT(*) as activity_count, username, MAX(timestamp) as last_seen
             FROM audit_logs
             WHERE org_id = ? AND ip_address IS NOT NULL AND ip_address != '' AND timestamp >= ?
