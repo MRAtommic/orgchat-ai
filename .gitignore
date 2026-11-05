@@ -99,3 +99,5 @@ _backup_*
 *.bak
 tools/healthcheck_state.json
 webai/tools/healthcheck_state.json
+webai/chroma_db_fallback.*.json
+webai/chroma_db_fallback.json

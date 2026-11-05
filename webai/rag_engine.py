@@ -363,6 +363,46 @@ class PurePythonVectorStore:
         self.persist_path = Path(persist_path)
         self.data = []  # List of dicts: {"id": str, "document": str, "metadata": dict, "embedding": list[float]}
         self.load()
+        self._maybe_reembed()
+
+    def _maybe_reembed(self):
+        """เวกเตอร์ที่เก็บไว้ต้องมาจากโมเดล/ไลบรารีรุ่นเดียวกับที่ใช้ค้น ไม่งั้นคะแนนเพี้ยน (เคยพบว่าค้นผิดไฟล์)
+        ใช้กับโมเดลในเครื่อง (FastEmbed) ซึ่งคำนวณใหม่ได้ฟรี: ทำครั้งเดียวต่อรุ่นไลบรารี และสำรองไฟล์เดิมไว้ก่อน"""
+        try:
+            if not self.data or not isinstance(self.ef, FastEmbedEmbeddingFunction):
+                return
+            try:
+                import fastembed
+                ver = getattr(fastembed, "__version__", "?")
+            except Exception:
+                ver = "?"
+            fp = f"fastembed-minilm-l12-v2:{ver}"
+            side = self.persist_path.with_suffix(".embed.json")
+            prev = None
+            if side.exists():
+                try:
+                    prev = json.load(open(side, "r", encoding="utf-8")).get("fingerprint")
+                except Exception:
+                    prev = None
+            if prev == fp:
+                return
+            import shutil
+            backup = self.persist_path.with_name(self.persist_path.stem + f".before_reembed_{int(time.time())}.json")
+            shutil.copy2(self.persist_path, backup)
+            logger.warning(f"[RAG] re-embedding {len(self.data)} chunks with current model ({fp}); backup: {backup.name}")
+            new_embs = []
+            for i in range(0, len(self.data), 32):
+                batch = [d["document"] for d in self.data[i:i + 32]]
+                embs = self.ef(batch)
+                new_embs.extend(e.tolist() if hasattr(e, "tolist") else [float(x) for x in e] for e in embs)
+            if len(new_embs) != len(self.data):
+                raise RuntimeError("embedding count mismatch")
+            for d, e in zip(self.data, new_embs):
+                d["embedding"] = e
+            self.save()
+            json.dump({"fingerprint": fp, "chunks": len(self.data), "at": time.time()}, open(side, "w", encoding="utf-8"))
+        except Exception as e:
+            logger.error(f"[RAG] re-embed skipped: {e}")
 
     def load(self):
         if self.persist_path.exists():
@@ -765,8 +805,8 @@ class KnowledgeBase:
             print("✅ Pure Python Vector Store Fallback ready.", flush=True)
             return
 
-        if os.environ.get("VECTOR_BACKEND", "chroma").strip().lower() == "python":
-            logger.warning("VECTOR_BACKEND=python — using Pure Python Vector Store")
+        if os.environ.get("VECTOR_BACKEND", "python").strip().lower() != "chroma":
+            logger.warning("Vector store: Pure Python (ตั้ง VECTOR_BACKEND=chroma เพื่อใช้ ChromaDB — ใช้หน่วยความจำเพิ่ม ~0.5 GB)")
             self._ephemeral = True
             self.collection = PurePythonVectorStore(ef, BASE_DIR / "chroma_db_fallback.json")
             return
