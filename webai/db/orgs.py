@@ -130,10 +130,10 @@ def get_org_id_by_line_group(group_id: str) -> int | None:
 
 
 def get_org_id_by_line_user(line_user_id: str) -> int | None:
-    """Multi-tenant: map LINE user_id → org_id via linked username"""
+    """Multi-tenant: map LINE user_id → org_id via linked username (checks bot ID or login ID)"""
     conn = _get_conn()
     cur = conn.cursor()
-    cur.execute("SELECT username FROM user_profiles WHERE line_user_id = ?", (line_user_id,))
+    cur.execute("SELECT username FROM user_profiles WHERE line_user_id = ? OR line_login_id = ?", (line_user_id, line_user_id))
     row = cur.fetchone()
     conn.close()
     if not row:
@@ -550,21 +550,55 @@ def get_org_owner(org_id: int) -> str | None:
 
 
 def transfer_org_ownership(org_id: int, current_owner: str, new_owner: str) -> tuple[bool, str]:
-    """Transfers the Owner status of an organization to another existing member."""
-    if not is_org_owner(org_id, current_owner):
-        return False, "เฉพาะ Owner ปัจจุบันเท่านั้นที่สามารถโอนสิทธิ์ความเป็นเจ้าของได้"
+    """Transfers the Owner / Super Admin status of an organization to another existing member."""
+    if not current_owner or not new_owner:
+        return False, "ระบุชื่อผู้ใช้ไม่ถูกต้อง"
     if current_owner.lower() == new_owner.lower():
-        return False, "ไม่สามารถโอนสิทธิ์ให้ตัวเองได้"
+        return False, "ไม่สามารถโอนสิทธิ์ให้ตนเองได้"
+    if not is_org_owner(org_id, current_owner):
+        return False, "เฉพาะ Owner ปัจจุบันเท่านั้นที่มีสิทธิ์โอนความเป็นเจ้าขององค์กร"
+    
     conn = _get_conn()
-    cur = conn.cursor()
+    cursor = conn.cursor()
     try:
-        cur.execute("SELECT role FROM organization_members WHERE organization_id = ? AND username = ? COLLATE NOCASE", (org_id, new_owner))
-        target_row = cur.fetchone()
+        # 1. Verify target is a member of the organization
+        cursor.execute("SELECT role, joined_at FROM organization_members WHERE organization_id = ? AND username = ? COLLATE NOCASE", (org_id, new_owner))
+        target_row = cursor.fetchone()
         if not target_row:
             return False, f"ไม่พบผู้ใช้ '{new_owner}' ในองค์กรนี้"
         
-        cur.execute("UPDATE organization_members SET role = 'admin' WHERE organization_id = ? AND username = ? COLLATE NOCASE", (org_id, new_owner))
-        cur.execute("UPDATE organizations SET owner_username = ? WHERE id = ?", (new_owner, org_id))
+        # 2. Get current earliest admin joined_at to shift target earlier for legacy fallback
+        cursor.execute("""
+            SELECT joined_at FROM organization_members 
+            WHERE organization_id = ? AND username = ? COLLATE NOCASE
+        """, (org_id, current_owner))
+        curr_row = cursor.fetchone()
+        curr_joined = curr_row[0] if curr_row else "2020-01-01 00:00:00"
+
+        from datetime import datetime as dt, timedelta
+        try:
+            base_dt = dt.fromisoformat(curr_joined)
+            new_joined = (base_dt - timedelta(seconds=1)).strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            new_joined = "2019-01-01 00:00:00"
+
+        # 3. Promote target to admin and update joined_at
+        cursor.execute("""
+            UPDATE organization_members 
+            SET role = 'admin', joined_at = ? 
+            WHERE organization_id = ? AND username = ? COLLATE NOCASE
+        """, (new_joined, org_id, new_owner))
+
+        # 4. Update owner_username in organizations table
+        cursor.execute("UPDATE organizations SET owner_username = ? WHERE id = ?", (new_owner, org_id))
+
+        # 5. Ensure current owner remains an admin
+        cursor.execute("""
+            UPDATE organization_members 
+            SET role = 'admin' 
+            WHERE organization_id = ? AND username = ? COLLATE NOCASE
+        """, (org_id, current_owner))
+
         conn.commit()
         return True, f"โอนสิทธิ์ความเป็นเจ้าขององค์กรให้คุณ {new_owner} สำเร็จเรียบร้อยแล้ว"
     except Exception as e:
@@ -717,61 +751,7 @@ def is_org_admin(org_id: int, username: str) -> bool:
     return row is not None and row[0] == 'admin'
 
 
-def transfer_org_ownership(org_id: int, current_owner: str, new_owner: str) -> tuple[bool, str]:
-    """Transfers the ownership / Super Admin status of an organization to another member."""
-    if not current_owner or not new_owner:
-        return False, "ระบุชื่อผู้ใช้ไม่ถูกต้อง"
-    if current_owner.lower() == new_owner.lower():
-        return False, "ไม่สามารถโอนสิทธิ์ให้ตนเองได้"
-    if not is_org_owner(org_id, current_owner):
-        return False, "เฉพาะ Admin ใหญ่ (Owner) ปัจจุบันเท่านั้นที่มีสิทธิ์โอนความเป็นเจ้าขององค์กร"
-    
-    conn = _get_conn()
-    cursor = conn.cursor()
-    try:
-        # 1. Verify target is a member of the organization
-        cursor.execute("SELECT role, joined_at FROM organization_members WHERE organization_id = ? AND username = ? COLLATE NOCASE", (org_id, new_owner))
-        target_row = cursor.fetchone()
-        if not target_row:
-            return False, "ผู้รับสิทธิ์ไม่ได้เป็นสมาชิกในองค์กรนี้"
-        
-        # 2. Get current earliest admin joined_at to shift target earlier
-        cursor.execute("""
-            SELECT joined_at FROM organization_members 
-            WHERE organization_id = ? AND username = ? COLLATE NOCASE
-        """, (org_id, current_owner))
-        curr_row = cursor.fetchone()
-        curr_joined = curr_row[0] if curr_row else "2020-01-01 00:00:00"
 
-        # 3. Promote target to admin and set joined_at 1 second earlier than current owner
-        import datetime
-        try:
-            from datetime import datetime as dt, timedelta
-            base_dt = dt.fromisoformat(curr_joined)
-            new_joined = (base_dt - timedelta(seconds=1)).strftime("%Y-%m-%d %H:%M:%S")
-        except Exception:
-            new_joined = "2019-01-01 00:00:00"
-
-        cursor.execute("""
-            UPDATE organization_members 
-            SET role = 'admin', joined_at = ? 
-            WHERE organization_id = ? AND username = ? COLLATE NOCASE
-        """, (new_joined, org_id, new_owner))
-
-        # 4. Ensure current owner remains an admin
-        cursor.execute("""
-            UPDATE organization_members 
-            SET role = 'admin' 
-            WHERE organization_id = ? AND username = ? COLLATE NOCASE
-        """, (org_id, current_owner))
-
-        conn.commit()
-        return True, "โอนสิทธิ์ความเป็นเจ้าขององค์กรสำเร็จเรียบร้อยแล้ว"
-    except Exception as e:
-        conn.rollback()
-        return False, str(e)
-    finally:
-        conn.close()
 
 
 def is_org_member(org_id: int, username: str) -> bool:
@@ -1469,3 +1449,193 @@ def delete_org_announcement(ann_id, org_id):
 
 
 
+
+
+# ═════════════════════════════════════════════════════════════════════
+# Org LINE Flex Card Customization
+# ═════════════════════════════════════════════════════════════════════
+
+DEFAULT_ORG_FLEX_SETTINGS = {
+    "primary_color": "#2563EB",
+    "header_bg": "#1B2838",
+    "header_text_color": "#FFFFFF",
+    "header_icon": "📢",
+    "header_title": "ประกาศใหม่",
+    "header_sub": "NEW ANNOUNCEMENT",
+    "badge_text": "GENERAL",
+    "badge_bg": "#EFF6FF",
+    "badge_color": "#2563EB",
+    "button_style": "primary",
+    "button_color": "#2563EB",
+    "portal_button_text": "💬 ดูในระบบ OrgChat",
+    "feed_primary_color": "#7C3AED",
+    "feed_header_bg": "#7C3AED",
+    "feed_header_icon": "✨",
+    "feed_header_title": "โพสต์ใหม่ใน Feed",
+    "feed_header_sub": "NEW FEED POST",
+    "card_style": "modern",
+    "show_avatar": 1,
+    "custom_json_template": ""
+}
+
+def get_org_flex_settings(org_id: int) -> dict:
+    """Retrieve custom LINE Flex Card settings for the specified organization.
+    Returns standard enterprise defaults if not customized."""
+    if not org_id:
+        return DEFAULT_ORG_FLEX_SETTINGS.copy()
+    try:
+        conn = _get_conn()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT org_id, primary_color, header_bg, header_text_color, header_icon,
+                   header_title, header_sub, badge_text, badge_bg, badge_color,
+                   button_style, button_color, portal_button_text, feed_primary_color,
+                   feed_header_bg, feed_header_icon, feed_header_title, feed_header_sub,
+                   card_style, show_avatar, custom_json_template
+            FROM org_flex_settings
+            WHERE org_id = ?
+        """, (org_id,))
+        row = cursor.fetchone()
+        conn.close()
+        
+        cfg = DEFAULT_ORG_FLEX_SETTINGS.copy()
+        cfg["org_id"] = int(org_id)
+        if row:
+            cfg.update({
+                "org_id": row[0],
+                "primary_color": row[1] or cfg["primary_color"],
+                "header_bg": row[2] or cfg["header_bg"],
+                "header_text_color": row[3] or cfg["header_text_color"],
+                "header_icon": row[4] or cfg["header_icon"],
+                "header_title": row[5] or cfg["header_title"],
+                "header_sub": row[6] or cfg["header_sub"],
+                "badge_text": row[7] or cfg["badge_text"],
+                "badge_bg": row[8] or cfg["badge_bg"],
+                "badge_color": row[9] or cfg["badge_color"],
+                "button_style": row[10] or cfg["button_style"],
+                "button_color": row[11] or cfg["button_color"],
+                "portal_button_text": row[12] or cfg["portal_button_text"],
+                "feed_primary_color": row[13] or cfg["feed_primary_color"],
+                "feed_header_bg": row[14] or cfg["feed_header_bg"],
+                "feed_header_icon": row[15] or cfg["feed_header_icon"],
+                "feed_header_title": row[16] or cfg["feed_header_title"],
+                "feed_header_sub": row[17] or cfg["feed_header_sub"],
+                "card_style": row[18] or cfg["card_style"],
+                "show_avatar": int(row[19] if row[19] is not None else 1),
+                "custom_json_template": row[20] or ""
+            })
+        return cfg
+    except Exception as e:
+        logger.error(f"Error fetching org_flex_settings for org {org_id}: {e}")
+        return DEFAULT_ORG_FLEX_SETTINGS.copy()
+
+def save_org_flex_settings(org_id: int, settings: dict) -> bool:
+    """Save or update custom LINE Flex Card settings for an organization."""
+    if not org_id:
+        return False
+    try:
+        conn = _get_conn()
+        cursor = conn.cursor()
+        
+        # Ensure table exists
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS org_flex_settings (
+                org_id INTEGER PRIMARY KEY,
+                primary_color TEXT DEFAULT '#2563EB',
+                header_bg TEXT DEFAULT '#1B2838',
+                header_text_color TEXT DEFAULT '#FFFFFF',
+                header_icon TEXT DEFAULT '📢',
+                header_title TEXT DEFAULT 'ประกาศใหม่',
+                header_sub TEXT DEFAULT 'NEW ANNOUNCEMENT',
+                badge_text TEXT DEFAULT 'GENERAL',
+                badge_bg TEXT DEFAULT '#EFF6FF',
+                badge_color TEXT DEFAULT '#2563EB',
+                button_style TEXT DEFAULT 'primary',
+                button_color TEXT DEFAULT '#2563EB',
+                portal_button_text TEXT DEFAULT '💬 ดูในระบบ OrgChat',
+                feed_primary_color TEXT DEFAULT '#7C3AED',
+                feed_header_bg TEXT DEFAULT '#7C3AED',
+                feed_header_icon TEXT DEFAULT '✨',
+                feed_header_title TEXT DEFAULT 'โพสต์ใหม่ใน Feed',
+                feed_header_sub TEXT DEFAULT 'NEW FEED POST',
+                card_style TEXT DEFAULT 'modern',
+                show_avatar INTEGER DEFAULT 1,
+                custom_json_template TEXT,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        cursor.execute("""
+            INSERT INTO org_flex_settings (
+                org_id, primary_color, header_bg, header_text_color, header_icon,
+                header_title, header_sub, badge_text, badge_bg, badge_color,
+                button_style, button_color, portal_button_text, feed_primary_color,
+                feed_header_bg, feed_header_icon, feed_header_title, feed_header_sub,
+                card_style, show_avatar, custom_json_template, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(org_id) DO UPDATE SET
+                primary_color = excluded.primary_color,
+                header_bg = excluded.header_bg,
+                header_text_color = excluded.header_text_color,
+                header_icon = excluded.header_icon,
+                header_title = excluded.header_title,
+                header_sub = excluded.header_sub,
+                badge_text = excluded.badge_text,
+                badge_bg = excluded.badge_bg,
+                badge_color = excluded.badge_color,
+                button_style = excluded.button_style,
+                button_color = excluded.button_color,
+                portal_button_text = excluded.portal_button_text,
+                feed_primary_color = excluded.feed_primary_color,
+                feed_header_bg = excluded.feed_header_bg,
+                feed_header_icon = excluded.feed_header_icon,
+                feed_header_title = excluded.feed_header_title,
+                feed_header_sub = excluded.feed_header_sub,
+                card_style = excluded.card_style,
+                show_avatar = excluded.show_avatar,
+                custom_json_template = excluded.custom_json_template,
+                updated_at = CURRENT_TIMESTAMP
+        """, (
+            org_id,
+            settings.get("primary_color", "#2563EB"),
+            settings.get("header_bg", "#1B2838"),
+            settings.get("header_text_color", "#FFFFFF"),
+            settings.get("header_icon", "📢"),
+            settings.get("header_title", "ประกาศใหม่"),
+            settings.get("header_sub", "NEW ANNOUNCEMENT"),
+            settings.get("badge_text", "GENERAL"),
+            settings.get("badge_bg", "#EFF6FF"),
+            settings.get("badge_color", "#2563EB"),
+            settings.get("button_style", "primary"),
+            settings.get("button_color", "#2563EB"),
+            settings.get("portal_button_text", "💬 ดูในระบบ OrgChat"),
+            settings.get("feed_primary_color", "#7C3AED"),
+            settings.get("feed_header_bg", "#7C3AED"),
+            settings.get("feed_header_icon", "✨"),
+            settings.get("feed_header_title", "โพสต์ใหม่ใน Feed"),
+            settings.get("feed_header_sub", "NEW FEED POST"),
+            settings.get("card_style", "modern"),
+            int(settings.get("show_avatar", 1)),
+            settings.get("custom_json_template", "")
+        ))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Error saving org_flex_settings for org {org_id}: {e}")
+        return False
+
+def reset_org_flex_settings(org_id: int) -> bool:
+    """Reset organization's LINE Flex Card settings to standard defaults."""
+    if not org_id:
+        return False
+    try:
+        conn = _get_conn()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM org_flex_settings WHERE org_id = ?", (org_id,))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Error resetting org_flex_settings for org {org_id}: {e}")
+        return False

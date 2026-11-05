@@ -92,7 +92,7 @@ def _err500(e: Exception, context: str = "") -> tuple:
 @socketio.on('connect')
 def handle_connect(*args, **kwargs):
     sid = getattr(request, 'sid', 'unknown')
-    print(f"Client connected: {sid}")
+    logger.info(f"Client connected: {sid}")
 
 
 @socketio.on('disconnect')
@@ -356,7 +356,7 @@ def dashboard_briefing():
         briefing = ai_providers.clean_stray_cjk(briefing).strip()
         return jsonify({"ok": True, "briefing": briefing})
     except Exception as e:
-        print(f"Briefing Error: {e}")
+        logger.error(f"Briefing Error: {e}")
         return jsonify({"ok": False, "error": "ไม่สามารถสร้างสรุปได้ในขณะนี้"})
 
 
@@ -442,7 +442,7 @@ def generate_global_summary():
     if not search_query:
         search_query = "   "
 
-    print(f" Summary Request - Category: {category_id}, Focus: '{focus}', Filter: {where_filter}")
+    logger.info(f" Summary Request - Category: {category_id}, Focus: '{focus}', Filter: {where_filter}")
 
     try:
         is_fallback = False
@@ -455,7 +455,7 @@ def generate_global_summary():
 
         # Fallback 2: Try with only org isolation filter (NEVER completely unfiltered!)
         if not results:
-            print(f" Filtered search empty, falling back to org-only search")
+            logger.info(f" Filtered search empty, falling back to org-only search")
             results = rag_engine.search_kb(search_query, n_results=10, where=org_clause)
             if not results:
                 results = rag_engine.get_all_chunks(where=org_clause, limit=10)
@@ -508,7 +508,7 @@ def generate_global_summary():
             "is_fallback": is_fallback
         })
     except Exception as e:
-        print(f"❌ Global Summary Error: {e}")
+        logger.error(f"❌ Global Summary Error: {e}")
         return _err500(e)
 
 
@@ -546,7 +546,7 @@ def summarize_data():
         summary = summary.strip()
         return jsonify({"ok": True, "summary": summary})
     except Exception as e:
-        print(f"❌ Summarize Data Error: {e}")
+        logger.error(f"❌ Summarize Data Error: {e}")
         return _err500(e)
 
 
@@ -591,7 +591,7 @@ def trigger_system_cleanup():
         database.log_event("System Cleanup Triggered", user=session.get("user"), org_id=get_current_org_id())
         return jsonify({"ok": True, "message": "Cleanup completed", "details": output})
     except Exception as e:
-        print(f"❌ Cleanup Error: {e}")
+        logger.error(f"❌ Cleanup Error: {e}")
         return _err500(e)
 
 
@@ -671,7 +671,7 @@ def get_chat_users():
         for du in db_users:
             all_usernames.add(du)
     except Exception as e:
-        print(f"Error fetching db usernames: {e}")
+        logger.error(f"Error fetching db usernames: {e}")
         
     profiles = []
     # 2. Fetch profiles for each unique user except current one
@@ -684,7 +684,7 @@ def get_chat_users():
                 if prof:
                     profiles.append(prof)
             except Exception as e:
-                print(f"Error fetching profile for {u}: {e}")
+                logger.error(f"Error fetching profile for {u}: {e}")
                 # Fallback profile
                 profiles.append({
                     "username": u,
@@ -988,7 +988,7 @@ def send_unified_message():
                             elif rel_path.lower().endswith(".webp"): ai_mime = "image/webp"
                             elif rel_path.lower().endswith(".gif"): ai_mime = "image/gif"
                     except Exception as e:
-                        print(f"⚠️ Error loading image for AI: {e}")
+                        logger.error(f"⚠️ Error loading image for AI: {e}")
 
             threading.Thread(target=handle_bot_response, args=(int(cid), text, "room", user, ai_image, ai_mime, get_current_org_id())).start()
             
@@ -1041,7 +1041,7 @@ def send_unified_message():
                             elif rel_path.lower().endswith(".webp"): ai_mime = "image/webp"
                             elif rel_path.lower().endswith(".gif"): ai_mime = "image/gif"
                     except Exception as e:
-                        print(f"⚠️ Error loading image for AI: {e}")
+                        logger.error(f"⚠️ Error loading image for AI: {e}")
 
             threading.Thread(target=handle_bot_response, args=(cid, text, "dm", user, ai_image, ai_mime, get_current_org_id())).start()
             
@@ -1463,7 +1463,7 @@ def translate_chat_message():
                             "engine": "fast"
                         })
         except Exception as ge:
-            print(f"[Translate] Fast engine notice: {ge}")
+            logger.info(f"[Translate] Fast engine notice: {ge}")
 
         # 2. AI Provider Fallback for contextual corporate translation
         try:
@@ -1482,7 +1482,7 @@ def translate_chat_message():
                     "engine": "ai"
                 })
         except Exception as ai_e:
-            print(f"[Translate] AI provider error: {ai_e}")
+            logger.error(f"[Translate] AI provider error: {ai_e}")
 
         return jsonify({"ok": False, "error": "Translation service unavailable"}), 500
     except Exception as e:
@@ -1495,7 +1495,7 @@ def translate_chat_message():
 def chat():
     provider = os.environ.get("AI_PROVIDER", "groq").lower()
     api_key = _get_gemini_api_key() if provider == "gemini" else True
-    print(f"Chat request received. Provider: {provider}. API Key present: {bool(api_key)}")
+    logger.info(f"Chat request received. Provider: {provider}. API Key present: {bool(api_key)}")
     if not api_key:
         return jsonify({"ok": False, "error": "ยังไม่ได้ตั้งค่า Gemini API Key"}), 400
 
@@ -1519,9 +1519,9 @@ def chat():
                     mime_type = header.split(":")[1].split(";")[0]
             
             image_bytes = base64.b64decode(image_data_raw)
-            print(f"Image received: {len(image_bytes)} bytes. Mime: {mime_type}")
+            logger.info(f"Image received: {len(image_bytes)} bytes. Mime: {mime_type}")
         except Exception as e:
-            print(f"Error decoding image: {e}")
+            logger.error(f"Error decoding image: {e}")
 
     if not question and not image_bytes:
         return jsonify({"ok": False, "error": "กรุณาพิมพ์คำถามหรือส่งรูปภาพค่ะ"}), 400
@@ -1565,7 +1565,7 @@ def chat():
     file_match = re.search(r"ช่วยสรุปเนื้อหาและ(?:ศึกษา|ดึง)ข้อมูลสำคัญจากไฟล์ ID:\s*([a-f0-9\-]+)", question)
     if file_match:
         file_id = file_match.group(1).strip()
-        print(f"Detected File Summary Request for ID: {file_id}")
+        logger.info(f"Detected File Summary Request for ID: {file_id}")
         
         file_filter = {"file_id": file_id}
         if rag_filter:
@@ -1735,7 +1735,7 @@ def chat():
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 400
 
-    print(f"Chat session started for {current_user} with provider: {'gemini (vision)' if (image_bytes and gemini_avail) else os.environ.get('AI_PROVIDER', 'groq')} (Vision: {image_bytes is not None})")
+    logger.info(f"Chat session started for {current_user} with provider: {'gemini (vision)' if (image_bytes and gemini_avail) else os.environ.get('AI_PROVIDER', 'groq')} (Vision: {image_bytes is not None})")
     _chat_org_id = get_current_org_id()
 
     # If voice call mode is requested, return direct JSON response
@@ -1759,7 +1759,7 @@ def chat():
 
     def generate():
         try:
-            print(f"Yielding sources: {sources}")
+            logger.info(f"Yielding sources: {sources}")
             yield f"data: {json.dumps({'sources': sources})}\n\n"
 
             u_sid = database.save_message("user", question, username=current_user, org_id=_chat_org_id)
@@ -1780,7 +1780,7 @@ def chat():
                     bot_full_text += chunk
                     yield f"data: {json.dumps({'content': chunk})}\n\n"
             
-            print(f"Stream finished. Total length: {len(bot_full_text)}")
+            logger.info(f"Stream finished. Total length: {len(bot_full_text)}")
             
             bot_full_text = re.sub(r'ครับ\s*/\s*ค่ะ', 'ค่ะ', bot_full_text).replace("ครับ", "ค่ะ")
             
@@ -1813,14 +1813,14 @@ def chat():
                         org_id=_chat_org_id
                     )
                 except Exception as _ae:
-                    print(f"Audit log AI chat failed: {_ae}")
+                    logger.error(f"Audit log AI chat failed: {_ae}")
                 yield f"data: {json.dumps({'done': True, 'bot_id': b_sid})}\n\n"
             
         except Exception as e:
             error_msg = str(e)
             if "429" in error_msg or "quota" in error_msg.lower():
                 error_msg = "ขออภัยนะคะ ขณะนี้ระบบ AI มีการใช้งานหนาแน่นหรือติดปัญหาชั่วคราว กรุณารอสักครู่ (ประมาณ 1 นาที) หรือติดต่อผู้ดูแลระบบนะคะ"
-            print(f"Error in chat stream: {e}")
+            logger.error(f"Error in chat stream: {e}")
             yield f"data: {json.dumps({'error': error_msg})}\n\n"
 
     return current_app.response_class(generate(), mimetype='text/event-stream')
@@ -1946,7 +1946,7 @@ def on_join(data):
     room = data.get('room')
     if room:
         join_room(room)
-        print(f"👤 User {session.get('user')} joined room: {room}")
+        logger.info(f"👤 User {session.get('user')} joined room: {room}")
 
 
 @socketio.on('leave')
@@ -1988,9 +1988,9 @@ def handle_user_online(data):
             'online_users': online_users
         }, room=room)
         
-        print(f"[ONLINE] {username} joined room: {room}")
+        logger.info(f"[ONLINE] {username} joined room: {room}")
     except Exception as e:
-        print(f"[ERROR] user_online: {e}")
+        logger.error(f"[ERROR] user_online: {e}")
         emit('error', {'msg': str(e)})
 
 
@@ -2014,9 +2014,9 @@ def handle_user_offline():
             'online_users': online_users
         }, broadcast=True)
         
-        print(f"[OFFLINE] {username} went offline")
+        logger.info(f"[OFFLINE] {username} went offline")
     except Exception as e:
-        print(f"[ERROR] user_offline: {e}")
+        logger.error(f"[ERROR] user_offline: {e}")
 
 
 @socketio.on('user_typing')
@@ -2038,7 +2038,7 @@ def handle_user_typing(data):
         }, room=f"room_{room_id}")
         
     except Exception as e:
-        print(f"[ERROR] user_typing: {e}")
+        logger.error(f"[ERROR] user_typing: {e}")
 
 
 @socketio.on('user_stopped_typing')
@@ -2059,7 +2059,7 @@ def handle_user_stopped_typing(data):
         }, room=f"room_{room_id}")
         
     except Exception as e:
-        print(f"[ERROR] user_stopped_typing: {e}")
+        logger.error(f"[ERROR] user_stopped_typing: {e}")
 
 
 @socketio.on('message_read')
@@ -2087,10 +2087,10 @@ def handle_message_read(data):
                 'read_receipts': receipts
             }, room=f"room_{room_id}" if room_id else None)
             
-            print(f"[READ] {username} read message {message_id}")
+            logger.info(f"[READ] {username} read message {message_id}")
         
     except Exception as e:
-        print(f"[ERROR] message_read: {e}")
+        logger.error(f"[ERROR] message_read: {e}")
 
 
 @socketio.on('message_read_dm')
@@ -2113,10 +2113,10 @@ def handle_private_message_read(data):
                 'read_at': time.strftime("%Y-%m-%d %H:%M:%S")
             }, room=f"dm_{sender}_{username}" if sender else None)
             
-            print(f"[DM_READ] {username} read DM {message_id}")
+            logger.info(f"[DM_READ] {username} read DM {message_id}")
             
     except Exception as e:
-        print(f"[ERROR] message_read_dm: {e}")
+        logger.error(f"[ERROR] message_read_dm: {e}")
 
 
 @socketio.on('join_room')
@@ -2126,10 +2126,10 @@ def on_join_room(data):
         room = data.get('room', '1')
         username = session.get("user")
         join_room(f"room_{room}")
-        print(f"[JOIN] {username} joined room group: {room}")
+        logger.info(f"[JOIN] {username} joined room group: {room}")
         emit('message', {'text': f'{username} joined'}, room=f"room_{room}")
     except Exception as e:
-        print(f"[ERROR] join_room: {e}")
+        logger.error(f"[ERROR] join_room: {e}")
 
 
 @socketio.on('get_online_users')
@@ -2143,7 +2143,7 @@ def handle_get_online_users():
             'timestamp': time.strftime("%Y-%m-%d %H:%M:%S")
         })
     except Exception as e:
-        print(f"[ERROR] get_online_users: {e}")
+        logger.error(f"[ERROR] get_online_users: {e}")
         emit('error', {'msg': str(e)})
 
 
@@ -2155,18 +2155,18 @@ def handle_webrtc_signal(data):
     # Prefer sender from payload, fallback to session
     sender = data.get('sender') or session.get("user")
     if not sender:
-        print(f"⚠️ [WebRTC] Signal dropped: No sender identified. Data={data}")
+        logger.warning(f"⚠️ [WebRTC] Signal dropped: No sender identified. Data={data}")
         return
         
     target = data.get('target')
     if not target:
-        print(f"⚠️ [WebRTC] Signal dropped: No target for signal {data.get('type')} from {sender}")
+        logger.warning(f"⚠️ [WebRTC] Signal dropped: No target for signal {data.get('type')} from {sender}")
         return
         
     target_room = f"user_{target}"
     data['sender'] = sender  # Ensure sender is attached
     
-    print(f"📡 [WebRTC] {data.get('type').upper()} from {sender} -> {target}")
+    logger.info(f"📡 [WebRTC] {data.get('type').upper()} from {sender} -> {target}")
     
     # If it's a new call (offer), trigger a push notification to wake up the recipient
     if data.get('type') == 'offer':
@@ -2180,7 +2180,7 @@ def handle_webrtc_signal(data):
                 tag="incoming_call"
             )
         except Exception as e:
-            print(f"⚠️ [WebRTC] Push notification failed: {e}")
+            logger.error(f"⚠️ [WebRTC] Push notification failed: {e}")
 
     emit('webrtc_signal', data, room=target_room)
 
@@ -2216,10 +2216,10 @@ def daily_morning_summary():
         # 3. Broadcast to all users (or a specific group) via LINE
         if summary:
             broadcast_line_announcement("🌟 Morning Brief จากน้องพั้นซ์", summary)
-            print("🌟 Daily Summary sent via LINE.")
+            logger.info("🌟 Daily Summary sent via LINE.")
             
     except Exception as e:
-        print(f"❌ Daily Summary Job Error: {e}")
+        logger.error(f"❌ Daily Summary Job Error: {e}")
 
 
 

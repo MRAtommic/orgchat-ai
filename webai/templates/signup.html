@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}" />
     <title>สมัครใช้งาน — OrgChat AI</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Sarabun:wght@300;400;500;600&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -260,9 +261,13 @@
                 // ── Invite mode: join existing org ───────────────
                 document.getElementById('btn-text').textContent = 'กำลังเข้าร่วมองค์กร...';
                 try {
+                    const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
                     const res = await fetch('/api/org/join-via-invite', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { 
+                            'Content-Type': 'application/json',
+                            'X-CSRF-Token': csrf
+                        },
                         body: JSON.stringify({
                             token: inviteToken,
                             email: inviteEmail,
@@ -273,7 +278,7 @@
                     });
                     const data = await res.json();
                     if (!data.ok) {
-                        showError(data.error || 'เกิดข้อผิดพลาด');
+                        showError(data.message || data.error || 'เกิดข้อผิดพลาด');
                         btn.disabled = false;
                         _submitting = false;
                         document.getElementById('btn-text').textContent = 'เข้าร่วมองค์กร';
@@ -298,7 +303,7 @@
                     });
                     const data = await res.json();
                     if (!data.ok) {
-                        showError(data.error || 'เกิดข้อผิดพลาด');
+                        showError(data.message || data.error || 'เกิดข้อผิดพลาด');
                         btn.disabled = false;
                         _submitting = false;
                         document.getElementById('btn-text').textContent = plan ? 'สร้างบัญชีและชำระเงิน' : 'สร้างบัญชีและเริ่มใช้งาน';

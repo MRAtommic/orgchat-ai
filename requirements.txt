@@ -42,3 +42,4 @@ python-pptx>=1.0.0
 edge-tts>=7.0.0
 pyotp>=2.9.0
 qrcode>=7.4.2
+cryptography>=42.0.0

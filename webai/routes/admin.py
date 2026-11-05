@@ -2565,6 +2565,146 @@ def manage_schedule_item(sid):
         database.update_schedule(sid, title, date, desc, cat, time_val, is_public, status, target_departments=target_depts, target_users=target_users)
         user = session.get("user", "Admin")
         database.log_event(f"Updated schedule ID: {sid}", user=user, org_id=org_id)
+
+        # 📢 In-app Notification & LINE Flex Broadcast for updated schedule
+        profile = database.get_user_profile(user) if hasattr(database, "get_user_profile") else {}
+        display_name = profile.get("display_name") or user
+        try:
+            notification_db.notify_org_members_except(
+                org_id,
+                user,
+                'calendar',
+                f'✏️ มีการแก้ไขกำหนดการ: {title}',
+                f'อัปเดตโดย {display_name} | วันที่ {date} เวลา {time_val} น.',
+                link='#calendar'
+            )
+        except Exception as ne:
+            logger.warning(f"In-app notification error for schedule edit: {ne}")
+
+        def _broadcast_schedule_edit_to_line():
+            try:
+                _oid = org_id
+                _tok = billing._get_line_token()
+                if not _tok:
+                    return
+                import requests as _req
+                _groups = database.get_line_groups_for_org(_oid) or []
+                if not _groups:
+                    return
+                _base_url = (os.environ.get("BASE_URL") or os.environ.get("PUBLIC_URL") or "https://openchat.sbs").rstrip('/')
+                calendar_url = f"{_base_url}/#calendar"
+
+                _flex_cfg = database.get_org_flex_settings(_oid) if hasattr(database, 'get_org_flex_settings') else {}
+                primary_color = _flex_cfg.get("primary_color") or "#2563EB"
+                header_bg = _flex_cfg.get("header_bg") or "#1E293B"
+
+                fields_boxes = [
+                    {
+                        "type": "box", "layout": "baseline", "contents": [
+                            {"type": "text", "text": "📅 วันที่", "size": "xs", "color": "#64748B", "flex": 2},
+                            {"type": "text", "text": str(date), "size": "xs", "color": "#1E293B", "weight": "bold", "flex": 5}
+                        ]
+                    },
+                    {
+                        "type": "box", "layout": "baseline", "contents": [
+                            {"type": "text", "text": "⏰ เวลา", "size": "xs", "color": "#64748B", "flex": 2},
+                            {"type": "text", "text": f"{time_val} น.", "size": "xs", "color": "#1E293B", "weight": "bold", "flex": 5}
+                        ]
+                    },
+                    {
+                        "type": "box", "layout": "baseline", "contents": [
+                            {"type": "text", "text": "📂 หมวดหมู่", "size": "xs", "color": "#64748B", "flex": 2},
+                            {"type": "text", "text": str(cat), "size": "xs", "color": "#2563EB", "weight": "bold", "flex": 5}
+                        ]
+                    }
+                ]
+                if desc:
+                    fields_boxes.append({
+                        "type": "box", "layout": "baseline", "contents": [
+                            {"type": "text", "text": "📝 รายละเอียด", "size": "xs", "color": "#64748B", "flex": 2},
+                            {"type": "text", "text": str(desc)[:150], "size": "xs", "color": "#475569", "flex": 5, "wrap": True}
+                        ]
+                    })
+                fields_boxes.append({
+                    "type": "box", "layout": "baseline", "contents": [
+                        {"type": "text", "text": "👤 แก้ไขโดย", "size": "xs", "color": "#64748B", "flex": 2},
+                        {"type": "text", "text": str(display_name), "size": "xs", "color": "#059669", "weight": "bold", "flex": 5}
+                    ]
+                })
+
+                bubble = {
+                    "type": "bubble",
+                    "size": "kilo",
+                    "header": {
+                        "type": "box",
+                        "layout": "vertical",
+                        "backgroundColor": header_bg,
+                        "paddingAll": "16px",
+                        "contents": [
+                            {
+                                "type": "box",
+                                "layout": "horizontal",
+                                "contents": [
+                                    {"type": "text", "text": "✏️ [แก้ไขแล้ว] กำหนดการ", "weight": "bold", "color": "#F59E0B", "size": "xs", "flex": 1},
+                                    {"type": "text", "text": "UPDATED", "weight": "bold", "color": "#F59E0B", "size": "xxs", "align": "end"}
+                                ]
+                            },
+                            {
+                                "type": "text",
+                                "text": str(title),
+                                "weight": "bold",
+                                "color": "#FFFFFF",
+                                "size": "md",
+                                "margin": "sm",
+                                "wrap": True
+                            }
+                        ]
+                    },
+                    "body": {
+                        "type": "box",
+                        "layout": "vertical",
+                        "spacing": "sm",
+                        "paddingAll": "16px",
+                        "contents": fields_boxes
+                    },
+                    "footer": {
+                        "type": "box",
+                        "layout": "vertical",
+                        "paddingAll": "12px",
+                        "contents": [
+                            {
+                                "type": "button",
+                                "style": "primary",
+                                "color": primary_color,
+                                "height": "sm",
+                                "action": {
+                                    "type": "uri",
+                                    "label": "📅 ดูปฏิทินในระบบ OrgChat",
+                                    "uri": calendar_url
+                                }
+                            }
+                        ]
+                    }
+                }
+                from routes.line_webhook import clean_flex_payload
+                msg_payload = {
+                    "type": "flex",
+                    "altText": f"✏️ อัปเดตกำหนดการ: {title}",
+                    "contents": clean_flex_payload(bubble)
+                }
+                headers = {"Content-Type": "application/json", "Authorization": f"Bearer {_tok}"}
+                for g in _groups:
+                    gid = g.get("group_id") if isinstance(g, dict) else g
+                    if gid:
+                        try:
+                            _req.post("https://api.line.me/v2/bot/message/push", headers=headers, json={"to": gid, "messages": [msg_payload]}, timeout=10)
+                        except Exception as ge:
+                            logger.error(f"❌ [LINE Schedule Edit Group Push] Exception for {gid}: {ge}")
+            except Exception as e:
+                logger.error(f"❌ [LINE Schedule Edit Broadcast] Exception: {e}")
+
+        threading.Thread(target=_broadcast_schedule_edit_to_line, daemon=True).start()
+
         return jsonify({"ok": True})
 
 
@@ -3050,6 +3190,12 @@ def invite_org_member():
         role = "member"
     if not username:
         return jsonify({"ok": False, "error": "กรุณาระบุชื่อผู้ใช้"}), 400
+
+    # Resolve email to username if admin entered an email address
+    if "@" in username:
+        user_by_email = database.get_user_by_email(username)
+        if user_by_email and user_by_email.get("username"):
+            username = user_by_email["username"]
 
     # ตรวจว่า user มีอยู่ในระบบแล้วไหม
     existing = database.get_user_setting(username)
@@ -5916,3 +6062,212 @@ def api_admin_trigger_optimize():
         return jsonify({"ok": True, "message": "ทำความสะอาดฐานข้อมูลและ WAL Checkpoint เรียบร้อยแล้ว", "details": res})
     else:
         return jsonify({"ok": False, "error": res.get("error", "Optimization failed")}), 500
+
+
+# ═════════════════════════════════════════════════════════════════════
+# Org LINE Flex Card Customization APIs
+# ═════════════════════════════════════════════════════════════════════
+
+@admin_bp.route("/api/org/flex-settings", methods=["GET"])
+@login_required
+def api_get_org_flex_settings():
+    org_id = get_current_org_id()
+    if not org_id:
+        return jsonify({"ok": False, "error": "กรุณาเลือกองค์กรก่อนใช้งาน"}), 400
+    cfg = database.get_org_flex_settings(org_id)
+    return jsonify({"ok": True, "settings": cfg})
+
+@admin_bp.route("/api/org/flex-settings", methods=["POST"])
+@login_required
+def api_save_org_flex_settings():
+    org_id = get_current_org_id()
+    if not org_id:
+        return jsonify({"ok": False, "error": "กรุณาเลือกองค์กรก่อนใช้งาน"}), 400
+    
+    username = session.get("user")
+    is_org_adm = database.is_org_admin(org_id, username)
+    is_sys_adm = database._is_system_admin(username) or (session.get("role") in ["admin", "superadmin"])
+    if not (is_org_adm or is_sys_adm):
+        return jsonify({"ok": False, "error": "คุณไม่มีสิทธิ์จัดการการออกแบบ Flex Card ขององค์กรนี้"}), 403
+
+    data = request.get_json(silent=True) or {}
+    success = database.save_org_flex_settings(org_id, data)
+    if success:
+        updated = database.get_org_flex_settings(org_id)
+        return jsonify({"ok": True, "message": "บันทึกการออกแบบ LINE Flex Card สำเร็จ", "settings": updated})
+    return jsonify({"ok": False, "error": "ไม่สามารถบันทึกการตั้งค่าได้"}), 500
+
+@admin_bp.route("/api/org/flex-settings/reset", methods=["POST"])
+@login_required
+def api_reset_org_flex_settings():
+    org_id = get_current_org_id()
+    if not org_id:
+        return jsonify({"ok": False, "error": "กรุณาเลือกองค์กรก่อนใช้งาน"}), 400
+    
+    username = session.get("user")
+    is_org_adm = database.is_org_admin(org_id, username)
+    is_sys_adm = database._is_system_admin(username) or (session.get("role") in ["admin", "superadmin"])
+    if not (is_org_adm or is_sys_adm):
+        return jsonify({"ok": False, "error": "คุณไม่มีสิทธิ์รีเซ็ตการออกแบบ"}), 403
+
+    database.reset_org_flex_settings(org_id)
+    default_cfg = database.get_org_flex_settings(org_id)
+    return jsonify({"ok": True, "message": "คืนค่าเริ่มต้นมาตรฐานเรียบร้อยแล้ว", "settings": default_cfg})
+
+@admin_bp.route("/api/org/flex-settings/preview", methods=["POST"])
+@login_required
+def api_preview_org_flex_settings():
+    data = request.get_json(silent=True) or {}
+    card_type = data.get("type", "announcement")
+    
+    if card_type == "announcement":
+        primary = data.get("primary_color") or "#2563EB"
+        header_bg = data.get("header_bg") or "#1B2838"
+        header_icon = data.get("header_icon") or "📢"
+        header_title = data.get("header_title") or "ประกาศใหม่"
+        header_sub = data.get("header_sub") or "NEW ANNOUNCEMENT"
+        badge_bg = data.get("badge_bg") or "#EFF6FF"
+        badge_color = data.get("badge_color") or primary
+        portal_btn = data.get("portal_button_text") or "💬 ดูในระบบ OrgChat"
+    else:
+        primary = data.get("feed_primary_color") or "#7C3AED"
+        header_bg = data.get("feed_header_bg") or "#7C3AED"
+        header_icon = data.get("feed_header_icon") or "✨"
+        header_title = data.get("feed_header_title") or "โพสต์ใหม่ใน Feed"
+        header_sub = data.get("feed_header_sub") or "NEW FEED POST"
+        badge_bg = "#F5F3FF"
+        badge_color = primary
+        portal_btn = data.get("portal_button_text") or "💬 ดูในระบบ OrgChat"
+
+    sample_title = data.get("sample_title") or "ตัวอย่างประกาศสำคัญประจำสัปดาห์"
+    sample_content = data.get("sample_content") or "ทดสอบการแสดงผล LINE Flex Card ตามธีมและสีที่กำหนดเองขององค์กร สามารถปรับสีหัวการ์ด ไอคอน และปุ่มได้อย่างอิสระ"
+
+    bubble = {
+        "type": "bubble",
+        "size": "mega",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "box",
+                    "layout": "horizontal",
+                    "contents": [
+                        {
+                            "type": "box",
+                            "layout": "vertical",
+                            "contents": [{"type": "text", "text": header_icon, "size": "xl", "align": "center"}],
+                            "width": "40px",
+                            "height": "40px",
+                            "backgroundColor": "#ffffff20",
+                            "cornerRadius": "12px",
+                            "justifyContent": "center",
+                            "alignItems": "center"
+                        },
+                        {
+                            "type": "box",
+                            "layout": "vertical",
+                            "contents": [
+                                {"type": "text", "text": header_title, "color": "#ffffff", "size": "lg", "weight": "bold"},
+                                {"type": "text", "text": header_sub, "color": "#ffffff90", "size": "xxs"}
+                            ],
+                            "paddingStart": "12px"
+                        }
+                    ],
+                    "alignItems": "center"
+                }
+            ],
+            "backgroundColor": header_bg,
+            "paddingAll": "16px"
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "box",
+                    "layout": "horizontal",
+                    "contents": [
+                        {
+                            "type": "text",
+                            "text": "GENERAL" if card_type == "announcement" else "FEED",
+                            "size": "xxs",
+                            "weight": "bold",
+                            "color": badge_color
+                        }
+                    ],
+                    "backgroundColor": badge_bg,
+                    "cornerRadius": "8px",
+                    "paddingStart": "8px",
+                    "paddingEnd": "8px",
+                    "paddingTop": "3px",
+                    "paddingBottom": "3px",
+                    "alignSelf": "flex-start"
+                },
+                {
+                    "type": "text",
+                    "text": sample_title,
+                    "weight": "bold",
+                    "size": "md",
+                    "color": "#111827",
+                    "margin": "md"
+                },
+                {
+                    "type": "text",
+                    "text": sample_content,
+                    "size": "xs",
+                    "color": "#4B5563",
+                    "wrap": True,
+                    "maxLines": 4,
+                    "margin": "sm"
+                },
+                {"type": "separator", "margin": "lg", "color": "#F3F4F6"},
+                {
+                    "type": "box",
+                    "layout": "horizontal",
+                    "contents": [
+                        {
+                            "type": "box",
+                            "layout": "vertical",
+                            "contents": [{"type": "text", "text": "A", "color": "#ffffff", "size": "xs", "align": "center"}],
+                            "width": "28px",
+                            "height": "28px",
+                            "backgroundColor": primary,
+                            "cornerRadius": "14px",
+                            "justifyContent": "center",
+                            "alignItems": "center"
+                        },
+                        {
+                            "type": "box",
+                            "layout": "vertical",
+                            "contents": [
+                                {"type": "text", "text": "ผู้ดูแลระบบองค์กร", "size": "xs", "color": "#111827", "weight": "bold"},
+                                {"type": "text", "text": "เมื่อสักครู่", "size": "xxs", "color": "#9CA3AF"}
+                            ],
+                            "paddingStart": "10px"
+                        }
+                    ],
+                    "alignItems": "center",
+                    "margin": "lg"
+                }
+            ],
+            "paddingAll": "20px",
+            "backgroundColor": "#ffffff"
+        },
+        "footer": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "button",
+                    "action": {"type": "uri", "label": portal_btn, "uri": "https://openchat.sbs/#feed"},
+                    "style": "primary",
+                    "color": primary,
+                    "height": "sm"
+                }
+            ],
+            "paddingAll": "12px",
+            "backgroundColor": "#ffffff"
+        }
+    }
+    return jsonify({"ok": True, "bubble": bubble})

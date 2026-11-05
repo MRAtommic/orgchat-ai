@@ -324,6 +324,14 @@ function applyProfile(profile) {
     }
   }
 
+  // U1-4: Update state.displayName and pre-populate Settings view
+  if (typeof state !== 'undefined') {
+    state.displayName = profile.display_name || '';
+  }
+  if ($('mySettingsUsernameLabel')) $('mySettingsUsernameLabel').textContent = profile.display_name || profile.username || (typeof state !== 'undefined' ? state.user : '');
+  if ($('mySettingsHandleLabel')) $('mySettingsHandleLabel').textContent = `@${profile.username || (typeof state !== 'undefined' ? state.user : '')}`;
+  if ($('myDisplayNameInput') && !$('myDisplayNameInput').value) $('myDisplayNameInput').value = profile.display_name || '';
+
   // Update Sidebar
   if (sidebarDisplayName) sidebarDisplayName.textContent = profile.display_name || profile.username;
   const sidebarUserRoleEl = $('sidebarUserRole');
@@ -1013,20 +1021,20 @@ function renderCategoryUI() {
     <div class="my-2 border-t border-surface-100 dark:border-surface-800 hidden md:block"></div>
     <div class="h-5 w-px bg-surface-200 dark:bg-surface-800 md:hidden my-auto shrink-0 mx-0.5"></div>
     ${state.kbCategories.map(c => `
-      <div class="group flex items-center justify-between drop-zone shrink-0" data-id="${c.id}">
-        <button class="kb-cat-item flex-1" data-id="${c.id}">
-          <i data-lucide="${c.visibility === 'private' ? 'lock' : (c.visibility === 'restricted' ? 'users' : 'folder')}" class="w-3.5 h-3.5 ${c.visibility === 'private' ? 'text-amber-500' : (c.visibility === 'restricted' ? 'text-brand-500' : '')}"></i>
-          <span class="truncate max-w-[120px] md:max-w-none">${c.name}</span>
+      <div class="kb-cat-row group flex items-center justify-between drop-zone shrink-0 w-full min-w-0 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800/60 transition-all relative overflow-hidden" data-id="${c.id}">
+        <button class="kb-cat-item flex-1 min-w-0 pr-1 text-left" data-id="${c.id}" title="${c.name}">
+          <i data-lucide="${c.visibility === 'private' ? 'lock' : (c.visibility === 'restricted' ? 'users' : 'folder')}" class="w-3.5 h-3.5 shrink-0 ${c.visibility === 'private' ? 'text-amber-500' : (c.visibility === 'restricted' ? 'text-brand-500' : '')}"></i>
+          <span class="truncate block flex-1 min-w-0 text-ellipsis">${c.name}</span>
         </button>
-        <div class="flex items-center opacity-0 group-hover:opacity-100 transition-all ml-1">
-          ${(state.isAdmin || c.created_by === state.user) ? `
-            <button onclick="openKBCategorySettings(${c.id})" class="p-1 px-1.5 text-surface-400 hover:text-brand-600 transition-all" title="ตั้งค่าความเป็นส่วนตัว">
-              <i data-lucide="settings" class="w-3 h-3"></i>
+        <div class="kb-cat-actions flex items-center shrink-0 ml-auto pr-1.5 opacity-85 group-hover:opacity-100 transition-opacity z-10 gap-0.5">
+          ${(state.isAdmin || state.isOrgAdmin || state.isSuperAdmin || (typeof canEditKB === 'function' && canEditKB()) || c.created_by === state.user) ? `
+            <button onclick="event.stopPropagation(); openKBCategorySettings(${c.id})" class="p-1.5 text-surface-400 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-surface-200/60 dark:hover:bg-surface-700/60 rounded-lg transition-all" title="ตั้งค่าความเป็นส่วนตัวและสิทธิ์โฟลเดอร์">
+              <i data-lucide="settings" class="w-3.5 h-3.5"></i>
             </button>
           ` : ''}
-          ${canEditKB() ? `
-            <button onclick="deleteKBCategory(${c.id})" class="p-1 px-1.5 text-surface-400 hover:text-red-500 transition-all" title="ลบหมวดหมู่">
-              <i data-lucide="x" class="w-3 h-3"></i>
+          ${(state.isAdmin || state.isOrgAdmin || state.isSuperAdmin || (typeof canEditKB === 'function' && canEditKB())) ? `
+            <button onclick="event.stopPropagation(); deleteKBCategory(${c.id})" class="p-1.5 text-surface-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/40 rounded-lg transition-all" title="ลบหมวดหมู่">
+              <i data-lucide="x" class="w-3.5 h-3.5"></i>
             </button>
           ` : ''}
         </div>
@@ -1063,6 +1071,9 @@ function filterFilesByCategory(catId) {
   // Sync UI active states (just in case it was called programmatically)
   const sidebar = $('kbCategorySidebar');
   if (sidebar) {
+    sidebar.querySelectorAll('.kb-cat-row').forEach(row => {
+      row.classList.toggle('active', row.dataset.id == catId);
+    });
     sidebar.querySelectorAll('.kb-cat-item').forEach(b => {
       b.classList.toggle('active', b.dataset.id == catId);
     });
@@ -1473,7 +1484,32 @@ function renderFileList(files) {
   });
   initIcons();
   updateBulkBar();
+  if (window._targetHighlightFileId) {
+    const tid = window._targetHighlightFileId;
+    setTimeout(() => highlightKbFile(tid), 300);
+  }
 }
+
+function highlightKbFile(fileId) {
+  if (!fileId) return;
+  // Ensure the file is visible if currently filtered into a category
+  if (window.state && window.state.files && window.state.files.length) {
+    const targetFile = window.state.files.find(f => f.file_id === fileId || String(f.file_id) === String(fileId));
+    if (targetFile && typeof filterByCategory === 'function' && window.state.currentKbCategory && window.state.currentKbCategory !== 'all' && window.state.currentKbCategory != targetFile.category_id) {
+      filterByCategory('all');
+    }
+  }
+  const el = document.getElementById(`file-${fileId}`);
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('ring-4', 'ring-brand-500', 'ring-offset-2', 'transition-all', 'duration-500');
+    setTimeout(() => {
+      el.classList.remove('ring-4', 'ring-brand-500', 'ring-offset-2');
+    }, 4500);
+    window._targetHighlightFileId = null;
+  }
+}
+window.highlightKbFile = highlightKbFile;
 
 function updateBulkBar() {
   const cbs = fileList.querySelectorAll('.file-checkbox:checked');
@@ -2024,4 +2060,4 @@ async function handleDeleteCrawledWebsite(fileId, name) {
   } catch (err) {
     toast('เกิดข้อผิดพลาด: ' + err.message, 'error');
   }
-}
+}

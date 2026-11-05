@@ -264,7 +264,7 @@ def manage_posts():
                     database.add_poll(pid, poll_question, poll_options)
                     database.log_event(f"Poll added to post: ID {pid}", user=author, org_id=get_current_org_id())
             except Exception as e:
-                print(f"Error adding poll: {e}")
+                logger.error(f"Error adding poll: {e}")
 
         database.log_event(f"New post created: ID {pid} by {author}", user=author, org_id=get_current_org_id())
         
@@ -1712,7 +1712,7 @@ def kanban_add_card():
                         }
                     }).start()
                 except Exception as e:
-                    print(f"Error sending kanban notification to {a}: {e}")
+                    logger.error(f"Error sending kanban notification to {a}: {e}")
             
     return jsonify({"ok": True, "id": card_id})
 
@@ -1775,7 +1775,7 @@ def kanban_update_card(card_id):
                 }
             }).start()
         except Exception as e:
-            print(f"Error sending kanban update notification to {a}: {e}")
+            logger.error(f"Error sending kanban update notification to {a}: {e}")
             
     return jsonify({"ok": True})
 

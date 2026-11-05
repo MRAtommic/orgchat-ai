@@ -197,6 +197,8 @@ async function dismissSystemAlertBanner(alertId = 'google_credential_error') {
 }
 
 async function checkSystemAlerts() {
+  // U0-2: Guard against unauthenticated background alerts fetching
+  if (typeof state === 'undefined' || !state.user || (!state.isAdmin && !state.isOrgAdmin)) return;
   try {
     const res = await apiFetch('/api/admin/system-alerts');
     if (res && res.ok && res.alerts && res.alerts.length > 0) {

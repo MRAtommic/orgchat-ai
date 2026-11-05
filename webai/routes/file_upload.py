@@ -60,6 +60,7 @@ from routes.shared import (
     ALLOWED_EXTENSIONS, _is_safe_url,
     online_users_registry,
     USERS, superadmin_required,
+    verify_file_token,
 )
 
 logger = logging.getLogger("OrgChatAI.File_upload")
@@ -148,7 +149,7 @@ def upload():
                                  "message": "ไฟล์นี้มีในระบบอยู่แล้ว"})
                 continue
         except Exception as _dup_err:
-            print(f"[Upload] duplicate check error: {_dup_err}")
+            logger.error(f"[Upload] duplicate check error: {_dup_err}")
 
         # Use a thread for ingestion to keep the app responsive
         _ingest_org_id = get_current_org_id()
@@ -179,7 +180,7 @@ def upload():
                         except Exception as _notify_err:
                             logger.error(f"Failed to send org upload notifications: {_notify_err}")
             except Exception as e:
-                print(f"❌ Background Ingest Error: {e}")
+                logger.error(f"❌ Background Ingest Error: {e}")
 
         thread = threading.Thread(target=run_ingest, args=(save_path, orig_name, dept, category_id))
         thread.start()
@@ -219,14 +220,14 @@ def list_files():
 def delete_file_route(file_id):
     if not can_delete_knowledge_base():
         return jsonify({"ok": False, "error": "คุณไม่มีสิทธิ์ในการลบไฟล์ (ติดต่อผู้ดูแลระบบเพื่อขอสิทธิ์)"}), 403
-    print(f"🗑️ Deletion request for file_id: {file_id}")
+    logger.info(f"🗑️ Deletion request for file_id: {file_id}")
     org_id = get_current_org_id()
     ok = rag_engine.delete_file(file_id, org_id=org_id)
     if ok:
         user = session.get("user", "Admin")
         database.log_event(f"Deleted file ID: {file_id}", user=user, org_id=org_id)
         return jsonify({"ok": True})
-    print(f"❌ Deletion failed for file_id: {file_id}")
+    logger.error(f"❌ Deletion failed for file_id: {file_id}")
     return jsonify({"ok": False, "error": "File not found or could not be deleted"}), 404
 
 
@@ -286,10 +287,34 @@ def reprocess_file_route(file_id):
 
 
 @file_bp.route("/api/files/download/<filename>")
-@login_required
 def download_file(filename):
-    # 🛡️ Strict org isolation — only serve files belonging to the user's org
+    # Path traversal guard
+    if not filename or '..' in filename or '/' in filename or '\\' in filename or ':' in filename:
+        abort(403)
+
     from pathlib import Path as _Path
+    token = request.args.get("token")
+
+    # 1. Check if accessed via valid signed token (e.g. from LINE search result link)
+    if token and verify_file_token(filename, "kb_download", token):
+        all_files = rag_engine.list_files()
+        file_entry = next(
+            (f for f in all_files if _Path(f.get("path", "")).name == filename),
+            None,
+        )
+        if not file_entry:
+            abort(404)
+        clean_name = file_entry.get("name") or filename
+        return send_from_directory(rag_engine.UPLOAD_DIR, filename, as_attachment=True, download_name=clean_name)
+
+    # 2. Otherwise require active user login & org context
+    user = session.get("user")
+    if not user:
+        if request.is_json or request.headers.get("Accept") == "application/json":
+            return jsonify({"ok": False, "error": "กรุณาเข้าสู่ระบบก่อนดาวน์โหลดไฟล์"}), 401
+        target_path = request.full_path if request.query_string else request.path
+        return redirect(f"/login?next={urllib.parse.quote(target_path)}")
+
     user_org = get_current_org_id()
     if not user_org:
         abort(403)  # No org context → deny access entirely
@@ -301,13 +326,10 @@ def download_file(filename):
         None,
     )
     if file_entry is None:
-        abort(404)  # File not found in user's org → 404 (not 403, to avoid info leak)
+        abort(404)  # File not found in user's org → 404
 
-    # Path traversal guard
-    if '..' in filename or '/' in filename or '\\' in filename:
-        abort(403)
-
-    return send_from_directory(rag_engine.UPLOAD_DIR, filename, as_attachment=True)
+    clean_name = file_entry.get("name") or filename
+    return send_from_directory(rag_engine.UPLOAD_DIR, filename, as_attachment=True, download_name=clean_name)
 
 
 @file_bp.route('/api/drive/contents', methods=['GET'])

@@ -520,102 +520,113 @@ def kanban_reorder_columns(order_list, org_id=None):
 
 # ─── Wiki CRUD ────────────────────────────────────────
 
-def wiki_get_all_pages(org_id=1):
+def wiki_get_all_pages(org_id: int = 1) -> list[dict]:
+    """Retrieve all wiki pages scoped to an organization."""
     conn = _get_conn()
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT id, slug, title, author, category_id, created_at, updated_at FROM wiki_pages WHERE organization_id = ? ORDER BY updated_at DESC",
-        (org_id,)
+        "SELECT id, slug, title, author, category_id, views, created_at, updated_at FROM wiki_pages WHERE (org_id = ? OR organization_id = ?) ORDER BY updated_at DESC",
+        (org_id, org_id)
     )
     pages = [dict(r) for r in cursor.fetchall()]
     conn.close()
     return pages
 
-def wiki_get_page(page_id=None, slug=None, org_id=1):
+def wiki_get_page(page_id: int = None, slug: str = None, org_id: int = 1) -> dict | None:
+    """Retrieve a wiki page by ID or slug within an organization and increment views."""
     conn = _get_conn()
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     if page_id:
-        cursor.execute("SELECT * FROM wiki_pages WHERE id=? AND organization_id=?", (page_id, org_id))
+        cursor.execute("SELECT * FROM wiki_pages WHERE id = ? AND (org_id = ? OR organization_id = ?)", (page_id, org_id, org_id))
     elif slug:
-        cursor.execute("SELECT * FROM wiki_pages WHERE slug=? AND organization_id=?", (slug, org_id))
+        cursor.execute("SELECT * FROM wiki_pages WHERE slug = ? AND (org_id = ? OR organization_id = ?)", (slug, org_id, org_id))
     else:
         conn.close()
         return None
     row = cursor.fetchone()
+    res = dict(row) if row else None
+    if res:
+        cursor.execute("UPDATE wiki_pages SET views = COALESCE(views, 0) + 1 WHERE id = ?", (res["id"],))
+        conn.commit()
+        res["views"] = (res.get("views") or 0) + 1
     conn.close()
-    return dict(row) if row else None
+    return res
 
-def wiki_create_page(title, content, author="System", category_id=None, org_id=1):
+def wiki_create_page(title: str, content: str = "", author: str = "System", category_id: int = None, org_id: int = 1) -> tuple[int, str]:
+    """Create a new wiki page with unique slug scoped to an organization."""
     import re, datetime
     slug = re.sub(r"[^a-z0-9-]", "-", title.lower())
     slug = re.sub(r"-+", "-", slug).strip("-") or f"page-{int(datetime.datetime.now().timestamp())}"
     conn = _get_conn()
     cursor = conn.cursor()
-    # Ensure slug uniqueness
     base_slug = slug
     i = 1
     while True:
-        cursor.execute("SELECT id FROM wiki_pages WHERE slug=? AND organization_id=?", (slug, org_id))
+        cursor.execute("SELECT id FROM wiki_pages WHERE slug = ? AND (org_id = ? OR organization_id = ?)", (slug, org_id, org_id))
         if not cursor.fetchone():
             break
         slug = f"{base_slug}-{i}"
         i += 1
     cursor.execute(
-        "INSERT INTO wiki_pages (slug, title, content, author, category_id, organization_id) VALUES (?, ?, ?, ?, ?, ?)",
-        (slug, title, content, author, category_id, org_id)
+        "INSERT INTO wiki_pages (slug, title, content, author, category_id, org_id, organization_id, views) VALUES (?, ?, ?, ?, ?, ?, ?, 0)",
+        (slug, title, content, author, category_id, org_id, org_id)
     )
     page_id = cursor.lastrowid
     conn.commit()
     conn.close()
     return page_id, slug
 
-def wiki_update_page(page_id, title=None, content=None, category_id=None, org_id=1):
+def wiki_update_page(page_id: int, title: str = None, content: str = None, category_id: int = None, org_id: int = 1) -> bool:
+    """Update fields of an existing wiki page belonging to the specified org."""
     conn = _get_conn()
     cursor = conn.cursor()
     updates = []
     values = []
     if title is not None:
-        updates.append("title=?")
+        updates.append("title = ?")
         values.append(title)
     if content is not None:
-        updates.append("content=?")
+        updates.append("content = ?")
         values.append(content)
     if category_id is not None:
-        updates.append("category_id=?")
+        updates.append("category_id = ?")
         values.append(category_id)
     if not updates:
         conn.close()
         return False
-    updates.append("updated_at=CURRENT_TIMESTAMP")
-    values.append(page_id)
-    values.append(org_id)
-    cursor.execute(f"UPDATE wiki_pages SET {', '.join(updates)} WHERE id=? AND organization_id=?", values)
+    updates.append("updated_at = CURRENT_TIMESTAMP")
+    values.extend([page_id, org_id, org_id])
+    cursor.execute(f"UPDATE wiki_pages SET {', '.join(updates)} WHERE id = ? AND (org_id = ? OR organization_id = ?)", values)
     ok = cursor.rowcount > 0
     conn.commit()
     conn.close()
     return ok
 
-def wiki_delete_page(page_id, org_id=1):
+def wiki_delete_page(page_id: int, org_id: int = 1) -> bool:
+    """Delete a wiki page belonging to the specified org."""
     conn = _get_conn()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM wiki_pages WHERE id=? AND organization_id=?", (page_id, org_id))
+    cursor.execute("DELETE FROM wiki_pages WHERE id = ? AND (org_id = ? OR organization_id = ?)", (page_id, org_id, org_id))
     ok = cursor.rowcount > 0
     conn.commit()
     conn.close()
     return ok
 
-def wiki_search(query, org_id=1):
+def wiki_search(query: str, org_id: int = 1) -> list[dict]:
+    """Search wiki pages by title or content within an organization."""
     conn = _get_conn()
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     q = f"%{query}%"
     cursor.execute(
-        "SELECT id, slug, title, author, updated_at FROM wiki_pages WHERE (title LIKE ? OR content LIKE ?) AND organization_id = ? ORDER BY updated_at DESC LIMIT 20",
-        (q, q, org_id)
+        "SELECT id, slug, title, author, views, updated_at FROM wiki_pages WHERE (title LIKE ? OR content LIKE ?) AND (org_id = ? OR organization_id = ?) ORDER BY updated_at DESC LIMIT 20",
+        (q, q, org_id, org_id)
     )
     results = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return results
 
 
 def get_all_lunch_places():
@@ -711,80 +722,7 @@ def get_all_posts(org_id: int = 1) -> list[dict]:
 def get_post_by_id(pid: int) -> dict | None:
     return get_post(pid)
 
-def wiki_get_all_pages(org_id: int = 1) -> list[dict]:
-    conn = _get_conn()
-    conn.row_factory = sqlite3.Row
-    rows = conn.execute("SELECT * FROM wiki_pages WHERE org_id = ? ORDER BY updated_at DESC", (org_id,)).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
 
-def wiki_search(q: str, org_id: int = 1) -> list[dict]:
-    conn = _get_conn()
-    conn.row_factory = sqlite3.Row
-    pattern = f"%{q}%"
-    rows = conn.execute("SELECT * FROM wiki_pages WHERE org_id = ? AND (title LIKE ? OR content LIKE ?) ORDER BY updated_at DESC", (org_id, pattern, pattern)).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
-
-def wiki_create_page(title: str, content: str = "", author: str = "Anonymous", category_id: int = None, org_id: int = 1) -> tuple[int, str]:
-    import re
-    slug = re.sub(r'[^a-zA-Z0-9_\-]', '_', title.lower()).strip('_') or f"page_{int(time.time())}"
-    conn = _get_conn()
-    cur = conn.cursor()
-    cur.execute(
-        "INSERT INTO wiki_pages (title, slug, content, author, category_id, org_id) VALUES (?, ?, ?, ?, ?, ?)",
-        (title, slug, content, author, category_id, org_id)
-    )
-    page_id = cur.lastrowid
-    conn.commit()
-    conn.close()
-    return page_id, slug
-
-def wiki_get_page(page_id: int = None, slug: str = None, org_id: int = 1) -> dict | None:
-    conn = _get_conn()
-    conn.row_factory = sqlite3.Row
-    if page_id:
-        row = conn.execute("SELECT * FROM wiki_pages WHERE id = ? AND org_id = ?", (page_id, org_id)).fetchone()
-    elif slug:
-        row = conn.execute("SELECT * FROM wiki_pages WHERE slug = ? AND org_id = ?", (slug, org_id)).fetchone()
-    else:
-        row = None
-    if row:
-        conn.execute("UPDATE wiki_pages SET views = views + 1 WHERE id = ?", (row["id"],))
-        conn.commit()
-    conn.close()
-    return dict(row) if row else None
-
-def wiki_update_page(page_id: int, title: str = None, content: str = None, category_id: int = None, org_id: int = 1) -> bool:
-    conn = _get_conn()
-    cur = conn.cursor()
-    fields = []
-    params = []
-    if title is not None:
-        fields.append("title = ?"); params.append(title)
-    if content is not None:
-        fields.append("content = ?"); params.append(content)
-    if category_id is not None:
-        fields.append("category_id = ?"); params.append(category_id)
-    fields.append("updated_at = CURRENT_TIMESTAMP")
-    if not fields:
-        conn.close()
-        return False
-    params.extend([page_id, org_id])
-    cur.execute(f"UPDATE wiki_pages SET {', '.join(fields)} WHERE id = ? AND org_id = ?", params)
-    ok = cur.rowcount > 0
-    conn.commit()
-    conn.close()
-    return ok
-
-def wiki_delete_page(page_id: int, org_id: int = 1) -> bool:
-    conn = _get_conn()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM wiki_pages WHERE id = ? AND org_id = ?", (page_id, org_id))
-    ok = cur.rowcount > 0
-    conn.commit()
-    conn.close()
-    return ok
 
 # NOTE: kanban_get_card / kanban_get_column / kanban_update_card are defined once above.
 # (Duplicate definitions were removed: the later get_column returned a fake column for any

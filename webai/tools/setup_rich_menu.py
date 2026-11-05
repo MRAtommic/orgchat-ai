@@ -135,7 +135,7 @@ def setup_rich_menu():
 
     # 2. Create Rich Menu
     print("📝 Creating Rich Menu object on LINE...")
-    res = requests.post("https://api.line.me/v2/bot/richmenu", headers=HEADERS, json=rich_menu_obj)
+    res = requests.post("https://api.line.me/v2/bot/richmenu", headers=HEADERS, json=rich_menu_obj, timeout=15)
     if res.status_code != 200:
         print(f"❌ Failed to create menu: {res.text}")
         return
@@ -153,7 +153,8 @@ def setup_rich_menu():
         res_img = requests.post(
             f"https://api-data.line.me/v2/bot/richmenu/{rich_menu_id}/content",
             headers=img_headers,
-            data=f
+            data=f,
+            timeout=30
         )
         if res_img.status_code != 200:
             print(f"❌ Failed to upload image: {res_img.text}")
@@ -162,7 +163,7 @@ def setup_rich_menu():
 
     # 4. Set as Default Rich Menu
     print("⭐ Setting as default menu for all users...")
-    res_def = requests.post(f"https://api.line.me/v2/bot/user/all/richmenu/{rich_menu_id}", headers=HEADERS)
+    res_def = requests.post(f"https://api.line.me/v2/bot/user/all/richmenu/{rich_menu_id}", headers=HEADERS, timeout=15)
     if res_def.status_code == 200:
         print("🎉 SUCCESS! Rich menu is now live on your LINE Official Account.")
     else:

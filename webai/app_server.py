@@ -29,7 +29,10 @@ if sys.stderr.encoding != 'utf-8':
 from dotenv import load_dotenv
 from pathlib import Path
 BASE_DIR = Path(__file__).parent.absolute()
+_orig_db_path = os.environ.get("DB_PATH")
 load_dotenv(BASE_DIR / ".env", override=True, encoding="utf-8")
+if _orig_db_path:
+    os.environ["DB_PATH"] = _orig_db_path
 
 import uuid
 import time
@@ -280,22 +283,40 @@ def create_app():
     """Flask Application Factory — creates, configures, and returns the app."""
     app = Flask(__name__)
 
-    # ─── Secret Key ──────────────────────────────────────────
-    _secret = os.environ.get("FLASK_SECRET_KEY", "")
-    if not _secret or _secret == "orgchat-super-secret-key-1234":
-        import secrets as _sec
-        _secret = _sec.token_hex(32)
-        logger.warning(">>> FLASK_SECRET_KEY not set - using random key (sessions reset on restart). Set it in .env!")
+    # ─── Secret Key & Cookie Security (P0-2 & P0-3) ───────────
+    from routes.shared import is_production
+    _secret = (os.environ.get("FLASK_SECRET_KEY") or os.environ.get("SECRET_KEY", "")).strip()
+    _insecure_defaults = {"orgchat-super-secret-key-1234", "orgchat-default-secret-change-me", "dev-secret-change-in-prod"}
+    
+    if is_production():
+        if not _secret or _secret in _insecure_defaults:
+            raise RuntimeError(
+                "CRITICAL SECURITY ERROR (P0-2): FLASK_SECRET_KEY (or SECRET_KEY) must be set to a strong random value in production!"
+            )
+    else:
+        if not _secret or _secret in _insecure_defaults:
+            import secrets as _sec
+            _secret = _sec.token_hex(32)
+            logger.warning(">>> FLASK_SECRET_KEY not set - using random key (sessions reset on restart). Set it in .env!")
+            
     app.secret_key = _secret
     app.config['TEMPLATES_AUTO_RELOAD'] = True
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
     app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB max upload
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
     app.config['SESSION_COOKIE_HTTPONLY'] = True
-    if os.environ.get("SESSION_COOKIE_SECURE", "").lower() == "true":
+    
+    # P0-3: Default SESSION_COOKIE_SECURE=True in production, can override via env
+    _cookie_secure_env = os.environ.get("SESSION_COOKIE_SECURE", "").strip().lower()
+    if _cookie_secure_env == "true":
         app.config['SESSION_COOKIE_SECURE'] = True
-    else:
+    elif _cookie_secure_env == "false":
         app.config['SESSION_COOKIE_SECURE'] = False
+    else:
+        # ค่าเริ่มต้น: เปิด Secure เมื่อเป็น production หรือเมื่อ BASE_URL เป็น https (เช่นรันหลัง Cloudflare Tunnel)
+        # เดิมผูกกับ APP_ENV=production อย่างเดียว ทำให้เว็บ HTTPS จริงส่ง session cookie ไม่มีแฟล็ก Secure
+        # การเข้าผ่าน http://localhost ยังใช้ได้ เพราะเบราว์เซอร์ยอมรับ cookie Secure บน localhost
+        app.config['SESSION_COOKIE_SECURE'] = is_production() or os.environ.get("BASE_URL", "").strip().lower().startswith("https://")
 
     # ─── Proxy Fix ───────────────────────────────────────────
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
@@ -426,6 +447,23 @@ def create_app():
 
         return None
 
+    def _get_ua_fingerprint(req):
+        """U0-1: Stable User-Agent family & OS fingerprint.
+        Resistant to minor browser version updates or navigation/fetch variance,
+        while strictly detecting device/OS or browser cross-hijacking.
+        """
+        ua = req.user_agent
+        platform = (ua.platform or "").lower()
+        browser = (ua.browser or "").lower()
+        version = ua.version or ""
+        major = version.split('.')[0] if version else ""
+        if platform or browser:
+            return f"{platform}:{browser}:{major}"
+        raw = (req.headers.get('User-Agent') or '').lower()
+        p = 'win' if 'windows' in raw else ('mac' if 'macintosh' in raw or 'mac os' in raw else ('android' if 'android' in raw else ('ios' if 'iphone' in raw or 'ipad' in raw else 'other')))
+        b = 'chrome' if 'chrome' in raw or 'crios' in raw else ('firefox' if 'firefox' in raw else ('safari' if 'safari' in raw else ('edge' if 'edg' in raw else 'other')))
+        return f"{p}:{b}"
+
     # ─── Idle Session Timeout (2 hours) & CSRF Middleware ────
     _IDLE_SECONDS = 2 * 60 * 60  # 2 ชั่วโมง
 
@@ -488,19 +526,24 @@ def create_app():
         if 'user' not in session:
             return
 
-        # 🛡️ 4. Session Hijacking Prevention (User-Agent Fingerprint)
-        import hashlib
-        ua_string = _req.user_agent.string or ""
-        ua_hash = hashlib.sha256(ua_string.encode('utf-8')).hexdigest()[:16]
+        # 🛡️ 4. Session Hijacking Prevention (User-Agent Family Fingerprint)
+        ua_fingerprint = _get_ua_fingerprint(_req)
         stored_ua = session.get('_ua_hash')
         if stored_ua is None:
-            session['_ua_hash'] = ua_hash
-        elif stored_ua != ua_hash:
-            logger.warning(f"🛡️ Session Hijacking Blocked: UA mismatch for user={session.get('user')} IP={_req.remote_addr}")
+            session['_ua_hash'] = ua_fingerprint
+        elif stored_ua != ua_fingerprint:
+            logger.warning(
+                f"🛡️ Session Hijacking Blocked: UA mismatch for user={session.get('user')} "
+                f"IP={_req.remote_addr} (stored='{stored_ua}', current='{ua_fingerprint}')"
+            )
             session.clear()
             if _req.path.startswith('/api/') or _req.path.startswith('/line/') or _req.is_json:
                 from flask import jsonify as _json_hijack
-                return _json_hijack({"ok": False, "error": "session_hijack_detected", "message": "ตรวจพบการใช้เซสชันจากอุปกรณ์อื่น กรุณาเข้าสู่ระบบใหม่"}), 401
+                return _json_hijack({
+                    "ok": False,
+                    "error": "session_hijack_detected",
+                    "message": "ตรวจพบการเข้าสู่ระบบจากอุปกรณ์หรือเบราว์เซอร์อื่น กรุณาเข้าสู่ระบบใหม่เพื่อความปลอดภัย"
+                }), 401
             from flask import redirect as _redir_hijack
             return _redir_hijack('/?session_invalid=1')
 
@@ -527,8 +570,17 @@ def create_app():
                         session['session_version'] = db_session_ver
                 except Exception as _sve:
                     logger.debug(f"Session version check bypass: {_sve}")
+        # ⏱️ เวลาหมดอายุเซสชันตามนโยบายองค์กร (cache ใน session 60 วินาที)
+        _lim = session.get('_idle_lim')
+        if not _lim or now - _lim[0] > 60:
+            try:
+                from db import org_security as _osec
+                _lim = [now, _osec.idle_seconds_for_user(session.get('user'), _IDLE_SECONDS)]
+            except Exception:
+                _lim = [now, _IDLE_SECONDS]
+            session['_idle_lim'] = _lim
         last = session.get('_last_active', now)
-        if now - last > _IDLE_SECONDS:
+        if now - last > _lim[1]:
             session.clear()
             # API / webhook → return 401 JSON; page request → redirect to login
             if _req.path.startswith('/api/') or _req.path.startswith('/line/') or _req.is_json:
@@ -537,6 +589,22 @@ def create_app():
             from flask import redirect as _redir
             return _redir('/?session_expired=1')
         session['_last_active'] = now
+
+        # 🛡️ นโยบายองค์กรบังคับ 2FA: ผู้ใช้ที่ยังไม่เปิดต้องตั้งค่าก่อนจึงใช้งาน API อื่นได้
+        if _req.path.startswith('/api/') and not any(_req.path.startswith(p) for p in (
+                '/api/2fa/', '/api/logout', '/api/csrf-token', '/api/me', '/api/org/me', '/api/org/security/my-status', '/api/login', '/api/qr/')):
+            _need = session.get('_2fa_need')
+            if not _need or now - _need[0] > 60:
+                try:
+                    from db import org_security as _osec2
+                    _need = [now, bool(_osec2.needs_2fa_setup(session.get('user')))]
+                except Exception:
+                    _need = [now, False]
+                session['_2fa_need'] = _need
+            if _need[1]:
+                from flask import jsonify as _json_2fa
+                return _json_2fa({"ok": False, "error": "2fa_setup_required",
+                                 "message": "องค์กรของคุณบังคับให้เปิดการยืนยันตัวตนสองชั้น (2FA) กรุณาตั้งค่าก่อนใช้งานต่อ"}), 403
 
         # Re-validate user is_active + org membership ทุก 5 นาที
         org_id  = session.get('org_id')
@@ -796,11 +864,11 @@ try:
                             summary[:200], link="#feed"
                         )
                         batch_send_push_notification(unames, "Daily Briefing", summary[:120], url="/")
-                        print(f">>> Daily summary org={org_id} → {len(unames)} users")
+                        logger.info(f">>> Daily summary org={org_id} → {len(unames)} users")
                 except Exception as _oe:
-                    print(f">>> Daily summary error org={org_id}: {_oe}")
+                    logger.error(f">>> Daily summary error org={org_id}: {_oe}")
         except Exception as e:
-            print(f">>> Scheduled daily summary error: {e}")
+            logger.error(f">>> Scheduled daily summary error: {e}")
 
     _scheduler.add_job(_scheduled_daily_summary, 'cron', hour=8, minute=0, id='daily_summary')
 
@@ -849,11 +917,11 @@ try:
                             summary_web
                         ), kwargs={"flex_bubble": brief_bubble}).start()
 
-                    print(f">>> 🌅 Smart Morning Briefing delivered for org={org_id} ({org_name}) → {len(members)} members")
+                    logger.info(f">>> 🌅 Smart Morning Briefing delivered for org={org_id} ({org_name}) → {len(members)} members")
                 except Exception as _oe:
-                    print(f">>> ⚠️ Morning brief error org={org_id}: {_oe}")
+                    logger.error(f">>> ⚠️ Morning brief error org={org_id}: {_oe}")
         except Exception as e:
-            print(f">>> ⚠️ Scheduled morning brief error: {e}")
+            logger.error(f">>> ⚠️ Scheduled morning brief error: {e}")
 
     _scheduler.add_job(_scheduled_executive_brief, 'cron', hour=8, minute=30, id='morning_executive_brief')
 
@@ -868,9 +936,9 @@ try:
                     KnowledgeHarvester.analyze_recent_messages(org_id=_org["id"], limit=100)
                 except Exception:
                     pass
-            print(">>> Knowledge Harvesting check completed.")
+            logger.info(">>> Knowledge Harvesting check completed.")
         except Exception as e:
-            print(f">>> Scheduled knowledge harvest error: {e}")
+            logger.error(f">>> Scheduled knowledge harvest error: {e}")
 
     _scheduler.add_job(_scheduled_knowledge_harvest, 'cron', hour=22, minute=0, id='wiki_harvest')
 
@@ -980,7 +1048,7 @@ try:
     _scheduler.add_job(_scheduled_offline_queue_sync, 'interval', minutes=5, id='offline_queue_sync')
 
 except ImportError:
-    print(">>> APScheduler not installed - run: pip install APScheduler")
+    logger.info(">>> APScheduler not installed - run: pip install APScheduler")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -999,7 +1067,7 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"[!] Startup background update failed: {e}", flush=True)
     else:
-        print(">>> Skipping startup sync as requested.")
+        logger.warning(">>> Skipping startup sync as requested.")
 
     # ล้างไฟล์ค้าง processing จาก session ก่อน restart
     try:
@@ -1009,11 +1077,11 @@ if __name__ == "__main__":
     except Exception as _ce:
         print(f"[!] Cleanup stale failed: {_ce}", flush=True)
 
-    print(f">>> Starting Org Chatbot at http://127.0.0.1:{port}")
+    logger.info(f">>> Starting Org Chatbot at http://127.0.0.1:{port}")
 
     # Print registered routes
-    print(">>> Registered Routes:")
+    logger.info(">>> Registered Routes:")
     for rule in app.url_map.iter_rules():
-        print(f"   {rule.endpoint:30} -> {rule.rule}")
+        logger.info(f"   {rule.endpoint:30} -> {rule.rule}")
 
     socketio.run(app, debug=False, port=port, host="0.0.0.0", use_reloader=False, allow_unsafe_werkzeug=True)

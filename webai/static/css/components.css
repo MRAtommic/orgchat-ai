@@ -513,8 +513,33 @@
 
 
     /* KB Category Sidebar Styles */
+    .kb-cat-row {
+      width: 100%;
+      min-width: 0;
+      position: relative;
+    }
+    .kb-cat-row.active {
+      background: #0f172a;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1);
+    }
+    .dark .kb-cat-row.active {
+      background: #1e293b;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .kb-cat-row.active .kb-cat-item {
+      background: transparent !important;
+      color: #ffffff !important;
+      box-shadow: none !important;
+    }
+    .kb-cat-row.active .text-surface-400 {
+      color: #94a3b8 !important;
+    }
+    .kb-cat-row.active .text-surface-400:hover {
+      color: #ffffff !important;
+    }
     .kb-cat-item {
       width: 100%;
+      min-width: 0;
       display: flex;
       align-items: center;
       gap: 10px;
@@ -526,6 +551,7 @@
       transition: all 0.2s;
       text-transform: uppercase;
       letter-spacing: 0.02em;
+      overflow: hidden;
     }
 
     .dark .kb-cat-item {
@@ -1075,3 +1101,39 @@
   border-color: #2563eb;
 }
 
+
+    .kb-cat-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      min-width: 0;
+    }
+    .kb-cat-row .kb-cat-item {
+      width: auto !important;
+      flex: 1 1 0% !important;
+      min-width: 0 !important;
+      overflow: hidden !important;
+    }
+    .kb-cat-row .kb-cat-actions {
+      flex-shrink: 0 !important;
+      display: flex !important;
+      align-items: center !important;
+      gap: 2px !important;
+      z-index: 10;
+    }
+
+/* ─── Segmented Sub-Tab Pills (KB & LINE OA Tabs) ─── */
+.line-main-tab, .kb-main-tab {
+  outline: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+  user-select: none !important;
+}
+.line-main-tab:focus, .line-main-tab:focus-visible,
+.kb-main-tab:focus, .kb-main-tab:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+.line-main-tab.bg-white, .kb-main-tab.bg-white {
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important;
+}

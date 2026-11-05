@@ -33,6 +33,7 @@ from routes.shared import (
     VAPID_PUBLIC_KEY,
     get_current_org_id, _get_gemini_api_key, is_superadmin_user,
     get_or_create_csrf_token,
+    generate_file_token, verify_file_token,
 )
 
 logger = logging.getLogger("OrgChatAI.Misc")
@@ -68,6 +69,24 @@ def _safe_filename(filename: str) -> bool:
     return True
 
 
+def get_social_file_org_id(filename: str):
+    """Find the organization_id associated with a social feed upload from the database."""
+    clean = filename.split('/')[-1]
+    try:
+        conn = database._get_conn()
+        try:
+            row = conn.execute(
+                'SELECT organization_id FROM posts WHERE attachments LIKE ? LIMIT 1',
+                (f'%{clean}%',)
+            ).fetchone()
+            return row[0] if row else None
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning(f"Error querying post org for {clean}: {e}")
+        return None
+
+
 @misc_bp.route('/uploads/social_feed/<path:filename>')
 def serve_social_uploads(filename):
     if not _safe_filename(filename):
@@ -78,12 +97,36 @@ def serve_social_uploads(filename):
         parts = filename.split('_', 1)
         if parts[0].isdigit():
             clean_name = parts[1]
-    res = send_from_directory('uploads/social_feed', filename, as_attachment=as_att, download_name=clean_name)
-    res.headers['Access-Control-Allow-Origin'] = '*'
-    return res
+
+    # 1. Check if this is an authorized LINE preview fetch (for rendering card thumbnail inside LINE)
+    preview_tok = request.args.get('preview_token')
+    if preview_tok and verify_file_token(filename, "preview", preview_tok):
+        res = send_from_directory('uploads/social_feed', filename, as_attachment=as_att, download_name=clean_name)
+        res.headers['Cache-Control'] = 'public, max-age=86400'
+        return res
+
+    # 2. Require authentication and organization access check (P1-1: No User-Agent bypass)
+    user = session.get("user")
+    if not user:
+        if request.is_json or request.headers.get('Accept') == 'application/json':
+            return jsonify({"ok": False, "error": "กรุณาเข้าสู่ระบบก่อนดูไฟล์ขององค์กร"}), 401
+        target_path = request.full_path if request.query_string else request.path
+        return redirect(f"/login?next={urllib.parse.quote(target_path)}")
+
+    # 4. User is logged in: Verify organization membership!
+    post_org_id = get_social_file_org_id(filename)
+    if post_org_id is not None:
+        user_is_sa = is_superadmin_user(user)
+        user_in_org = database.is_org_member(post_org_id, user)
+        if not user_is_sa and not user_in_org:
+            abort(403)
+
+    # 5. Access authorized: Serve the file securely
+    return send_from_directory('uploads/social_feed', filename, as_attachment=as_att, download_name=clean_name)
 
 
 @misc_bp.route('/uploads/receipts_backup/<path:filename>')
+@login_required
 def serve_receipts_backup(filename):
     if not _safe_filename(filename):
         abort(403)
@@ -524,4 +567,6 @@ def health_check():
         "version": VERSION,
         "timestamp": datetime.now().isoformat(),
     }), 200 if db_ok else 503
+
+
 

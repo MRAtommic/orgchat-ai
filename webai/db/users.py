@@ -82,6 +82,7 @@ def get_user_by_email(email: str) -> dict | None:
         SELECT username, role, is_active, email 
         FROM user_settings 
         WHERE email = ? COLLATE NOCASE AND is_active = 1
+        ORDER BY CASE WHEN username != email THEN 0 ELSE 1 END
     """, (email_clean,))
     row = cursor.fetchone()
     if row:
@@ -166,7 +167,7 @@ def update_user_totp(username, secret, backup_codes_json="", enabled=False):
             totp_secret = EXCLUDED.totp_secret,
             totp_backup_codes = EXCLUDED.totp_backup_codes,
             totp_enabled = EXCLUDED.totp_enabled
-    """, (username, secret, backup_codes_json, 1 if enabled else 0))
+    """, (username, __import__("secret_vault").encrypt(secret), backup_codes_json, 1 if enabled else 0))
     conn.commit()
     conn.close()
 
@@ -727,11 +728,14 @@ def get_personas(only_active=True):
     conn.close()
     return results
 
-def get_persona(persona_id):
-    """Returns a specific persona."""
+def get_persona(persona_id, org_id: int | None = None) -> dict | None:
+    """Returns a specific persona, optionally scoped to an organization."""
     conn = _get_conn()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM ai_personas WHERE id = ?", (persona_id,))
+    if org_id is not None:
+        cursor.execute("SELECT * FROM ai_personas WHERE id = ? AND (organization_id = ? OR organization_id IS NULL)", (persona_id, org_id))
+    else:
+        cursor.execute("SELECT * FROM ai_personas WHERE id = ?", (persona_id,))
     columns = [column[0] for column in cursor.description]
     row = cursor.fetchone()
     conn.close()
@@ -942,17 +946,7 @@ def get_all_personas_v2(org_id=None):
     conn.close()
     return results
 
-def get_persona(pid):
-    """Retrieves a single persona by ID."""
-    conn = _get_conn()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM ai_personas WHERE id = ?", (pid,))
-    columns = [column[0] for column in cursor.description]
-    row = cursor.fetchone()
-    conn.close()
-    if row:
-        return dict(zip(columns, row))
-    return None
+
 
 # ─── Message Edit Functions ───────────────────
 

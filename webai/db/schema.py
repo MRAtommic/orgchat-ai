@@ -4,8 +4,11 @@ from .connection import _get_conn, DB_PATH, DB_TYPE
 
 logger = logging.getLogger("OrgChatAI.DB.Schema")
 
-def init_db():
-    conn = _get_conn()
+def init_db(conn=None):
+    should_close = False
+    if conn is None:
+        conn = _get_conn()
+        should_close = True
     cursor = conn.cursor()
     cursor.execute("PRAGMA journal_mode=WAL;")
     cursor.execute("PRAGMA synchronous=NORMAL;")
@@ -162,7 +165,7 @@ def init_db():
     # NEW Migration for schedules
     try:
         cursor.execute("ALTER TABLE schedules ADD COLUMN is_public INTEGER DEFAULT 0")
-        print("✅ Database migrated: Added is_public column to schedules.")
+        logger.info("✅ Database migrated: Added is_public column to schedules.")
     except sqlite3.OperationalError:
         pass
     
@@ -210,13 +213,13 @@ def init_db():
     # Migration: Add feedback column if it doesn't exist for older databases
     try:
         cursor.execute("ALTER TABLE messages ADD COLUMN feedback INTEGER DEFAULT 0")
-        print("✅ Database migrated: Added feedback column.")
+        logger.info("✅ Database migrated: Added feedback column.")
     except sqlite3.OperationalError:
         pass
 
     try:
         cursor.execute("ALTER TABLE schedules ADD COLUMN start_time TEXT DEFAULT '09:00'")
-        print("✅ Database migrated: Added start_time column to schedules.")
+        logger.info("✅ Database migrated: Added start_time column to schedules.")
     except sqlite3.OperationalError:
         pass
 
@@ -239,6 +242,10 @@ def init_db():
 
     try:
         cursor.execute("ALTER TABLE user_profiles ADD COLUMN line_user_id TEXT")
+    except sqlite3.OperationalError: pass
+
+    try:
+        cursor.execute("ALTER TABLE user_profiles ADD COLUMN line_login_id TEXT")
     except sqlite3.OperationalError: pass
 
     try:
@@ -304,17 +311,26 @@ def init_db():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS leave_requests (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            org_id INTEGER NOT NULL DEFAULT 1,
             line_user_id TEXT,
             username TEXT,
             leave_type TEXT,
+            type TEXT,
             start_date TEXT,
             end_date TEXT,
             reason TEXT,
             file_link TEXT,
             status TEXT DEFAULT 'pending',
+            approved_by TEXT,
+            approver_note TEXT,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    try:
+        cursor.execute("ALTER TABLE leave_requests ADD COLUMN org_id INTEGER NOT NULL DEFAULT 1")
+    except Exception:
+        pass
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS user_leave_quotas (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -464,9 +480,12 @@ def init_db():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS kanban_columns (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
+            title TEXT,
+            name TEXT,
             org_id INTEGER DEFAULT 1,
-            position INTEGER DEFAULT 0
+            position INTEGER DEFAULT 0,
+            color TEXT DEFAULT '#6366f1',
+            created_by TEXT DEFAULT 'System'
         )
     """)
     cursor.execute("""
@@ -479,6 +498,8 @@ def init_db():
             assignee TEXT,
             due_date TEXT,
             priority TEXT DEFAULT 'normal',
+            labels TEXT,
+            color TEXT,
             is_done INTEGER DEFAULT 0,
             created_by TEXT,
             org_id INTEGER DEFAULT 1,
@@ -493,7 +514,12 @@ def init_db():
         "ALTER TABLE wiki_pages ADD COLUMN views INTEGER DEFAULT 0",
         "ALTER TABLE kanban_cards ADD COLUMN org_id INTEGER DEFAULT 1",
         "ALTER TABLE kanban_cards ADD COLUMN created_by TEXT",
+        "ALTER TABLE kanban_cards ADD COLUMN labels TEXT",
+        "ALTER TABLE kanban_cards ADD COLUMN color TEXT",
         "ALTER TABLE kanban_columns ADD COLUMN org_id INTEGER DEFAULT 1",
+        "ALTER TABLE kanban_columns ADD COLUMN title TEXT",
+        "ALTER TABLE kanban_columns ADD COLUMN color TEXT DEFAULT '#6366f1'",
+        "ALTER TABLE kanban_columns ADD COLUMN created_by TEXT DEFAULT 'System'",
     ]:
         try:
             cursor.execute(alter_sql)
@@ -636,7 +662,7 @@ def init_db():
     # Migration: Add status to schedules for Kanban
     try:
         cursor.execute("ALTER TABLE schedules ADD COLUMN status TEXT DEFAULT 'todo'")
-        print("✅ Database migrated: Added status column to schedules (Kanban).")
+        logger.info("✅ Database migrated: Added status column to schedules (Kanban).")
     except sqlite3.OperationalError:
         pass
 
@@ -668,7 +694,7 @@ def init_db():
     # Migration: Add reaction column to likes table
     try:
         cursor.execute("ALTER TABLE likes ADD COLUMN reaction TEXT DEFAULT 'like'")
-        print("✅ Database migrated: Added reaction column to likes.")
+        logger.info("✅ Database migrated: Added reaction column to likes.")
     except sqlite3.OperationalError:
         pass
 
@@ -954,6 +980,7 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,
             slug TEXT UNIQUE,
+            owner_username TEXT,
             plan TEXT DEFAULT 'free',
             max_users INTEGER DEFAULT 10,
             trial_ends_at DATETIME,
@@ -964,6 +991,12 @@ def init_db():
     """)
 
     # --- Per-Org Google OAuth2 Token Storage (1 Google account shared by entire org) ---
+    
+    try:
+        cursor.execute("ALTER TABLE organizations ADD COLUMN owner_username TEXT")
+    except Exception:
+        pass
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS org_google_tokens (
             org_id INTEGER PRIMARY KEY,
@@ -1322,6 +1355,37 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_meeting_notes_org ON meeting_notes(org_id, created_at)")
 
     # ══════════════════════════════════════════════════════
+    # Feature: Org Flex Card Customization
+    # ══════════════════════════════════════════════════════
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS org_flex_settings (
+            org_id INTEGER PRIMARY KEY,
+            primary_color TEXT DEFAULT '#2563EB',
+            header_bg TEXT DEFAULT '#1B2838',
+            header_text_color TEXT DEFAULT '#FFFFFF',
+            header_icon TEXT DEFAULT '📢',
+            header_title TEXT DEFAULT 'ประกาศใหม่',
+            header_sub TEXT DEFAULT 'NEW ANNOUNCEMENT',
+            badge_text TEXT DEFAULT 'GENERAL',
+            badge_bg TEXT DEFAULT '#EFF6FF',
+            badge_color TEXT DEFAULT '#2563EB',
+            button_style TEXT DEFAULT 'primary',
+            button_color TEXT DEFAULT '#2563EB',
+            portal_button_text TEXT DEFAULT '💬 ดูในระบบ OrgChat',
+            feed_primary_color TEXT DEFAULT '#7C3AED',
+            feed_header_bg TEXT DEFAULT '#7C3AED',
+            feed_header_icon TEXT DEFAULT '✨',
+            feed_header_title TEXT DEFAULT 'โพสต์ใหม่ใน Feed',
+            feed_header_sub TEXT DEFAULT 'NEW FEED POST',
+            card_style TEXT DEFAULT 'modern',
+            show_avatar INTEGER DEFAULT 1,
+            custom_json_template TEXT,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+
+    # ══════════════════════════════════════════════════════
     # High-Performance Composite Indexes
     # ══════════════════════════════════════════════════════
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_org_user_time ON messages(organization_id, username, timestamp)")
@@ -1340,6 +1404,7 @@ def init_db():
     except Exception as e:
         logger.warning(f"Database migration notice: {e}")
 
-    conn.close()
+    if should_close:
+        conn.close()
 
 

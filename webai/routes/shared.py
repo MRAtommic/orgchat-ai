@@ -155,7 +155,7 @@ try:
 except ImportError:
     OAUTH2_AVAILABLE = False
     oauth2_service = None
-    print("⚠️ oauth2_service not available — per-user Google login disabled")
+    logger.warning("⚠️ oauth2_service not available — per-user Google login disabled")
 
 try:
     from google.oauth2 import id_token
@@ -218,11 +218,11 @@ def send_push_notification(username, title, message, url='/', tag=None):
                 vapid_claims=VAPID_CLAIMS.copy()
             )
         except WebPushException as ex:
-            print(f"WebPush error for {username}: {ex}")
+            logger.error(f"WebPush error for {username}: {ex}")
             if ex.response is not None and ex.response.status_code in [404, 410]:
                 database.remove_push_subscription(username, sub_json)
         except Exception as e:
-            print(f"General Push error for {username}: {e}")
+            logger.error(f"General Push error for {username}: {e}")
 
 def batch_send_push_notification(usernames, title, message, url='/'):
     """Send push notifications to multiple users in parallel."""
@@ -451,7 +451,8 @@ def get_rag_filter(username, org_id=None):
         return None
 
     user_settings = database.get_user_setting(username)
-    if user_settings.get("role") == "admin":
+    user_role = user_settings.get("role") or user_settings.get("org_role")
+    if user_role in ("admin", "superadmin", "owner"):
         if org_id is not None:
             return {"organization_id": org_id}
         # 🛡️ Admin with no org context: return restrictive filter (match nothing)
@@ -590,22 +591,51 @@ def validate_uploaded_file(file_stream, filename) -> tuple[bool, str]:
 # URL Safety (SSRF Prevention)
 # ═══════════════════════════════════════════════════════════════
 
-def _is_safe_url(url: str) -> bool:
-    """Block SSRF: only allow public http/https URLs."""
+def _is_safe_url(url: str, allowed_ports: tuple = (80, 443)) -> bool:
+    """Block SSRF: resolve DNS and ensure all resolved IP addresses are public (P1-2)."""
+    import socket
+    import ipaddress
+    from urllib.parse import urlparse
+
     try:
         parsed = urlparse(url)
         if parsed.scheme not in ("http", "https"):
             return False
-        host = parsed.hostname or ""
-        blocked_hosts = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
-        if host in blocked_hosts:
+
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        if port not in allowed_ports:
             return False
+
+        host = parsed.hostname or ""
+        if not host:
+            return False
+
+        blocked_hostnames = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
+        if host.lower() in blocked_hostnames:
+            return False
+
+        # Resolve host to IP addresses (IPv4 & IPv6)
         try:
-            ip = ipaddress.ip_address(host)
-            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+            addr_infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
+        except (socket.gaierror, socket.herror, OSError):
+            return False
+
+        if not addr_infos:
+            return False
+
+        for addr in addr_infos:
+            ip_str = addr[4][0]
+            ip = ipaddress.ip_address(ip_str)
+            if (
+                ip.is_private or
+                ip.is_loopback or
+                ip.is_link_local or
+                ip.is_reserved or
+                ip.is_multicast or
+                ip.is_unspecified
+            ):
                 return False
-        except ValueError:
-            pass  # hostname, not IP — OK
+
         return True
     except Exception:
         return False
@@ -792,3 +822,71 @@ def verify_file_token(filename: str, purpose: str, token: str) -> bool:
         return hmac.compare_digest(sig, expected_sig)
     except Exception:
         return False
+
+
+def sanitize_ai_output(text: str) -> str:
+    """Sanitizes AI response to prevent accidental leakage of sensitive keys or tokens."""
+    if not text or not isinstance(text, str):
+        return text
+    import re
+    # Mask API Keys (OpenAI sk-..., Gemini AIzaSy..., Stripe sk_live_...)
+    text = re.sub(r'sk-[a-zA-Z0-9]{20,}', '[REDACTED_API_KEY]', text)
+    text = re.sub(r'AIzaSy[a-zA-Z0-9_\-]+', '[REDACTED_GEMINI_KEY]', text)
+    text = re.sub(r'sk_live_[a-zA-Z0-9]{24,}', '[REDACTED_STRIPE_KEY]', text)
+    text = re.sub(r'sk_test_[a-zA-Z0-9]{24,}', '[REDACTED_STRIPE_KEY]', text)
+    return text
+
+
+def convert_markdown_tables_to_text(text: str) -> str:
+    """Converts raw Markdown tables (| ... |) into clean readable bullet lists for LINE / mobile."""
+    if not text or not isinstance(text, str) or "|" not in text:
+        return text
+    import re
+    table_pattern = re.compile(
+        r'((?:^[ \t]*\|.+?\|[ \t]*(?:\r?\n|$))+)',
+        re.MULTILINE
+    )
+
+    def format_table(match):
+        table_text = match.group(0).strip()
+        lines = [line.strip() for line in table_text.splitlines() if line.strip()]
+        if len(lines) < 2:
+            return table_text
+
+        def parse_row(row_str):
+            raw = row_str.strip()
+            if raw.startswith('|'):
+                raw = raw[1:]
+            if raw.endswith('|'):
+                raw = raw[:-1]
+            return [c.strip() for c in raw.split('|')]
+
+        header = parse_row(lines[0])
+        start_idx = 1
+        if len(lines) > 1 and re.match(r'^[ \t]*\|?[ \t]*(?::?-+:?[ \t]*\|?)+[ \t]*$', lines[1]):
+            start_idx = 2
+
+        data_rows = [parse_row(l) for l in lines[start_idx:]]
+        if not data_rows:
+            return table_text
+
+        result_lines = []
+        for row in data_rows:
+            if not any(row):
+                continue
+            title = row[0] if len(row) > 0 and row[0] else '-'
+            details = []
+            for h_idx in range(1, max(len(header), len(row))):
+                h_name = header[h_idx] if h_idx < len(header) else f"ข้อมูล {h_idx+1}"
+                val = row[h_idx] if h_idx < len(row) else '-'
+                if val and val != '-' and val != '–':
+                    details.append(f"{h_name}: {val}")
+
+            if details:
+                result_lines.append(f"• 👤 {title}\n  " + "\n  ".join(details))
+            else:
+                result_lines.append(f"• 👤 {title}")
+
+        return '\n'.join(result_lines)
+
+    return table_pattern.sub(format_table, text)

@@ -46,7 +46,10 @@ except ImportError:
     embedding_functions = None
 # Load environment variables early and override any existing session variables
 BASE_DIR = Path(__file__).parent.absolute()
+_orig_db_rag = os.environ.get("DB_PATH")
 load_dotenv(BASE_DIR / ".env", override=True, encoding="utf-8")
+if _orig_db_rag:
+    os.environ["DB_PATH"] = _orig_db_rag
 
 try:
     import docx
@@ -113,7 +116,7 @@ def _load_meta() -> dict:
                         modified = True
 
             if modified:
-                print(f"[HEALED] Paths in file_meta.json self-healed. Total reconciled: {len([m for m in meta if meta[m].get('path')])}")
+                logger.info(f"[HEALED] Paths in file_meta.json self-healed. Total reconciled: {len([m for m in meta if meta[m].get('path')])}")
                 _save_meta(meta)
             return meta
         return {}
@@ -220,10 +223,10 @@ class BatchedGoogleEmbeddingFunction(embedding_functions.EmbeddingFunction):
                 err_msg = str(e).lower()
                 if "429" in err_msg or "quota" in err_msg:
                     if any(x in err_msg for x in ["per day", "daily", "limit: 1000", "perday"]):
-                        print("🚫 DAILY Quota Exceeded. หยุดการ embed ชั่วคราว")
+                        logger.info("🚫 DAILY Quota Exceeded. หยุดการ embed ชั่วคราว")
                         self.daily_quota_hit = True
                         raise Exception("DAILY_QUOTA_EXCEEDED")
-                    print(f"⚠️ Rate Limit — รอ 5 วินาทีแล้วลองใหม่...")
+                    logger.warning(f"⚠️ Rate Limit — รอ 5 วินาทีแล้วลองใหม่...")
                     time.sleep(5.0)
                     try:
                         response = self._client.models.embed_content(
@@ -236,7 +239,7 @@ class BatchedGoogleEmbeddingFunction(embedding_functions.EmbeddingFunction):
                         continue
                     except Exception:
                         pass
-                print(f"❌ Embedding API Error: {e}")
+                logger.error(f"❌ Embedding API Error: {e}")
                 raise e
         return all_embeddings
 
@@ -253,14 +256,15 @@ class OllamaEmbeddingFunction(embedding_functions.EmbeddingFunction):
             try:
                 response = requests.post(
                     self.url,
-                    json={"model": self.model_name, "prompt": text}
+                    json={"model": self.model_name, "prompt": text},
+                    timeout=(5, 30)
                 )
                 if response.status_code == 200:
                     all_embeddings.append(response.json()["embedding"])
                 else:
                     raise Exception(f"Ollama Error: {response.text}")
             except Exception as e:
-                print(f"❌ Ollama Embedding Error: {e}")
+                logger.error(f"❌ Ollama Embedding Error: {e}")
                 raise e
         return all_embeddings
 
@@ -275,7 +279,7 @@ class FastEmbedEmbeddingFunction(embedding_functions.EmbeddingFunction):
                 os.makedirs(local_cache, exist_ok=True)
             self.model = TextEmbedding(model_name=model_name, cache_dir=local_cache)
         except ImportError:
-            print("❌ 'fastembed' not installed. Please run: pip install fastembed")
+            logger.error("❌ 'fastembed' not installed. Please run: pip install fastembed")
             raise ImportError("fastembed not installed")
 
     def __call__(self, input: list[str]) -> list[list[float]]:
@@ -365,9 +369,9 @@ class PurePythonVectorStore:
             try:
                 with open(self.persist_path, "r", encoding="utf-8") as f:
                     self.data = json.load(f)
-                print(f"✅ Loaded {len(self.data)} chunks from pure Python vector store fallback.")
+                logger.warning(f"✅ Loaded {len(self.data)} chunks from pure Python vector store fallback.")
             except Exception as e:
-                print(f"⚠️ Error loading fallback vector store: {e}. Renaming corrupted file and starting fresh.")
+                logger.error(f"⚠️ Error loading fallback vector store: {e}. Renaming corrupted file and starting fresh.")
                 try:
                     corrupted_path = self.persist_path.with_suffix(".corrupted_" + str(int(time.time())))
                     self.persist_path.rename(corrupted_path)
@@ -382,13 +386,13 @@ class PurePythonVectorStore:
                 json.dump(self.data, f, ensure_ascii=False, indent=2)
             tmp_file.replace(self.persist_path)
         except Exception as e:
-            print(f"⚠️ Error saving fallback vector store: {e}")
+            logger.error(f"⚠️ Error saving fallback vector store: {e}")
 
     def upsert(self, documents: list[str], ids: list[str], metadatas: list[dict]):
         try:
             embeddings = self.ef(documents)
         except Exception as e:
-            print(f"❌ In-memory upsert embedding error: {e}")
+            logger.error(f"❌ In-memory upsert embedding error: {e}")
             raise e
 
         id_set = set(ids)
@@ -464,7 +468,7 @@ class PurePythonVectorStore:
         try:
             query_embs = self.ef(query_texts)
         except Exception as e:
-            print(f"❌ In-memory query embedding error: {e}")
+            logger.error(f"❌ In-memory query embedding error: {e}")
             return {"documents": [[]], "metadatas": [[]], "distances": [[]]}
 
         query_emb = query_embs[0]
@@ -491,24 +495,24 @@ class KnowledgeBase:
         
         self.api_key = os.environ.get("GEMINI_API_KEY", "").strip()
         if not self.api_key:
-            print("⚠️ Warning: GEMINI_API_KEY not found in environment.")
+            logger.warning("⚠️ Warning: GEMINI_API_KEY not found in environment.")
             self.api_key = "dummy_key_for_init"
         self.provider = os.environ.get("AI_EMBEDDING_PROVIDER", "gemini").strip().lower()
         provider = self.provider
         if provider == "ollama":
             embed_model = os.environ.get("OLLAMA_EMBED_MODEL", "mxbai-embed-large")
-            print(f"🧠 Using Ollama Embeddings (Model: {embed_model})")
+            logger.info(f"🧠 Using Ollama Embeddings (Model: {embed_model})")
             ef = OllamaEmbeddingFunction(model_name=embed_model)
         elif provider == "local":
-            print(f"[LOCAL] Using Local FastEmbed Embeddings")
+            logger.info(f"[LOCAL] Using Local FastEmbed Embeddings")
             try:
                 ef = FastEmbedEmbeddingFunction()
             except ImportError:
-                print("⚠️ Falling back to Dummy embeddings because fastembed is missing.")
+                logger.warning("⚠️ Falling back to Dummy embeddings because fastembed is missing.")
                 ef = None
             except Exception as e:
-                print(f"⚠️ [CRASH PREVENTED] Local FastEmbed failed to initialize (e.g. OOM/bad allocation): {e}")
-                print(f"☁️ [SELF-HEAL] Automatically falling back to Google Gemini Cloud Embeddings...")
+                logger.error(f"⚠️ [CRASH PREVENTED] Local FastEmbed failed to initialize (e.g. OOM/bad allocation): {e}")
+                logger.info(f"☁️ [SELF-HEAL] Automatically falling back to Google Gemini Cloud Embeddings...")
                 try:
                     ef = BatchedGoogleEmbeddingFunction(
                         api_key=self.api_key,
@@ -516,7 +520,7 @@ class KnowledgeBase:
                     )
                     self.provider = "gemini"
                 except Exception as ex:
-                    print(f"❌ Fallback failed: {ex}")
+                    logger.error(f"❌ Fallback failed: {ex}")
                     ef = None
         else:
             ef = BatchedGoogleEmbeddingFunction(
@@ -583,7 +587,7 @@ class KnowledgeBase:
         )
         if self._ephemeral and isinstance(self.collection, PurePythonVectorStore):
             self.collection.ef = ef
-            print("✅ [FALLBACK] KnowledgeBase API Key updated for pure Python store.")
+            logger.warning("✅ [FALLBACK] KnowledgeBase API Key updated for pure Python store.")
             return
 
         if chromadb is not None:
@@ -594,10 +598,10 @@ class KnowledgeBase:
                     embedding_function=ef,
                     metadata={"hnsw:space": "cosine"},
                 )
-                print("✅ KnowledgeBase API Key อัปเดตแล้ว collection รีเซ็ตเรียบร้อย")
+                logger.info("✅ KnowledgeBase API Key อัปเดตแล้ว collection รีเซ็ตเรียบร้อย")
                 return
             except Exception as e:
-                print(f"⚠️ Failed to update API key with chromadb: {e}. Keeping fallback.")
+                logger.error(f"⚠️ Failed to update API key with chromadb: {e}. Keeping fallback.")
         
         # Fallback if chromadb is None or fails
         self._ephemeral = True
@@ -628,7 +632,7 @@ class KnowledgeBase:
             # Only recreate if it's a GENUINE dimension mismatch (e.g. model changed)
             # Standard Chroma dimension error contains 'Expected' and 'got'
             if "dimension" in err_msg and ("expected" in err_msg or "but got" in err_msg):
-                print("⚠️ Critical Dimension mismatch detected. Recreating collection for new model...")
+                logger.warning("⚠️ Critical Dimension mismatch detected. Recreating collection for new model...")
                 if chromadb is not None:
                     try:
                         # To change dimensions, we MUST delete the collection and recreate it.
@@ -648,7 +652,7 @@ class KnowledgeBase:
                         self.collection.upsert(documents=chunks, ids=ids, metadatas=metadatas)
                         return
                     except Exception as ex:
-                        print(f"⚠️ Failed to reset collection: {ex}")
+                        logger.error(f"⚠️ Failed to reset collection: {ex}")
                 raise e
             else:
                 raise e
@@ -668,12 +672,12 @@ class KnowledgeBase:
                 self.collection.update(ids=ids, metadatas=updated_metas)
                 return True
         except Exception as e:
-            print(f"⚠️ Error updating metadata for file_id {file_id}: {e}")
+            logger.error(f"⚠️ Error updating metadata for file_id {file_id}: {e}")
         return False
 
     def query(self, question: str, n_results: int = 4, where: dict = None) -> list[dict]:
         if not self.is_key_valid():
-            print("⚠️ API Key not valid. Skipping query.")
+            logger.warning("⚠️ API Key not valid. Skipping query.")
             return []
             
         count = self.collection.count()
@@ -699,7 +703,7 @@ class KnowledgeBase:
             # Direct deletion by metadata filter is more robust in recent Chroma versions
             self.collection.delete(where={"file_id": file_id})
         except Exception as e:
-            print(f"⚠️ ChromaDB deletion warning: {e}")
+            logger.warning(f"⚠️ ChromaDB deletion warning: {e}")
             # Fallback: ingest might overwrite anyway, so we continue
 
     def delete_by_source(self, source_name: str):
@@ -707,7 +711,7 @@ class KnowledgeBase:
         try:
             self.collection.delete(where={"source": source_name})
         except Exception as e:
-            print(f"⚠️ ChromaDB source deletion warning: {e}")
+            logger.warning(f"⚠️ ChromaDB source deletion warning: {e}")
 
     def update_metadata_by_file_id(self, file_id: str, new_metas_dict: dict):
         """Updates metadata for all chunks with this file_id."""
@@ -730,23 +734,23 @@ class KnowledgeBase:
             
             self.collection.update(ids=ids, metadatas=updated_metas)
         except Exception as e:
-            print(f"⚠️ ChromaDB update error for {file_id}: {e}")
+            logger.error(f"⚠️ ChromaDB update error for {file_id}: {e}")
 
     def fix_chroma_categories(self, meta: dict):
         """One-time utility to sync category_ids from meta file to ChromaDB chunks."""
-        print("🛠️ Syncing missing category_ids to ChromaDB...")
+        logger.info("🛠️ Syncing missing category_ids to ChromaDB...")
         for fid, info in meta.items():
             cat = info.get("category_id")
             # Sync ALL states, normalizing None to ""
             val = str(cat) if cat is not None else ""
             self.update_metadata_by_file_id(fid, {"category_id": val})
-        print("✅ Sync complete.")
+        logger.info("✅ Sync complete.")
 
     def total_chunks(self) -> int:
         return self.collection.count()
 
     def hybrid_query(self, question: str, n_results: int = 5, where: dict = None) -> list[dict]:
-        """Combines vector search with restricted keyword-based matching for Pi efficiency."""
+        """Combines semantic vector search with comprehensive Thai/English keyword matching."""
         if not self.is_key_valid():
             return []
             
@@ -754,11 +758,11 @@ class KnowledgeBase:
         if count == 0:
             return []
 
-        # 1. Semantic Search (Vector) - Fetch double the requested results
-        # This is where the heavy lifting happens via Gemini Cloud (Fast)
-        vector_results = self.query(question, n_results=n_results * 2, where=where)
+        # 1. Semantic Search (Vector) - Fetch a wider pool (up to 40 candidates)
+        fetch_k = min(max(n_results * 6, 40), count)
+        vector_results = self.query(question, n_results=fetch_k, where=where)
         
-        # 2. Optimized Keyword Match with Thai Tokenization
+        # 2. Optimized Keyword Match with Thai Tokenization & Fallback
         keywords = []
         try:
             import pythainlp
@@ -766,24 +770,73 @@ class KnowledgeBase:
             thai_stopwords = {
                 "ขอ", "ช่วย", "หน่อย", "ครับ", "ค่ะ", "นะคะ", "คะ", "จ้า", "พี่", "น้อง",
                 "มี", "ได้", "ให้", "ใน", "ที่", "และ", "หรือ", "ไหม", "อะไร", "บ้าง",
-                "สิ", "นะ", "อยาก", "รู้", "ด้วย", "นี้", "นั้น", "ใคร", "ไหน", "เท่าไหร่"
+                "สิ", "นะ", "อยาก", "รู้", "ด้วย", "นี้", "นั้น", "ใคร", "ไหน", "เท่าไหร่",
+                "คือ", "ของ", "คุณ", "บอก", "ว่า", "เป็น", "อยู่"
             }
             keywords = [t.lower().strip() for t in tokens if len(t.strip()) > 1 and t.strip() not in thai_stopwords]
         except Exception:
-            keywords = [kw.lower() for kw in question.split() if len(kw) > 1]
+            keywords = []
 
         if not keywords:
-            keywords = [kw.lower() for kw in question.split() if len(kw) > 1]
+            import re
+            raw_tokens = re.findall(r'[฀-๿a-zA-Z0-9]+', question)
+            stop_set = {"ขอ", "ช่วย", "หน่อย", "ครับ", "ค่ะ", "นะคะ", "คะ", "พี่", "น้อง", "คือ", "ของ", "คุณ"}
+            keywords = [kw.lower() for kw in raw_tokens if len(kw) > 1 and kw not in stop_set]
+
+        # 3. Direct keyword scanning across all candidates in collection matching where
+        seen_texts = {item.get("text", ""): item for item in vector_results}
         
+        if keywords:
+            try:
+                # If PurePythonVectorStore:
+                if hasattr(self.collection, 'data'):
+                    for entry in self.collection.data:
+                        if where and not evaluate_filter(entry.get("metadata", {}), where):
+                            continue
+                        doc_text = entry.get("document", "")
+                        doc_lower = doc_text.lower()
+                        matches = [kw for kw in keywords if kw in doc_lower]
+                        if matches:
+                            if doc_text not in seen_texts:
+                                sim = cosine_similarity(self.collection.ef([question])[0], entry["embedding"]) if "embedding" in entry else 0.2
+                                base_score = max(0, 1 - ((1.0 - sim) / 1.5))
+                                item_dict = {
+                                    "text": doc_text,
+                                    "score": base_score,
+                                    **entry.get("metadata", {})
+                                }
+                                seen_texts[doc_text] = item_dict
+                                vector_results.append(item_dict)
+                # If ChromaDB collection:
+                elif hasattr(self.collection, 'get'):
+                    all_c = self.collection.get(where=where, limit=100, include=['documents', 'metadatas'])
+                    docs = all_c.get('documents', []) or []
+                    metas = all_c.get('metadatas', []) or []
+                    for doc_text, meta in zip(docs, metas):
+                        doc_lower = doc_text.lower()
+                        matches = [kw for kw in keywords if kw in doc_lower]
+                        if matches and doc_text not in seen_texts:
+                            item_dict = {
+                                "text": doc_text,
+                                "score": 0.25,
+                                **(meta or {})
+                            }
+                            seen_texts[doc_text] = item_dict
+                            vector_results.append(item_dict)
+            except Exception as _k_scan_err:
+                logger.debug(f"Keyword scan fallback: {_k_scan_err}")
+
+        # 4. Boost scores for keyword matches
         if keywords:
             for item in vector_results:
                 lower_text = item["text"].lower()
                 matches = [kw for kw in keywords if kw in lower_text]
                 if matches:
-                    # Boost score if keywords found
-                    item["score"] = min(1.0, item["score"] + (len(matches) / len(keywords)) * 0.35)
-        
-        # 3. Final Sort and Trim
+                    ratio = len(matches) / len(keywords)
+                    item["score"] = min(1.0, item["score"] + ratio * 0.50)
+                    item["keyword_matches"] = matches
+
+        # 5. Final Sort and Trim
         final_list = sorted(vector_results, key=lambda x: x["score"], reverse=True)
         return final_list[:n_results]
 
@@ -809,7 +862,7 @@ class KnowledgeBase:
                 return len(to_delete)
             return 0
         except Exception as e:
-            print(f"⚠️ Pruning error: {e}")
+            logger.error(f"⚠️ Pruning error: {e}")
             return 0
 
     def wipe(self):
@@ -888,7 +941,7 @@ class FileProcessor:
                         
                         # Safety cap for Pi memory: max 500 chunks per file (Optimized for RAM)
                         if len(chunks) >= 500:
-                            print(f"⚠️ File too large for Pi RAM. Capping at 500 chunks.")
+                            logger.warning(f"⚠️ File too large for Pi RAM. Capping at 500 chunks.")
                             break
                     
                     # Remaining rows
@@ -897,12 +950,12 @@ class FileProcessor:
                         metas.append({"location": f"Rows {i-len(rows)+1}-{i}"})
                 
                 success = True
-                print(f"✅ CSV parsed successfully with {enc} encoding.")
+                logger.info(f"✅ CSV parsed successfully with {enc} encoding.")
                 break
             except (UnicodeDecodeError, UnicodeError):
                 continue
             except Exception as e:
-                print(f"⚠️ CSV parsing error with {enc}: {e}")
+                logger.error(f"⚠️ CSV parsing error with {enc}: {e}")
                 continue
         
         if not success:
@@ -937,7 +990,7 @@ class FileProcessor:
                         chunks.append(row_text)
                         metas.append({"location": f"Sheet: {sheet}, Row {i}"})
                     if len(chunks) >= 500:
-                        print(f"⚠️ File too large for Pi RAM. Capping at 500 chunks.")
+                        logger.warning(f"⚠️ File too large for Pi RAM. Capping at 500 chunks.")
                         break
                 if len(chunks) >= 500:
                     break
@@ -1039,24 +1092,24 @@ def _migrate_org_id_to_chunks():
             batch = 100
             for i in range(0, len(to_update_ids), batch):
                 col.update(ids=to_update_ids[i:i+batch], metadatas=to_update_metas[i:i+batch])
-            print(f"✅ Migrated {len(to_update_ids)} chunks with organization_id=1")
+            logger.info(f"✅ Migrated {len(to_update_ids)} chunks with organization_id=1")
     except Exception as e:
-        print(f"⚠️ org_id chunk migration error: {e}")
+        logger.error(f"⚠️ org_id chunk migration error: {e}")
 
 
 def reinit_kb():
     global _kb
-    print("🔄 Re-initializing KnowledgeBase to refresh settings...")
+    logger.info("🔄 Re-initializing KnowledgeBase to refresh settings...")
     _kb = KnowledgeBase()
     try:
         meta = _load_meta()
         _get_kb().fix_chroma_categories(meta)
     except Exception as e:
-        print(f"⚠️ Initial Chroma Sync error: {e}")
+        logger.error(f"⚠️ Initial Chroma Sync error: {e}")
     try:
         _migrate_org_id_to_chunks()
     except Exception as e:
-        print(f"⚠️ org_id migration error: {e}")
+        logger.error(f"⚠️ org_id migration error: {e}")
 
 
 def ingest_file(file_path: Path, original_name: str, department: str = "General", category_id: int = None, org_id: int = 1, force: bool = False) -> dict:
@@ -1064,9 +1117,32 @@ def ingest_file(file_path: Path, original_name: str, department: str = "General"
     meta = _load_meta()
     fid = _file_hash(file_path)
 
-    print(f"[INGEST] Ingesting: {original_name} ({fid}) | Dept: {department} | Org: {org_id}")
+    # 🔄 Auto-update: purge previous chunks or obsolete versions of the same file in this org
+    for existing_fid, existing_info in list(meta.items()):
+        if existing_info.get("name") == original_name and existing_info.get("organization_id") == org_id:
+            if existing_fid != fid:
+                logger.info(f"🔄 Auto-updating '{original_name}': Purging stale file_id {existing_fid} from vector store")
+                try:
+                    _get_kb().delete_by_file_id(existing_fid)
+                    old_path = existing_info.get("path")
+                    if old_path and Path(old_path).resolve() != file_path.resolve():
+                        Path(old_path).unlink(missing_ok=True)
+                    if category_id is None and existing_info.get("category_id") is not None:
+                        category_id = existing_info.get("category_id")
+                    if (department == "General" or not department) and existing_info.get("department"):
+                        department = existing_info.get("department")
+                    meta.pop(existing_fid, None)
+                except Exception as ex:
+                    logger.error(f"⚠️ Error cleaning up stale version {existing_fid}: {ex}")
+            else:
+                try:
+                    _get_kb().delete_by_file_id(fid)
+                except Exception:
+                    pass
+
+    logger.info(f"[INGEST] Ingesting: {original_name} ({fid}) | Dept: {department} | Org: {org_id}")
     if not force and fid in meta and meta[fid].get("status") == "ready":
-        print(f"⏩ Duplicate file: {original_name}")
+        logger.info(f"⏩ Duplicate file: {original_name}")
         return {"status": "duplicate", "file_id": fid, "name": original_name}
 
     # Initial state to show in UI while processing
@@ -1098,14 +1174,14 @@ def ingest_file(file_path: Path, original_name: str, department: str = "General"
             pass
 
     if not _get_kb().is_key_valid():
-        print(f"❌ API Key not valid while ingesting {original_name}")
+        logger.error(f"❌ API Key not valid while ingesting {original_name}")
         _mark_status("error", "API Key not set")
         return {"status": "error", "error": "API Key not set. Cannot ingest file.", "file_id": fid, "name": original_name}
 
     try:
         chunks, chunk_metas = FileProcessor.parse(file_path)
     except Exception as e:
-        print(f"❌ Parsing Error: {e}")
+        logger.error(f"❌ Parsing Error: {e}")
         _mark_status("error", f"Parsing failed: {e}")
         return {"status": "error", "error": f"Parsing failed: {e}", "file_id": fid, "name": original_name}
 
@@ -1130,7 +1206,7 @@ def ingest_file(file_path: Path, original_name: str, department: str = "General"
         _mark_status("error", err_str)
         if "DAILY_QUOTA_EXCEEDED" in err_str:
             raise e
-        print(f"❌ Error adding chunks for {original_name}: {e}")
+        logger.error(f"❌ Error adding chunks for {original_name}: {e}")
         return {"status": "error", "error": err_str, "file_id": fid, "name": original_name}
     finally:
         gc.collect()
@@ -1175,7 +1251,7 @@ def ingest_text(text: str, source_name: str, department: str = "General", catego
         _get_kb().add_chunks(chunks, source_name=source_name, file_id=f"text_{source_id}", metadatas=chunk_metas)
         return {"status": "ok", "chunks": len(chunks), "source": source_name}
     except Exception as e:
-        print(f"❌ ingest_text Error: {e}")
+        logger.error(f"❌ ingest_text Error: {e}")
         return {"status": "error", "error": str(e)}
 
 
@@ -1256,7 +1332,7 @@ def rename_file(file_id: str, new_name: str, org_id: int = None) -> dict:
                     old_path.rename(new_disk_path)
                     new_path_str = str(new_disk_path)
         except Exception as e:
-            print(f"⚠️ Warning: Could not rename file on disk: {e}")
+            logger.warning(f"⚠️ Warning: Could not rename file on disk: {e}")
 
     info["name"] = new_name
     info["path"] = new_path_str
@@ -1268,7 +1344,7 @@ def rename_file(file_id: str, new_name: str, org_id: int = None) -> dict:
     try:
         _get_kb().update_metadata_by_file_id(file_id, {"source": new_name})
     except Exception as e:
-        print(f"⚠️ Warning: vector metadata rename update: {e}")
+        logger.warning(f"⚠️ Warning: vector metadata rename update: {e}")
 
     return {"ok": True, "file_id": file_id, "name": new_name}
 
@@ -1299,7 +1375,7 @@ def reprocess_file(file_id: str, org_id: int = None) -> dict:
     try:
         _get_kb().delete_by_file_id(file_id)
     except Exception as e:
-        print(f"⚠️ [Reprocess] Notice deleting old chunks for {file_id}: {e}")
+        logger.warning(f"⚠️ [Reprocess] Notice deleting old chunks for {file_id}: {e}")
 
     meta[file_id]["status"] = "processing"
     meta[file_id]["chunks"] = 0
@@ -1329,22 +1405,28 @@ def get_file_content(file_id: str) -> str:
             docs = results.get("documents", [])
         return "\n".join(docs)
     except Exception as e:
-        print(f"❌ Error getting file content for {file_id}: {e}")
+        logger.error(f"❌ Error getting file content for {file_id}: {e}")
         return ""
 
 
 def retrieve_context(question: str, where: dict = None) -> tuple[str, list[dict]]:
     """Return (context_text, list_of_detailed_sources) for the question."""
-    print(f"[SEARCH] Starting RAG retrieval for: '{question[:20]}...' Filter: {where}")
+    logger.info(f"[SEARCH] Starting RAG retrieval for: '{question[:20]}...' Filter: {where}")
     
-    # ⚡ FAST PATH: Skip ChromaDB / RAG completely for short/noisy queries, greetings, or junk
+    # ⚡ FAST PATH: Skip ChromaDB / RAG for pure standalone greetings or single-character noise
     try:
-        clean_q = re.sub(r'[0-9๐-๙\s\W]', '', question)
-        if not question or len(question) < 5 or (len(clean_q) < 2 and len(question) < 15):
+        clean_q = re.sub(r'[0-9๐-๙\s\W_]', '', question)
+        # Skip only if truly empty or single character
+        if not question or len(clean_q) < 2:
             print(f"ℹ️ Fast Path: Skipping RAG for noisy/short query: '{question}'", flush=True)
             return "", []
+        # Skip pure generic greetings that don't need doc retrieval
+        standalone_greetings = {"สวัสดี", "หวัดดี", "ฮัลโหล", "hi", "hello", "hey", "ดีครับ", "ดีค่ะ", "มอนิ่ง", "อรุณสวัสดิ์"}
+        if clean_q.lower() in standalone_greetings:
+            print(f"ℹ️ Fast Path: Skipping RAG for pure greeting: '{question}'", flush=True)
+            return "", []
     except Exception as fe:
-        print(f"⚠️ Fast Path check error: {fe}")
+        logger.error(f"⚠️ Fast Path check error: {fe}")
 
     final_results = []
     
@@ -1361,7 +1443,7 @@ def retrieve_context(question: str, where: dict = None) -> tuple[str, list[dict]
                 matched_sources = [s for s in sources_in_db if s.lower() in question.lower()]
                 
                 if matched_sources:
-                    print(f"📂 Thai Match filenames: {matched_sources}")
+                    logger.info(f"📂 Thai Match filenames: {matched_sources}")
                     # Fetch chunks for matched files
                     f_res = _get_kb().collection.get(
                         where={"source": {"$in": matched_sources}} if not where else {"$and": [where, {"source": {"$in": matched_sources}}]},
@@ -1375,14 +1457,14 @@ def retrieve_context(question: str, where: dict = None) -> tuple[str, list[dict]
                                 **f_res['metadatas'][i]
                             })
             except Exception as fe:
-                print(f"⚠️ Filename match error: {fe}")
+                logger.error(f"⚠️ Filename match error: {fe}")
         
         # 2. Standard Hybrid Query (Semantic + Keyword)
-        results = _get_kb().hybrid_query(question, where=where)
-        # Filter by score dynamically (keep only >= 0.35 AND within 0.30 of the top score to prune noisy documents)
+        results = _get_kb().hybrid_query(question, n_results=10, where=where)
+        # Filter by score dynamically (keep only >= 0.25 AND within 0.35 of the top score, or keyword matched)
         if results:
             max_score = max(r.get("score", 0) for r in results)
-            results = [r for r in results if r.get("score", 0) >= 0.35 and r.get("score", 0) >= (max_score - 0.30)]
+            results = [r for r in results if (r.get("score", 0) >= 0.25 and r.get("score", 0) >= (max_score - 0.35)) or r.get("keyword_matches")]
         
         # Merge results, prioritize filename chunks
         seen_texts = set()
@@ -1392,7 +1474,7 @@ def retrieve_context(question: str, where: dict = None) -> tuple[str, list[dict]
                 final_results.append(r)
                 seen_texts.add(text_small)
                 
-        print(f"✅ RAG query finished. Returned {len(final_results)} relevant chunks.")
+        logger.info(f"✅ RAG query finished. Returned {len(final_results)} relevant chunks.")
     except Exception as e:
         print(f"❌ RAG query error: {e} (filter={where})", flush=True)
         import traceback
@@ -1400,7 +1482,7 @@ def retrieve_context(question: str, where: dict = None) -> tuple[str, list[dict]
         return "", []
 
     if not final_results:
-        print("ℹ️ No relevant context found.")
+        logger.info("ℹ️ No relevant context found.")
         return "", []
     
     results = final_results[:10] # Limit context size
@@ -1432,7 +1514,7 @@ def retrieve_context(question: str, where: dict = None) -> tuple[str, list[dict]
             seen_source_keys.add(source_key)
         
     context = "\n\n".join(context_parts)
-    print(f"[CONTEXT] Context prepared: {len(context)} chars, {len(detailed_sources)} detailed sources.")
+    logger.info(f"[CONTEXT] Context prepared: {len(context)} chars, {len(detailed_sources)} detailed sources.")
     return context, detailed_sources
 
 
@@ -1513,7 +1595,7 @@ def cleanup_stale_processing(max_age_minutes: int = 30) -> int:
                 info["status"] = "error"
                 info["error"] = f"processing timeout ({int(age_min)} นาที)"
                 changed += 1
-                print(f"[Cleanup] {info.get('name')} stuck {int(age_min)}m → error")
+                logger.error(f"[Cleanup] {info.get('name')} stuck {int(age_min)}m → error")
         except Exception:
             info["status"] = "error"
             info["error"] = "processing timeout (invalid timestamp)"
@@ -1554,7 +1636,7 @@ def sync_uploads():
                     logger.debug(f"[SYNC] Collection check notice for {file_path.name}: {e}")
 
                 if fid not in existing_hashes or not in_db:
-                    print(f"[SYNC] Re-ingesting or Syncing file: {file_path.name}")
+                    logger.info(f"[SYNC] Re-ingesting or Syncing file: {file_path.name}")
                     existing_info = meta.get(fid, {})
                     original_name = existing_info.get("name")
                     if not original_name:
@@ -1574,7 +1656,7 @@ def sync_uploads():
                     res = ingest_file(file_path, original_name=original_name, department=dept, category_id=cat_id, org_id=org_id, force=True)
                     results.append(res)
             except Exception as e:
-                print(f"⚠️ Error syncing {file_path.name}: {e}")
+                logger.error(f"⚠️ Error syncing {file_path.name}: {e}")
                 continue
     return results
 

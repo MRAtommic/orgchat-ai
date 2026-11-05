@@ -9,6 +9,7 @@ if hasattr(sys.stderr, 'reconfigure'):
 import sqlite3
 import json
 import os
+_IMMUTABLE_CUSTOM_DB_PATH = os.environ.get('DB_PATH')
 import re
 import random
 import time
@@ -52,6 +53,23 @@ if not DB_PATH.is_absolute():
         _base_dir = _base_dir.parent
     DB_PATH = _base_dir / DB_PATH
 
+def _resolve_db_path() -> Path:
+    """Resolve active database path, honoring runtime overrides from os.environ or test fixtures."""
+    if _IMMUTABLE_CUSTOM_DB_PATH:
+        p = Path(_IMMUTABLE_CUSTOM_DB_PATH)
+    else:
+        env_override = os.environ.get("DB_PATH")
+        if env_override:
+            p = Path(env_override)
+        else:
+            p = DB_PATH
+    if not p.is_absolute():
+        base = Path(__file__).parent.absolute()
+        if base.name == "db":
+            base = base.parent
+        p = base / p
+    return p
+
 
 
 def hash_password(password: str) -> str:
@@ -94,9 +112,9 @@ def _get_pg_pool():
                         import psycopg2.pool
                         # Initialize ThreadedConnectionPool: 1 min connection, 20 max connections
                         _pg_pool = psycopg2.pool.ThreadedConnectionPool(1, 20, dsn=db_url)
-                        print("✅ Postgres connection pool initialized successfully")
+                        logger.info("✅ Postgres connection pool initialized successfully")
                     except Exception as e:
-                        print(f"❌ Failed to initialize Postgres connection pool: {e}")
+                        logger.error(f"❌ Failed to initialize Postgres connection pool: {e}")
                         _pg_pool = None
                 _pg_pool_initialized = True
     return _pg_pool
@@ -437,7 +455,7 @@ def _get_conn(timeout: int = 30):
                 logger = logging.getLogger("database")
                 logger.warning(f"⚠️ Failed to get connection from Postgres pool: {e}. Falling back to SQLite...")
                 
-    conn = sqlite3.connect(DB_PATH, timeout=timeout)
+    conn = sqlite3.connect(str(_resolve_db_path()), timeout=timeout)
     conn.execute("PRAGMA busy_timeout=60000")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")

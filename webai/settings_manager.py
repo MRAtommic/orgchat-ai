@@ -36,7 +36,10 @@ def update_settings(new_settings):
                 tmp.write(f"{k}={v}\n")
             tmp_path = tmp.name
         os.replace(tmp_path, ENV_PATH)
+        _orig_db_set = os.environ.get("DB_PATH")
         load_dotenv(ENV_PATH, override=True, encoding="utf-8")
+        if _orig_db_set:
+            os.environ["DB_PATH"] = _orig_db_set
         return True
 
     with open(ENV_PATH, "r", encoding="utf-8") as f:
@@ -71,7 +74,10 @@ def update_settings(new_settings):
     os.replace(tmp_path, ENV_PATH)
 
     # Reload environment variables in current process
+    _orig_db_set = os.environ.get("DB_PATH")
     load_dotenv(ENV_PATH, override=True, encoding="utf-8")
+    if _orig_db_set:
+        os.environ["DB_PATH"] = _orig_db_set
     
     # Manually update os.environ just to be sure for immediate use
     for k, v in new_settings.items():

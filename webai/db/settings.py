@@ -59,15 +59,22 @@ def remove_push_subscription(username, subscription_json):
     conn.commit()
     conn.close()
 
-def log_event(event_text, user="System", org_id=1):
+def log_event(event_text="", user="System", org_id=1, details="", ip_address="127.0.0.1", action=None, **kwargs):
+    """Log an event to the events table and trigger tamper-evident audit logging."""
+    actual_event = action if action is not None else event_text
     try:
         conn = _get_conn()
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO events (event_text, user, organization_id) VALUES (?, ?, ?)", (event_text, user, org_id))
+        cursor.execute("INSERT INTO events (event_text, user, organization_id) VALUES (?, ?, ?)", (str(actual_event), user, org_id))
         conn.commit()
         conn.close()
     except Exception as e:
-        print(f"⚠️ Failed to log event: {e}")
+        logger.warning(f"Failed to log event into events table: {e}")
+    try:
+        from db.security import log_audit_event
+        log_audit_event(username=user or "System", action=str(actual_event)[:50], details=str(details or actual_event), ip_address=ip_address, org_id=org_id)
+    except Exception as e:
+        logger.debug(f"Audit log trigger in log_event: {e}")
 
 def get_events(limit=20, org_id=1):
     conn = _get_conn()
@@ -203,7 +210,7 @@ def get_user_setting(username):
         SELECT username, role, is_active, custom_password, notes, 
                can_view_kb, can_edit_kb, can_delete_kb, email, can_view_financial, 
                totp_enabled, totp_secret, totp_backup_codes, can_manage_leave,
-               can_broadcast_line, can_manage_peak, can_use_ai, can_claim_expense
+               can_broadcast_line, can_manage_peak, can_use_ai, can_claim_expense, totp_type
         FROM user_settings WHERE username = ? COLLATE NOCASE
     """, (username,))
     row = cursor.fetchone()
@@ -228,6 +235,7 @@ def get_user_setting(username):
             "can_manage_peak": bool(row[15]) if row[15] is not None else False,
             "can_use_ai": bool(row[16]) if row[16] is not None else True,
             "can_claim_expense": bool(row[17]) if row[17] is not None else True,
+            "totp_type": (row[18] or "authenticator"),
         }
 
     # Defaults
@@ -778,21 +786,29 @@ def oauth_state_store(state: str, data: dict):
 
 
 def oauth_state_pop(state: str) -> dict | None:
-    """ดึงและลบ state — คืน data dict หรือ None ถ้าหมดอายุ/ไม่มี"""
+    """ดึง OAuth state จาก DB (ไม่ลบทันที เพื่อทนต่อ duplicate/prefetch request ภายในช่วงเวลาหมดอายุ)."""
     import json as _json
     conn = _get_conn()
     row = conn.execute(
         "SELECT data_json, expires_at FROM oauth_states WHERE state = ?", (state,)
     ).fetchone()
-    if row:
-        conn.execute("DELETE FROM oauth_states WHERE state = ?", (state,))
-        conn.commit()
     conn.close()
     if not row:
         return None
     if time.time() > row[1]:
         return None
     return _json.loads(row[0])
+
+
+def oauth_state_delete(state: str):
+    """ลบ OAuth state หลังจากทำงานสำเร็จแล้วอย่างสมบูรณ์."""
+    try:
+        conn = _get_conn()
+        conn.execute("DELETE FROM oauth_states WHERE state = ?", (state,))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
 
 
 
@@ -853,25 +869,7 @@ def update_kb_category_access_level(category_id: int, access_level: str) -> bool
     conn.close()
     return ok
 
-def log_event(action, user="System", org_id=1, details="", ip_address="127.0.0.1"):
-    """Log an audit trail event for organization compliance and activity history."""
-    try:
-        conn = _get_conn()
-        cursor = conn.cursor()
-        cursor.execute("PRAGMA table_info(audit_logs)")
-        cols = [c[1] for c in cursor.fetchall()]
-        org_col = "org_id" if "org_id" in cols else "organization_id" if "organization_id" in cols else "org_id"
-        action_col = "action" if "action" in cols else "event_type"
-        details_col = "details" if "details" in cols else "action_detail"
-        
-        cursor.execute(
-            f"INSERT INTO audit_logs ({org_col}, username, {action_col}, {details_col}, ip_address) VALUES (?, ?, ?, ?, ?)",
-            (org_id, user or "System", str(action), str(details or ""), ip_address or "127.0.0.1")
-        )
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        logger.error(f"[log_event error] {e}")
+
 
 # Old duplicate get_audit_logs removed - robust definition maintained at end of file.
 

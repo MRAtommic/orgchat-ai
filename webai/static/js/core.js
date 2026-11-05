@@ -161,7 +161,7 @@ function parseServerDate(isoStr) {
   if (!isoStr) return new Date();
   let dStr = isoStr.includes(' ') && !isoStr.includes('T') ? isoStr.replace(' ', 'T') : isoStr;
   if (!dStr.includes('Z') && !dStr.includes('+')) {
-      dStr += 'Z';
+    dStr += 'Z';
   }
   const d = new Date(dStr);
   return isNaN(d.getTime()) ? new Date(isoStr) : d;
@@ -173,12 +173,12 @@ function formatRelativeTime(isoStr) {
     const date = parseServerDate(isoStr);
     const now = new Date(Date.now() + (state.serverOffset || 0));
     const diffInSeconds = Math.floor((now - date) / 1000);
-    
+
     if (diffInSeconds < 60) return 'เมื่อครู่';
     if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} นาทีที่แล้ว`;
     if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} ชม.ที่แล้ว`;
     if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)} วันที่แล้ว`;
-    
+
     return date.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
   } catch (e) {
     return isoStr;
@@ -472,11 +472,18 @@ async function apiFetch(url, options = {}) {
   if (!res.ok) {
     const text = await res.text();
     let errData = null;
-    try { errData = JSON.parse(text); } catch (e) {}
-    if (res.status === 401) {
+    try { errData = JSON.parse(text); } catch (e) { }
+    // 401 จาก /api/login คือ "รหัสผ่านผิด" ไม่ใช่ "เซสชันหมดอายุ" ให้ส่งข้อความจากเซิร์ฟเวอร์ต่อไปแสดงที่หน้าล็อกอิน
+    if (res.status === 401 && !String(url).startsWith('/api/login')) {
       if (!window._sessionExpired) {
         window._sessionExpired = true;
-        if (typeof toast === 'function') {
+        // U0-2: Only show session expired toast if the user was actually logged in previously
+        const wasLoggedIn = Boolean(
+          window._userAuthed ||
+          (typeof state !== 'undefined' && state && state.user) ||
+          localStorage.getItem('orgchat_was_logged_in') === '1'
+        );
+        if (wasLoggedIn && !options.skipAuthToast && url !== '/api/me' && typeof toast === 'function') {
           toast('เซสชันหมดอายุแล้ว กรุณาเข้าสู่ระบบใหม่เพื่อใช้งานต่อค่ะ', 'error');
         }
         const loginOverlay = document.getElementById('loginOverlay');
@@ -613,7 +620,7 @@ function updateQuotationPreview() {
     { id: 'qtDate', prev: 'prevQtDate' },
     { id: 'sellerName', prev: 'prevSellerName' }
   ];
-  
+
   fields.forEach(f => {
     const el = $(f.id);
     const prev = $(f.prev);
@@ -635,11 +642,11 @@ function updateQuotationPreview() {
   const docType = $('docTypeSelect')?.value;
   const repRefBlock = $('replacementRefBlock');
   const prevRepRef = $('prevReplacementRef');
-  
+
   if (docType === 'receipt_replacement') {
     if (repRefBlock) repRefBlock.classList.remove('hidden');
     if (prevRepRef) prevRepRef.classList.remove('hidden');
-    
+
     if ($('prevOriginalRefNo')) $('prevOriginalRefNo').innerText = $('qtOriginalRefNo')?.value || '-';
     if ($('prevOriginalRefDate')) $('prevOriginalRefDate').innerText = $('qtOriginalRefDate')?.value || '-';
     if ($('prevReplacementReason')) $('prevReplacementReason').innerText = $('qtReplacementReason')?.value || '-';
@@ -689,14 +696,14 @@ async function fetchWeather() {
     if (weatherData.current) {
       state.weather = weatherData; // Save to global state
       state.airQuality = aqData;
-      
+
       const temp = Math.round(weatherData.current.temperature_2m);
       const feelsLike = Math.round(weatherData.current.apparent_temperature);
       const humidity = weatherData.current.relative_humidity_2m;
       const wCode = weatherData.current.weather_code;
       const uv = weatherData.current.uv_index;
       const pm25 = aqData?.current?.pm2_5;
-      
+
       // Update UI
       currentTempEl.textContent = `${temp}°C`;
       if (dashFeelsLike) dashFeelsLike.textContent = `${feelsLike}°C`;
@@ -713,7 +720,7 @@ async function fetchWeather() {
           dashPM25.textContent = '--';
         }
       }
-      
+
       // Translate WMO Code
       const condition = translateWMO(wCode);
       let conditionText = condition.text;
@@ -721,11 +728,11 @@ async function fetchWeather() {
         conditionText = `ขณะนี้มีฝน (${weatherData.current.precipitation} มม.)`;
       }
       weatherCondEl.textContent = conditionText;
-      
+
       // Update Rain Chance (from first hour of forecast)
       const rainChance = weatherData.hourly.precipitation_probability[new Date().getHours()];
       rainChanceEl.innerHTML = `<i data-lucide="droplets" class="w-3 h-3"></i> โอกาสฝน ${rainChance}%`;
-      
+
       // Update Icon
       if (mainWeatherIcon) {
         mainWeatherIcon.setAttribute('data-lucide', condition.icon);
@@ -803,10 +810,10 @@ function showWeatherDetail() {
   if (hourlyList) {
     const hourly = state.weather.hourly;
     const nowHour = new Date().getHours();
-    
+
     // Create horizontal scrollable hourly forecast
     hourlyList.classList.add('flex', 'overflow-x-auto', 'no-scrollbar', 'gap-4', 'pb-4');
-    
+
     hourlyList.innerHTML = hourly.time.slice(nowHour, nowHour + 24).map((time, i) => {
       const idx = nowHour + i;
       const t = new Date(time);
@@ -814,7 +821,7 @@ function showWeatherDetail() {
       const temp = Math.round(hourly.temperature_2m[idx]);
       const prob = hourly.precipitation_probability[idx];
       const cond = translateWMO(hourly.weather_code[idx]);
-      
+
       return `
         <div class="flex flex-col items-center gap-2 p-4 bg-white dark:bg-surface-900 rounded-2xl border border-surface-100 dark:border-surface-800 min-w-[90px] shadow-sm">
           <span class="text-[10px] font-black text-surface-400">${hourStr}</span>
@@ -834,7 +841,7 @@ function showWeatherDetail() {
   if (dailyList) {
     const daily = state.weather.daily;
     const days = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"];
-    
+
     dailyList.innerHTML = daily.time.map((time, i) => {
       const t = new Date(time);
       const dayName = i === 0 ? "วันนี้" : i === 1 ? "พรุ่งนี้" : days[t.getDay()];
@@ -842,7 +849,7 @@ function showWeatherDetail() {
       const minTemp = Math.round(daily.temperature_2m_min[i]);
       const prob = daily.precipitation_probability_max[i];
       const cond = translateWMO(daily.weather_code[i]);
-      
+
       return `
         <div class="flex items-center justify-between p-4 hover:bg-white dark:hover:bg-surface-900 rounded-2xl transition-all group">
           <div class="flex items-center gap-4 flex-1">
@@ -888,7 +895,7 @@ function showView(viewId) {
 }
 
 // Placeholder/Safe wrapper for openMobileChat (defined in chat.js)
-window.openMobileChat = function() {
+window.openMobileChat = function () {
   if (window.openMobileChat && !window.openMobileChat.isPlaceholder) {
     window.openMobileChat();
   } else {
@@ -1054,13 +1061,13 @@ function parseAIActions(text) {
 }
 
 // ─── API Key Modal ────────────────────────────
-function showApiModal() { 
-  apiModal.classList.remove('hidden'); 
+function showApiModal() {
+  apiModal.classList.remove('hidden');
   apiModal.classList.add('flex', 'items-center', 'justify-center');
 }
 
-function hideApiModal() { 
-  apiModal.classList.add('hidden'); 
+function hideApiModal() {
+  apiModal.classList.add('hidden');
   apiModal.classList.remove('flex', 'items-center', 'justify-center');
 }
 
@@ -1090,17 +1097,17 @@ if (changeKeyBtn) {
   });
 }
 
-const _IMG_EXTS = new Set(['png','jpg','jpeg','webp','bmp']);
+const _IMG_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp', 'bmp']);
 
-const _DOC_EXTS = new Set(['pdf','docx','xlsx','csv','txt','md']);
+const _DOC_EXTS = new Set(['pdf', 'docx', 'xlsx', 'csv', 'txt', 'md']);
 
 let _ghostObjectURLs = []; // track for cleanup
 
 
 function _updateGhostProgress(ghosts, pct, label = '') {
   ghosts.forEach(({ el }) => {
-    const bar    = el.querySelector('.ghost-bar');
-    const pctEl  = el.querySelector('.ghost-pct');
+    const bar = el.querySelector('.ghost-bar');
+    const pctEl = el.querySelector('.ghost-pct');
     const status = el.querySelector('.ghost-status');
     if (bar) bar.style.width = pct + '%';
     if (pctEl) pctEl.textContent = pct + '%';
@@ -1113,7 +1120,7 @@ function _transitionGhostsToIndexing(ghosts) {
     el.style.borderColor = '';
     el.classList.remove('border-brand-400/60', 'dark:border-brand-600/60', 'shadow-brand-500/10');
     el.classList.add('border-amber-400/60', 'dark:border-amber-600/60');
-    const bar   = el.querySelector('.ghost-bar');
+    const bar = el.querySelector('.ghost-bar');
     const pctEl = el.querySelector('.ghost-pct');
     const status = el.querySelector('.ghost-status');
     if (bar) { bar.style.width = '100%'; bar.className = 'ghost-bar h-full bg-gradient-to-r from-amber-400 to-orange-500 rounded-full'; }
@@ -1190,15 +1197,15 @@ let currentCatVisibility = 'public';
 function renderCatUserList(query = '') {
   const listArea = $('catUserListArea');
   const countSpan = $('catAuthCount');
-  
+
   if (!state.allUsers || state.allUsers.length === 0) {
     listArea.innerHTML = '<p class="text-[10px] text-surface-400 italic text-center py-4">ไม่พบข้อมูลรายชื่อผู้ใช้</p>';
     return;
   }
 
   // Filter users by search query
-  const filtered = state.allUsers.filter(u => 
-    u.username.toLowerCase().includes(query.toLowerCase()) || 
+  const filtered = state.allUsers.filter(u =>
+    u.username.toLowerCase().includes(query.toLowerCase()) ||
     (u.display_name && u.display_name.toLowerCase().includes(query.toLowerCase()))
   );
 
@@ -1304,7 +1311,7 @@ function updateThemeIcon() {
   if (themeText) {
     themeText.textContent = isDark ? 'โหมดกลางวัน' : 'โหมดกลางคืน';
   }
-  
+
   // Update class-based theme elements (e.g. inside settings/profile modals)
   document.querySelectorAll('.themeIcon').forEach(el => {
     el.setAttribute('data-lucide', isDark ? 'sun' : 'moon');
@@ -1312,7 +1319,7 @@ function updateThemeIcon() {
   document.querySelectorAll('.themeText').forEach(el => {
     el.textContent = isDark ? 'โหมดกลางวัน' : 'โหมดกลางคืน';
   });
-  
+
   initIcons();
 }
 
@@ -1362,7 +1369,7 @@ function setAccentColor(color, save = true) {
 const accentBtns = document.querySelectorAll('.accent-color-btn');
 
 // ─── Premium Custom Alert/Confirm Modals ───────────────────
-window.showConfirm = function(title, message, options = {}) {
+window.showConfirm = function (title, message, options = {}) {
   return new Promise((resolve) => {
     const container = document.getElementById('customModalContainer');
     const backdrop = document.getElementById('customModalBackdrop');
@@ -1418,7 +1425,7 @@ window.showConfirm = function(title, message, options = {}) {
 
     iconEl.innerHTML = iconSvg;
     iconBg.className = `w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${bgClass} text-${type === 'warning' ? 'amber-500' : type === 'danger' ? 'rose-600' : type === 'success' ? 'emerald-600' : 'blue-600'}`;
-    
+
     // Animate Show
     container.classList.remove('hidden');
     setTimeout(() => {
@@ -1449,7 +1456,7 @@ window.showConfirm = function(title, message, options = {}) {
   });
 };
 
-window.showAlert = function(title, message, options = {}) {
+window.showAlert = function (title, message, options = {}) {
   return new Promise((resolve) => {
     const container = document.getElementById('customModalContainer');
     const backdrop = document.getElementById('customModalBackdrop');
@@ -1550,7 +1557,7 @@ class PDPAConsentManager {
     try {
       localStorage.setItem(this.storageKey, JSON.stringify(data));
       this.consent = data;
-    } catch (e) {}
+    } catch (e) { }
     this.hideBanner();
   }
 
@@ -1573,8 +1580,9 @@ class PDPAConsentManager {
     if (modal) {
       const prefCheck = document.getElementById('pdpaPrefCookies');
       const analCheck = document.getElementById('pdpaAnalCookies');
-      if (prefCheck) prefCheck.checked = this.consent ? this.consent.preferences : true;
-      if (analCheck) analCheck.checked = this.consent ? this.consent.analytics : true;
+      // U0-3: PDPA opt-in compliance — non-essential categories default to false/unchecked
+      if (prefCheck) prefCheck.checked = this.consent ? Boolean(this.consent.preferences) : false;
+      if (analCheck) analCheck.checked = this.consent ? Boolean(this.consent.analytics) : false;
       modal.classList.remove('hidden');
     }
   }
@@ -1604,7 +1612,7 @@ class AutoSessionLockManager {
     if (this.isLocked) return;
     if (this.timer) clearTimeout(this.timer);
     if (!this.enabled) return;
-    
+
     // Only lock if user is authenticated (not on login screen)
     if (document.body.classList.contains('authenticated') || document.getElementById('chatArea')) {
       this.timer = setTimeout(() => this.lockScreen(), this.timeoutMs);
@@ -1638,21 +1646,21 @@ class AutoSessionLockManager {
         password: password
       })
     })
-    .then(r => r.json())
-    .then(d => {
-      if (d.ok) {
-        this.isLocked = false;
-        const lockEl = document.getElementById('screenLockOverlay');
-        if (lockEl) lockEl.classList.add('hidden');
-        if (window.showToast) window.showToast('ปลดล็อกหน้าจอเรียบร้อยแล้วค่ะ', 'success');
-        this.resetTimer();
-      } else {
-        if (window.showToast) window.showToast('รหัสผ่านไม่ถูกต้อง: ' + (d.error || ''), 'error');
-      }
-    })
-    .catch(() => {
-      if (window.showToast) window.showToast('ไม่สามารถตรวจสอบรหัสผ่านได้', 'error');
-    });
+      .then(r => r.json())
+      .then(d => {
+        if (d.ok) {
+          this.isLocked = false;
+          const lockEl = document.getElementById('screenLockOverlay');
+          if (lockEl) lockEl.classList.add('hidden');
+          if (window.showToast) window.showToast('ปลดล็อกหน้าจอเรียบร้อยแล้วค่ะ', 'success');
+          this.resetTimer();
+        } else {
+          if (window.showToast) window.showToast('รหัสผ่านไม่ถูกต้อง: ' + (d.error || ''), 'error');
+        }
+      })
+      .catch(() => {
+        if (window.showToast) window.showToast('ไม่สามารถตรวจสอบรหัสผ่านได้', 'error');
+      });
   }
 }
 
@@ -1662,14 +1670,14 @@ window.sessionLock = new AutoSessionLockManager();
 // 📊 Security Health Dashboard Controller (Chapter 1, 2, 4)
 // ═══════════════════════════════════════════════════════════════
 
-window.openSecurityDashboard = function() {
+window.openSecurityDashboard = function () {
   const modal = document.getElementById('securityHealthModal');
   if (!modal) return;
   modal.classList.remove('hidden');
   window.loadSecurityDashboard();
 };
 
-window.loadSecurityDashboard = async function() {
+window.loadSecurityDashboard = async function () {
   try {
     const res = await fetch('/api/security/health-status');
     const data = await res.json();
@@ -1698,7 +1706,7 @@ window.loadSecurityDashboard = async function() {
         listEl.innerHTML = '<div class="text-center py-4 text-surface-400">ยังไม่มีบันทึกเหตุการณ์</div>';
       } else {
         listEl.innerHTML = data.logs.slice(0, 15).map(l => {
-          const verifiedBadge = l.is_verified 
+          const verifiedBadge = l.is_verified
             ? '<span class="text-[9px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full">✓ Verified HMAC</span>'
             : '<span class="text-[9px] font-bold text-rose-600 bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded-full">⚠️ TAMPERED</span>';
           return `
@@ -1727,7 +1735,7 @@ window.loadSecurityDashboard = async function() {
   window.loadSecurityThreatIntel();
 };
 
-window.loadSecurityBlacklist = async function() {
+window.loadSecurityBlacklist = async function () {
   const container = document.getElementById('secBlacklistContainer');
   if (!container) return;
 
@@ -1756,7 +1764,7 @@ window.loadSecurityBlacklist = async function() {
   }
 };
 
-window.unblockSecurityIp = async function(ip) {
+window.unblockSecurityIp = async function (ip) {
   if (!confirm(`ยืนยันการปลดล็อค IP ${ip}?`)) return;
   try {
     const res = await fetch('/api/security/unblock-ip', {
@@ -1776,7 +1784,7 @@ window.unblockSecurityIp = async function(ip) {
   }
 };
 
-window.testPiiMasking = async function() {
+window.testPiiMasking = async function () {
   const input = document.getElementById('testPiiInput');
   const box = document.getElementById('testPiiResultBox');
   if (!input || !box) return;
@@ -1813,7 +1821,7 @@ window.testPiiMasking = async function() {
   }
 };
 
-window.loadSecurityThreatIntel = async function() {
+window.loadSecurityThreatIntel = async function () {
   const box = document.getElementById('secThreatIntelBox');
   if (!box) return;
 
@@ -1823,7 +1831,7 @@ window.loadSecurityThreatIntel = async function() {
     if (data.ok) {
       const threatIps = (data.active_threat_ips || []).map(t => `<span class="px-2 py-0.5 rounded bg-rose-100 dark:bg-rose-900/30 text-rose-600 font-bold">${t.ip} (${t.incidents} ครั้ง)</span>`).join(' ') || '<span class="text-emerald-600">ไม่มี IP ผิดปกติใน 24h</span>';
       const actions = (data.top_flagged_actions || []).map(a => `<span class="px-2 py-0.5 rounded bg-surface-100 dark:bg-surface-800 text-surface-700 dark:text-surface-300">${a.action}: ${a.count}</span>`).join(' ') || '<span class="text-surface-400">ไม่มี Alert</span>';
-      
+
       box.innerHTML = `
         <div class="flex items-center justify-between mb-2 pb-1.5 border-b border-indigo-100 dark:border-indigo-900/30">
           <span class="font-bold text-indigo-600 dark:text-indigo-400">🛡️ SOC Threat Telemetry</span>
@@ -1840,7 +1848,7 @@ window.loadSecurityThreatIntel = async function() {
   }
 };
 
-window.runUebaBehaviorScan = async function() {
+window.runUebaBehaviorScan = async function () {
   const box = document.getElementById('secThreatIntelBox');
   if (!box) return;
   box.innerHTML = '<span class="text-indigo-600 font-bold animate-pulse">🔍 กำลังรวบรวมและวิเคราะห์พฤติกรรม UEBA Telemetry...</span>';
@@ -1876,7 +1884,7 @@ window.runUebaBehaviorScan = async function() {
   }
 };
 
-window.runFimScan = async function() {
+window.runFimScan = async function () {
   const btn = document.getElementById('btnScanFim');
   const box = document.getElementById('fimScanStatusBox');
   if (btn) btn.disabled = true;
@@ -1904,7 +1912,7 @@ window.runFimScan = async function() {
   }
 };
 
-window.runKbAnomalyScan = async function() {
+window.runKbAnomalyScan = async function () {
   const btn = document.getElementById('btnScanKbAnomalies');
   const box = document.getElementById('kbAnomalyStatusBox');
   if (btn) btn.disabled = true;
@@ -1963,7 +1971,7 @@ class DigitalWatermarkManager {
     if (!username) return;
 
     this.renderWatermark(username);
-    
+
     // Periodically update timestamp every 60 seconds
     if (this.interval) clearInterval(this.interval);
     this.interval = setInterval(() => {

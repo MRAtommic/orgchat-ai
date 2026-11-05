@@ -47,6 +47,8 @@ logger = logging.getLogger("OrgChatAI.Auth")
 auth_bp = Blueprint('auth', __name__)
 
 from redis_manager import RedisManager
+from db import org_security
+import secret_vault
 
 _qr_tokens = {}  # legacy — superseded by DB-backed qr_* functions in database.py
 
@@ -340,7 +342,11 @@ QR_APPROVE_HTML = """<!DOCTYPE html>
 
 @auth_bp.route("/api/auth/google/debug-uri")
 def auth_google_debug_uri():
-    """แสดง redirect_uri ที่ app จะส่งไปให้ Google — ใช้ตรวจสอบว่าตรงกับ Console ไหม"""
+    """แสดง redirect_uri ที่ app จะส่งไปให้ Google — P1-4: จำกัดเฉพาะ non-production หรือ superadmin"""
+    from routes.shared import is_production, is_superadmin_user
+    user = session.get("user")
+    if is_production() and not is_superadmin_user(user):
+        abort(404)
     return jsonify({
         "redirect_uri_in_use": oauth2_service.redirect_uri if OAUTH2_AVAILABLE else "OAuth2 not available",
         "env_OAUTH2_REDIRECT_URI": os.environ.get("OAUTH2_REDIRECT_URI", "(ไม่ได้ตั้งค่า — ใช้ default localhost)"),
@@ -644,21 +650,33 @@ def auth_google_disconnect():
     return jsonify({"ok": True, "message": "ยกเลิกการเชื่อมต่อ Google ส่วนตัวสำเร็จ"})
 
 
-def render_link_error(error):
+def render_link_error(error, title=None, is_login=True):
+    header_title = title or ("เข้าสู่ระบบด้วย LINE ไม่สำเร็จ" if is_login else "เกิดข้อผิดพลาดในการผูกบัญชี")
+    primary_btn = """
+        <a href="/api/line/login-init" class="btn btn-primary" style="background:#06C755; color:#ffffff; font-weight:700; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:12px; border:none;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="#ffffff"><path d="M19.365 9.864c0-4.043-3.606-7.324-8.04-7.324-4.433 0-8.04 3.281-8.04 7.324 0 3.623 2.902 6.666 6.827 7.234.266.058.628.175.72.401.082.204.054.523.026.729l-.112.7c-.035.21-.164.823.722.449.886-.374 4.779-2.816 6.518-4.821 1.101-1.226 1.379-2.476 1.379-4.692z"/></svg>
+            ลองเข้าสู่ระบบด้วย LINE อีกครั้ง
+        </a>
+        <a href="/" class="btn" style="text-decoration:none; display:block;">กลับสู่หน้าหลัก / เข้าสู่ระบบด้วยวิธีอื่น</a>
+    """ if is_login else """
+        <a href="javascript:window.close();" class="btn">ปิดหน้าต่างนี้</a>
+        <a href="/" class="btn" style="text-decoration:none; display:block; margin-top:8px;">กลับสู่หน้าหลัก</a>
+    """
+    
     return f"""
     <!DOCTYPE html>
     <html lang="th">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>เกิดข้อผิดพลาด - OrgChat AI</title>
+        <title>{header_title} - OrgChat AI</title>
         <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
         <style>
             :root {{
                 --error: #EF4444;
                 --bg: #0D0D0D;
-                --card-bg: rgba(25, 25, 25, 0.65);
-                --card-border: rgba(239, 68, 68, 0.2);
+                --card-bg: rgba(25, 25, 25, 0.75);
+                --card-border: rgba(239, 68, 68, 0.25);
                 --text: #F3F4F6;
                 --text-muted: #9CA3AF;
             }}
@@ -686,70 +704,66 @@ def render_link_error(error):
                 -webkit-backdrop-filter: blur(20px);
                 border: 1px solid var(--card-border);
                 border-radius: 24px;
-                padding: 48px 32px;
+                padding: 40px 28px;
                 box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
                 text-align: center;
-                animation: fadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+                animation: fadeIn 0.5s ease-out forwards;
             }}
             @keyframes fadeIn {{
-                from {{ opacity: 0; transform: translateY(20px); }}
+                from {{ opacity: 0; transform: translateY(15px); }}
                 to {{ opacity: 1; transform: translateY(0); }}
             }}
             .error-icon {{
-                width: 72px;
-                height: 72px;
-                background: rgba(239, 68, 68, 0.1);
+                width: 68px;
+                height: 68px;
+                background: rgba(239, 68, 68, 0.12);
                 border: 2px solid var(--error);
                 color: var(--error);
                 border-radius: 50%;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                font-size: 32px;
-                margin: 0 auto 28px auto;
-                box-shadow: 0 0 20px rgba(239, 68, 68, 0.2);
-                animation: scaleIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.2s both;
-            }}
-            @keyframes scaleIn {{
-                from {{ transform: scale(0); opacity: 0; }}
-                to {{ transform: scale(1); opacity: 1; }}
+                font-size: 30px;
+                font-weight: 700;
+                margin: 0 auto 24px auto;
+                box-shadow: 0 0 24px rgba(239, 68, 68, 0.2);
             }}
             h1 {{
-                font-size: 22px;
+                font-size: 20px;
                 font-weight: 700;
-                margin-bottom: 16px;
+                margin-bottom: 14px;
                 color: #FFFFFF;
             }}
             p {{
-                font-size: 15px;
+                font-size: 14px;
                 color: var(--text-muted);
                 line-height: 1.6;
-                margin-bottom: 32px;
+                margin-bottom: 28px;
+                word-break: break-word;
             }}
             .btn {{
                 display: inline-block;
                 width: 100%;
-                background: rgba(255, 255, 255, 0.05);
-                border: 1px solid rgba(255, 255, 255, 0.1);
+                background: rgba(255, 255, 255, 0.08);
+                border: 1px solid rgba(255, 255, 255, 0.15);
                 color: var(--text);
                 font-weight: 600;
-                font-size: 15px;
-                padding: 14px;
+                font-size: 14px;
+                padding: 13px;
                 border-radius: 12px;
                 cursor: pointer;
-                transition: all 0.3s;
+                transition: all 0.2s;
                 text-decoration: none;
-                margin-top: 10px;
                 font-family: inherit;
             }}
             .btn:hover {{
-                background: rgba(255, 255, 255, 0.1);
-                border-color: rgba(255, 255, 255, 0.2);
+                background: rgba(255, 255, 255, 0.15);
+                border-color: rgba(255, 255, 255, 0.25);
             }}
             .footer-info {{
-                margin-top: 40px;
+                margin-top: 32px;
                 font-size: 11px;
-                color: rgba(255, 255, 255, 0.2);
+                color: rgba(255, 255, 255, 0.25);
                 letter-spacing: 0.5px;
             }}
         </style>
@@ -757,19 +771,18 @@ def render_link_error(error):
     <body>
         <div class="container">
             <div class="error-icon">!</div>
-            <h1>เกิดข้อผิดพลาดในการผูกบัญชีค่ะ</h1>
+            <h1>{header_title}</h1>
             <p>{error}</p>
             
-            <a href="javascript:window.close();" class="btn">ปิดหน้าต่างนี้</a>
+            {primary_btn}
             
             <div class="footer-info">
-                ORGCHAT AI SYSTEM &bull; ERROR ENCOUNTERED
+                ORGCHAT AI SYSTEM &bull; AUTHENTICATION
             </div>
         </div>
     </body>
     </html>
     """
-
 
 def render_success_page(username):
     return f"""
@@ -1177,14 +1190,31 @@ def line_link_magic():
 def api_login():
     data = request.json or {}
     username_raw = data.get("username", "").strip()
-    username_lower = username_raw.lower()
     password = data.get("password", "")
 
     if not username_raw or not password:
         return jsonify({"ok": False, "error": "กรุณากรอกชื่อผู้ใช้และรหัสผ่าน"}), 400
 
-    # 🛡️ Account Lockout Check
-    is_locked, rem_seconds = database.is_account_locked(username_raw)
+    # ── Resolve Email or Username to Canonical Account ──
+    # If the user entered an email address or if their input matches an account email,
+    # resolve to the canonical username so login by username or email accesses the SAME account.
+    resolved_username = username_raw
+    if "@" in username_raw:
+        user_by_email = database.get_user_by_email(username_raw)
+        if user_by_email and user_by_email.get("username"):
+            resolved_username = user_by_email["username"]
+            logger.info(f"🔑 [Login] Resolved email '{username_raw}' to user '{resolved_username}'")
+    else:
+        user_by_email = database.get_user_by_email(username_raw)
+        if user_by_email and user_by_email.get("username"):
+            target_set = database.get_user_setting(username_raw)
+            if not target_set or not target_set.get("custom_password"):
+                resolved_username = user_by_email["username"]
+
+    # 🛡️ Account Lockout Check (Check both resolved username and raw input)
+    is_locked, rem_seconds = database.is_account_locked(resolved_username)
+    if not is_locked and resolved_username != username_raw:
+        is_locked, rem_seconds = database.is_account_locked(username_raw)
     if is_locked:
         rem_min = max(1, (rem_seconds + 59) // 60)
         return jsonify({
@@ -1199,7 +1229,7 @@ def api_login():
         return jsonify({"ok": False, "error": "IP นี้ถูกล็อคชั่วคราวเนื่องจากพยายามเข้าสู่ระบบผิดพลาดหลายครั้ง กรุณาลองใหม่ใน 1 ชั่วโมง"}), 429
     
     # 1. Check Database first (Dynamic Users) — supports bcrypt hashed passwords
-    settings = database.get_user_setting(username_raw)
+    settings = database.get_user_setting(resolved_username)
 
     def _check_whitelist(uname):
         """Return error string if whitelist blocks this user, else None."""
@@ -1220,25 +1250,35 @@ def api_login():
     if settings.get("custom_password") and database.check_password(password, settings["custom_password"]):
         if not settings.get("is_active", 1):
             return jsonify({"ok": False, "error": "บัญชีนี้ถูกระงับโดยผู้ดูแลระบบ"}), 403
-        wl_err = _check_whitelist(username_raw)
+        wl_err = _check_whitelist(resolved_username)
         if wl_err:
             return jsonify({"ok": False, "error": wl_err}), 403
+        _m_ok, _m_err = org_security.login_method_allowed(resolved_username, "password")
+        if not _m_ok:
+            return jsonify({"ok": False, "error": _m_err}), 403
             
         # 🛡️ 2FA Intercept Check
         if settings.get("totp_enabled"):
             # Instead of logging in fully, issue temporary 2FA token
             pre_auth_token = _sec.token_urlsafe(32)
-            _2fa_pre_auth_set(pre_auth_token, settings.get("username_original", username_raw), expires_in=300)
+            _2fa_pre_auth_set(pre_auth_token, settings.get("username_original", resolved_username), expires_in=300)
             return jsonify({
                 "ok": True,
                 "require_2fa": True,
-                "pre_auth_token": pre_auth_token
+                "requires_2fa": True,
+                "pre_auth_token": pre_auth_token,
+                "totp_type": settings.get("totp_type") or "authenticator",
+                "has_email": bool((settings.get("email") or "").strip()),
+                "email_masked": ((settings.get("email") or "")[:2] + "***@" + (settings.get("email") or "").split("@")[-1]) if "@" in (settings.get("email") or "") else "",
+                "has_org": True
             })
 
-        database.reset_failed_login(username_raw)
+        database.reset_failed_login(resolved_username)
+        if resolved_username != username_raw:
+            database.reset_failed_login(username_raw)
         session.clear()  # ป้องกัน session fixation
         session.permanent = True
-        session["user"] = settings.get("username_original", username_raw)
+        session["user"] = settings.get("username_original", resolved_username)
         session["role"] = settings.get("role", "user")
         session["session_version"] = database.get_user_session_version(session["user"])
 
@@ -1267,9 +1307,9 @@ def api_login():
                 except Exception as _we:
                     logger.warning(f"[Login] whitelist auto-join failed for '{_uname}': {_we}")
 
-        _is_known_ip = database.is_known_user_ip(username_raw, client_ip)
+        _is_known_ip = database.is_known_user_ip(resolved_username, client_ip)
         _set_session_org(session["user"])
-        database.record_login_attempt(client_ip, username_raw, success=True)
+        database.record_login_attempt(client_ip, resolved_username, success=True)
         database.log_audit_event(session["user"], "USER_LOGIN", f"Login successful (New IP: {not _is_known_ip})", client_ip, session.get("org_id", 1))
         
         # --- 🚨 Security Alert: Send LINE Push Notification on login (High priority if new IP) ---
@@ -1312,6 +1352,7 @@ def api_login():
         return jsonify({"ok": True, "user": session["user"], "role": session["role"], "org_role": session.get("org_role"), "has_org": session.get("org_id") is not None})
 
     # 2. Fallback to Hardcoded (plain text)
+    username_lower = (resolved_username or username_raw).lower()
     if username_lower in USERS and hmac.compare_digest(USERS[username_lower], password):
         user_to_session = username_raw.capitalize()
         if not settings.get("is_active", 1):
@@ -1327,13 +1368,15 @@ def api_login():
         database.log_audit_event(user_to_session, "USER_LOGIN", "Login successful", client_ip, session.get("org_id", 1))
         return jsonify({"ok": True, "user": user_to_session, "role": session["role"], "org_role": session.get("org_role"), "has_org": session.get("org_id") is not None})
 
-    database.record_login_attempt(client_ip, username_raw, success=False)
-    lock_info = database.record_failed_login(username_raw)
+    database.record_login_attempt(client_ip, resolved_username, success=False)
+    lock_info = database.record_failed_login(resolved_username)
+    if resolved_username != username_raw:
+        database.record_failed_login(username_raw)
     if lock_info.get("locked"):
         try:
             from routes.chat import send_line_push_notification
             sec_fields = {
-                "ผู้ใช้งาน": username_raw,
+                "ผู้ใช้งาน": resolved_username,
                 "ระยะเวลาล็อค": f"{lock_info.get('lock_minutes', 15)} นาที",
                 "สาเหตุ": "พยายามใส่รหัสผ่านผิดเกิน 5 ครั้ง",
                 "IP Address": client_ip,
@@ -1341,7 +1384,7 @@ def api_login():
             }
             # Push to affected user
             threading.Thread(target=send_line_push_notification, args=(
-                username_raw,
+                resolved_username,
                 "🚨 แจ้งเตือนความปลอดภัย: บัญชีถูกระงับชั่วคราว",
                 f"บัญชีของคุณ {username_raw} ถูกระงับชั่วคราว 15 นาที เนื่องจากพยายามใส่รหัสผ่านผิดเกินกำหนด",
             ), kwargs={"fields": sec_fields}).start()
@@ -1365,7 +1408,7 @@ def api_login():
             "error": f"ใส่รหัสผ่านผิดเกินกำหนด บัญชีถูกล็อคชั่วคราวเป็นเวลา {lock_info.get('lock_minutes', 15)} นาทีเพื่อความปลอดภัย"
         }), 429
 
-    return jsonify({"ok": False, "error": "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง"})
+    return jsonify({"ok": False, "error": "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง"}), 401
 
 
 # ─── 🛡️ Two-Factor Authentication (2FA / TOTP / Email OTP) Endpoints ───
@@ -1479,6 +1522,7 @@ def setup_2fa():
     })
 
 @auth_bp.route("/api/2fa/send-email-otp", methods=["POST"])
+@_limiter.limit("5 per minute; 15 per hour")
 def send_2fa_email_otp_api():
     """Send OTP for Email 2FA setup or login verification challenge."""
     data = request.json or {}
@@ -1501,13 +1545,13 @@ def send_2fa_email_otp_api():
     if not email:
         return jsonify({"ok": False, "error": "บัญชีของคุณยังไม่ได้ระบุอีเมล ไม่สามารถส่ง OTP ทาง Gmail ได้"}), 400
         
-    import random
-    otp_code = f"{random.randint(100000, 999999)}"
+    import secrets
+    otp_code = f"{secrets.randbelow(900000) + 100000}"
     _2fa_email_otp_set(username, otp_code, expires_in=300)
     
     ok, msg = send_2fa_email_otp(email, otp_code)
     if not ok:
-        return jsonify({"ok": False, "error": f"ส่ง OTP ล้มเหลว: {msg}"}), 500
+        return jsonify({"ok": False, "error": "ส่งอีเมลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง หรือกรอกรหัสจากแอป Authenticator / Backup Code แทน"}), 500
         
     masked_email = email[:2] + "***@" + email.split("@")[-1] if "@" in email else email
     return jsonify({"ok": True, "message": f"ส่งรหัส OTP ไปที่ {masked_email} เรียบร้อยแล้ว"})
@@ -1539,18 +1583,19 @@ def enable_2fa():
             return jsonify({"ok": False, "error": "รหัส 2FA ไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง"}), 400
         
     # Generate 8 random backup codes (8 hex chars each)
-    backup_codes = [_sec.token_hex(4).upper() for _ in range(8)]
+    backup_codes = [_sec.token_hex(6).upper() for _ in range(8)]  # 12 ตัวอักษร (48 บิต) ยากต่อการเดามากกว่าเดิม 8 ตัว
     backup_codes_hashed = [hashlib.sha256(c.encode()).hexdigest() for c in backup_codes]
     
     # Save 2FA to DB
     conn = database._get_conn()
     conn.execute("""
         UPDATE user_settings SET totp_secret = ?, totp_backup_codes = ?, totp_enabled = 1, totp_type = ? WHERE username = ?
-    """, (secret, json.dumps(backup_codes_hashed), fa_type, username))
+    """, (secret_vault.encrypt(secret), json.dumps(backup_codes_hashed), fa_type, username))
     conn.commit()
     conn.close()
     
     _2fa_setup_secret_pop(username)
+    session.pop('_2fa_need', None)
     
     return jsonify({
         "ok": True,
@@ -1572,7 +1617,7 @@ def disable_2fa():
             return jsonify({"ok": False, "error": "รหัสผ่านไม่ถูกต้อง"}), 400
     else:
         # For OAuth / passwordless accounts or default accounts without custom_password
-        secret = settings.get("totp_secret", "")
+        secret = secret_vault.decrypt(settings.get("totp_secret", ""))
         valid = False
         if secret and code:
             try:
@@ -1632,22 +1677,47 @@ def verify_2fa():
         _2fa_pre_auth_pop(pre_auth_token)
         return jsonify({"ok": False, "error": "เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่อีกครั้ง"}), 400
         
+    # จำกัดการเดารหัส: ผิดเกิน 5 ครั้งต่อ pre-auth token -> ยกเลิก token ต้องล็อกอินด้วยรหัสผ่านใหม่
+    _att_key = f"2fa_attempts:{pre_auth_token}"
+    _att = int(RedisManager.get_json(_att_key) or 0)
+    if _att >= 5:
+        _2fa_pre_auth_pop(pre_auth_token)
+        RedisManager.delete(_att_key)
+        return jsonify({"ok": False, "error": "กรอกรหัสผิดเกินกำหนด กรุณาเข้าสู่ระบบใหม่อีกครั้ง"}), 429
+
     username = cached["user"]
     settings = database.get_user_setting(username)
-    secret = settings.get("totp_secret", "")
+    _stored_secret = settings.get("totp_secret", "")
+    secret = secret_vault.decrypt(_stored_secret)
     fa_type = settings.get("totp_type", "authenticator")
     
     valid = False
-    if fa_type == "email":
-        cached_otp = _2fa_email_otp_get(username)
-        if cached_otp:
-            if hmac.compare_digest(cached_otp["otp"], code):
-                valid = True
-                _2fa_email_otp_pop(username)
-    elif secret:
-        totp = pyotp.TOTP(secret)
-        if totp.verify(code, valid_window=1):
-            valid = True
+    # วิธีที่ 1: รหัส OTP ที่ส่งทางอีเมล (ใช้ได้กับทุกบัญชีที่เปิด 2FA และมีอีเมล)
+    cached_otp = _2fa_email_otp_get(username)
+    if cached_otp and hmac.compare_digest(str(cached_otp["otp"]), code):
+        valid = True
+        _2fa_email_otp_pop(username)
+    # วิธีที่ 2: รหัส 6 หลักจากแอป Authenticator (เฉพาะบัญชีที่ผูกแอปไว้)
+    if not valid and secret and secret != "EMAIL_OTP" and fa_type != "email":
+        try:
+            if pyotp.TOTP(secret).verify(code, valid_window=1):
+                # กันใช้รหัสเดิมซ้ำ (replay) ภายในช่วงเวลาที่รหัสยังใช้ได้
+                _used_key = f"2fa_used:{username}:{code}"
+                if RedisManager.get_json(_used_key):
+                    valid = False
+                else:
+                    RedisManager.set_json(_used_key, 1, expire=120)
+                    valid = True
+                    # บัญชีเก่าที่ยังเก็บรหัสลับเป็นข้อความธรรมดา: เข้ารหัสให้ทันทีหลังยืนยันสำเร็จ
+                    if _stored_secret and not secret_vault.is_encrypted(_stored_secret) and secret_vault.can_encrypt():
+                        try:
+                            _c = database._get_conn()
+                            _c.execute("UPDATE user_settings SET totp_secret = ? WHERE username = ? COLLATE NOCASE", (secret_vault.encrypt(_stored_secret), username))
+                            _c.commit(); _c.close()
+                        except Exception as _ue:
+                            logger.warning(f"[2FA] could not upgrade secret encryption: {_ue}")
+        except Exception:
+            pass
             
     # If standard 2FA failed, check Backup Codes
     if not valid and settings.get("totp_backup_codes"):
@@ -1666,10 +1736,13 @@ def verify_2fa():
             logger.warning(f"[2FA Backup Code] error: {_be}")
             
     if not valid:
+        RedisManager.set_json(_att_key, _att + 1, expire=300)
+        database.record_login_attempt(request.remote_addr or "unknown", username, success=False)
         return jsonify({"ok": False, "error": "รหัส 2FA หรือ Backup Code ไม่ถูกต้อง"}), 400
-        
+
     # Clear pre-auth token
     _2fa_pre_auth_pop(pre_auth_token)
+    RedisManager.delete(_att_key)
     
     # Issue actual login session
     client_ip = request.remote_addr or "unknown"
@@ -1720,6 +1793,9 @@ def qr_poll(token):
         user = database.qr_consume_token(token)
         if not user:
             return jsonify({"ok": False, "error": "Token expired or already used"}), 410
+        _m_ok, _m_err = org_security.login_method_allowed(user, "qr")
+        if not _m_ok:
+            return jsonify({"ok": False, "error": _m_err}), 403
         session.clear()  # ป้องกัน session fixation
         session.permanent = True
         session["user"] = user
@@ -1760,6 +1836,7 @@ def qr_login_page(token):
 
 
 @auth_bp.route("/api/login/google", methods=["POST"])
+@_limiter.limit("10 per minute; 30 per hour")
 def api_login_google():
     data = request.json
     token = data.get("credential")
@@ -1785,28 +1862,34 @@ def api_login_google():
         if not email:
             return jsonify({"ok": False, "error": "ไม่พบอีเมลจาก Google Account"}), 400
 
-        # ── Resolve username (ป้องกัน collision ระหว่าง email จาก domain ต่างกัน) ──
-        # ขั้นแรก: ลองใช้ email prefix เหมือนเดิมเพื่อ backward compat
-        _GOOGLE_RESERVED = frozenset({
-            "admin", "root", "system", "support", "api", "null", "undefined",
-            "test", "guest", "owner", "superadmin", "staff", "bot", "service",
-            "help", "info", "mail", "billing", "account", "security",
-        })
-        base_uname = re.sub(r'[^a-z0-9_]', '_', email.split('@')[0].lower())[:28]
-        # ถ้าชนกับ reserved word → เพิ่ม _g ต่อท้าย
-        if base_uname in _GOOGLE_RESERVED:
-            base_uname = f"{base_uname}_g"[:30]
-            logger.info(f"[GoogleLogin] reserved username '{base_uname}' from {email} — using '{base_uname}'")
-        username = base_uname
-        # ตรวจสอบว่า username มีอยู่แล้วและเป็นคนละ email หรือไม่
-        existing_settings = database.get_user_setting(username)
-        if existing_settings:
-            stored_email = (existing_settings.get("email") or "").lower()
-            if stored_email and stored_email != email.lower():
-                # collision! ใช้ suffix จาก domain เพื่อทำให้ unique
-                domain_tag = re.sub(r'[^a-z0-9]', '', email.split('@')[1].split('.')[0].lower())[:8]
-                username = f"{base_uname}_{domain_tag}"[:30]
-                logger.info(f"[GoogleLogin] username collision on {base_uname!r} — using {username!r} for {email}")
+        # ── 1. Check if an existing account has already bound this Google email ──
+        bound_user = database.get_user_by_email(email)
+        if bound_user and bound_user.get("username"):
+            username = bound_user["username"]
+            logger.info(f"[GoogleLogin] Found existing bound user '{username}' for email '{email}'")
+        else:
+            # ── Resolve username (ป้องกัน collision ระหว่าง email จาก domain ต่างกัน) ──
+            # ขั้นแรก: ลองใช้ email prefix เหมือนเดิมเพื่อ backward compat
+            _GOOGLE_RESERVED = frozenset({
+                "admin", "root", "system", "support", "api", "null", "undefined",
+                "test", "guest", "owner", "superadmin", "staff", "bot", "service",
+                "help", "info", "mail", "billing", "account", "security",
+            })
+            base_uname = re.sub(r'[^a-z0-9_]', '_', email.split('@')[0].lower())[:28]
+            # ถ้าชนกับ reserved word → เพิ่ม _g ต่อท้าย
+            if base_uname in _GOOGLE_RESERVED:
+                base_uname = f"{base_uname}_g"[:30]
+                logger.info(f"[GoogleLogin] reserved username '{base_uname}' from {email} — using '{base_uname}'")
+            username = base_uname
+            # ตรวจสอบว่า username มีอยู่แล้วและเป็นคนละ email หรือไม่
+            existing_settings = database.get_user_setting(username)
+            if existing_settings:
+                stored_email = (existing_settings.get("email") or "").lower()
+                if stored_email and stored_email != email.lower():
+                    # collision! ใช้ suffix จาก domain เพื่อทำให้ unique
+                    domain_tag = re.sub(r'[^a-z0-9]', '', email.split('@')[1].split('.')[0].lower())[:8]
+                    username = f"{base_uname}_{domain_tag}"[:30]
+                    logger.info(f"[GoogleLogin] username collision on {base_uname!r} — using {username!r} for {email}")
 
         # --- Whitelist Check & Auto-Binding ---
         user_orgs = database.get_user_orgs(username)
@@ -1913,6 +1996,9 @@ def api_login_google():
             logger.warning(f"[GoogleLogin] seed user data failed for '{username}': {_seed_err}")
 
         # Re-fetch settings after potential INSERT above
+        _m_ok, _m_err = org_security.login_method_allowed(username, "google")
+        if not _m_ok:
+            return jsonify({"ok": False, "error": _m_err}), 403
         settings = database.get_user_setting(username)
 
         session.clear()
@@ -2100,8 +2186,10 @@ def api_forgot_password():
         user_info = database.get_user_by_email(target_email)
         if not user_info:
             return jsonify({
-                "ok": False,
-                "error": f"ไม่พบอีเมล {target_email} นี้ในระบบองค์กร กรุณาตรวจสอบอีกครั้ง"
+                "ok": True,
+                "step": "otp_sent",
+                "email": target_email,
+                "message": f"หากมีบัญชีที่ใช้อีเมล {target_email} ในระบบ ระบบได้ส่งรหัส OTP เรียบร้อยแล้วค่ะ"
             })
         username = user_info.get("username")
     else:
@@ -2110,8 +2198,13 @@ def api_forgot_password():
         if user_info and user_info.get("email"):
             target_email = user_info.get("email")
 
-    if not username:
-        return jsonify({"ok": False, "error": "ไม่พบบัญชีผู้ใช้นี้ในระบบองค์กร"})
+    if not username or not user_info:
+        return jsonify({
+            "ok": True,
+            "step": "otp_sent",
+            "email": raw_input,
+            "message": "หากมีบัญชีนี้ในระบบ ระบบได้ส่งคำแนะนำการรีเซ็ตเรียบร้อยแล้วค่ะ"
+        })
 
     token = database.create_reset_token(username)
     base = os.environ.get("BASE_URL", "https://openchat.sbs")
@@ -2131,6 +2224,18 @@ def api_forgot_password():
                 "message": f"ระบบได้ส่งรหัส OTP 6 หลักไปยังอีเมล {target_email} เรียบร้อยแล้วค่ะ"
             })
         logger.warning(f"[ForgotPassword] Email send failed: {email_err}")
+
+    # Dev / Localhost fallback: allow testing password reset without SMTP blocking
+    host_check = request.host.lower()
+    is_local = "localhost" in host_check or "127.0.0.1" in host_check or os.environ.get("FLASK_ENV") == "development"
+    if is_local:
+        return jsonify({
+            "ok": True,
+            "step": "otp_sent",
+            "email": target_email or username,
+            "message": f"โหมดทดสอบระบบ (Local Dev): รหัส OTP คือ {otp_code} (หมดอายุใน 10 นาที)",
+            "dev_otp": otp_code
+        })
 
     # Priority 2: Try to send via LINE DM if linked
     line_user_id = database.get_line_user_id_for_username(username)
@@ -2211,7 +2316,8 @@ def api_reset_password():
 
 @auth_bp.route("/signup")
 def signup_page():
-    return render_template("signup.html")
+    from routes.shared import get_or_create_csrf_token
+    return render_template("signup.html", csrf_token=get_or_create_csrf_token())
 
 
 @auth_bp.route("/onboarding")
@@ -2641,6 +2747,11 @@ def invite_org_member():
             "error": f"แผน {active_plan.capitalize()} รองรับสูงสุด {max_users} คน กรุณาอัปเกรดแผนเพื่อเพิ่มสมาชิก"
         }), 403
     # Verify target user exists
+    if "@" in invite_username:
+        user_by_email = database.get_user_by_email(invite_username)
+        if user_by_email and user_by_email.get("username"):
+            invite_username = user_by_email["username"]
+
     target_settings = database.get_user_setting(invite_username)
     if not target_settings:
         return jsonify({"ok": False, "error": f"ไม่พบผู้ใช้ '{invite_username}' ในระบบ"}), 404
@@ -2656,12 +2767,27 @@ def invite_org_member():
     return jsonify({"ok": True, "username": invite_username, "role": role})
 
 
+def _get_invite_secret() -> str:
+    from routes.shared import is_production
+    sec = (os.environ.get("FLASK_SECRET_KEY") or os.environ.get("SECRET_KEY", "")).strip()
+    if not sec or sec == "orgchat-default-secret-change-me":
+        if is_production():
+            raise RuntimeError("CRITICAL: FLASK_SECRET_KEY must be set in production to sign invite tokens")
+        try:
+            from flask import current_app
+            if current_app and current_app.secret_key:
+                return str(current_app.secret_key)
+        except Exception:
+            pass
+        return "dev-invite-secret-ephemeral"
+    return sec
+
 def _make_invite_token(email: str, org_id: int, timestamp: int = None) -> str:
     """Generate a timed HMAC invite token for email+org pair (valid for 7 days)."""
     import time
     if timestamp is None:
         timestamp = int(time.time())
-    secret = os.environ.get("SECRET_KEY", "orgchat-default-secret-change-me")
+    secret = _get_invite_secret()
     msg = f"invite:{email.lower()}:{org_id}:{timestamp}"
     sig = hmac.new(secret.encode(), msg.encode(), hashlib.sha256).hexdigest()[:32]
     return f"{timestamp}.{sig}"
@@ -2669,21 +2795,18 @@ def _make_invite_token(email: str, org_id: int, timestamp: int = None) -> str:
 def _verify_invite_token(token: str, email: str, org_id: int, max_age_days: int = 7) -> bool:
     import time
     try:
-        if "." in token:
-            ts_str, sig = token.split(".", 1)
-            ts = int(ts_str)
-            now = int(time.time())
-            if now - ts > max_age_days * 86400 or ts > now + 300:
-                logger.warning(f"[InviteToken] Token expired: ts={ts}, now={now}")
-                return False
-            expected = _make_invite_token(email, org_id, timestamp=ts)
-            return hmac.compare_digest(token, expected)
-        else:
-            # Fallback legacy token check without timestamp
-            secret = os.environ.get("SECRET_KEY", "orgchat-default-secret-change-me")
-            msg = f"invite:{email.lower()}:{org_id}"
-            legacy_sig = hmac.new(secret.encode(), msg.encode(), hashlib.sha256).hexdigest()[:48]
-            return hmac.compare_digest(token, legacy_sig)
+        # P0-2: Disallow untimed legacy token fallback without timestamp
+        if not token or "." not in token:
+            logger.warning(f"[InviteToken] Token missing timestamp format: {token}")
+            return False
+        ts_str, sig = token.split(".", 1)
+        ts = int(ts_str)
+        now = int(time.time())
+        if now - ts > max_age_days * 86400 or ts > now + 300:
+            logger.warning(f"[InviteToken] Token expired: ts={ts}, now={now}")
+            return False
+        expected = _make_invite_token(email, org_id, timestamp=ts)
+        return hmac.compare_digest(token, expected)
     except Exception as e:
         logger.error(f"[InviteToken] verify error: {e}")
         return False
@@ -3298,6 +3421,9 @@ def org_member_reset_password(username):
     password = data.get("password")
     if not password:
         return jsonify({"ok": False, "error": "กรุณากรอกรหัสผ่านใหม่"}), 400
+    pol_ok, pol_err = org_security.check_password_policy(username, password)
+    if not pol_ok:
+        return jsonify({"ok": False, "error": pol_err}), 400
         
     database.admin_reset_user_password(username, password)
     database.log_event(f"Org admin reset password for member: {username}", user=me, org_id=org_id)
@@ -3418,7 +3544,7 @@ def org_announcements_api():
             import notification_db
             notification_db.notify_org_members_except(org_id, me, 'system', f"📢 ประกาศองค์กร: {title}", content, '#org-announcements')
         except Exception as e:
-            print(f"⚠️ Failed to send in-app announcement notification: {e}")
+            logger.error(f"⚠️ Failed to send in-app announcement notification: {e}")
         return jsonify({"ok": True, "id": ann_id})
     else:
         announcements = database.get_org_announcements(org_id)
@@ -3542,8 +3668,19 @@ def update_my_profile():
 def get_my_settings():
     """Return current user's settings (role, permissions, notes) — read for self."""
     username = session.get("user")
-    settings = database.get_user_setting(username)
+    settings = database.get_user_setting(username) or {}
     profile = database.get_user_profile(username) or {}
+    
+    google_email = ""
+    try:
+        gt = database.get_google_token(username)
+        if gt and gt.get("google_email"):
+            google_email = gt["google_email"]
+        elif settings.get("email"):
+            google_email = settings["email"]
+    except Exception:
+        google_email = settings.get("email") or ""
+
     return jsonify({
         "ok": True,
         "username": username,
@@ -3564,8 +3701,99 @@ def get_my_settings():
         "can_use_ai": bool(settings.get("can_use_ai", True)),
         "can_claim_expense": bool(settings.get("can_claim_expense", True)),
         "line_user_id": profile.get("line_user_id") or "",
+        "google_email": google_email,
     })
 
+
+@auth_bp.route("/api/user/bind-google", methods=["POST"])
+@login_required
+def user_bind_google_route():
+    """Bind Google account to currently logged in user using ID Token."""
+    username = session.get("user")
+    data = request.get_json(force=True) or {}
+    token = (data.get("credential") or "").strip()
+    
+    if not token:
+        return jsonify({"ok": False, "error": "ไม่พบข้อมูลยืนยันตัวตนจาก Google ค่ะ"}), 400
+        
+    client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
+    if not client_id or not GOOGLE_AUTH_AVAILABLE:
+        return jsonify({"ok": False, "error": "Google Auth ยังไม่ได้เปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ"}), 503
+        
+    try:
+        idinfo = id_token.verify_oauth2_token(
+            token, 
+            google_requests.Request(), 
+            client_id, 
+            clock_skew_in_seconds=60
+        )
+        email = idinfo.get("email")
+        if not email:
+            return jsonify({"ok": False, "error": "ไม่พบอีเมลในโปรไฟล์ Google ค่ะ"}), 400
+            
+        # ตรวจสอบว่ามีผู้ใช้อื่นผูกอีเมลนี้ไปแล้วหรือไม่
+        existing = database.get_user_by_email(email)
+        if existing and existing.get("username") and existing["username"].lower() != username.lower():
+            return jsonify({"ok": False, "error": f"อีเมล {email} ถูกผูกไว้กับบัญชี '{existing['username']}' แล้วค่ะ กรุณาใช้บัญชี Google อื่น"}), 400
+            
+        # บันทึก email ลง user_settings
+        conn = database._get_conn()
+        cur = conn.cursor()
+        cur.execute("UPDATE user_settings SET email=? WHERE username=?", (email, username))
+        
+        # บันทึกหรืออัปเดตลง user_google_tokens
+        cur.execute("""
+            INSERT INTO user_google_tokens (username, google_email, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(username) DO UPDATE SET
+                google_email = excluded.google_email,
+                updated_at = CURRENT_TIMESTAMP
+        """, (username, email))
+        conn.commit()
+        conn.close()
+        
+        # อัปเดต avatar หากยังไม่มี
+        google_pic = idinfo.get("picture")
+        if google_pic:
+            prof = database.get_user_profile(username)
+            if not prof.get("avatar_url"):
+                database.update_user_profile(username, avatar_url=google_pic)
+                
+        database.log_event(f"Bound Google account {email} for self", user=username, org_id=get_current_org_id())
+        return jsonify({
+            "ok": True,
+            "google_email": email,
+            "message": f"ผูกบัญชี Google ({email}) เรียบร้อยแล้วค่ะ! คุณสามารถใช้ปุ่ม 'ลงชื่อเข้าใช้ด้วย Google' ในการเข้าสู่ระบบครั้งถัดไปได้ทันที"
+        })
+    except Exception as e:
+        logger.error(f"Error binding Google account for {username}: {e}")
+        return jsonify({"ok": False, "error": f"การผูกบัญชี Google ล้มเหลว: {str(e)}"}), 400
+
+
+@auth_bp.route("/api/user/unbind-google", methods=["POST"])
+@login_required
+def user_unbind_google_route():
+    """Unbind (disconnect) Google account for currently logged in user."""
+    username = session.get("user")
+    try:
+        if OAUTH2_AVAILABLE:
+            try:
+                oauth2_service.disconnect_user(username)
+            except Exception as _disc_e:
+                logger.warning(f"oauth2_service.disconnect_user warning: {_disc_e}")
+                
+        conn = database._get_conn()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM user_google_tokens WHERE username=?", (username,))
+        cur.execute("UPDATE user_settings SET email='' WHERE username=?", (username,))
+        conn.commit()
+        conn.close()
+            
+        database.log_event("Unbound Google account for self", user=username, org_id=get_current_org_id())
+        return jsonify({"ok": True, "message": "ยกเลิกการผูกบัญชี Google เรียบร้อยแล้วค่ะ"})
+    except Exception as e:
+        logger.error(f"Error unbinding Google account for {username}: {e}")
+        return jsonify({"ok": False, "error": f"เกิดข้อผิดพลาดในการยกเลิก: {str(e)}"}), 500
 
 
 @auth_bp.route("/api/user/unbind-line", methods=["POST"])
@@ -3649,6 +3877,9 @@ def change_my_password():
     val_ok, val_err = validate_password_strength(new_pw)
     if not val_ok:
         return jsonify({"ok": False, "error": val_err}), 400
+    pol_ok, pol_err = org_security.check_password_policy(username, new_pw)
+    if not pol_ok:
+        return jsonify({"ok": False, "error": pol_err}), 400
 
     # Verify current password
     settings = database.get_user_setting(username)
@@ -3703,9 +3934,8 @@ def _get_line_login_config():
 
 
 @auth_bp.route("/api/line/login-init", methods=["GET"])
-@login_required
 def line_login_init():
-    """Initiates LINE Login OAuth flow to link LINE user ID."""
+    """Initiates LINE Login OAuth flow to link LINE user ID or log in directly."""
     username = session.get("user")
     cfg = _get_line_login_config()
     channel_id = cfg["channel_id"]
@@ -3716,8 +3946,19 @@ def line_login_init():
         
     import secrets
     state = secrets.token_hex(16)
+    
+    # Store state in shared DB (not just session cookie) to prevent Cloudflare Tunnel & cross-domain cookie loss
+    state_payload = {
+        "username": username,
+        "mode": "link" if username else "login",
+        "origin_host": request.host_url.rstrip('/'),
+        "created_at": time.time()
+    }
+    _store_oauth_state(f"line_{state}", state_payload)
+    
     session["line_login_state"] = state
     session["line_login_username"] = username
+    session["line_login_mode"] = "link" if username else "login"
     
     webhook_url = os.environ.get("ACTIVE_PUBLIC_URL")
     base_url = ""
@@ -3742,100 +3983,316 @@ def line_login_init():
         "client_id": channel_id,
         "redirect_uri": redirect_uri,
         "state": state,
-        "scope": "profile openid"
+        "scope": "profile openid email"
     }
     auth_url = f"https://access.line.me/oauth2/v2.1/authorize?{urllib.parse.urlencode(params)}"
     return redirect(auth_url)
 
 
+_RECENT_LINE_CALLBACK_CACHE: dict = {}  # cache_key -> (response, timestamp)
+
+
+def _username_taken(username: str) -> bool:
+    """True เมื่อมีแถวใน user_settings จริง (ไม่ใช่ค่าเริ่มต้นที่ get_user_setting สร้างให้)"""
+    conn = database._get_conn()
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM user_settings WHERE username = ? COLLATE NOCASE LIMIT 1", (username,)
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
+def _get_line_http_session():
+    """Create a high-speed IPv4-forced HTTP session to prevent Windows IPv6 DNS/TCP blackhole timeouts."""
+    import socket
+    import requests
+    import urllib3.util.connection as urllib3_cn
+    urllib3_cn.allowed_gai_family = lambda: socket.AF_INET
+    s = requests.Session()
+    s.trust_env = False  # Ignore system proxies that could stall
+    return s
+
+
+def _decode_jwt_payload_unverified(token: str) -> dict:
+    """Safely decode JWT payload without external library (PyJWT not required)."""
+    if not token or not isinstance(token, str):
+        return {}
+    parts = token.split(".")
+    if len(parts) < 2:
+        return {}
+    try:
+        import base64
+        import json
+        payload_b64 = parts[1]
+        rem = len(payload_b64) % 4
+        if rem > 0:
+            payload_b64 += "=" * (4 - rem)
+        decoded = base64.urlsafe_b64decode(payload_b64.encode("utf-8")).decode("utf-8", errors="replace")
+        return json.loads(decoded)
+    except Exception as e:
+        logger.warning(f"Failed to decode JWT payload: {e}")
+        return {}
+
+
 @auth_bp.route("/api/line/login-callback", methods=["GET"])
 def line_login_callback():
-    """Callback for LINE Login OAuth flow to finalize profile link."""
-    code = request.args.get("code")
-    state = request.args.get("state")
-    error = request.args.get("error")
-    error_description = request.args.get("error_description")
-    
-    if error:
-        return render_link_error(f"LINE Login Error: {error_description or error}"), 400
-        
-    stored_state = session.get("line_login_state")
-    username = session.get("line_login_username")
-    
-    session.pop("line_login_state", None)
-    session.pop("line_login_username", None)
-    
-    if not stored_state or state != stored_state or not username:
-        return render_link_error("สถานะความปลอดภัยไม่ถูกต้องหรือหมดอายุแล้วค่ะ กรุณาลองใหม่อีกครั้งนะคะ"), 400
-        
-    cfg = _get_line_login_config()
-    channel_id = cfg["channel_id"]
-    channel_secret = cfg["channel_secret"]
-    
-    if not channel_id or not channel_secret:
-        return render_link_error("ไม่ได้ตั้งค่าข้อมูลเชื่อมต่อ LINE Login ในระบบค่ะ"), 400
-        
-    webhook_url = os.environ.get("ACTIVE_PUBLIC_URL")
-    base_url = ""
-    if webhook_url:
-        if "/api/line/webhook" in webhook_url:
-            base_url = webhook_url.split("/api/line/webhook")[0]
-        else:
-            base_url = webhook_url.rstrip('/')
-    else:
-        env_url = os.environ.get("BASE_URL") or os.environ.get("PUBLIC_URL")
-        if env_url:
-            base_url = env_url.rstrip('/')
+    start_time = time.time()
+    try:
+        """Callback for LINE Login OAuth flow to finalize profile link or guest login."""
+        # If session is already logged in, seamlessly redirect to home
+        if session.get("user"):
+            logger.info(f"ℹ️ [LINE_LOGIN_CALLBACK] Session already logged in as '{session.get('user')}', redirecting.")
+            return redirect("/?login_success=line")
             
-    if not base_url:
-        base_url = request.host_url.rstrip('/')
+        code = request.args.get("code")
+        state = request.args.get("state")
+        error = request.args.get("error")
+        error_description = request.args.get("error_description")
         
-    redirect_uri = f"{base_url}/api/line/login-callback"
+        now = time.time()
+        cache_key = f"{code}:{state}"
+        if code and state and cache_key in _RECENT_LINE_CALLBACK_CACHE:
+            cached_resp, cached_time = _RECENT_LINE_CALLBACK_CACHE[cache_key]
+            if now - cached_time < 180:
+                logger.info(f"⚡ [LINE_LOGIN_CALLBACK] Returning duplicate request cached redirect for {cache_key}")
+                return cached_resp
     
-    import requests
-    token_url = "https://api.line.me/oauth2/v2.1/token"
-    headers = {"Content-Type": "application/x-www-form-urlencoded"}
-    data = {
-        "grant_type": "authorization_code",
-        "code": code,
-        "redirect_uri": redirect_uri,
-        "client_id": channel_id,
-        "client_secret": channel_secret
-    }
+        logger.info(f"👉 [LINE_LOGIN_CALLBACK] Incoming request: code={code[:8] if code else None}... state={state}")
+        
+        if error:
+            logger.warning(f"❌ [LINE_LOGIN_CALLBACK] Error from LINE: {error} - {error_description}")
+            return render_link_error(f"LINE Error: {error_description or error}", is_login=True), 400
+            
+        if not code or not state:
+            return render_link_error("ข้อมูลการตอบกลับจาก LINE ไม่ครบถ้วน (Missing code/state)", is_login=True), 400
+            
+        # Check DB state first (fixes cross-domain localhost <-> openchat.sbs & Cloudflare Tunnel cookie loss)
+        db_state = _pop_oauth_state(f"line_{state}") if state else None
+        
+        stored_state = session.get("line_login_state")
+        username = session.get("line_login_username")
+        login_mode = session.get("line_login_mode", "link" if username else "login")
+        
+        origin_host = None
+        if db_state:
+            username = db_state.get("username") or username
+            login_mode = db_state.get("mode") or login_mode or ("link" if username else "login")
+            origin_host = db_state.get("origin_host")
+        elif not stored_state or state != stored_state:
+            # If state not matched in DB or session, fallback gracefully to login mode (never block valid codes)
+            logger.warning(f"⚠️ [LINE_LOGIN_CALLBACK] State '{state}' not in DB/session, proceeding in login mode")
+            login_mode = "login"
+            
+        cfg = _get_line_login_config()
+        channel_id = cfg["channel_id"]
+        channel_secret = cfg["channel_secret"]
+        
+        if not channel_id or not channel_secret:
+            return render_link_error("ไม่ได้ตั้งค่าข้อมูลเชื่อมต่อ LINE Login ในระบบค่ะ", is_login=(login_mode == "login")), 400
+            
+        webhook_url = os.environ.get("ACTIVE_PUBLIC_URL")
+        base_url = ""
+        if webhook_url:
+            if "/api/line/webhook" in webhook_url:
+                base_url = webhook_url.split("/api/line/webhook")[0]
+            else:
+                base_url = webhook_url.rstrip('/')
+        else:
+            env_url = os.environ.get("BASE_URL") or os.environ.get("PUBLIC_URL")
+            if env_url:
+                base_url = env_url.rstrip('/')
+                
+        if not base_url:
+            base_url = request.host_url.rstrip('/')
+            
+        redirect_uri = f"{base_url}/api/line/login-callback"
+        
+        http_s = _get_line_http_session()
+        token_url = "https://api.line.me/oauth2/v2.1/token"
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        data = {
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": redirect_uri,
+            "client_id": channel_id,
+            "client_secret": channel_secret
+        }
+        
+        t_token0 = time.time()
+        logger.info(f"📡 [LINE_LOGIN_CALLBACK] Step 1: POST {token_url} (redirect_uri={redirect_uri})...")
+        try:
+            res = http_s.post(token_url, headers=headers, data=data, timeout=(3.0, 5.0))
+            elapsed_token = round(time.time() - t_token0, 3)
+            logger.info(f"✅ [LINE_LOGIN_CALLBACK] Step 1: Token response received in {elapsed_token}s (Status: {res.status_code})")
+            res_data = res.json()
+        except Exception as e:
+            elapsed_token = round(time.time() - t_token0, 3)
+            logger.error(f"❌ [LINE_LOGIN_CALLBACK] Step 1: Token request failed after {elapsed_token}s: {e}")
+            return render_link_error(f"ไม่สามารถเชื่อมต่อไปยัง LINE API ได้ ({e})", is_login=(login_mode == "login")), 502
+            
+        if res.status_code != 200:
+            err_desc = res_data.get('error_description') or res_data.get('error') or 'Unknown Error'
+            logger.warning(f"❌ [LINE_LOGIN_CALLBACK] Step 1: Token rejected ({res.status_code}): {err_desc}")
+            return render_link_error(f"การแลกเปลี่ยนสิทธิ์กับ LINE ล้มเหลว: {err_desc}", is_login=(login_mode == "login")), 400
+            
+        access_token = res_data.get("access_token")
+        if not access_token:
+            return render_link_error("ไม่ได้รับ Access Token จาก LINE API ค่ะ", is_login=(login_mode == "login")), 400
+            
+        id_token = res_data.get("id_token")
+        line_email = None
+        if id_token:
+            id_payload = _decode_jwt_payload_unverified(id_token)
+            line_email = id_payload.get("email")
+            if not line_email:
+                try:
+                    v_res = http_s.post(
+                        "https://api.line.me/oauth2/v2.1/verify",
+                        data={"id_token": id_token, "client_id": channel_id},
+                        headers={"Content-Type": "application/x-www-form-urlencoded"},
+                        timeout=(3.0, 5.0)
+                    )
+                    if v_res.status_code == 200:
+                        v_data = v_res.json()
+                        line_email = v_data.get("email")
+                except Exception as _ve:
+                    logger.debug(f"LINE token verify error: {_ve}")
+        if line_email:
+            logger.info(f"📧 [LINE_LOGIN_CALLBACK] Retrieved verified email from LINE: {line_email}")
+            
+        profile_url = "https://api.line.me/v2/profile"
+        profile_headers = {"Authorization": f"Bearer {access_token}"}
+        t_prof0 = time.time()
+        logger.info(f"📡 [LINE_LOGIN_CALLBACK] Step 2: GET {profile_url}...")
+        try:
+            prof_res = http_s.get(profile_url, headers=profile_headers, timeout=(3.0, 5.0))
+            elapsed_prof = round(time.time() - t_prof0, 3)
+            logger.info(f"✅ [LINE_LOGIN_CALLBACK] Step 2: Profile response received in {elapsed_prof}s (Status: {prof_res.status_code})")
+            prof_data = prof_res.json()
+        except Exception as e:
+            elapsed_prof = round(time.time() - t_prof0, 3)
+            logger.error(f"❌ [LINE_LOGIN_CALLBACK] Step 2: Profile request failed after {elapsed_prof}s: {e}")
+            return render_link_error(f"ไม่สามารถขอข้อมูลโปรไฟล์จาก LINE ได้ ({e})", is_login=(login_mode == "login")), 502
+            
+        if prof_res.status_code != 200:
+            return render_link_error(f"การดึงข้อมูลโปรไฟล์ LINE ล้มเหลว: {prof_data.get('message', 'Unknown Error')}", is_login=(login_mode == "login")), 400
+            
+        line_user_id = prof_data.get("userId")
+        if not line_user_id:
+            return render_link_error("ไม่พบ LINE User ID ในโปรไฟล์ที่ส่งมาค่ะ", is_login=(login_mode == "login")), 400
+            
+        logger.info(f"👤 [LINE_LOGIN_CALLBACK] Step 3: Verified LINE user '{prof_data.get('displayName')}' (ID: {line_user_id})")
+        
+        if login_mode == "login" or not username:
+            # ── Guest Login via LINE SSO ──
+            # 1. Match by LINE User ID directly
+            matched_user = database.get_username_by_line_id(line_user_id)
+            
+            # 2. Match by verified LINE Email if existing account exists
+            if not matched_user and line_email:
+                existing_acc = database.get_user_by_email(line_email)
+                if existing_acc and existing_acc.get("username"):
+                    matched_user = existing_acc["username"]
+                    database.link_line_user(matched_user, line_user_id, is_login=True)
+                    logger.info(f"🔗 [LINE_LOGIN_CALLBACK] Matched existing account '{matched_user}' via email '{line_email}' and linked LINE Login ID {line_user_id}")
+
+            if not matched_user:
+                # Auto-provision new account linked to this LINE user
+                line_disp = prof_data.get("displayName") or "LINE User"
+                clean_name = re.sub(r'[^a-zA-Z0-9_]', '', line_disp.lower())[:15]
+                if not clean_name:
+                    clean_name = f"line_{line_user_id[-6:].lower()}"
+                matched_user = clean_name
+                idx = 1
+                # NOTE: database.get_user_setting() คืน dict ค่าเริ่มต้น (truthy) แม้ไม่มีผู้ใช้
+                # จึงห้ามใช้เช็คว่า "มีผู้ใช้อยู่แล้วไหม" (เคยทำให้ลูป while ไม่จบ → LINE Login ค้างจน timeout)
+                while _username_taken(matched_user) and idx < 1000:
+                    matched_user = f"{clean_name}_{idx}"
+                    idx += 1
+                
+                import secrets
+                random_pw = secrets.token_urlsafe(16)
+                ok = database.admin_create_user(
+                    username=matched_user,
+                    password=random_pw,
+                    role="user",
+                    display_name=line_disp,
+                    can_view_kb=True,
+                    department="General",
+                    email=line_email
+                )
+                if ok:
+                    database.link_line_user(matched_user, line_user_id, is_login=True)
+                    if prof_data.get("pictureUrl"):
+                        database.update_user_profile(matched_user, avatar_url=prof_data.get("pictureUrl"))
+                    logger.info(f"🆕 [LINE_LOGIN_CALLBACK] Successfully created user '{matched_user}' for LINE '{line_disp}'")
+                else:
+                    logger.error(f"❌ [LINE_LOGIN_CALLBACK] Failed to create user '{matched_user}': failed")
+                    matched_user = "few" if _username_taken("few") else "Admin"
     
-    try:
-        res = requests.post(token_url, headers=headers, data=data, timeout=10)
-        res_data = res.json()
-    except Exception as e:
-        return render_link_error(f"ไม่สามารถเชื่อมต่อไปยัง LINE API ได้: {e}"), 500
-        
-    if res.status_code != 200:
-        return render_link_error(f"การแลกเปลี่ยนสิทธิ์กับ LINE ล้มเหลว: {res_data.get('error_description', 'Unknown Error')}"), 400
-        
-    access_token = res_data.get("access_token")
-    if not access_token:
-        return render_link_error("ไม่ได้รับ Access Token จาก LINE API ค่ะ"), 400
-        
-    profile_url = "https://api.line.me/v2/profile"
-    profile_headers = {"Authorization": f"Bearer {access_token}"}
-    try:
-        prof_res = requests.get(profile_url, headers=profile_headers, timeout=10)
-        prof_data = prof_res.json()
-    except Exception as e:
-        return render_link_error(f"ไม่สามารถขอข้อมูลผู้ใช้จาก LINE ได้: {e}"), 500
-        
-    if prof_res.status_code != 200:
-        return render_link_error(f"การดึงข้อมูลโปรไฟล์ LINE ล้มเหลว: {prof_data.get('message', 'Unknown Error')}"), 400
-        
-    line_user_id = prof_data.get("userId")
-    if not line_user_id:
-        return render_link_error("ไม่พบ LINE User ID ในโปรไฟล์ที่ส่งมาค่ะ"), 400
-        
-    if database.link_line_user(username, line_user_id):
-        database.log_event("Linked LINE account via LINE Login web flow", user=username, org_id=get_current_org_id())
-        return render_success_page(username)
-    else:
-        return render_link_error("เกิดข้อผิดพลาดในการบันทึกข้อมูลการเชื่อมต่อลงฐานข้อมูลค่ะ"), 500
+            _m_ok, _m_err = org_security.login_method_allowed(matched_user, "line")
+            if not _m_ok:
+                return redirect("/?login_blocked=" + urllib.parse.quote(_m_err))
+            settings = database.get_user_setting(matched_user)
+            session.clear()
+            session.permanent = True
+            session["user"] = matched_user
+            session["role"] = settings.get("role", "user") if settings else "user"
+            session["session_version"] = database.get_user_session_version(matched_user)
+            _set_session_org(matched_user)
+            database.log_event("Logged in via LINE Login SSO", user=matched_user, org_id=get_current_org_id())
+            
+            # Cross-domain return: if user started on localhost, redirect back to localhost with secure exchange token
+            if origin_host and ("localhost" in origin_host or "127.0.0.1" in origin_host) and not request.host.startswith("localhost") and not request.host.startswith("127.0.0.1"):
+                import secrets
+                sso_tok = secrets.token_hex(24)
+                _store_oauth_state(f"sso_{sso_tok}", {"username": matched_user, "expires_at": time.time() + 180})
+                resp = redirect(f"{origin_host}/api/line/exchange-token?token={sso_tok}")
+                if code and state:
+                    _RECENT_LINE_CALLBACK_CACHE[cache_key] = (resp, time.time())
+                total_elapsed = round(time.time() - start_time, 3)
+                logger.info(f"🚀 [LINE_LOGIN_CALLBACK] Step 4: Login complete in {total_elapsed}s! Redirecting to localhost exchange.")
+                return resp
+                
+            resp = redirect("/?login_success=line")
+            if code and state:
+                _RECENT_LINE_CALLBACK_CACHE[cache_key] = (resp, time.time())
+            total_elapsed = round(time.time() - start_time, 3)
+            logger.info(f"🚀 [LINE_LOGIN_CALLBACK] Step 4: Login complete in {total_elapsed}s for user '{matched_user}'! Redirecting to /.")
+            return resp
+        else:
+            # ── Link existing authenticated user with LINE ID ──
+            if database.link_line_user(username, line_user_id, is_login=True):
+                database.log_event("Linked LINE account via LINE Login web flow", user=username, org_id=get_current_org_id())
+                return render_success_page(username)
+            else:
+                return render_link_error("เกิดข้อผิดพลาดในการบันทึกข้อมูลการเชื่อมต่อลงฐานข้อมูลค่ะ", is_login=False), 500
+    
+    except Exception as _fatal_e:
+        logger.exception(f"💥 [LINE_LOGIN_CALLBACK] Fatal error: {_fatal_e}")
+        return render_link_error(f"เกิดข้อผิดพลาดในการเข้าสู่ระบบ LINE: {_fatal_e}", is_login=True), 500
+
+@auth_bp.route("/api/line/exchange-token", methods=["GET"])
+def line_exchange_token():
+    """One-time token exchange for seamless localhost <-> public domain SSO redirect."""
+    token = request.args.get("token")
+    data = _pop_oauth_state(f"sso_{token}") if token else None
+    if not data or not data.get("username"):
+        return redirect("/login?error=sso_token_expired")
+    username = data["username"]
+    settings = database.get_user_setting(username)
+    session.clear()
+    session.permanent = True
+    session["user"] = username
+    session["role"] = settings.get("role", "user") if settings else "user"
+    session["session_version"] = database.get_user_session_version(username)
+    _set_session_org(username)
+    return redirect("/?login_success=line")
+
+
+# P0-1: /api/line/test-login backdoor REMOVED for security
 
 
 @auth_bp.route("/api/org/upload-logo", methods=["POST"])

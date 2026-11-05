@@ -769,25 +769,36 @@ def remove_room_member(room_id, username):
     conn.close()
     return True, "ok"
 
-def link_line_user(username, line_user_id):
-    """Link a LINE user ID to an OrgChat username. Creates profile if missing."""
+def link_line_user(username, line_user_id, is_login=False):
+    """Link a LINE user ID to an OrgChat username.
+    If is_login=True (from web LINE Login OAuth SSO), save to line_login_id
+    and only populate line_user_id if empty, avoiding overwriting the LINE Bot user ID.
+    """
     try:
         conn = _get_conn()
         cursor = conn.cursor()
         
         # 1. Check if user profile exists
-        cursor.execute("SELECT 1 FROM user_profiles WHERE username = ? COLLATE NOCASE", (username,))
-        exists = cursor.fetchone()
+        cursor.execute("SELECT line_user_id, line_login_id FROM user_profiles WHERE username = ? COLLATE NOCASE", (username,))
+        row = cursor.fetchone()
         
-        if not exists:
-            # Create a basic profile if it doesn't exist
+        if not row:
             cursor.execute("INSERT INTO user_profiles (username, display_name) VALUES (?, ?)", (username, username.capitalize()))
+            curr_bot_id, curr_login_id = None, None
+        else:
+            curr_bot_id, curr_login_id = row[0], row[1]
             
-        # 2. Remove any existing link for this LINE user ID (ensure 1-to-1)
-        cursor.execute("UPDATE user_profiles SET line_user_id = NULL WHERE line_user_id = ?", (line_user_id,))
-        
-        # 3. Set new link
-        cursor.execute("UPDATE user_profiles SET line_user_id = ? WHERE username = ? COLLATE NOCASE", (line_user_id, username))
+        if is_login:
+            cursor.execute("UPDATE user_profiles SET line_login_id = NULL WHERE line_login_id = ?", (line_user_id,))
+            if curr_bot_id:
+                cursor.execute("UPDATE user_profiles SET line_login_id = ? WHERE username = ? COLLATE NOCASE", (line_user_id, username))
+            else:
+                cursor.execute("UPDATE user_profiles SET line_login_id = ?, line_user_id = ? WHERE username = ? COLLATE NOCASE", (line_user_id, line_user_id, username))
+        else:
+            # Direct link from Bot (magic link or webhook): set line_user_id
+            cursor.execute("UPDATE user_profiles SET line_user_id = NULL WHERE line_user_id = ?", (line_user_id,))
+            cursor.execute("UPDATE user_profiles SET line_user_id = ? WHERE username = ? COLLATE NOCASE", (line_user_id, username))
+            
         count = cursor.rowcount
         conn.commit()
         conn.close()
@@ -797,11 +808,11 @@ def link_line_user(username, line_user_id):
         return False
 
 def unlink_line_user(username):
-    """Unlink a LINE user ID from an OrgChat username by setting line_user_id to NULL."""
+    """Unlink LINE user IDs from an OrgChat username."""
     try:
         conn = _get_conn()
         cursor = conn.cursor()
-        cursor.execute("UPDATE user_profiles SET line_user_id = NULL WHERE username = ? COLLATE NOCASE", (username,))
+        cursor.execute("UPDATE user_profiles SET line_user_id = NULL, line_login_id = NULL WHERE username = ? COLLATE NOCASE", (username,))
         count = cursor.rowcount
         conn.commit()
         conn.close()
@@ -811,12 +822,12 @@ def unlink_line_user(username):
         return False
 
 def get_line_id_by_username(username):
-    """Get the linked LINE ID for a specific OrgChat user."""
+    """Get the linked LINE ID for a specific OrgChat user (prioritizes bot line_user_id for push)."""
     try:
         conn = _get_conn()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT up.line_user_id 
+            SELECT COALESCE(up.line_user_id, up.line_login_id) 
             FROM user_profiles up
             LEFT JOIN user_settings s ON up.username = s.username
             WHERE up.username = ? COLLATE NOCASE AND COALESCE(s.is_active, 1) = 1
@@ -829,7 +840,7 @@ def get_line_id_by_username(username):
         return None
 
 def get_username_by_line_id(line_user_id):
-    """Get the OrgChat username for a specific LINE user ID."""
+    """Get the OrgChat username for a specific LINE user ID (matches bot or login ID)."""
     try:
         conn = _get_conn()
         cursor = conn.cursor()
@@ -837,8 +848,9 @@ def get_username_by_line_id(line_user_id):
             SELECT up.username 
             FROM user_profiles up
             LEFT JOIN user_settings s ON up.username = s.username
-            WHERE up.line_user_id = ? AND COALESCE(s.is_active, 1) = 1
-        """, (line_user_id,))
+            WHERE (up.line_user_id = ? OR up.line_login_id = ?) 
+              AND COALESCE(s.is_active, 1) = 1
+        """, (line_user_id, line_user_id))
         row = cursor.fetchone()
         conn.close()
         return row[0] if row else None

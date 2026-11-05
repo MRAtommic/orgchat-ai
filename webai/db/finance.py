@@ -211,24 +211,32 @@ def get_drive_logs(limit=50, offset=0, user_id=None, org_id=None):
         print(f"❌ Error fetching drive logs: {e}")
         return []
 
-def search_drive_logs(search_query, limit=20):
-    """Search drive logs by filename or summary."""
+def search_drive_logs(search_query: str, limit: int = 20, org_id: int | None = None) -> list[dict]:
+    """Search drive logs by filename, summary, or category, optionally scoped to an org."""
     try:
         conn = _get_conn()
         cursor = conn.cursor()
-        query = """
-            SELECT * FROM drive_logs 
-            WHERE filename LIKE ? OR summary LIKE ? OR category LIKE ?
-            ORDER BY created_at DESC LIMIT ?
-        """
         like_query = f"%{search_query}%"
-        cursor.execute(query, (like_query, like_query, like_query, limit))
+        if org_id is not None:
+            query = """
+                SELECT * FROM drive_logs 
+                WHERE org_id = ? AND (filename LIKE ? OR summary LIKE ? OR category LIKE ?)
+                ORDER BY created_at DESC LIMIT ?
+            """
+            cursor.execute(query, (org_id, like_query, like_query, like_query, limit))
+        else:
+            query = """
+                SELECT * FROM drive_logs 
+                WHERE filename LIKE ? OR summary LIKE ? OR category LIKE ?
+                ORDER BY created_at DESC LIMIT ?
+            """
+            cursor.execute(query, (like_query, like_query, like_query, limit))
         columns = [col[0] for col in cursor.description]
         rows = cursor.fetchall()
         conn.close()
         return [dict(zip(columns, row)) for row in rows]
     except Exception as e:
-        print(f"❌ Error searching drive logs: {e}")
+        logger.error(f"Error searching drive logs: {e}")
         return []
 
 def get_drive_stats(org_id=None):
@@ -324,16 +332,7 @@ def add_expense_claim(line_user_id, username, vendor, amount, expense_date, file
     return claim_id
 
 
-def search_drive_logs(query, limit=5):
-    """Search for logs related to Google Drive activities."""
-    conn = _get_conn()
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    q = f"%{query}%"
-    cursor.execute("SELECT * FROM drive_logs WHERE filename LIKE ? OR summary LIKE ? ORDER BY created_at DESC LIMIT ?", (q, q, limit))
-    rows = [dict(r) for r in cursor.fetchall()]
-    conn.close()
-    return rows
+
 
 
 

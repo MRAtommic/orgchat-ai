@@ -484,7 +484,7 @@ def view_kb_file(file_id):
     
     path = Path(file_info["path"])
     if not path.exists():
-        print(f"❌ File not found on disk: {path}")
+        logger.error(f"❌ File not found on disk: {path}")
         return f"File not found on disk: {path}", 404
         
     import mimetypes
@@ -617,7 +617,7 @@ def compare_knowledge_base_files():
              
         return jsonify({"ok": True, "comparison": full_reply})
     except Exception as e:
-        print(f"❌ Document Comparison Error: {e}")
+        logger.error(f"❌ Document Comparison Error: {e}")
         return _err500(e)
 
 
@@ -625,7 +625,7 @@ def compare_knowledge_base_files():
 @login_required
 def manage_csv_combined(file_id):
     """Combined CSV handler to ensure registration."""
-    print(f"[API HIT] CSV API HIT: {request.method} {file_id}")
+    logger.info(f"[API HIT] CSV API HIT: {request.method} {file_id}")
     org_id = get_current_org_id()
     files = rag_engine.list_files(org_id=org_id)
     target = next((f for f in files if f["file_id"] == file_id), None)
@@ -677,7 +677,7 @@ def manage_csv_combined(file_id):
 @knowledge_bp.route("/api/txt/<file_id>", methods=["GET", "POST"])
 @login_required
 def manage_txt(file_id):
-    print(f"[API HIT] TXT API HIT: {request.method} {file_id}")
+    logger.info(f"[API HIT] TXT API HIT: {request.method} {file_id}")
     org_id = get_current_org_id()
     files = rag_engine.list_files(org_id=org_id)
     target = next((f for f in files if f["file_id"] == file_id), None)

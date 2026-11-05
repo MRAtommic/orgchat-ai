@@ -17,6 +17,8 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 import database
+from db import connection as conn_mod
+
 
 class BaseTestCase(unittest.TestCase):
     """Base test case providing isolated test database setup."""
@@ -26,14 +28,26 @@ class BaseTestCase(unittest.TestCase):
         # Create unique temporary test DB
         cls.temp_db_fd, cls.temp_db_path = tempfile.mkstemp(suffix="_test.db")
         cls.orig_db_path = database.DB_PATH
-        database.DB_PATH = cls.temp_db_path
+        cls.orig_env_db = os.environ.get("DB_PATH")
 
-        # Initialize schema and run migrations
+        # Point runtime to temporary DB
+        os.environ["DB_PATH"] = cls.temp_db_path
+        database.DB_PATH = Path(cls.temp_db_path)
+        conn_mod.DB_PATH = Path(cls.temp_db_path)
+
+        # Initialize schema and run migrations in isolated DB
         database.init_db()
 
     @classmethod
     def tearDownClass(cls):
+        if cls.orig_env_db is not None:
+            os.environ["DB_PATH"] = cls.orig_env_db
+        else:
+            os.environ.pop("DB_PATH", None)
+
         database.DB_PATH = cls.orig_db_path
+        conn_mod.DB_PATH = cls.orig_db_path
+
         try:
             os.close(cls.temp_db_fd)
             if os.path.exists(cls.temp_db_path):
@@ -42,5 +56,4 @@ class BaseTestCase(unittest.TestCase):
             pass
 
     def setUp(self):
-        # Clean or set up per-test state if needed
         pass

@@ -48,7 +48,11 @@ window.fetch = async function (resource, options = {}) {
       }
     }
   }
-  return originalFetch.call(this, resource, options);
+  const _resp = await originalFetch.call(this, resource, options);
+  if (_resp.status === 403 && typeof window.force2FASetup === 'function') {
+    _resp.clone().json().then(d => { if (d && d.error === '2fa_setup_required') window.force2FASetup(); }).catch(() => {});
+  }
+  return _resp;
 };
 
 // ─── Socket.IO Global ──────────────────────────
@@ -1263,7 +1267,8 @@ async function loadDashboard() {
           else if (hour >= 21 || hour < 5) msg = "สวัสดีตอนค่ำ";
           
           const userName = state.displayName || state.username || state.user || '';
-          greetingEl.textContent = userName ? `${msg}, คุณ${userName}` : `${msg}, ยินดีต้อนรับ`;
+          // U1-4: Proper greeting with space and display name
+          greetingEl.textContent = userName ? `${msg}, คุณ ${userName}` : `${msg}, ยินดีต้อนรับ`;
       }
       
       if (summaryEl) {
@@ -1606,7 +1611,23 @@ function switchView(viewId) {
   if (viewId === 'quotation') initDocumentGenerator();
   if (viewId === 'receipt-replacement') initReplacementReceiptView();
   if (viewId === 'reply-assistant') initReplyAssistantView();
-  if (viewId === 'line-groups') { if (typeof loadLineGroups === 'function') loadLineGroups(); }
+  if (viewId === 'line-groups') {
+    if (typeof loadLineGroups === 'function') loadLineGroups();
+    if (typeof loadGoogleFoldersForGroupRegister === 'function') loadGoogleFoldersForGroupRegister();
+    if (typeof loadFlexSettings === 'function') loadFlexSettings();
+    if (typeof refreshBroadcastHistory === 'function') refreshBroadcastHistory();
+    const targetTab = state._targetLineSubTab || 'groups';
+    if (typeof switchLineSubTab === 'function') {
+      switchLineSubTab(targetTab);
+    }
+    state._targetLineSubTab = null;
+  }
+  if (viewId === 'line-manager') {
+    state._targetLineSubTab = 'flex';
+    switchView('line-groups');
+    if (typeof switchLineSubTab === 'function') switchLineSubTab('flex');
+    return;
+  }
 
   // ─── Feed Auto-Refresh ───────────────────────
   // Clear any existing feed poll interval when changing views
@@ -6893,6 +6914,8 @@ async function checkAuth() {
     if (data.ok && data.user) {
       state.user = data.user;
       state.username = data.user;
+      window._userAuthed = true;
+      localStorage.setItem('orgchat_was_logged_in', '1');
       state.isSuperAdmin = !!(data.is_superadmin || data.profile?.is_superadmin || data.profile?.role === 'superadmin');
       state.isAdmin = data.profile?.role === 'admin' || data.profile?.role === 'superadmin' || state.isSuperAdmin || data.user === 'Admin';
       state.canEditKB = !!data.profile?.can_edit_kb;
@@ -6954,8 +6977,8 @@ loginBtn.onclick = async () => {
     });
     const data = await res.json();
 
-    if (data.requires_2fa) {
-      handle2FAChallenge(data.pre_auth_token);
+    if (data.requires_2fa || data.require_2fa) {
+      handle2FAChallenge(data.pre_auth_token, data.totp_type, { hasEmail: data.has_email, emailMasked: data.email_masked });
       loginBtn.disabled = false;
       loginBtn.innerHTML = 'เข้าสู่ระบบ';
       return;
@@ -7109,6 +7132,8 @@ function showLoginError(msg) {
 
 async function logout() {
   try {
+    localStorage.removeItem('orgchat_was_logged_in');
+    window._userAuthed = false;
     const res = await fetch('/api/logout', { method: 'POST' });
     if (res.ok) {
       window.location.reload();
@@ -9753,13 +9778,18 @@ let _orgLogsCache = [];
 let _orgDepartmentsCache = [];
 
 function switchOrgTab(tab) {
-  ['members', 'tree', 'departments', 'leave', 'attendance', 'google', 'business', 'peak', 'announcements', 'categories', 'logs'].forEach(t => {
+  ['members', 'tree', 'departments', 'leave', 'attendance', 'google', 'business', 'peak', 'announcements', 'categories', 'overview', 'security', 'lifecycle', 'logs'].forEach(t => {
     const btn = $(`orgTab-${t}`);
     const content = $(`orgTabContent-${t}`);
     const active = t === tab;
     const activeClass = 'org-tab whitespace-nowrap shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all bg-white dark:bg-surface-700 shadow-xs text-surface-900 dark:text-white';
     const inactiveClass = 'org-tab whitespace-nowrap shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all text-surface-500 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white hover:bg-surface-200/50 dark:hover:bg-surface-700/40';
-    if (btn) btn.className = active ? activeClass : inactiveClass;
+    if (btn) {
+      btn.className = active ? activeClass : inactiveClass;
+      if (active) {
+        try { btn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }); } catch(e) {}
+      }
+    }
     if (content) content.classList.toggle('hidden', !active);
   });
   // Reset scroll so the new tab content is visible from the top
@@ -9780,6 +9810,9 @@ function switchOrgTab(tab) {
   if (tab === 'announcements') loadOrgAnnouncements();
   if (tab === 'categories') loadCustomCategoriesAndRules();
   if (tab === 'logs') loadOrgLogs();
+  if (tab === 'overview' && typeof window.loadOrgOverview === 'function') window.loadOrgOverview();
+  if (tab === 'security' && typeof window.loadOrgSecurity === 'function') window.loadOrgSecurity();
+  if (tab === 'lifecycle' && typeof window.loadOrgLifecycle === 'function') window.loadOrgLifecycle();
 }
 
 // ─── Organization Departments JS ───
@@ -11241,9 +11274,42 @@ function _renderMySettings(d) {
       </div>`;
     }).join('');
   }
+  // Google Connection Status
+  const myGoogleStatusText = $('myGoogleStatusText');
+  const myGoogleStatusBadge = $('myGoogleStatusBadge');
+  const btnMyBindGoogle = $('btnMyBindGoogle');
+  const btnMyUnbindGoogle = $('btnMyUnbindGoogle');
+  const myGoogleInstruction = $('myGoogleInstruction');
+
+  if (myGoogleStatusText) {
+    if (d.google_email) {
+      myGoogleStatusText.textContent = `เชื่อมต่อแล้ว (${d.google_email})`;
+      myGoogleStatusText.className = "text-xs font-bold text-emerald-600 dark:text-emerald-400 font-extrabold";
+      if (myGoogleStatusBadge) {
+        myGoogleStatusBadge.className = "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/50";
+        myGoogleStatusBadge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> ผูกบัญชีแล้ว';
+      }
+      if (btnMyBindGoogle) btnMyBindGoogle.classList.add('hidden');
+      if (btnMyUnbindGoogle) btnMyUnbindGoogle.classList.remove('hidden');
+      if (myGoogleInstruction) myGoogleInstruction.classList.add('hidden');
+    } else {
+      myGoogleStatusText.textContent = 'ยังไม่ได้เชื่อมต่อบัญชี Google';
+      myGoogleStatusText.className = "text-xs font-bold text-surface-600 dark:text-surface-300";
+      if (myGoogleStatusBadge) {
+        myGoogleStatusBadge.className = "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-surface-100 text-surface-600 dark:bg-surface-800 dark:text-surface-400";
+        myGoogleStatusBadge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-surface-400"></span> ยังไม่ผูกบัญชี';
+      }
+      if (btnMyBindGoogle) btnMyBindGoogle.classList.remove('hidden');
+      if (btnMyUnbindGoogle) btnMyUnbindGoogle.classList.add('hidden');
+      if (myGoogleInstruction) myGoogleInstruction.classList.remove('hidden');
+    }
+  }
+
   // LINE Connection Status
   const myLineStatusText = $('myLineStatusText');
+  const myLineStatusBadge = $('myLineStatusBadge');
   const btnMyBindLine = $('btnMyBindLine');
+  const btnMyBindLineWeb = $('btnMyBindLineWeb');
   const btnMyUnbindLine = $('btnMyUnbindLine');
   const myLineInstruction = $('myLineInstruction');
   const myLineBannerAlert = $('myLineBannerAlert');
@@ -11251,15 +11317,25 @@ function _renderMySettings(d) {
   if (myLineStatusText) {
     if (d.line_user_id) {
       myLineStatusText.textContent = `เชื่อมต่อแล้ว (LINE ID: ${d.line_user_id.substring(0, 10)}...)`;
-      myLineStatusText.className = "text-xs font-bold text-purple-600 dark:text-purple-400 font-extrabold";
+      myLineStatusText.className = "text-xs font-bold text-emerald-600 dark:text-emerald-400 font-extrabold";
+      if (myLineStatusBadge) {
+        myLineStatusBadge.className = "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/50";
+        myLineStatusBadge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> ผูกบัญชีแล้ว';
+      }
       if (btnMyBindLine) btnMyBindLine.classList.add('hidden');
+      if (btnMyBindLineWeb) btnMyBindLineWeb.classList.add('hidden');
       if (btnMyUnbindLine) btnMyUnbindLine.classList.remove('hidden');
       if (myLineInstruction) myLineInstruction.classList.add('hidden');
       if (myLineBannerAlert) myLineBannerAlert.classList.add('hidden');
     } else {
       myLineStatusText.textContent = 'ยังไม่ได้เชื่อมต่อบัญชี LINE';
       myLineStatusText.className = "text-xs font-bold text-surface-600 dark:text-surface-300";
+      if (myLineStatusBadge) {
+        myLineStatusBadge.className = "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-surface-100 text-surface-600 dark:bg-surface-800 dark:text-surface-400";
+        myLineStatusBadge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-surface-400"></span> ยังไม่ผูกบัญชี';
+      }
       if (btnMyBindLine) btnMyBindLine.classList.remove('hidden');
+      if (btnMyBindLineWeb) btnMyBindLineWeb.classList.remove('hidden');
       if (btnMyUnbindLine) btnMyUnbindLine.classList.add('hidden');
       if (myLineInstruction) myLineInstruction.classList.remove('hidden');
       if (myLineBannerAlert) myLineBannerAlert.classList.remove('hidden');
@@ -11283,6 +11359,74 @@ async function unbindMyLine() {
       await showAlert('สำเร็จ', 'ยกเลิกการผูกบัญชี LINE เรียบร้อยแล้วค่ะ!', { type: 'success' });
       if (_mySettingsCache) {
         _mySettingsCache.line_user_id = null;
+        _renderMySettings(_mySettingsCache);
+      }
+    } else {
+      await showAlert('เกิดข้อผิดพลาด', `ไม่สามารถยกเลิกได้: ${data.error || 'เกิดข้อผิดพลาดค่ะ'}`, { type: 'danger' });
+    }
+  } catch (e) {
+    await showAlert('เกิดข้อผิดพลาด', `เกิดข้อผิดพลาดในการเชื่อมต่อ: ${e.message}`, { type: 'danger' });
+  }
+}
+
+async function bindMyGoogleAccount() {
+  const clientId = window.GOOGLE_CLIENT_ID;
+  if (typeof google !== 'undefined' && google.accounts && google.accounts.id && clientId && clientId.endsWith('.apps.googleusercontent.com')) {
+    try {
+      google.accounts.id.initialize({
+        client_id: clientId,
+        callback: async function (res) {
+          if (!res || !res.credential) return;
+          try {
+            const resp = await fetch('/api/user/bind-google', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ credential: res.credential })
+            });
+            const data = await resp.json();
+            if (data.ok) {
+              await showAlert('สำเร็จ', data.message, { type: 'success' });
+              if (_mySettingsCache) {
+                _mySettingsCache.google_email = data.google_email;
+                _renderMySettings(_mySettingsCache);
+              }
+            } else {
+              await showAlert('ไม่สำเร็จ', data.error || 'ผูกบัญชีไม่สำเร็จค่ะ', { type: 'danger' });
+            }
+          } catch (e) {
+            await showAlert('เกิดข้อผิดพลาด', `เกิดข้อผิดพลาดในการเชื่อมต่อ: ${e.message}`, { type: 'danger' });
+          }
+        }
+      });
+      google.accounts.id.prompt((notification) => {
+        if (notification.isNotDisplayed() || notification.isSkippedMoment() || notification.isDismissedMoment()) {
+          // Fallback to OAuth redirect flow
+          window.location.href = '/api/auth/google/start?mode=personal';
+        }
+      });
+      return;
+    } catch (err) {
+      console.warn('GIS prompt error, falling back to OAuth redirect:', err);
+    }
+  }
+  // Standard OAuth redirect fallback
+  window.location.href = '/api/auth/google/start?mode=personal';
+}
+
+async function unbindMyGoogle() {
+  if (!await showConfirm('ยกเลิกการผูกบัญชี Google', 'คุณแน่ใจหรือไม่ที่จะยกเลิกการผูกบัญชี Google ของคุณ? หลังยกเลิก คุณจะไม่สามารถกดล็อกอินด้วย Google ได้จนกว่าจะผูกใหม่', { type: 'danger', confirmText: 'ยกเลิกการผูกบัญชี' })) {
+    return;
+  }
+  try {
+    const res = await fetch('/api/user/unbind-google', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await res.json();
+    if (data.ok) {
+      await showAlert('สำเร็จ', 'ยกเลิกการผูกบัญชี Google เรียบร้อยแล้วค่ะ!', { type: 'success' });
+      if (_mySettingsCache) {
+        _mySettingsCache.google_email = '';
         _renderMySettings(_mySettingsCache);
       }
     } else {
@@ -17194,8 +17338,8 @@ async function initAuth() {
             body: JSON.stringify({ username, password })
         });
 
-        if (data.requires_2fa) {
-            handle2FAChallenge(data.pre_auth_token);
+        if (data.requires_2fa || data.require_2fa) {
+            handle2FAChallenge(data.pre_auth_token, data.totp_type, { hasEmail: data.has_email, emailMasked: data.email_masked });
             btn.disabled = false;
             btn.innerHTML = originalText;
             return;
@@ -17230,7 +17374,10 @@ async function initAuth() {
         }
     } catch (e) {
         console.error('Login error:', e);
-        toast('การเชื่อมต่อล้มเหลว กรุณาลองใหม่อีกครั้ง', 'error');
+        // ข้อความจากเซิร์ฟเวอร์ (เช่น รหัสผ่านไม่ถูกต้อง = HTTP 401) ให้แสดงตรง ๆ ส่วนข้อผิดพลาดเครือข่ายใช้ข้อความทั่วไป
+        const _em = (e && e.message && !/failed to fetch|networkerror|load failed/i.test(e.message)) ? e.message : 'การเชื่อมต่อล้มเหลว กรุณาลองใหม่อีกครั้ง';
+        toast(_em, 'error');
+        if (errorEl) { errorEl.classList.remove('hidden'); if (errorMsg) errorMsg.textContent = _em; }
     } finally {
         btn.disabled = false;
         btn.innerHTML = originalText;
@@ -18752,7 +18899,7 @@ function _showConnBanner() {
   if (document.getElementById('_connBanner')) return;
   const el = document.createElement('div');
   el.id = '_connBanner';
-  el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#dc2626;color:#fff;text-align:center;padding:0.5rem 1rem;font-size:0.8rem;font-weight:700;display:flex;align-items:center;justify-content:center;gap:0.5rem;';
+  el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#dc2626;color:#fff;text-align:center;padding:3px 10px;font-size:0.75rem;font-weight:700;display:flex;align-items:center;justify-content:center;gap:0.5rem;box-shadow:0 2px 8px rgba(0,0,0,0.2);';
   el.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M1 1l22 22M16.72 11.06A10.94 10.94 0 0 1 19 12.55M5 12.55a10.94 10.94 0 0 1 5.17-2.39M10.71 5.05A16 16 0 0 1 22.56 9M1.42 9a15.91 15.91 0 0 1 4.7-2.88M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/></svg><span>การเชื่อมต่อขาดหาย — กำลังเชื่อมต่อใหม่...</span>';
   document.body.prepend(el);
 }
@@ -20663,6 +20810,8 @@ let current2FAMethod = 'authenticator';
 let currentUserEmail = '';
 
 async function check2FAStatus() {
+    // U0-2: Skip if user not logged in
+    if (typeof state === 'undefined' || !state.user) return;
     try {
         const res = await fetch('/api/2fa/status');
         const data = await res.json();
@@ -20748,6 +20897,10 @@ function switch2FAMethod(method) {
 }
 
 async function send2FAEmailOTP(isLoginVerify = false) {
+    const btn = document.getElementById('btnVerifyResendEmailOTP');
+    const hint = document.getElementById('totpVerifyHint');
+    const err = document.getElementById('totpVerifyError');
+    if (isLoginVerify && btn) { if (btn.disabled) return; btn.disabled = true; }
     try {
         const payload = isLoginVerify ? { pre_auth_token: currentPreAuthToken } : {};
         const res = await fetch('/api/2fa/send-email-otp', {
@@ -20755,14 +20908,34 @@ async function send2FAEmailOTP(isLoginVerify = false) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         if (!data.ok) {
-            showToast(data.error || 'ส่ง OTP ล้มเหลว', 'error');
+            const msg = data.error || 'ส่ง OTP ล้มเหลว';
+            showToast(msg, 'error');
+            if (isLoginVerify && err) { err.textContent = msg; err.classList.remove('hidden'); }
+            if (isLoginVerify && btn) btn.disabled = false;
             return;
         }
         showToast(data.message || 'ส่ง OTP สำเร็จ กรุณาเช็คกล่องจดหมายใน Gmail', 'success');
+        if (isLoginVerify) {
+            if (err) err.classList.add('hidden');
+            if (hint) hint.textContent = (data.message || 'ส่งรหัส OTP ไปที่อีเมลแล้ว') + ' (รหัสมีอายุ 5 นาที) กรอกรหัส 6 หลักด้านล่าง';
+            const input = document.getElementById('totpVerifyCodeInput');
+            if (input) input.focus();
+            // กันกดซ้ำรัว ๆ: ให้ขอใหม่ได้อีกครั้งหลัง 30 วินาที
+            let left = 30;
+            const lbl = document.getElementById('btnVerifyResendEmailOTPLabel');
+            const base = 'ส่งรหัสอีกครั้ง';
+            const t = setInterval(() => {
+                left -= 1;
+                if (lbl) lbl.textContent = left > 0 ? `${base} (รอ ${left} วินาที)` : base;
+                if (left <= 0) { clearInterval(t); if (btn) btn.disabled = false; }
+            }, 1000);
+            if (lbl) lbl.textContent = `${base} (รอ ${left} วินาที)`;
+        }
     } catch (e) {
         showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
+        if (isLoginVerify && btn) btn.disabled = false;
     }
 }
 
@@ -20841,16 +21014,42 @@ async function disable2FA() {
     }
 }
 
-function handle2FAChallenge(preAuthToken) {
+function handle2FAChallenge(preAuthToken, totpType, opts) {
     currentPreAuthToken = preAuthToken;
+    opts = opts || {};
     const modal = document.getElementById('totpVerifyModal');
     const input = document.getElementById('totpVerifyCodeInput');
     const err = document.getElementById('totpVerifyError');
+    const hint = document.getElementById('totpVerifyHint');
     const btnResend = document.getElementById('btnSendVerifyEmailOTPContainer');
+    const isEmail = totpType === 'email';
+    const hasEmail = isEmail || !!opts.hasEmail;
+    window._2faEmailMasked = opts.emailMasked || '';
     if (input) input.value = '';
     if (err) err.classList.add('hidden');
-    if (btnResend) btnResend.classList.remove('hidden');
-    if (modal) modal.classList.remove('hidden');
+    // ให้เลือกได้ 2 ทาง: กรอกรหัสจากแอป Authenticator หรือกดส่งรหัส OTP ไปที่อีเมล
+    if (hint) {
+        hint.textContent = isEmail
+            ? 'กดปุ่มด้านล่างเพื่อส่งรหัส OTP ไปที่อีเมลของคุณ แล้วนำรหัส 6 หลักมากรอกที่นี่'
+            : (hasEmail
+                ? 'เปิดแอป Authenticator แล้วกรอกรหัส 6 หลัก หรือกดส่งรหัส OTP ไปที่อีเมลแทน'
+                : 'เปิดแอป Authenticator แล้วกรอกรหัส 6 หลัก หรือใช้ Backup Code');
+    }
+    if (btnResend) btnResend.classList.toggle('hidden', !hasEmail);
+    const lbl = document.getElementById('btnVerifyResendEmailOTPLabel');
+    if (lbl) lbl.textContent = 'ส่งรหัส OTP ไปที่อีเมล' + (window._2faEmailMasked ? ' (' + window._2faEmailMasked + ')' : '');
+    if (modal) {
+        // ย้ายไปไว้ที่ <body> เพื่อให้อยู่เหนือหน้าล็อกอิน (z-index 200) เสมอ
+        if (modal.parentElement !== document.body) document.body.appendChild(modal);
+        modal.style.zIndex = '300';
+        modal.classList.remove('hidden');
+    }
+    if (input) {
+        input.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); submit2FAVerify(); } };
+        setTimeout(() => input.focus(), 50);
+    }
+    // บัญชีที่เลือก 2FA แบบอีเมลอย่างเดียว: ส่ง OTP ให้ทันที
+    if (isEmail) { try { send2FAEmailOTP(true); } catch (e) { /* ignore */ } }
 }
 
 async function submit2FAVerify() {
@@ -20921,13 +21120,47 @@ document.addEventListener('DOMContentLoaded', () => {
   applyCustomUI();
   setTimeout(check2FAStatus, 1500);
 
-  // 🌐 Hash Routing Support (e.g. #admin, #plan, #super-admin, #line-groups)
+  // 🌐 Hash Routing Support (e.g. #admin, #plan, #super-admin, #line-groups, #kb?file_id=...)
   function handleHashRoute() {
-    const hash = window.location.hash.replace('#', '').trim();
-    if (hash) {
+    const raw = window.location.hash.replace(/^#/, '').trim();
+    let view = raw;
+    let fileId = new URLSearchParams(window.location.search).get('file_id');
+
+    if (raw.includes('?')) {
+      const parts = raw.split('?');
+      view = parts[0];
+      const hashParams = new URLSearchParams(parts[1]);
+      if (hashParams.get('file_id')) {
+        fileId = hashParams.get('file_id');
+      }
+    }
+
+    if (fileId) {
+      window._targetHighlightFileId = fileId;
+    }
+
+    let _scrollToFlex = false;
+    if (view === 'flex-card' || view === 'flex-designer' || view === 'flex' || view === 'line-card' || view === 'line-manager') {
+      view = 'line-groups';
+      _scrollToFlex = true;
+    }
+
+    if (view) {
       setTimeout(() => {
         if (typeof switchView === 'function') {
-          switchView(hash);
+          switchView(view);
+        }
+        if (_scrollToFlex) {
+          setTimeout(() => {
+            if (typeof switchLineSubTab === 'function') {
+              switchLineSubTab('flex');
+            } else if (typeof loadFlexSettings === 'function') {
+              loadFlexSettings();
+            }
+          }, 300);
+        }
+        if (fileId && typeof highlightKbFile === 'function') {
+          setTimeout(() => highlightKbFile(fileId), 600);
         }
       }, 250);
     }

@@ -21,53 +21,10 @@ from .connection import (
 )
 
 
-def log_audit_event(username: str, org_id: int, action: str, details: str = "", ip_address: str = ""):
-    try:
-        conn = _get_conn()
-        cur = conn.cursor()
-        cur.execute("""
-            INSERT INTO audit_logs (username, organization_id, action, details, ip_address)
-            VALUES (?, ?, ?, ?, ?)
-        """, (username or 'System', org_id or 1, action, details or '', ip_address or ''))
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        print(f"⚠️ Error logging audit event: {e}")
+
 
 # Old duplicate get_audit_logs removed - consolidated definition at bottom of file
 
-
-
-def log_audit_event(username: str, event_type: str, action_detail: str = "", ip_address: str = "", user_agent: str = "", ai_model: str = "", tokens_used: int = 0, status: str = "success", org_id: int = 1, department: str = None) -> bool:
-    """Logs security, authentication, AI usage, and admin audit events."""
-    try:
-        conn = _get_conn()
-        cursor = conn.cursor()
-        
-        # If department is not supplied, fetch from user_profiles
-        if not department and username:
-            try:
-                cursor.execute("SELECT department FROM user_profiles WHERE username = ? COLLATE NOCASE", (username.strip(),))
-                row = cursor.fetchone()
-                if row and row[0]:
-                    department = row[0]
-            except Exception as e:
-                logger.debug(f"[log_audit_event] Failed fetching user department: {e}")
-            
-        if not department:
-            department = "General"
-            
-        cursor.execute("""
-            INSERT INTO audit_logs (org_id, username, event_type, action_detail, ip_address, user_agent, ai_model, tokens_used, department, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (org_id, username or "Anonymous", event_type, action_detail, ip_address, user_agent, ai_model, tokens_used, department, status))
-        
-        conn.commit()
-        conn.close()
-        return True
-    except Exception as e:
-        logging.getLogger("OrgChatAI").error(f"[log_audit_event] Error: {e}")
-        return False
 
 
 class AuditLogList(list):
@@ -378,24 +335,34 @@ def log_audit_event(username: str = "System", action: str = "GENERAL", details: 
 # ═══════════════════════════════════════════════════════════════
 
 _INJECTION_PATTERNS = [
+    # English Direct Instruction Overrides
     r"(?i)ignore\s+(all\s+)?(previous|prior|above)\s+(instructions|prompts|rules)",
     r"(?i)disregard\s+(all\s+)?(previous|prior|above)\s+(instructions|prompts|rules)",
+    r"(?i)forget\s+(all\s+)?(previous|prior|above)\s+(instructions|prompts|rules)",
     r"(?i)system\s+prompt",
-    r"(?i)you\s+are\s+now\s+(DAN|unrestricted|jailbroken|an\s+evil|a\s+hacker)",
+    r"(?i)you\s+are\s+now\s+(DAN|unrestricted|jailbroken|an\s+evil|a\s+hacker|root|admin)",
     r"(?i)reveal\s+(your\s+)?(instructions|secret|internal\s+prompt|api\s*key)",
     r"(?i)show\s+me\s+your\s+(initial\s+)?(system\s+)?instructions",
-    r"(?i)bypass\s+(content\s+filter|safety\s+filter|guardrail)",
+    r"(?i)bypass\s+(content\s+filter|safety\s+filter|guardrail|security)",
     r"(?i)print\s+the\s+system\s+message",
     r"(?i)\bjailbreak\b",
     r"(?i)(tell|show|output|leak|share|print|repeat)\s+(me\s+)?(your\s+)?(hidden|secret|internal)?\s*(system\s*prompt|prompt|instructions|api\s*key)",
     r"(?i)pretend\s+you\s+(are|have)\s+no\s+(rules|limits|restrictions|filters)",
     r"(?i)act\s+as\s+(an?\s+)?(unfiltered|unrestricted|evil)",
-    r"(?i)ลืมคำสั่ง(ก่อนหน้า|ทั้งหมด|เดิม)",
+
+    # Thai Direct & Indirect Overrides
+    r"(?i)(ลืม|ละเว้น|ยกเลิก|ไม่ต้องทำตาม|ข้าม|ไม่ต้องสนใจ)\s*(กฎ|คำสั่ง|ข้อห้าม|เงื่อนไข|ความปลอดภัย|system\s*prompt)",
     r"(?i)แสดง\s*(system\s*prompt|คำสั่งระบบ|ความลับของระบบ|api\s*key)",
     r"(?i)ปลดล็อกกฎเกณฑ์ทั้งหมด",
-    r"(?i)ขอดู\s*(system\s*prompt|คำสั่งระบบ|คำสั่งเบื้องหลัง|api\s*key)",
-    r"(?i)บอก\s*(system\s*prompt|คำสั่งตั้งต้น|ความลับระบบ|api\s*key)",
-    r"(?i)(แกล้งทำเป็นว่า|สมมติว่า)\s*(ไม่มีกฎ|ไม่มีข้อห้าม|ปลดล็อก)",
+    r"(?i)ขอดู\s*(system\s*prompt|คำสั่งระบบ|คำสั่งเบื้องหลัง|api\s*key|รหัสผ่าน)",
+    r"(?i)บอก\s*(system\s*prompt|คำสั่งตั้งต้น|ความลับระบบ|api\s*key|รหัสผ่าน)",
+    r"(?i)(แกล้งทำเป็นว่า|สมมติว่า|ทำตัวเป็น|เล่นบท|จำลองว่า)\s*(ไม่มีกฎ|ไม่มีข้อจำกัด|ไม่มีข้อห้าม|เป็นอิสระ|เป็นแฮกเกอร์|jailbreak|DAN|ปลดล็อก)",
+    r"(?i)(ดึง|เปิดเผย|แสดง|ขอดู)\s*(ข้อมูลเงินเดือนทุกคน|สลิปทั้งหมด|ฐานข้อมูล|database)",
+    r"(?i)(ขโมย|แฮก|เจาะ)\s*(ระบบ|ข้อมูล|บอท|รหัสผ่าน)",
+
+    # SQLi & DB Dump in LLM Context
+    r"(?i)(dump|drop\s+table|delete\s+from|select\s+\*\s+from)\s+(database|users|user_profiles|sqlite_master)",
+    r"(?i)base64\s*(decode|decode_this|eval)",
 ]
 
 

@@ -307,3 +307,415 @@ window.refreshBroadcastHistory = refreshBroadcastHistory;
 window.testOrgLineConnection = testOrgLineConnection;
 window.resetOrgLineBot = resetOrgLineBot;
 window.copyLineWebhookUrl = copyLineWebhookUrl;
+
+
+// ═════════════════════════════════════════════════════════════════════
+// 🎨 LINE Flex Card Designer Controller
+// ═════════════════════════════════════════════════════════════════════
+
+const FLEX_PRESETS = {
+  blue: {
+    primary_color: '#2563EB',
+    header_bg: '#1B2838',
+    header_icon: '📢',
+    header_title: 'ประกาศใหม่',
+    header_sub: 'NEW ANNOUNCEMENT',
+    badge_bg: '#EFF6FF',
+    badge_color: '#2563EB',
+    portal_button_text: '💬 ดูในระบบ OrgChat',
+    feed_primary_color: '#7C3AED',
+    feed_header_bg: '#7C3AED',
+    feed_header_icon: '✨',
+    feed_header_title: 'โพสต์ใหม่ใน Feed',
+    feed_header_sub: 'NEW FEED POST'
+  },
+  purple: {
+    primary_color: '#7C3AED',
+    header_bg: '#2E1065',
+    header_icon: '🚀',
+    header_title: 'ประกาศองค์กร',
+    header_sub: 'OFFICIAL NOTICE',
+    badge_bg: '#F5F3FF',
+    badge_color: '#7C3AED',
+    portal_button_text: '💬 ดูโพสต์ใน OrgChat',
+    feed_primary_color: '#8B5CF6',
+    feed_header_bg: '#581C87',
+    feed_header_icon: '💡',
+    feed_header_title: 'สาระน่ารู้ & อัปเดต',
+    feed_header_sub: 'KNOWLEDGE & FEED'
+  },
+  emerald: {
+    primary_color: '#059669',
+    header_bg: '#064E3B',
+    header_icon: '🌿',
+    header_title: 'ข่าวสารองค์กร',
+    header_sub: 'COMPANY ANNOUNCEMENT',
+    badge_bg: '#ECFDF5',
+    badge_color: '#059669',
+    portal_button_text: 'เข้าดูระบบ OrgChat',
+    feed_primary_color: '#10B981',
+    feed_header_bg: '#047857',
+    feed_header_icon: '🌱',
+    feed_header_title: 'เรื่องเล่าชาวองค์กร',
+    feed_header_sub: 'TEAM STORIES'
+  },
+  amber: {
+    primary_color: '#D97706',
+    header_bg: '#451A03',
+    header_icon: '🔥',
+    header_title: 'ประกาศด่วน',
+    header_sub: 'URGENT BULLETIN',
+    badge_bg: '#FFFBEB',
+    badge_color: '#D97706',
+    portal_button_text: '💬 ตรวจสอบในระบบ',
+    feed_primary_color: '#F59E0B',
+    feed_header_bg: '#78350F',
+    feed_header_icon: '⚡',
+    feed_header_title: 'อัปเดตกิจกรรม',
+    feed_header_sub: 'ACTIVITIES & FEED'
+  },
+  rose: {
+    primary_color: '#E11D48',
+    header_bg: '#4C0519',
+    header_icon: '💎',
+    header_title: 'ข่าวประชาสัมพันธ์',
+    header_sub: 'SPECIAL NOTICE',
+    badge_bg: '#FFF1F2',
+    badge_color: '#E11D48',
+    portal_button_text: '💬 เปิดดูใน OrgChat',
+    feed_primary_color: '#F43F5E',
+    feed_header_bg: '#881337',
+    feed_header_icon: '💖',
+    feed_header_title: 'ไฮไลท์ประจำวัน',
+    feed_header_sub: 'DAILY HIGHLIGHTS'
+  },
+  dark: {
+    primary_color: '#3B82F6',
+    header_bg: '#0F172A',
+    header_icon: '🏢',
+    header_title: 'ประกาศสำนักงาน',
+    header_sub: 'OFFICE BULLETIN',
+    badge_bg: '#1E293B',
+    badge_color: '#60A5FA',
+    portal_button_text: '💬 เข้าสู่ระบบ OrgChat',
+    feed_primary_color: '#6366F1',
+    feed_header_bg: '#18181B',
+    feed_header_icon: '🌐',
+    feed_header_title: 'กระดานข่าวสาร',
+    feed_header_sub: 'NEWSFEED'
+  }
+};
+
+let currentFlexTab = 'announcement';
+
+async function loadFlexSettings() {
+  // U0-2: Skip if user not authenticated
+  if (typeof state === 'undefined' || !state.user) return;
+  try {
+    const res = await fetch('/api/org/flex-settings');
+    const data = await res.json();
+    if (data.ok && data.settings) {
+      const s = data.settings;
+      // Populate Announcement inputs
+      if ($('flexPrimaryColor')) $('flexPrimaryColor').value = s.primary_color || '#2563EB';
+      if ($('flexPrimaryColorHex')) $('flexPrimaryColorHex').value = s.primary_color || '#2563EB';
+      if ($('flexHeaderBg')) $('flexHeaderBg').value = s.header_bg || '#1B2838';
+      if ($('flexHeaderBgHex')) $('flexHeaderBgHex').value = s.header_bg || '#1B2838';
+      if ($('flexHeaderIcon')) $('flexHeaderIcon').value = s.header_icon || '📢';
+      if ($('flexHeaderTitle')) $('flexHeaderTitle').value = s.header_title || 'ประกาศใหม่';
+      if ($('flexHeaderSub')) $('flexHeaderSub').value = s.header_sub || 'NEW ANNOUNCEMENT';
+      if ($('flexBadgeBg')) $('flexBadgeBg').value = s.badge_bg || '#EFF6FF';
+      if ($('flexBadgeBgHex')) $('flexBadgeBgHex').value = s.badge_bg || '#EFF6FF';
+      if ($('flexBadgeColor')) $('flexBadgeColor').value = s.badge_color || s.primary_color || '#2563EB';
+      if ($('flexBadgeColorHex')) $('flexBadgeColorHex').value = s.badge_color || s.primary_color || '#2563EB';
+      if ($('flexPortalBtn')) $('flexPortalBtn').value = s.portal_button_text || '💬 ดูในระบบ OrgChat';
+
+      // Populate Feed inputs
+      if ($('flexFeedPrimaryColor')) $('flexFeedPrimaryColor').value = s.feed_primary_color || '#7C3AED';
+      if ($('flexFeedPrimaryColorHex')) $('flexFeedPrimaryColorHex').value = s.feed_primary_color || '#7C3AED';
+      if ($('flexFeedHeaderBg')) $('flexFeedHeaderBg').value = s.feed_header_bg || '#7C3AED';
+      if ($('flexFeedHeaderBgHex')) $('flexFeedHeaderBgHex').value = s.feed_header_bg || '#7C3AED';
+      if ($('flexFeedHeaderIcon')) $('flexFeedHeaderIcon').value = s.feed_header_icon || '✨';
+      if ($('flexFeedHeaderTitle')) $('flexFeedHeaderTitle').value = s.feed_header_title || 'โพสต์ใหม่ใน Feed';
+      if ($('flexFeedHeaderSub')) $('flexFeedHeaderSub').value = s.feed_header_sub || 'NEW FEED POST';
+
+      updateLiveFlexPreview();
+    }
+  } catch (err) {
+    console.error('Failed to load flex settings:', err);
+  }
+}
+
+function updateLiveFlexPreview() {
+  const isAnnounce = currentFlexTab === 'announcement';
+
+  const primary = isAnnounce
+    ? ($('flexPrimaryColorHex')?.value || '#2563EB')
+    : ($('flexFeedPrimaryColorHex')?.value || '#7C3AED');
+  
+  const headerBg = isAnnounce
+    ? ($('flexHeaderBgHex')?.value || '#1B2838')
+    : ($('flexFeedHeaderBgHex')?.value || '#7C3AED');
+
+  const headerIcon = isAnnounce
+    ? ($('flexHeaderIcon')?.value || '📢')
+    : ($('flexFeedHeaderIcon')?.value || '✨');
+
+  const headerTitle = isAnnounce
+    ? ($('flexHeaderTitle')?.value || 'ประกาศใหม่')
+    : ($('flexFeedHeaderTitle')?.value || 'โพสต์ใหม่ใน Feed');
+
+  const headerSub = isAnnounce
+    ? ($('flexHeaderSub')?.value || 'NEW ANNOUNCEMENT')
+    : ($('flexFeedHeaderSub')?.value || 'NEW FEED POST');
+
+  const badgeBg = isAnnounce
+    ? ($('flexBadgeBgHex')?.value || '#EFF6FF')
+    : '#F5F3FF';
+
+  const badgeColor = isAnnounce
+    ? ($('flexBadgeColorHex')?.value || primary)
+    : primary;
+
+  const badgeText = isAnnounce ? 'GENERAL' : 'FEED';
+  const portalBtn = $('flexPortalBtn')?.value || '💬 ดูในระบบ OrgChat';
+
+  // Update Preview Elements
+  const prevHeader = $('flexPrevHeader');
+  if (prevHeader) prevHeader.style.backgroundColor = headerBg;
+
+  const prevIcon = $('flexPrevHeaderIcon');
+  if (prevIcon) prevIcon.textContent = headerIcon;
+
+  const prevTitle = $('flexPrevHeaderTitle');
+  if (prevTitle) prevTitle.textContent = headerTitle;
+
+  const prevSub = $('flexPrevHeaderSub');
+  if (prevSub) prevSub.textContent = headerSub;
+
+  const prevBadge = $('flexPrevBadge');
+  if (prevBadge) {
+    prevBadge.textContent = badgeText;
+    prevBadge.style.backgroundColor = badgeBg;
+    prevBadge.style.color = badgeColor;
+  }
+
+  const prevAvatar = $('flexPrevAvatar');
+  if (prevAvatar) prevAvatar.style.backgroundColor = primary;
+
+  const prevBtnPrimary = $('flexPrevBtnPrimary');
+  if (prevBtnPrimary) prevBtnPrimary.style.backgroundColor = primary;
+
+  const prevBtnSecondary = $('flexPrevBtnSecondary');
+  if (prevBtnSecondary) prevBtnSecondary.textContent = portalBtn;
+}
+
+function applyFlexPreset(key) {
+  const p = FLEX_PRESETS[key];
+  if (!p) return;
+
+  if ($('flexPrimaryColor')) $('flexPrimaryColor').value = p.primary_color;
+  if ($('flexPrimaryColorHex')) $('flexPrimaryColorHex').value = p.primary_color;
+  if ($('flexHeaderBg')) $('flexHeaderBg').value = p.header_bg;
+  if ($('flexHeaderBgHex')) $('flexHeaderBgHex').value = p.header_bg;
+  if ($('flexHeaderIcon')) $('flexHeaderIcon').value = p.header_icon;
+  if ($('flexHeaderTitle')) $('flexHeaderTitle').value = p.header_title;
+  if ($('flexHeaderSub')) $('flexHeaderSub').value = p.header_sub;
+  if ($('flexBadgeBg')) $('flexBadgeBg').value = p.badge_bg;
+  if ($('flexBadgeBgHex')) $('flexBadgeBgHex').value = p.badge_bg;
+  if ($('flexBadgeColor')) $('flexBadgeColor').value = p.badge_color;
+  if ($('flexBadgeColorHex')) $('flexBadgeColorHex').value = p.badge_color;
+  if ($('flexPortalBtn')) $('flexPortalBtn').value = p.portal_button_text;
+
+  if ($('flexFeedPrimaryColor')) $('flexFeedPrimaryColor').value = p.feed_primary_color;
+  if ($('flexFeedPrimaryColorHex')) $('flexFeedPrimaryColorHex').value = p.feed_primary_color;
+  if ($('flexFeedHeaderBg')) $('flexFeedHeaderBg').value = p.feed_header_bg;
+  if ($('flexFeedHeaderBgHex')) $('flexFeedHeaderBgHex').value = p.feed_header_bg;
+  if ($('flexFeedHeaderIcon')) $('flexFeedHeaderIcon').value = p.feed_header_icon;
+  if ($('flexFeedHeaderTitle')) $('flexFeedHeaderTitle').value = p.feed_header_title;
+  if ($('flexFeedHeaderSub')) $('flexFeedHeaderSub').value = p.feed_header_sub;
+
+  updateLiveFlexPreview();
+  if (typeof toast === 'function') toast(`เลือกชุดสี: ${key.toUpperCase()}`, 'info');
+}
+
+function switchFlexTab(tab) {
+  currentFlexTab = tab;
+  const isAnnounce = tab === 'announcement';
+
+  const tabAnnounce = $('flex-tab-announcement');
+  const tabFeed = $('flex-tab-feed');
+  const secAnnounce = $('flexControlsAnnouncement');
+  const secFeed = $('flexControlsFeed');
+
+  if (tabAnnounce && tabFeed) {
+    if (isAnnounce) {
+      tabAnnounce.className = 'px-4 py-2 rounded-xl text-xs font-bold bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-300';
+      tabFeed.className = 'px-4 py-2 rounded-xl text-xs font-bold text-surface-500 hover:text-surface-900 dark:hover:text-white';
+    } else {
+      tabFeed.className = 'px-4 py-2 rounded-xl text-xs font-bold bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300';
+      tabAnnounce.className = 'px-4 py-2 rounded-xl text-xs font-bold text-surface-500 hover:text-surface-900 dark:hover:text-white';
+    }
+  }
+
+  if (secAnnounce) secAnnounce.classList.toggle('hidden', !isAnnounce);
+  if (secFeed) secFeed.classList.toggle('hidden', isAnnounce);
+
+  updateLiveFlexPreview();
+}
+
+async function saveFlexSettings() {
+  const btn = $('btnSaveFlexSettings');
+  const oldText = btn ? btn.innerHTML : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> กำลังบันทึก...';
+  }
+
+  const payload = {
+    primary_color: $('flexPrimaryColorHex')?.value || '#2563EB',
+    header_bg: $('flexHeaderBgHex')?.value || '#1B2838',
+    header_icon: $('flexHeaderIcon')?.value || '📢',
+    header_title: $('flexHeaderTitle')?.value || 'ประกาศใหม่',
+    header_sub: $('flexHeaderSub')?.value || 'NEW ANNOUNCEMENT',
+    badge_bg: $('flexBadgeBgHex')?.value || '#EFF6FF',
+    badge_color: $('flexBadgeColorHex')?.value || '#2563EB',
+    portal_button_text: $('flexPortalBtn')?.value || '💬 ดูในระบบ OrgChat',
+    feed_primary_color: $('flexFeedPrimaryColorHex')?.value || '#7C3AED',
+    feed_header_bg: $('flexFeedHeaderBgHex')?.value || '#7C3AED',
+    feed_header_icon: $('flexFeedHeaderIcon')?.value || '✨',
+    feed_header_title: $('flexFeedHeaderTitle')?.value || 'โพสต์ใหม่ใน Feed',
+    feed_header_sub: $('flexFeedHeaderSub')?.value || 'NEW FEED POST',
+    card_style: 'modern'
+  };
+
+  try {
+    const res = await fetch('/api/org/flex-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.ok) {
+      if (typeof toast === 'function') toast('บันทึกการออกแบบ LINE Flex Card ขององค์กรสำเร็จแล้ว 🎉', 'success');
+    } else {
+      if (typeof toast === 'function') toast(data.error || 'บันทึกไม่สำเร็จ', 'error');
+    }
+  } catch (err) {
+    console.error('Error saving flex settings:', err);
+    if (typeof toast === 'function') toast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = oldText;
+      if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
+    }
+  }
+}
+
+async function resetFlexSettings() {
+  if (!confirm('ต้องการคืนค่าเริ่มต้นมาตรฐานของ LINE Flex Card สำหรับองค์กรนี้ใช่หรือไม่?')) return;
+  try {
+    const res = await fetch('/api/org/flex-settings/reset', { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      if (typeof toast === 'function') toast('คืนค่าเริ่มต้นมาตรฐานเรียบร้อยแล้ว ✅', 'success');
+      loadFlexSettings();
+    } else {
+      if (typeof toast === 'function') toast(data.error || 'รีเซ็ตไม่สำเร็จ', 'error');
+    }
+  } catch (err) {
+    console.error('Error resetting flex settings:', err);
+  }
+}
+
+// Helper to sync color input with hex text input
+function syncFlexColor(pickerId, hexId) {
+  const picker = $(pickerId);
+  const hex = $(hexId);
+  if (picker && hex) {
+    picker.addEventListener('input', () => {
+      hex.value = picker.value.toUpperCase();
+      updateLiveFlexPreview();
+    });
+    hex.addEventListener('input', () => {
+      if (/^#[0-9A-Fa-f]{6}$/.test(hex.value)) {
+        picker.value = hex.value;
+        updateLiveFlexPreview();
+      }
+    });
+  }
+}
+
+// Initialize listeners on DOM load
+document.addEventListener('DOMContentLoaded', () => {
+  syncFlexColor('flexPrimaryColor', 'flexPrimaryColorHex');
+  syncFlexColor('flexHeaderBg', 'flexHeaderBgHex');
+  syncFlexColor('flexBadgeBg', 'flexBadgeBgHex');
+  syncFlexColor('flexBadgeColor', 'flexBadgeColorHex');
+  syncFlexColor('flexFeedPrimaryColor', 'flexFeedPrimaryColorHex');
+  syncFlexColor('flexFeedHeaderBg', 'flexFeedHeaderBgHex');
+
+  // Load flex settings if already on line-manager view
+  setTimeout(loadFlexSettings, 1000);
+});
+
+// Window Exports
+window.loadFlexSettings = loadFlexSettings;
+window.updateLiveFlexPreview = updateLiveFlexPreview;
+window.applyFlexPreset = applyFlexPreset;
+window.switchFlexTab = switchFlexTab;
+window.saveFlexSettings = saveFlexSettings;
+window.resetFlexSettings = resetFlexSettings;
+window.switchLineSubTab = switchLineSubTab;
+
+// ─── Segmented Sub-Tab Switcher for LINE Management ──────────────
+function switchLineSubTab(tab = 'groups') {
+  const tabs = {
+    groups: { btn: document.getElementById('line-tab-groups'), sec: document.getElementById('lineTabGroupsPanel') },
+    flex: { btn: document.getElementById('line-tab-flex'), sec: document.getElementById('lineTabFlexPanel') },
+    broadcast: { btn: document.getElementById('line-tab-broadcast'), sec: document.getElementById('lineTabBroadcastPanel') },
+    settings: { btn: document.getElementById('line-tab-settings'), sec: document.getElementById('lineTabSettingsPanel') }
+  };
+
+  const activeClasses = ['bg-white', 'dark:bg-surface-700', 'shadow-sm', 'text-brand-600'];
+  const inactiveClasses = ['text-surface-400'];
+
+  Object.keys(tabs).forEach(k => {
+    const item = tabs[k];
+    const isActive = (k === tab);
+    if (item.btn) {
+      if (isActive) {
+        item.btn.classList.add(...activeClasses);
+        item.btn.classList.remove(...inactiveClasses);
+      } else {
+        item.btn.classList.remove(...activeClasses);
+        item.btn.classList.add(...inactiveClasses);
+      }
+    }
+    if (item.sec) {
+      item.sec.classList.toggle('hidden', !isActive);
+      if (isActive) {
+        item.sec.classList.remove('animate-in', 'fade-in', 'duration-200');
+        void item.sec.offsetWidth;
+        item.sec.classList.add('animate-in', 'fade-in', 'duration-200');
+      }
+    }
+  });
+
+  if (tab === 'groups') {
+    if (typeof loadLineGroups === 'function') loadLineGroups(true);
+    if (typeof loadGoogleFoldersForGroupRegister === 'function') loadGoogleFoldersForGroupRegister();
+  } else if (tab === 'flex') {
+    if (typeof loadFlexSettings === 'function') loadFlexSettings();
+    if (typeof updateLiveFlexPreview === 'function') updateLiveFlexPreview();
+  } else if (tab === 'broadcast') {
+    if (typeof refreshBroadcastHistory === 'function') refreshBroadcastHistory();
+  }
+  if (typeof initIcons === 'function') {
+    initIcons();
+  } else if (window.lucide && typeof window.lucide.createIcons === 'function') {
+    window.lucide.createIcons();
+  }
+}
+window.switchLineSubTab = switchLineSubTab;

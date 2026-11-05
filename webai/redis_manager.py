@@ -132,7 +132,7 @@ class RedisManager:
             if isinstance(f_copy.get("content"), bytes):
                 f_copy["content"] = base64.b64encode(f_copy["content"]).decode("utf-8")
             encoded.append(f_copy)
-        RedisManager.set_json(f"pending_files:{user_id}", encoded, expire=300)
+        RedisManager.set_json(f"pending_files:{user_id}", encoded, expire=600)
 
     @staticmethod
     def pop_pending_files(user_id):

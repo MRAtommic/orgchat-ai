@@ -287,14 +287,15 @@
                         .replace(/'/g, "&#039;");
                 }
 
-                // Intercept showView once line-manager is loaded
+                // Intercept showView once line-manager or line-groups is loaded
                 if (typeof window.originalShowView === 'undefined') {
                     window.originalShowView = window.showView;
                     window.showView = function(viewId) {
                         if (window.originalShowView) window.originalShowView(viewId);
-                        if (viewId === 'line-manager') {
-                            refreshGroupMappings();
-                            loadGoogleFoldersForGroup();
+                        if (viewId === 'line-manager' || viewId === 'line-groups') {
+                            if (typeof refreshGroupMappings === 'function') refreshGroupMappings();
+                            if (typeof loadGoogleFoldersForGroupRegister === 'function') loadGoogleFoldersForGroupRegister();
+                            if (typeof loadFlexSettings === 'function') loadFlexSettings();
                         }
                     };
                 }

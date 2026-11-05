@@ -134,7 +134,7 @@ def export_pdf():
             "filename": filename
         })
     except Exception as e:
-        print(f"❌ PDF Export Error: {e}")
+        logger.error(f"❌ PDF Export Error: {e}")
         return _err500(e)
 
 
