@@ -67,6 +67,116 @@ def check_card_access(card_id, org_id):
     col = database.kanban_get_column(column_id, org_id=org_id)
     return col is not None
 
+# ─── Google Maps Geocoding & Search Proxies ────────────────
+_MAPS_SEARCH_CACHE = {}
+_MAPS_REVERSE_CACHE = {}
+
+@social_bp.route("/api/maps/search", methods=["GET"])
+@login_required
+def maps_search_places():
+    query = (request.args.get("q") or "").strip()
+    if not query:
+        return jsonify({"ok": True, "results": []})
+    
+    cache_key = query.lower()
+    if cache_key in _MAPS_SEARCH_CACHE:
+        ts, data = _MAPS_SEARCH_CACHE[cache_key]
+        if time.time() - ts < 3600:
+            return jsonify({"ok": True, "results": data})
+            
+    results = []
+    gkey = os.environ.get("GOOGLE_MAPS_API_KEY")
+    if gkey:
+        try:
+            g_url = f"https://maps.googleapis.com/maps/api/geocode/json?address={urllib.parse.quote(query)}&key={gkey}&language=th"
+            r = http_requests.get(g_url, timeout=5)
+            if r.status_code == 200:
+                gdata = r.json()
+                for item in gdata.get("results", [])[:6]:
+                    loc = item.get("geometry", {}).get("location", {})
+                    results.append({
+                        "name": item.get("formatted_address", query),
+                        "display_name": item.get("formatted_address", query),
+                        "lat": loc.get("lat"),
+                        "lng": loc.get("lng")
+                    })
+        except Exception as e:
+            logger.error(f"[google-maps-search] {e}")
+
+    if not results:
+        try:
+            nom_url = f"https://nominatim.openstreetmap.org/search?format=json&q={urllib.parse.quote(query)}&countrycodes=th&limit=6&accept-language=th"
+            headers = {"User-Agent": "OrgChatAI/2.0 (contact@openchat.sbs)"}
+            r = http_requests.get(nom_url, headers=headers, timeout=5)
+            if r.status_code == 200:
+                for item in r.json():
+                    name = item.get("name") or item.get("display_name", "").split(",")[0]
+                    results.append({
+                        "name": name,
+                        "display_name": item.get("display_name", ""),
+                        "lat": float(item.get("lat")),
+                        "lng": float(item.get("lon"))
+                    })
+        except Exception as e:
+            logger.error(f"[nominatim-search] {e}")
+
+    _MAPS_SEARCH_CACHE[cache_key] = (time.time(), results)
+    return jsonify({"ok": True, "results": results})
+
+
+@social_bp.route("/api/maps/reverse", methods=["GET"])
+@login_required
+def maps_reverse_geocode():
+    lat = request.args.get("lat")
+    lng = request.args.get("lng")
+    if not lat or not lng:
+        return jsonify({"ok": False, "error": "Missing coordinates"}), 400
+    try:
+        flat = round(float(lat), 5)
+        flng = round(float(lng), 5)
+    except (ValueError, TypeError):
+        return jsonify({"ok": False, "error": "Invalid coordinates"}), 400
+
+    cache_key = f"{flat},{flng}"
+    if cache_key in _MAPS_REVERSE_CACHE:
+        ts, data = _MAPS_REVERSE_CACHE[cache_key]
+        if time.time() - ts < 86400:
+            return jsonify({"ok": True, **data})
+
+    res_data = {"name": f"พิกัด ({flat}, {flng})", "display_name": f"{flat}, {flng}", "lat": flat, "lng": flng}
+    gkey = os.environ.get("GOOGLE_MAPS_API_KEY")
+    if gkey:
+        try:
+            g_url = f"https://maps.googleapis.com/maps/api/geocode/json?latlng={flat},{flng}&key={gkey}&language=th"
+            r = http_requests.get(g_url, timeout=5)
+            if r.status_code == 200:
+                gdata = r.json()
+                if gdata.get("results"):
+                    first = gdata["results"][0]
+                    res_data["name"] = first.get("formatted_address", res_data["name"])
+                    res_data["display_name"] = first.get("formatted_address", res_data["display_name"])
+        except Exception as e:
+            logger.error(f"[google-maps-reverse] {e}")
+
+    if res_data["display_name"] == f"{flat}, {flng}":
+        try:
+            nom_url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={flat}&lon={flng}&accept-language=th"
+            headers = {"User-Agent": "OrgChatAI/2.0 (contact@openchat.sbs)"}
+            r = http_requests.get(nom_url, headers=headers, timeout=5)
+            if r.status_code == 200:
+                ndata = r.json()
+                addr = ndata.get("address", {})
+                primary_name = ndata.get("name") or addr.get("building") or addr.get("amenity") or addr.get("shop") or addr.get("road") or addr.get("suburb") or addr.get("city")
+                if primary_name:
+                    res_data["name"] = primary_name
+                res_data["display_name"] = ndata.get("display_name", res_data["display_name"])
+        except Exception as e:
+            logger.error(f"[nominatim-reverse] {e}")
+
+    _MAPS_REVERSE_CACHE[cache_key] = (time.time(), res_data)
+    return jsonify({"ok": True, **res_data})
+
+
 @social_bp.route("/api/link-preview")
 @login_required
 def get_link_preview():

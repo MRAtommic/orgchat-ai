@@ -1989,7 +1989,7 @@ function appendMessage(role, html, sources = [], scroll = true, msgId = null) {
               class="inline-flex items-center gap-0.5 -ml-0.5 px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-md bg-white dark:bg-surface-800 text-brand-600 dark:text-brand-400 text-[10px] sm:text-[11px] font-medium border border-surface-200 dark:border-surface-700 hover:border-brand-400 transition-colors">
               <i data-lucide="external-link" class="w-2.5 h-2.5 sm:w-3 sm:h-3"></i><span>Drive</span>
             </a>` : '';
-      const extra = idx >= _SRC_VISIBLE ? ' src-extra hidden sm:inline-flex' : '';
+      const extra = '';
       const loc = s.location && s.location !== 'Document' ? `<span class="opacity-50 text-[9px] sm:text-[10px] flex-shrink-0">#${_escS(s.location)}</span>` : '';
       return `
             <span class="inline-flex items-center gap-1${extra}">
@@ -2007,13 +2007,20 @@ function appendMessage(role, html, sources = [], scroll = true, msgId = null) {
               <div class="mt-2 relative group-img rounded-xl overflow-hidden border border-surface-200 dark:border-surface-700 shadow-sm transition-all hover:ring-2 hover:ring-brand-500 max-w-[200px]">
                 <img src="${_escS(s.url)}" class="w-full h-auto object-cover cursor-pointer" onclick="openImageViewer('${_jsArg(s.url)}')" alt="Attached Image">
               </div>`).join('');
+    // มือถือ: พับทั้งส่วนเหลือบรรทัดเดียว "📎 แหล่งอ้างอิง (N) ▾" แตะแล้วค่อยขยาย / จอใหญ่: แสดงชิปเหมือนเดิม
     const sourcesHtml = botSources.length > 0 ? `
-      <div class="mt-2 pt-2 sm:mt-3 sm:pt-3 border-t border-surface-200 dark:border-surface-700/50 flex flex-wrap items-center gap-1 sm:gap-1.5">
-        <span class="w-full text-[9px] font-black text-surface-400 uppercase tracking-widest mb-0.5 sm:mb-1 flex items-center gap-1">
-          <i data-lucide="book-open" class="w-2.5 h-2.5"></i> แหล่งข้อมูลอ้างอิง${_srcFiles.length ? ` (${_srcFiles.length})` : ''}
-        </span>
-        ${_srcFiles.map(_chip).join('')}${_moreBtn}
-        ${_imgsHtml}
+      <div class="mt-1.5 pt-1.5 sm:mt-3 sm:pt-3 border-t border-surface-200 dark:border-surface-700/50">
+        <button type="button" class="sm:hidden flex items-center gap-1 text-[10px] font-bold text-surface-400 py-0.5"
+          onclick="const w=this.nextElementSibling; w.classList.toggle('hidden'); this.querySelector('.src-caret').textContent = w.classList.contains('hidden') ? '▾' : '▴'">
+          <span>📎 แหล่งอ้างอิง${_srcFiles.length ? ` (${_srcFiles.length})` : ''}</span><span class="src-caret">▾</span>
+        </button>
+        <div class="hidden sm:flex flex-wrap items-center gap-1 sm:gap-1.5 mt-1 sm:mt-0">
+          <span class="hidden sm:flex w-full text-[9px] font-black text-surface-400 uppercase tracking-widest mb-1 items-center gap-1">
+            <i data-lucide="book-open" class="w-2.5 h-2.5"></i> แหล่งข้อมูลอ้างอิง${_srcFiles.length ? ` (${_srcFiles.length})` : ''}
+          </span>
+          ${_srcFiles.map(_chip).join('')}
+          ${_imgsHtml}
+        </div>
       </div>` : '';
 
     contentHtml = `
@@ -4383,116 +4390,417 @@ function addPollOption() {
   initIcons();
 }
 
-// ─── Post Location / Check-in Helpers (Google Maps) ───────────
-window.toggleLocationPicker = function(show) {
-  const locContainer = $('locationInputContainer');
-  if (!locContainer) return;
-  const isHidden = locContainer.classList.contains('hidden');
-  const shouldShow = typeof show === 'boolean' ? show : isHidden;
-  if (shouldShow) {
-    locContainer.classList.remove('hidden');
-    const input = $('postLocationName');
-    if (input) input.focus();
+// ─── Google Maps Location Picker System ────────────────────────
+let _mapPickerTarget = 'composer'; // 'composer' | 'editPost'
+let _googleMapInstance = null;
+let _googleMapMarker = null;
+let _googleMapTileLayer = null;
+let _googleMapStyle = 'm'; // 'm' = Roadmap, 'y' = Hybrid Satellite
+let _searchedPlacesCache = [];
+let _currentPickedLocation = {
+  lat: 13.7563,
+  lng: 100.5018,
+  name: 'กรุงเทพมหานคร',
+  address: 'กรุงเทพมหานคร ประเทศไทย'
+};
+
+function getGooglePinIcon() {
+  if (typeof L === 'undefined') return null;
+  return L.divIcon({
+    className: 'custom-google-pin',
+    html: `
+      <div style="position:relative; width:34px; height:44px; cursor:grab;">
+        <svg viewBox="0 0 384 512" style="width:34px; height:44px; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.35)); fill: #EA4335;">
+          <path d="M172.268 501.67C26.97 291.031 0 269.413 0 192 0 85.961 85.961 0 192 0s192 85.961 192 192c0 77.413-26.97 99.031-172.268 309.67-9.535 13.774-29.93 13.773-39.464 0z"/>
+          <circle cx="192" cy="192" r="70" fill="#ffffff" />
+        </svg>
+        <div style="position:absolute; width:12px; height:4px; background:rgba(0,0,0,0.25); border-radius:50%; bottom:-2px; left:11px; filter:blur(1px);"></div>
+      </div>
+    `,
+    iconSize: [34, 44],
+    iconAnchor: [17, 42],
+    popupAnchor: [0, -40]
+  });
+}
+
+window.openGoogleMapPickerModal = function(target = 'composer') {
+  _mapPickerTarget = target;
+  const modal = $('googleMapPickerModal');
+  if (!modal) return;
+
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+
+  // Determine starting coordinates
+  let startLat = 13.7563;
+  let startLng = 100.5018;
+  let initialName = '';
+
+  if (target === 'composer') {
+    const latVal = $('postLatitude') ? $('postLatitude').value : '';
+    const lngVal = $('postLongitude') ? $('postLongitude').value : '';
+    const nameVal = $('postLocationName') ? $('postLocationName').value : '';
+    if (latVal && lngVal && !isNaN(latVal) && !isNaN(lngVal)) {
+      startLat = parseFloat(latVal);
+      startLng = parseFloat(lngVal);
+      initialName = nameVal;
+    }
+  } else if (target === 'editPost') {
+    const latVal = $('editPostLat') ? $('editPostLat').value : '';
+    const lngVal = $('editPostLng') ? $('editPostLng').value : '';
+    const nameVal = $('editPostLocation') ? $('editPostLocation').value : '';
+    if (latVal && lngVal && !isNaN(latVal) && !isNaN(lngVal)) {
+      startLat = parseFloat(latVal);
+      startLng = parseFloat(lngVal);
+      initialName = nameVal;
+    }
+  }
+
+  // Clear search results & input
+  const sInput = $('mapSearchInput');
+  if (sInput) sInput.value = '';
+  const clearBtn = $('mapSearchClearBtn');
+  if (clearBtn) clearBtn.classList.add('hidden');
+  const sResults = $('mapSearchResults');
+  if (sResults) {
+    sResults.innerHTML = '';
+    sResults.classList.add('hidden');
+  }
+
+  // Initialize or re-center map
+  setTimeout(() => {
+    initOrUpdateGoogleMap(startLat, startLng, initialName);
+  }, 100);
+
+  if (window.lucide) lucide.createIcons();
+};
+
+window.closeGoogleMapPickerModal = function() {
+  const modal = $('googleMapPickerModal');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+};
+
+function initOrUpdateGoogleMap(lat, lng, existingName = '') {
+  if (typeof L === 'undefined') {
+    console.error('Leaflet library not loaded');
+    toast('ไม่สามารถโหลดระบบแผนที่ได้ กรุณารีเฟรชหน้าเว็บ', 'error');
+    return;
+  }
+
+  const mapCanvas = $('googleMapCanvas');
+  if (!mapCanvas) return;
+
+  if (!_googleMapInstance) {
+    _googleMapInstance = L.map('googleMapCanvas', {
+      center: [lat, lng],
+      zoom: 15,
+      zoomControl: true
+    });
+
+    const tileUrl = `https://mt{s}.google.com/vt/lyrs=${_googleMapStyle}&x={x}&y={y}&z={z}`;
+    _googleMapTileLayer = L.tileLayer(tileUrl, {
+      subdomains: ['0', '1', '2', '3'],
+      maxZoom: 20,
+      attribution: '&copy; Google Maps'
+    }).addTo(_googleMapInstance);
+
+    const pinIcon = getGooglePinIcon();
+    _googleMapMarker = L.marker([lat, lng], {
+      draggable: true,
+      icon: pinIcon
+    }).addTo(_googleMapInstance);
+
+    // Map click drops marker
+    _googleMapInstance.on('click', (e) => {
+      updateMapPin(e.latlng.lat, e.latlng.lng, true);
+    });
+
+    // Marker drag updates position & address
+    _googleMapMarker.on('dragend', (e) => {
+      const pos = e.target.getLatLng();
+      updateMapPin(pos.lat, pos.lng, true);
+    });
+
+    // Search input keydown listener
+    const sInput = $('mapSearchInput');
+    if (sInput) {
+      sInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          searchPlacesOnMap();
+        }
+      });
+      sInput.addEventListener('input', () => {
+        const cBtn = $('mapSearchClearBtn');
+        if (cBtn) cBtn.classList.toggle('hidden', !sInput.value.trim());
+      });
+    }
   } else {
-    locContainer.classList.add('hidden');
+    _googleMapInstance.invalidateSize();
+    _googleMapInstance.setView([lat, lng], 15);
+    _googleMapMarker.setLatLng([lat, lng]);
   }
-  if (window.lucide && typeof lucide.createIcons === 'function') {
-    lucide.createIcons();
+
+  if (existingName) {
+    updateMapPin(lat, lng, false);
+    if ($('mapSelectedPlaceName')) $('mapSelectedPlaceName').value = existingName;
+    if ($('mapSelectedAddress')) $('mapSelectedAddress').textContent = existingName;
+  } else {
+    updateMapPin(lat, lng, true);
+  }
+}
+
+function updateMapPin(lat, lng, fetchAddress = true) {
+  const flat = Number(Number(lat).toFixed(5));
+  const flng = Number(Number(lng).toFixed(5));
+  _currentPickedLocation.lat = flat;
+  _currentPickedLocation.lng = flng;
+
+  if (_googleMapMarker) {
+    _googleMapMarker.setLatLng([flat, flng]);
+  }
+
+  const coordsEl = $('mapSelectedCoords');
+  if (coordsEl) coordsEl.textContent = `${flat}, ${flng}`;
+
+  if (fetchAddress) {
+    reverseGeocodeMapLocation(flat, flng);
+  }
+}
+
+let _reverseGeocodeDebounce = null;
+async function reverseGeocodeMapLocation(lat, lng) {
+  clearTimeout(_reverseGeocodeDebounce);
+  const addrEl = $('mapSelectedAddress');
+  const nameEl = $('mapSelectedPlaceName');
+  if (addrEl) addrEl.textContent = 'กำลังค้นหาชื่อสถานที่...';
+
+  _reverseGeocodeDebounce = setTimeout(async () => {
+    try {
+      const res = await apiFetch(`/api/maps/reverse?lat=${lat}&lng=${lng}`);
+      if (res && res.ok) {
+        const name = res.name || `พิกัด (${lat}, ${lng})`;
+        const addr = res.display_name || name;
+        _currentPickedLocation.name = name;
+        _currentPickedLocation.address = addr;
+        if (nameEl) nameEl.value = name;
+        if (addrEl) addrEl.textContent = addr;
+      } else {
+        const fallbackName = `พิกัด (${lat}, ${lng})`;
+        _currentPickedLocation.name = fallbackName;
+        _currentPickedLocation.address = fallbackName;
+        if (nameEl) nameEl.value = fallbackName;
+        if (addrEl) addrEl.textContent = fallbackName;
+      }
+    } catch (e) {
+      console.warn('[reverseGeocodeMapLocation] error:', e);
+      const fallbackName = `พิกัด (${lat}, ${lng})`;
+      _currentPickedLocation.name = fallbackName;
+      _currentPickedLocation.address = fallbackName;
+      if (nameEl) nameEl.value = fallbackName;
+      if (addrEl) addrEl.textContent = fallbackName;
+    }
+  }, 250);
+}
+
+window.searchPlacesOnMap = async function() {
+  const input = $('mapSearchInput');
+  const query = input ? input.value.trim() : '';
+  if (!query) {
+    toast('กรุณาระบุสถานที่ที่ต้องการค้นหา', 'warning');
+    return;
+  }
+
+  const btn = $('mapSearchBtn');
+  const resultsContainer = $('mapSearchResults');
+  if (btn) btn.innerHTML = '<i class="animate-spin" data-lucide="loader-2"></i> ค้นหา...';
+  if (window.lucide) lucide.createIcons();
+
+  try {
+    const res = await apiFetch(`/api/maps/search?q=${encodeURIComponent(query)}`);
+    if (!resultsContainer) return;
+
+    if (res && res.ok && Array.isArray(res.results) && res.results.length > 0) {
+      _searchedPlacesCache = res.results;
+      resultsContainer.innerHTML = res.results.map((item, idx) => `
+        <div class="p-3 hover:bg-rose-50/70 dark:hover:bg-rose-950/30 cursor-pointer flex items-start gap-2.5 transition-colors"
+          onclick="selectSearchedPlaceByIndex(${idx})">
+          <div class="w-6 h-6 rounded-md bg-rose-100 text-rose-600 dark:bg-rose-900/50 dark:text-rose-300 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <i data-lucide="map-pin" class="w-3.5 h-3.5"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="text-xs font-bold text-surface-900 dark:text-white truncate">${escapeHtml(item.name || '')}</div>
+            <div class="text-[11px] text-surface-500 dark:text-surface-400 truncate">${escapeHtml(item.display_name || '')}</div>
+          </div>
+        </div>
+      `).join('');
+      resultsContainer.classList.remove('hidden');
+      if (window.lucide) lucide.createIcons();
+    } else {
+      resultsContainer.innerHTML = `
+        <div class="p-4 text-center text-xs text-surface-400">
+          ไม่พบสถานที่ตรงกับ "${escapeHtml(query)}" บน Google Maps
+        </div>
+      `;
+      resultsContainer.classList.remove('hidden');
+    }
+  } catch (e) {
+    toast('ค้นหาสถานที่ล้มเหลว: ' + e.message, 'error');
+  } finally {
+    if (btn) btn.innerHTML = '<i data-lucide="search" class="w-3.5 h-3.5"></i> <span>ค้นหา</span>';
+    if (window.lucide) lucide.createIcons();
   }
 };
 
-window.clearPostLocation = function() {
-  const locContainer = $('locationInputContainer');
-  if (locContainer) locContainer.classList.add('hidden');
-  const nameInput = $('postLocationName');
-  if (nameInput) nameInput.value = '';
-  const latInput = $('postLatitude');
-  if (latInput) latInput.value = '';
-  const lngInput = $('postLongitude');
-  if (lngInput) lngInput.value = '';
-  const btnText = $('postGpsBtnText');
-  if (btnText) btnText.textContent = 'ดึง GPS';
-  const btn = $('postGpsBtn');
-  if (btn) {
-    btn.disabled = false;
-    btn.classList.remove('bg-emerald-100', 'text-emerald-700');
+window.selectSearchedPlaceByIndex = function(idx) {
+  const item = _searchedPlacesCache[idx];
+  if (!item) return;
+  selectSearchedPlace(item.lat, item.lng, item.name, item.display_name);
+};
+
+window.selectSearchedPlace = function(lat, lng, name, address) {
+  _currentPickedLocation.lat = lat;
+  _currentPickedLocation.lng = lng;
+  _currentPickedLocation.name = name;
+  _currentPickedLocation.address = address || name;
+
+  if (_googleMapInstance) {
+    _googleMapInstance.flyTo([lat, lng], 16, { animate: true, duration: 1.0 });
+  }
+  updateMapPin(lat, lng, false);
+
+  const nameEl = $('mapSelectedPlaceName');
+  if (nameEl) nameEl.value = name;
+  const addrEl = $('mapSelectedAddress');
+  if (addrEl) addrEl.textContent = address || name;
+
+  const resultsContainer = $('mapSearchResults');
+  if (resultsContainer) resultsContainer.classList.add('hidden');
+};
+
+window.clearMapSearch = function() {
+  const input = $('mapSearchInput');
+  if (input) input.value = '';
+  const clearBtn = $('mapSearchClearBtn');
+  if (clearBtn) clearBtn.classList.add('hidden');
+  const resultsContainer = $('mapSearchResults');
+  if (resultsContainer) {
+    resultsContainer.innerHTML = '';
+    resultsContainer.classList.add('hidden');
   }
 };
 
-window.getCurrentGpsForPost = function() {
+window.mapCenterOnCurrentGps = function() {
   if (!navigator.geolocation) {
     toast('เบราว์เซอร์ของคุณไม่รองรับการดึงพิกัด GPS', 'error');
     return;
   }
-  const btn = $('postGpsBtn');
-  const btnText = $('postGpsBtnText');
-  const origText = btnText ? btnText.textContent : 'ดึง GPS';
-  if (btnText) btnText.textContent = 'กำลังดึง GPS...';
-  if (btn) btn.disabled = true;
+  const label = $('mapMyGpsBtnLabel');
+  if (label) label.textContent = 'กำลังหา...';
 
   navigator.geolocation.getCurrentPosition(
     (pos) => {
-      const lat = Number(pos.coords.latitude.toFixed(6));
-      const lng = Number(pos.coords.longitude.toFixed(6));
-      const latInput = $('postLatitude');
-      const lngInput = $('postLongitude');
-      const nameInput = $('postLocationName');
-      if (latInput) latInput.value = lat;
-      if (lngInput) lngInput.value = lng;
-      if (nameInput && !nameInput.value.trim()) {
-        nameInput.value = `พิกัด Google Maps (${lat}, ${lng})`;
+      const lat = Number(pos.coords.latitude.toFixed(5));
+      const lng = Number(pos.coords.longitude.toFixed(5));
+      if (_googleMapInstance) {
+        _googleMapInstance.flyTo([lat, lng], 16, { animate: true, duration: 1.0 });
       }
-      if (btnText) btnText.textContent = '✓ พิกัดพร้อมแล้ว';
-      if (btn) {
-        btn.disabled = false;
-        btn.classList.add('bg-emerald-100', 'text-emerald-700');
-      }
-      toast(`ดึงพิกัด GPS สำเร็จ (${lat}, ${lng})`, 'success');
-      if (window.lucide) lucide.createIcons();
+      updateMapPin(lat, lng, true);
+      if (label) label.textContent = 'ตำแหน่งฉัน';
+      toast(`ระบุพิกัด GPS ของคุณสำเร็จ (${lat}, ${lng})`, 'success');
     },
     (err) => {
-      console.warn('[getCurrentGpsForPost] Error:', err);
-      if (btnText) btnText.textContent = origText;
-      if (btn) btn.disabled = false;
+      if (label) label.textContent = 'ตำแหน่งฉัน';
       let msg = 'ไม่สามารถดึงพิกัด GPS ได้';
-      if (err.code === 1) msg = 'กรุณากดอนุญาตการเข้าถึงตำแหน่ง (Location Permission) ในเบราว์เซอร์';
-      else if (err.code === 2) msg = 'สัญญาณ GPS ขาดหายหรือไม่สามารถระบุตำแหน่งได้';
-      else if (err.code === 3) msg = 'การค้นหาพิกัด GPS หมดเวลา (Timeout)';
+      if (err.code === 1) msg = 'กรุณาอนุญาตการเข้าถึงตำแหน่ง (Location Permission) ในเบราว์เซอร์';
+      else if (err.code === 2) msg = 'สัญญาณ GPS ขาดหาย';
+      else if (err.code === 3) msg = 'การค้นหาพิกัด GPS หมดเวลา';
       toast(msg, 'warning');
     },
     { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
   );
 };
 
-window.getGpsForEditPost = function() {
-  if (!navigator.geolocation) {
-    toast('เบราว์เซอร์ของคุณไม่รองรับการดึงพิกัด GPS', 'error');
+window.toggleMapTileStyle = function() {
+  _googleMapStyle = (_googleMapStyle === 'm') ? 'y' : 'm';
+  const label = $('mapStyleToggleLabel');
+  if (label) {
+    label.textContent = (_googleMapStyle === 'y') ? 'แผนที่ปกติ' : 'ดาวเทียม';
+  }
+
+  if (_googleMapInstance && _googleMapTileLayer) {
+    _googleMapInstance.removeLayer(_googleMapTileLayer);
+    const tileUrl = `https://mt{s}.google.com/vt/lyrs=${_googleMapStyle}&x={x}&y={y}&z={z}`;
+    _googleMapTileLayer = L.tileLayer(tileUrl, {
+      subdomains: ['0', '1', '2', '3'],
+      maxZoom: 20,
+      attribution: '&copy; Google Maps'
+    }).addTo(_googleMapInstance);
+  }
+};
+
+window.confirmGoogleMapLocation = function() {
+  const nameInput = $('mapSelectedPlaceName');
+  const chosenName = (nameInput && nameInput.value.trim()) || _currentPickedLocation.name || 'พิกัด Google Maps';
+  const lat = _currentPickedLocation.lat;
+  const lng = _currentPickedLocation.lng;
+  const address = _currentPickedLocation.address || chosenName;
+
+  if (!lat || !lng) {
+    toast('กรุณาเลือกตำแหน่งบนแผนที่ก่อนกดยืนยัน', 'warning');
     return;
   }
-  const btn = $('editPostGpsBtn');
-  if (btn) btn.textContent = 'กำลังดึง GPS...';
 
-  navigator.geolocation.getCurrentPosition(
-    (pos) => {
-      const lat = Number(pos.coords.latitude.toFixed(6));
-      const lng = Number(pos.coords.longitude.toFixed(6));
-      const latInput = $('editPostLat');
-      const lngInput = $('editPostLng');
-      const nameInput = $('editPostLocation');
-      if (latInput) latInput.value = lat;
-      if (lngInput) lngInput.value = lng;
-      if (nameInput && !nameInput.value.trim()) {
-        nameInput.value = `พิกัด Google Maps (${lat}, ${lng})`;
-      }
-      if (btn) btn.textContent = '✓ พิกัดพร้อม';
-      toast(`ดึงพิกัดสำเร็จ (${lat}, ${lng})`, 'success');
-    },
-    (err) => {
-      if (btn) btn.textContent = 'ดึง GPS';
-      toast('ไม่สามารถดึงพิกัดได้: ' + (err.message || 'Permission Denied'), 'warning');
-    },
-    { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
-  );
+  if (_mapPickerTarget === 'composer') {
+    if ($('postLocationName')) $('postLocationName').value = chosenName;
+    if ($('postLatitude')) $('postLatitude').value = lat;
+    if ($('postLongitude')) $('postLongitude').value = lng;
+
+    const locBadgeTitle = $('locationBadgeTitle');
+    if (locBadgeTitle) locBadgeTitle.textContent = chosenName;
+    const locBadgeSubtitle = $('locationBadgeSubtitle');
+    if (locBadgeSubtitle) locBadgeSubtitle.textContent = address;
+
+    const locContainer = $('locationInputContainer');
+    if (locContainer) {
+      locContainer.classList.remove('hidden');
+      locContainer.classList.add('flex');
+    }
+    toast(`แนบพิกัด Google Maps "${chosenName}" แล้ว`, 'success');
+  } else if (_mapPickerTarget === 'editPost') {
+    if ($('editPostLocation')) $('editPostLocation').value = chosenName;
+    if ($('editPostLat')) $('editPostLat').value = lat;
+    if ($('editPostLng')) $('editPostLng').value = lng;
+    const coordsText = $('editPostCoordsText');
+    if (coordsText) coordsText.textContent = `พิกัด: ${lat}, ${lng}`;
+    toast(`อัปเดตพิกัด "${chosenName}" แล้ว`, 'success');
+  }
+
+  closeGoogleMapPickerModal();
+  if (window.lucide) lucide.createIcons();
+};
+
+window.clearPostLocation = function() {
+  const locContainer = $('locationInputContainer');
+  if (locContainer) {
+    locContainer.classList.add('hidden');
+    locContainer.classList.remove('flex');
+  }
+  if ($('postLocationName')) $('postLocationName').value = '';
+  if ($('postLatitude')) $('postLatitude').value = '';
+  if ($('postLongitude')) $('postLongitude').value = '';
+  if ($('locationBadgeTitle')) $('locationBadgeTitle').textContent = '';
+  if ($('locationBadgeSubtitle')) $('locationBadgeSubtitle').textContent = '';
+};
+
+window.clearEditPostLocation = function() {
+  if ($('editPostLocation')) $('editPostLocation').value = '';
+  if ($('editPostLat')) $('editPostLat').value = '';
+  if ($('editPostLng')) $('editPostLng').value = '';
+  if ($('editPostCoordsText')) $('editPostCoordsText').textContent = '';
 };
 
 let _isSubmittingPost = false;
@@ -4668,7 +4976,9 @@ function editPost(pid) {
   if ($('editPostLocation')) $('editPostLocation').value = p.location_name || '';
   if ($('editPostLat')) $('editPostLat').value = p.latitude != null ? p.latitude : '';
   if ($('editPostLng')) $('editPostLng').value = p.longitude != null ? p.longitude : '';
-  if ($('editPostGpsBtn')) $('editPostGpsBtn').textContent = 'ดึง GPS';
+  if ($('editPostCoordsText')) {
+    $('editPostCoordsText').textContent = (p.latitude != null && p.longitude != null) ? `พิกัด: ${p.latitude}, ${p.longitude}` : '';
+  }
 
   editPostModal.classList.remove('hidden');
   initIcons();
