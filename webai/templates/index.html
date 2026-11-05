@@ -1427,22 +1427,8 @@
         <section id="view-home" class="view hidden flex-1 flex flex-col items-center overflow-y-auto custom-scrollbar animate-in fade-in duration-500 bg-surface-50 dark:bg-surface-950 w-full">
           <div class="w-full max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6 md:space-y-7">
             
-            <!-- Dashboard Header -->
-            <header class="w-full flex items-center justify-between mb-1 animate-in fade-in slide-in-from-top-4 duration-700">
-              <div>
-                <h2 class="text-2xl sm:text-3xl font-extrabold text-surface-900 dark:text-white tracking-tight">ภาพรวมวันนี้</h2>
-                <p class="text-xs sm:text-sm text-surface-500 dark:text-surface-400 font-medium mt-1">ทุกอย่างที่คุณต้องรู้ พร้อมอยู่ตรงนี้แล้ว</p>
-              </div>
-              <div class="flex items-center gap-3">
-                <button onclick="loadDashboard()" class="p-2.5 bg-white dark:bg-surface-900 text-surface-600 dark:text-surface-300 rounded-xl border border-surface-200/80 dark:border-surface-800/80 hover:bg-brand-50/60 dark:hover:bg-brand-950/30 hover:text-brand-600 hover:border-brand-500/30 transition-all shadow-xs group" title="รีเฟรชข้อมูลภาพรวม">
-                  <i data-lucide="refresh-cw" class="w-4 h-4 group-active:rotate-180 transition-transform duration-500"></i>
-                </button>
-                <div id="dashSystemStatus" class="hidden md:flex items-center gap-2 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 rounded-xl border border-emerald-200/60 dark:border-emerald-800/50">
-                  <div class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-                  <span id="dashSystemStatusText" class="text-[11px] font-semibold tracking-wide">ระบบออนไลน์</span>
-                </div>
-              </div>
-            </header>
+            <!-- Dashboard Header Removed (Keep hidden status element for JS hook) -->
+            <div id="dashSystemStatus" class="hidden"><span id="dashSystemStatusText" class="hidden"></span></div>
 
             <!-- แบนเนอร์เตือนผูก LINE ส่วนตัว (จะถูกควบคุมโดย JS ให้ซ่อนเมื่อเชื่อมต่อแล้ว) -->
             <div id="myLineBannerAlert" class="hidden w-full p-4 sm:p-5 bg-gradient-to-r from-emerald-50/60 via-white to-white dark:from-emerald-950/30 dark:via-surface-900 dark:to-surface-900 border border-emerald-200/70 dark:border-emerald-800/50 rounded-2xl flex items-center justify-between gap-4 shadow-xs">
