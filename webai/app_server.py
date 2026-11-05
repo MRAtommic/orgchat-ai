@@ -346,6 +346,18 @@ def create_app():
 
     @app.after_request
     def add_header(r):
+        from flask import request as _hreq
+        # ไฟล์ /static ที่มี ?v=<เลขเวอร์ชัน> เปลี่ยนชื่อทุกครั้งที่แก้ จึงแคชในเบราว์เซอร์ได้ 1 วัน (ลดการโหลดซ้ำ ~400 KB ต่อครั้ง)
+        # ไฟล์ static ที่ไม่มีเลขเวอร์ชันใช้ no-cache (ตรวจกับเซิร์ฟเวอร์ทุกครั้งด้วย ETag ได้ 304 ไม่ต้องโหลดใหม่)
+        # ส่วนหน้า HTML และ API ยังเป็น no-store เหมือนเดิม (มีข้อมูลเฉพาะผู้ใช้และ CSRF token)
+        if _hreq.path.startswith("/static/") and r.status_code in (200, 304):
+            if _hreq.args.get("v"):
+                r.headers["Cache-Control"] = "public, max-age=86400"
+            else:
+                r.headers["Cache-Control"] = "no-cache"
+            r.headers.pop("Pragma", None)
+            r.headers.pop("Expires", None)
+            return r
         r.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         r.headers["Pragma"] = "no-cache"
         r.headers["Expires"] = "0"

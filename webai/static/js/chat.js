@@ -20217,9 +20217,40 @@ window.copyReplyAssistantDraft = copyReplyAssistantDraft;
 // ─── 3D Enterprise AI Communication Network for Login Overlay ───────
 let _login3DAnimationId = null;
 
+// โหลด three.js เฉพาะเมื่อจะวาดฉากพื้นหลัง (ข้ามบนมือถือ/โหมดลดการเคลื่อนไหว/เครื่องประหยัดพลังงาน)
+let _threePromise = null;
+function _shouldSkip3DBackground() {
+  try {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return true;
+    if (window.innerWidth < 768) return true;                                   // มือถือ: ไม่คุ้มกับความกระตุก/แบตเตอรี่
+    if (navigator.connection && (navigator.connection.saveData || /(^|-)2g$/.test(navigator.connection.effectiveType || ''))) return true;
+    if (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2) return true;
+  } catch (e) { /* ignore */ }
+  return false;
+}
+function _loadThreeJs() {
+  if (typeof THREE !== 'undefined') return Promise.resolve(true);
+  if (_threePromise) return _threePromise;
+  _threePromise = new Promise((resolve) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+    s.async = true;
+    s.onload = () => resolve(typeof THREE !== 'undefined');
+    s.onerror = () => resolve(false);
+    document.head.appendChild(s);
+  });
+  return _threePromise;
+}
+
 function initLogin3DBackground() {
   const canvas = document.getElementById('login3DCanvas');
-  if (!canvas || typeof THREE === 'undefined') return;
+  if (!canvas) return;
+  if (_shouldSkip3DBackground()) { canvas.style.display = 'none'; return; }
+  if (typeof THREE === 'undefined') {
+    // ยังไม่ได้โหลด three.js: โหลดแล้วค่อยเริ่มวาด (ถ้าโหลดไม่ได้ก็ไม่เป็นไร หน้าล็อกอินยังใช้งานได้)
+    _loadThreeJs().then((ok) => { if (ok) initLogin3DBackground(); });
+    return;
+  }
 
   const overlay = document.getElementById('loginOverlay');
   if (!overlay || overlay.classList.contains('hidden')) return;
@@ -20427,6 +20458,7 @@ function initLogin3DBackground() {
     }
 
     _login3DAnimationId = requestAnimationFrame(renderLoop);
+    if (document.hidden) return;   // แท็บไม่ได้อยู่หน้าจอ: ไม่ต้องวาด
     const elapsedTime = clock.getElapsedTime();
 
     // Smooth Parallax
