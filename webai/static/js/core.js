@@ -330,6 +330,14 @@ const linkInputContainer = $('linkInputContainer');
 
 const postLink = $('postLink');
 
+const locationInputContainer = $('locationInputContainer');
+
+const postLocationName = $('postLocationName');
+
+const postLatitude = $('postLatitude');
+
+const postLongitude = $('postLongitude');
+
 const postAttachmentPreview = $('postAttachmentPreview');
 
 // Daily Digest Refs

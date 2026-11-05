@@ -1967,37 +1967,53 @@ function appendMessage(role, html, sources = [], scroll = true, msgId = null) {
       </div>`;
   } else {
     // Bot message with document citation sources
-    const sourcesHtml = botSources.length > 0 ? `
-      <div class="mt-3 pt-3 border-t border-surface-200 dark:border-surface-700/50 flex flex-wrap gap-1.5">
-        <span class="w-full text-[9px] font-black text-surface-400 uppercase tracking-widest mb-1 flex items-center gap-1">
-          <i data-lucide="book-open" class="w-2.5 h-2.5"></i> แหล่งข้อมูลอ้างอิง
-        </span>
-        ${botSources.map(s => {
-          if (s.type === 'image') {
-            return `
-              <div class="mt-2 relative group-img rounded-xl overflow-hidden border border-surface-200 dark:border-surface-700 shadow-sm transition-all hover:ring-2 hover:ring-brand-500 max-w-[200px]">
-                <img src="${s.url}" class="w-full h-auto object-cover cursor-pointer" onclick="openImageViewer('${s.url}')" alt="Attached Image">
-              </div>`;
-          }
-          const safeName = (s.name || s.source || 'Document').replace(/'/g, "\\'");
-          const safeLoc = (s.location || '').replace(/'/g, "\\'");
-          const driveHref = (typeof s.drive_link === 'string' && /^https:\/\/(drive|docs)\.google\.com\//.test(s.drive_link)) ? s.drive_link : '';
-          const driveBtn = driveHref ? `
-            <a href="${driveHref}" target="_blank" rel="noopener noreferrer" title="เปิดไฟล์ต้นฉบับใน Google Drive"
-              class="inline-flex items-center gap-1 -ml-1 px-2 py-1 rounded-md bg-white dark:bg-surface-800 text-brand-600 dark:text-brand-400 text-[11px] font-medium border border-surface-200 dark:border-surface-700 hover:border-brand-400 transition-colors">
-              <i data-lucide="external-link" class="w-3 h-3"></i><span>Drive</span>
+    // แหล่งอ้างอิง: ชิปเล็ก, รวมซ้ำ (ไฟล์+ตำแหน่งเดียวกัน), มือถือโชว์ 3 อันแรกแล้วพับที่เหลือไว้ใต้ปุ่ม "+N"
+    const _escS = (t) => escapeHtml(t == null ? '' : String(t));
+    // ค่าที่จะอยู่ใน onclick='...': escape เครื่องหมายคำพูด/แบ็กสแลชสำหรับ JS แล้วค่อย escape เป็น HTML
+    const _jsArg = (t) => _escS(String(t == null ? '' : t).replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
+    const _srcSeen = new Set();
+    const _srcFiles = botSources.filter(s => s.type !== 'image').filter(s => {
+      const k = (s.file_id || '') + '|' + (s.name || s.source || '') + '|' + (s.location || '');
+      if (_srcSeen.has(k)) return false;
+      _srcSeen.add(k);
+      return true;
+    });
+    const _srcImages = botSources.filter(s => s.type === 'image');
+    const _SRC_VISIBLE = 3;
+    const _chip = (s, idx) => {
+      const nm = s.name || s.source || 'Document';
+      const jsArg = _jsArg;
+      const driveHref = (typeof s.drive_link === 'string' && /^https:\/\/(drive|docs)\.google\.com\//.test(s.drive_link)) ? s.drive_link : '';
+      const driveBtn = driveHref ? `
+            <a href="${_escS(driveHref)}" target="_blank" rel="noopener noreferrer" title="เปิดไฟล์ต้นฉบับใน Google Drive"
+              class="inline-flex items-center gap-0.5 -ml-0.5 px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-md bg-white dark:bg-surface-800 text-brand-600 dark:text-brand-400 text-[10px] sm:text-[11px] font-medium border border-surface-200 dark:border-surface-700 hover:border-brand-400 transition-colors">
+              <i data-lucide="external-link" class="w-2.5 h-2.5 sm:w-3 sm:h-3"></i><span>Drive</span>
             </a>` : '';
-          return `
-            <span class="inline-flex items-center gap-1">
-            <button onclick="openPdfViewer('${s.file_id}', '${safeName}', '${safeLoc}')" 
-              class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 text-[11px] font-medium border border-surface-200 dark:border-surface-700 hover:border-surface-400 dark:hover:border-surface-500 transition-colors">
-              <i data-lucide="${FILE_LUCIDE[s.type] || 'file-text'}" class="w-3 h-3 text-surface-500"></i>
-              <span class="truncate max-w-[130px]">${s.name || s.source || 'Document'}</span>
-              ${s.location && s.location !== 'Document' ? `<span class="opacity-50 text-[10px]">#${s.location}</span>` : ''}
+      const extra = idx >= _SRC_VISIBLE ? ' src-extra hidden sm:inline-flex' : '';
+      const loc = s.location && s.location !== 'Document' ? `<span class="opacity-50 text-[9px] sm:text-[10px] flex-shrink-0">#${_escS(s.location)}</span>` : '';
+      return `
+            <span class="inline-flex items-center gap-1${extra}">
+            <button onclick="openPdfViewer('${jsArg(s.file_id)}', '${jsArg(nm)}', '${jsArg(s.location || '')}')" title="${_escS(nm)}"
+              class="inline-flex items-center gap-1 sm:gap-1.5 px-1.5 py-0.5 sm:px-2.5 sm:py-1 rounded-md bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 text-[10px] sm:text-[11px] font-medium border border-surface-200 dark:border-surface-700 hover:border-surface-400 dark:hover:border-surface-500 transition-colors">
+              <i data-lucide="${FILE_LUCIDE[s.type] || 'file-text'}" class="w-2.5 h-2.5 sm:w-3 sm:h-3 text-surface-500 flex-shrink-0"></i>
+              <span class="truncate max-w-[92px] sm:max-w-[130px]">${_escS(nm)}</span>
+              ${loc}
             </button>${driveBtn}
-            </span>
-          `;
-        }).join('')}
+            </span>`;
+    };
+    const _moreN = Math.max(0, _srcFiles.length - _SRC_VISIBLE);
+    const _moreBtn = _moreN > 0 ? `<button type="button" class="sm:hidden px-1.5 py-0.5 rounded-md text-[10px] font-bold text-brand-600 dark:text-brand-400 border border-dashed border-brand-300 dark:border-brand-700" onclick="this.parentElement.querySelectorAll('.src-extra').forEach(e=>e.classList.remove('hidden'));this.remove()">+${_moreN} เพิ่มเติม</button>` : '';
+    const _imgsHtml = _srcImages.map(s => `
+              <div class="mt-2 relative group-img rounded-xl overflow-hidden border border-surface-200 dark:border-surface-700 shadow-sm transition-all hover:ring-2 hover:ring-brand-500 max-w-[200px]">
+                <img src="${_escS(s.url)}" class="w-full h-auto object-cover cursor-pointer" onclick="openImageViewer('${_jsArg(s.url)}')" alt="Attached Image">
+              </div>`).join('');
+    const sourcesHtml = botSources.length > 0 ? `
+      <div class="mt-2 pt-2 sm:mt-3 sm:pt-3 border-t border-surface-200 dark:border-surface-700/50 flex flex-wrap items-center gap-1 sm:gap-1.5">
+        <span class="w-full text-[9px] font-black text-surface-400 uppercase tracking-widest mb-0.5 sm:mb-1 flex items-center gap-1">
+          <i data-lucide="book-open" class="w-2.5 h-2.5"></i> แหล่งข้อมูลอ้างอิง${_srcFiles.length ? ` (${_srcFiles.length})` : ''}
+        </span>
+        ${_srcFiles.map(_chip).join('')}${_moreBtn}
+        ${_imgsHtml}
       </div>` : '';
 
     contentHtml = `
@@ -3985,6 +4001,45 @@ function renderPosts(posts) {
 
       <div id="post-content-${p.id}" class="text-sm leading-relaxed text-surface-700 dark:text-surface-300 whitespace-pre-wrap">${highlightMentions(p.content)}</div>
 
+      ${(p.location_name || (p.latitude && p.longitude)) ? (() => {
+        const locName = p.location_name || `${p.latitude}, ${p.longitude}`;
+        const hasCoords = p.latitude != null && p.longitude != null && !isNaN(p.latitude) && !isNaN(p.longitude);
+        const mapUrl = hasCoords
+          ? `https://www.google.com/maps?q=${p.latitude},${p.longitude}`
+          : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locName)}`;
+        const embedUrl = hasCoords
+          ? `https://maps.google.com/maps?q=${p.latitude},${p.longitude}&hl=th&z=15&output=embed`
+          : `https://maps.google.com/maps?q=${encodeURIComponent(locName)}&hl=th&z=15&output=embed`;
+        const coordsStr = hasCoords ? `(${Number(p.latitude).toFixed(4)}, ${Number(p.longitude).toFixed(4)})` : '';
+        return `
+          <div class="mt-2.5 rounded-2xl overflow-hidden border border-rose-200/80 dark:border-rose-900/40 bg-gradient-to-br from-rose-50/40 to-white dark:from-rose-950/20 dark:to-surface-900/60 shadow-2xs">
+            <div class="p-3 flex items-center justify-between gap-3 border-b border-rose-100 dark:border-rose-900/30">
+              <div class="flex items-center gap-2.5 min-w-0">
+                <div class="w-8 h-8 rounded-xl bg-rose-100 dark:bg-rose-900/40 text-rose-600 dark:text-rose-400 flex items-center justify-center flex-shrink-0">
+                  <i data-lucide="map-pin" class="w-4 h-4 fill-rose-500/20"></i>
+                </div>
+                <div class="min-w-0">
+                  <div class="text-[10px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
+                    <span>Google Maps เช็คอิน</span>
+                    ${coordsStr ? `<span class="text-surface-400 font-normal text-[9px]">${coordsStr}</span>` : ''}
+                  </div>
+                  <div class="text-xs font-bold text-surface-900 dark:text-white truncate">${escapeHtml(locName)}</div>
+                </div>
+              </div>
+              <a href="${mapUrl}" target="_blank" rel="noopener noreferrer"
+                 class="px-2.5 py-1.5 rounded-xl bg-white dark:bg-surface-800 hover:bg-rose-50 dark:hover:bg-rose-900/30 border border-surface-200 dark:border-surface-700 text-rose-600 dark:text-rose-400 text-xs font-semibold flex items-center gap-1.5 flex-shrink-0 transition shadow-2xs hover:scale-105"
+                 title="เปิดดูตำแหน่งบน Google Maps">
+                <span>เปิดใน Google Maps</span>
+                <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+              </a>
+            </div>
+            <div class="w-full h-44 sm:h-52 bg-surface-100 dark:bg-surface-800 relative">
+              <iframe src="${embedUrl}" class="w-full h-full border-0" loading="lazy" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe>
+            </div>
+          </div>
+        `;
+      })() : ''}
+
 
       ${p.poll ? `
         <div class="bg-surface-50 dark:bg-surface-800/40 border border-surface-100 dark:border-surface-700 rounded-2xl p-5 space-y-4">
@@ -4328,6 +4383,118 @@ function addPollOption() {
   initIcons();
 }
 
+// ─── Post Location / Check-in Helpers (Google Maps) ───────────
+window.toggleLocationPicker = function(show) {
+  const locContainer = $('locationInputContainer');
+  if (!locContainer) return;
+  const isHidden = locContainer.classList.contains('hidden');
+  const shouldShow = typeof show === 'boolean' ? show : isHidden;
+  if (shouldShow) {
+    locContainer.classList.remove('hidden');
+    const input = $('postLocationName');
+    if (input) input.focus();
+  } else {
+    locContainer.classList.add('hidden');
+  }
+  if (window.lucide && typeof lucide.createIcons === 'function') {
+    lucide.createIcons();
+  }
+};
+
+window.clearPostLocation = function() {
+  const locContainer = $('locationInputContainer');
+  if (locContainer) locContainer.classList.add('hidden');
+  const nameInput = $('postLocationName');
+  if (nameInput) nameInput.value = '';
+  const latInput = $('postLatitude');
+  if (latInput) latInput.value = '';
+  const lngInput = $('postLongitude');
+  if (lngInput) lngInput.value = '';
+  const btnText = $('postGpsBtnText');
+  if (btnText) btnText.textContent = 'ดึง GPS';
+  const btn = $('postGpsBtn');
+  if (btn) {
+    btn.disabled = false;
+    btn.classList.remove('bg-emerald-100', 'text-emerald-700');
+  }
+};
+
+window.getCurrentGpsForPost = function() {
+  if (!navigator.geolocation) {
+    toast('เบราว์เซอร์ของคุณไม่รองรับการดึงพิกัด GPS', 'error');
+    return;
+  }
+  const btn = $('postGpsBtn');
+  const btnText = $('postGpsBtnText');
+  const origText = btnText ? btnText.textContent : 'ดึง GPS';
+  if (btnText) btnText.textContent = 'กำลังดึง GPS...';
+  if (btn) btn.disabled = true;
+
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const lat = Number(pos.coords.latitude.toFixed(6));
+      const lng = Number(pos.coords.longitude.toFixed(6));
+      const latInput = $('postLatitude');
+      const lngInput = $('postLongitude');
+      const nameInput = $('postLocationName');
+      if (latInput) latInput.value = lat;
+      if (lngInput) lngInput.value = lng;
+      if (nameInput && !nameInput.value.trim()) {
+        nameInput.value = `พิกัด Google Maps (${lat}, ${lng})`;
+      }
+      if (btnText) btnText.textContent = '✓ พิกัดพร้อมแล้ว';
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.add('bg-emerald-100', 'text-emerald-700');
+      }
+      toast(`ดึงพิกัด GPS สำเร็จ (${lat}, ${lng})`, 'success');
+      if (window.lucide) lucide.createIcons();
+    },
+    (err) => {
+      console.warn('[getCurrentGpsForPost] Error:', err);
+      if (btnText) btnText.textContent = origText;
+      if (btn) btn.disabled = false;
+      let msg = 'ไม่สามารถดึงพิกัด GPS ได้';
+      if (err.code === 1) msg = 'กรุณากดอนุญาตการเข้าถึงตำแหน่ง (Location Permission) ในเบราว์เซอร์';
+      else if (err.code === 2) msg = 'สัญญาณ GPS ขาดหายหรือไม่สามารถระบุตำแหน่งได้';
+      else if (err.code === 3) msg = 'การค้นหาพิกัด GPS หมดเวลา (Timeout)';
+      toast(msg, 'warning');
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+  );
+};
+
+window.getGpsForEditPost = function() {
+  if (!navigator.geolocation) {
+    toast('เบราว์เซอร์ของคุณไม่รองรับการดึงพิกัด GPS', 'error');
+    return;
+  }
+  const btn = $('editPostGpsBtn');
+  if (btn) btn.textContent = 'กำลังดึง GPS...';
+
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const lat = Number(pos.coords.latitude.toFixed(6));
+      const lng = Number(pos.coords.longitude.toFixed(6));
+      const latInput = $('editPostLat');
+      const lngInput = $('editPostLng');
+      const nameInput = $('editPostLocation');
+      if (latInput) latInput.value = lat;
+      if (lngInput) lngInput.value = lng;
+      if (nameInput && !nameInput.value.trim()) {
+        nameInput.value = `พิกัด Google Maps (${lat}, ${lng})`;
+      }
+      if (btn) btn.textContent = '✓ พิกัดพร้อม';
+      toast(`ดึงพิกัดสำเร็จ (${lat}, ${lng})`, 'success');
+    },
+    (err) => {
+      if (btn) btn.textContent = 'ดึง GPS';
+      toast('ไม่สามารถดึงพิกัดได้: ' + (err.message || 'Permission Denied'), 'warning');
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+  );
+};
+
 let _isSubmittingPost = false;
 submitPostBtn.onclick = async () => {
   if (_isSubmittingPost) return;
@@ -4341,9 +4508,13 @@ submitPostBtn.onclick = async () => {
   const isPollActive = pollComp && !pollComp.classList.contains('hidden');
   const pollQuestion = isPollActive ? $('pollQuestion').value.trim() : '';
 
-  if (!content && !link && postFiles.length === 0 && !pollQuestion) {
+  const locationName = $('postLocationName') ? $('postLocationName').value.trim() : '';
+  const latitude = $('postLatitude') ? $('postLatitude').value.trim() : '';
+  const longitude = $('postLongitude') ? $('postLongitude').value.trim() : '';
+
+  if (!content && !link && postFiles.length === 0 && !pollQuestion && !locationName && !latitude) {
     _isSubmittingPost = false;
-    return toast('กรุณาใส่ข้อความ ลิงก์ โพลล์ หรือแนบไฟล์อย่างใดอย่างหนึ่ง', 'warning');
+    return toast('กรุณาใส่ข้อความ ลิงก์ โพลล์ แนบไฟล์ หรือแชร์พิกัดอย่างใดอย่างหนึ่ง', 'warning');
   }
 
   submitPostBtn.disabled = true;
@@ -4354,6 +4525,10 @@ submitPostBtn.onclick = async () => {
   formData.append('category', category);
   formData.append('link', link);
   formData.append('author', state.user?.username || state.user || 'Current User');
+
+  if (locationName) formData.append('location_name', locationName);
+  if (latitude) formData.append('latitude', latitude);
+  if (longitude) formData.append('longitude', longitude);
 
   postFiles.forEach(file => {
     formData.append('files', file);
@@ -4382,6 +4557,7 @@ submitPostBtn.onclick = async () => {
     postInput.value = '';
     postLink.value = '';
     linkInputContainer.classList.add('hidden');
+    clearPostLocation();
 
     // Clear poll
     if (pollComp) {
@@ -4489,6 +4665,11 @@ function editPost(pid) {
   editPostLink.value = p.link || '';
   editPostCategory.value = p.category || 'General';
 
+  if ($('editPostLocation')) $('editPostLocation').value = p.location_name || '';
+  if ($('editPostLat')) $('editPostLat').value = p.latitude != null ? p.latitude : '';
+  if ($('editPostLng')) $('editPostLng').value = p.longitude != null ? p.longitude : '';
+  if ($('editPostGpsBtn')) $('editPostGpsBtn').textContent = 'ดึง GPS';
+
   editPostModal.classList.remove('hidden');
   initIcons();
   editPostInput.focus();
@@ -4504,6 +4685,9 @@ saveEditPostBtn.onclick = async () => {
   const content = editPostInput.value.trim();
   const link = editPostLink.value.trim();
   const category = editPostCategory.value;
+  const location_name = $('editPostLocation') ? $('editPostLocation').value.trim() : '';
+  const latitude = $('editPostLat') ? $('editPostLat').value.trim() : null;
+  const longitude = $('editPostLng') ? $('editPostLng').value.trim() : null;
 
   if (!content || !currentEditingPostId) return;
 
@@ -4515,7 +4699,7 @@ saveEditPostBtn.onclick = async () => {
     const res = await apiFetch(`/api/posts/${currentEditingPostId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content, link, category })
+      body: JSON.stringify({ content, link, category, location_name, latitude, longitude })
     });
     if (!res.ok) throw new Error(res.error);
 

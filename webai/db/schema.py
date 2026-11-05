@@ -139,7 +139,10 @@ def init_db(conn=None):
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
             link TEXT,
             attachments TEXT,
-            is_pinned INTEGER DEFAULT 0
+            is_pinned INTEGER DEFAULT 0,
+            location_name TEXT,
+            latitude REAL,
+            longitude REAL
         )
     """)
     cursor.execute("""
@@ -157,6 +160,12 @@ def init_db(conn=None):
     try: cursor.execute("ALTER TABLE posts ADD COLUMN attachments TEXT")
     except sqlite3.OperationalError: pass
     try: cursor.execute("ALTER TABLE posts ADD COLUMN is_pinned INTEGER DEFAULT 0")
+    except sqlite3.OperationalError: pass
+    try: cursor.execute("ALTER TABLE posts ADD COLUMN location_name TEXT")
+    except sqlite3.OperationalError: pass
+    try: cursor.execute("ALTER TABLE posts ADD COLUMN latitude REAL")
+    except sqlite3.OperationalError: pass
+    try: cursor.execute("ALTER TABLE posts ADD COLUMN longitude REAL")
     except sqlite3.OperationalError: pass
     
     # Ensure no NULLs in is_pinned for old rows

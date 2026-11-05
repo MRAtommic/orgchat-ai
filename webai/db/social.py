@@ -93,13 +93,15 @@ def delete_wiki_page(slug, org_id=1):
 
 # --- Social Feed ---
 @db_transaction_retry()
-def add_post(content, author="Anonymous", category="General", link=None, attachments=None, org_id=1):
+def add_post(content, author="Anonymous", category="General", link=None, attachments=None, org_id=1,
+             location_name=None, latitude=None, longitude=None):
     conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO posts (content, author, category, link, attachments, organization_id)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (content, author, category, link, json.dumps(attachments) if attachments else None, org_id))
+        INSERT INTO posts (content, author, category, link, attachments, organization_id, location_name, latitude, longitude)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (content, author, category, link, json.dumps(attachments) if attachments else None, org_id,
+          location_name, latitude, longitude))
     conn.commit()
     post_id = cursor.lastrowid
     conn.close()
@@ -112,7 +114,8 @@ def get_posts(category=None, org_id=1):
         SELECT p.id, p.content, p.author, p.category, p.summary, p.timestamp, p.link, p.attachments, p.is_pinned,
                up.display_name, up.avatar_url,
                (SELECT COUNT(*) FROM likes l WHERE l.post_id = p.id) as like_count,
-               (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) as comment_count
+               (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) as comment_count,
+               p.location_name, p.latitude, p.longitude
         FROM posts p
         LEFT JOIN user_profiles up ON p.author = up.username
         WHERE (p.organization_id = ? OR p.organization_id IS NULL)
@@ -138,7 +141,10 @@ def get_posts(category=None, org_id=1):
             "is_pinned": bool(r[8]),
             "display_name": r[9] or r[2].capitalize(),
             "avatar_url": r[10],
-            "likes": r[11], "comments": r[12]
+            "likes": r[11], "comments": r[12],
+            "location_name": r[13],
+            "latitude": r[14],
+            "longitude": r[15]
         }
         p["poll"] = get_poll_for_post(p["id"])
         posts.append(p)
@@ -148,7 +154,7 @@ def get_post(post_id: int) -> dict | None:
     """ดึงโพสต์เดียว — ใช้ตรวจ ownership ก่อน update/delete"""
     conn = _get_conn()
     conn.row_factory = sqlite3.Row
-    row = conn.execute("SELECT id, author, content, category, link, attachments, organization_id FROM posts WHERE id=?", (post_id,)).fetchone()
+    row = conn.execute("SELECT id, author, content, category, link, attachments, organization_id, location_name, latitude, longitude FROM posts WHERE id=?", (post_id,)).fetchone()
     conn.close()
     if not row:
         return None
@@ -174,12 +180,12 @@ def check_post_access(post_id: int, org_id: int = 1) -> bool:
     return row is not None
 
 
-def update_post(post_id, content, category, link=None):
+def update_post(post_id, content, category, link=None, location_name=None, latitude=None, longitude=None):
     conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("""
-        UPDATE posts SET content = ?, category = ?, link = ? WHERE id = ?
-    """, (content, category, link, post_id))
+        UPDATE posts SET content = ?, category = ?, link = ?, location_name = ?, latitude = ?, longitude = ? WHERE id = ?
+    """, (content, category, link, location_name, latitude, longitude, post_id))
     conn.commit()
     conn.close()
 

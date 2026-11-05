@@ -201,8 +201,21 @@ def manage_posts():
         has_attachments = 'files' in request.files and any(f.filename for f in request.files.getlist('files'))
         poll_question = request.form.get("poll_question")
 
-        if not content and not link and not has_attachments and not poll_question:
-            return jsonify({"ok": False, "error": "กรุณาใส่ข้อความ ลิงก์ โพลล์ หรือแนบไฟล์อย่างใดอย่างหนึ่งค่ะ"}), 400
+        location_name = (request.form.get("location_name") or "").strip() or None
+        latitude = request.form.get("latitude")
+        longitude = request.form.get("longitude")
+        try:
+            latitude = float(latitude) if latitude is not None and str(latitude).strip() != '' else None
+        except (ValueError, TypeError):
+            latitude = None
+        try:
+            longitude = float(longitude) if longitude is not None and str(longitude).strip() != '' else None
+        except (ValueError, TypeError):
+            longitude = None
+        has_location = bool(location_name or (latitude is not None and longitude is not None))
+
+        if not content and not link and not has_attachments and not poll_question and not has_location:
+            return jsonify({"ok": False, "error": "กรุณาใส่ข้อความ ลิงก์ โพลล์ แนบไฟล์ หรือแชร์พิกัดอย่างใดอย่างหนึ่งค่ะ"}), 400
 
         if not content:
             content = ""
@@ -254,7 +267,13 @@ def manage_posts():
                         except Exception:
                             pass
 
-        pid = database.add_post(content, author, category, link, attachments, org_id=get_current_org_id())
+        pid = database.add_post(
+            content, author, category, link, attachments,
+            org_id=get_current_org_id(),
+            location_name=location_name,
+            latitude=latitude,
+            longitude=longitude
+        )
 
         if poll_question and poll_options_raw:
             try:
@@ -474,6 +493,35 @@ def manage_posts():
                                 "margin": "lg"
                             }
                         ]
+
+                        if location_name or (latitude and longitude):
+                            loc_disp = location_name or f"{latitude}, {longitude}"
+                            map_uri = f"https://www.google.com/maps?q={latitude},{longitude}" if (latitude and longitude) else f"https://www.google.com/maps/search/?api=1&query={urllib.parse.quote(loc_disp)}"
+                            body_contents.append({
+                                "type": "box",
+                                "layout": "horizontal",
+                                "contents": [
+                                    {"type": "text", "text": "📍", "size": "xs", "flex": 0},
+                                    {
+                                        "type": "text",
+                                        "text": f"เช็คอิน: {loc_disp}",
+                                        "size": "xs",
+                                        "color": "#E11D48",
+                                        "weight": "bold",
+                                        "margin": "xs",
+                                        "flex": 1,
+                                        "action": {
+                                            "type": "uri",
+                                            "label": "ดูแผนที่",
+                                            "uri": map_uri
+                                        }
+                                    }
+                                ],
+                                "backgroundColor": "#FFF1F2",
+                                "cornerRadius": "8px",
+                                "paddingAll": "8px",
+                                "margin": "md"
+                            })
 
                         # Add Image Box if images exist (NOTE: cornerRadius is on box, NOT on image for LINE Flex compliance)
                         if image_urls:
@@ -939,6 +987,17 @@ def update_delete_post(pid):
     content = data.get("content")
     category = data.get("category")
     link = data.get("link")
+    location_name = (data.get("location_name") or "").strip() or None
+    latitude = data.get("latitude")
+    longitude = data.get("longitude")
+    try:
+        latitude = float(latitude) if latitude is not None and str(latitude).strip() != '' else None
+    except (ValueError, TypeError):
+        latitude = None
+    try:
+        longitude = float(longitude) if longitude is not None and str(longitude).strip() != '' else None
+    except (ValueError, TypeError):
+        longitude = None
 
     # ตรวจ ownership — เฉพาะเจ้าของหรือ admin
     post = database.get_post(pid)
@@ -947,7 +1006,7 @@ def update_delete_post(pid):
     if post.get("author") != user and not is_admin():
         return jsonify({"ok": False, "error": "ไม่มีสิทธิ์แก้ไขโพสต์นี้"}), 403
 
-    database.update_post(pid, content, category, link)
+    database.update_post(pid, content, category, link, location_name=location_name, latitude=latitude, longitude=longitude)
     database.log_event(f"Post updated: ID {pid}", user=user, org_id=org_id)
 
     # 📢 In-app Notification & LINE Flex Card Broadcast for edited post
