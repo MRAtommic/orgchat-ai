@@ -2485,7 +2485,7 @@ async function sendMessage(text) {
       updateDynamicSuggestions(botText, text);
 
       // 🔊 Auto-Speak TTS if enabled
-      if (_isAutoSpeakEnabled) {
+      if (_isAutoSpeakEnabled || _isVoiceModeActive) {
         speakTextThai(botText);
       }
     }
@@ -3064,79 +3064,132 @@ window.selectMobilePersona = selectMobilePersona;
 let _currentTtsAudio = null;
 let _isVoiceModeActive = false;
 let _voiceRecognition = null;
+let _ttsSession = 0;               // เพิ่มทุกครั้งที่สั่งหยุด/เริ่มพูดใหม่ เพื่อยกเลิกคิวเสียงเก่า
+let _voiceState = 'idle';          // idle | listening | thinking | speaking
+let _voiceThinkTimer = null;
+let _voiceSilentRestarts = 0;
+let _voiceTtsWarned = false;
 
+function _stopAllSpeech() {
+  _ttsSession++;
+  if (_currentTtsAudio) { try { _currentTtsAudio.pause(); } catch (e) { } _currentTtsAudio = null; }
+  if ('speechSynthesis' in window) { try { window.speechSynthesis.cancel(); } catch (e) { } }
+}
+
+/** ตัดข้อความเป็นประโยคสั้นๆ (≤ maxLen) เพื่อเริ่มพูดประโยคแรกไว และดึงเสียงประโยคถัดไปล่วงหน้า */
+function _splitForSpeech(text, maxLen = 150) {
+  const parts = text
+    .split(/(?<=[.!?…。])\s+|\n+|(?<=ค่ะ|คะ|ครับ|นะคะ|นะครับ|จ้ะ|จ้า)\s+/)
+    .map(p => p.trim()).filter(Boolean);
+  const out = [];
+  let cur = '';
+  for (const p of parts) {
+    if ((cur + ' ' + p).trim().length <= maxLen) { cur = (cur + ' ' + p).trim(); continue; }
+    if (cur) out.push(cur);
+    if (p.length <= maxLen) { cur = p; continue; }
+    // ประโยคยาวมาก: ตัดที่ช่องว่างใกล้ maxLen
+    let rest = p;
+    while (rest.length > maxLen) {
+      let cut = rest.lastIndexOf(' ', maxLen);
+      if (cut < maxLen * 0.5) cut = maxLen;
+      out.push(rest.slice(0, cut).trim());
+      rest = rest.slice(cut).trim();
+    }
+    cur = rest;
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
+async function _fetchTtsBlob(chunk, session) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 15000);
+  try {
+    const res = await fetch('/api/tts', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: chunk }), signal: ctl.signal
+    });
+    if (!res.ok || session !== _ttsSession) return null;
+    return await res.blob();
+  } catch (e) {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function _playBlob(blob, session) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    _currentTtsAudio = audio;
+    const done = (ok) => { URL.revokeObjectURL(url); if (_currentTtsAudio === audio) _currentTtsAudio = null; resolve(ok); };
+    audio.onended = () => done(true);
+    audio.onerror = () => done(false);
+    if (session !== _ttsSession) { done(false); return; }
+    audio.play().catch(() => done(false));   // บล็อก autoplay → ถือว่าเล่นไม่ได้ แล้วไปต่อที่ประโยคถัดไป/ข้อความ
+  });
+}
+
+function _speakWithBrowserVoice(chunk, session) {
+  return new Promise((resolve) => {
+    if (!('speechSynthesis' in window)) { resolve(false); return; }
+    const thai = window.speechSynthesis.getVoices().find(v => /^th/i.test(v.lang));
+    if (!thai) { resolve(false); return; }         // ไม่มีเสียงไทยในเครื่อง → อย่าอ่านไทยด้วยเสียงภาษาอื่น (ฟังไม่รู้เรื่อง)
+    const u = new SpeechSynthesisUtterance(chunk);
+    u.lang = 'th-TH'; u.voice = thai; u.rate = 1.05;
+    u.onend = () => resolve(true);
+    u.onerror = () => resolve(false);
+    if (session !== _ttsSession) { resolve(false); return; }
+    window.speechSynthesis.speak(u);
+  });
+}
+
+/**
+ * พูดข้อความ: ตัดเป็นประโยค → ประโยคแรกเริ่มเล่นทันที ระหว่างเล่นดึงประโยคถัดไปล่วงหน้า (ลดการรอเสียงจาก ~5–15 วิ เหลือ ~2–3 วิ)
+ * ลำดับ: Edge-TTS (เซิร์ฟเวอร์) → เสียงไทยในเบราว์เซอร์ (ถ้ามี) → ไม่พูด (แสดงเป็นข้อความอย่างเดียว)
+ * จบแล้ว ถ้าอยู่ในโหมดสนทนาด้วยเสียง จะกลับไปฟังต่ออัตโนมัติ
+ */
 async function speakTextThai(text) {
   if (!text) return;
-  if (_currentTtsAudio) {
-    try { _currentTtsAudio.pause(); _currentTtsAudio = null; } catch (e) { }
-  }
-  if ('speechSynthesis' in window) {
-    window.speechSynthesis.cancel();
-  }
+  _stopAllSpeech();
+  const session = _ttsSession;
 
-  // Clean markdown and emojis for smoother speech
   const cleanText = text
     .replace(/```[\s\S]*?```/g, '')
     .replace(/`([^`]+)`/g, '$1')
+    .replace(/https?:\/\/\S+/g, '')
     .replace(/[*#_~>]/g, '')
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
-    .trim()
-    .substring(0, 500);
+    .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!cleanText) { if (_isVoiceModeActive) startVoiceListening(); return; }
 
-  if (!cleanText) return;
+  const chunks = _splitForSpeech(cleanText).slice(0, 8);   // ไม่เกิน ~1,000 ตัวอักษร (ตัดที่ขอบประโยค ไม่ตัดกลางคำ)
+  if (_isVoiceModeActive) setVoiceVisualState('speaking', 'น้องพั้นกำลังพูดตอบกลับ...');
+  if (_voiceRecognition) { try { _voiceRecognition.abort(); } catch (e) { } }   // กันไมค์จับเสียงตัวเอง (เสียงสะท้อน)
 
+  let spoken = 0;
+  let next = _fetchTtsBlob(chunks[0], session);
+  for (let i = 0; i < chunks.length; i++) {
+    const blob = await next;
+    if (session !== _ttsSession) return;                  // ผู้ใช้สั่งหยุด/พูดใหม่แล้ว
+    next = (i + 1 < chunks.length) ? _fetchTtsBlob(chunks[i + 1], session) : null;
+    let ok = false;
+    if (blob) ok = await _playBlob(blob, session);
+    if (!ok && session === _ttsSession) ok = await _speakWithBrowserVoice(chunks[i], session);
+    if (ok) spoken++;
+  }
+  if (session !== _ttsSession) return;
+
+  if (!spoken && !_voiceTtsWarned) {
+    _voiceTtsWarned = true;
+    toast('เสียงตอบกลับใช้ไม่ได้ชั่วคราว (แสดงเป็นข้อความแทน) — ตรวจว่าเซิร์ฟเวอร์ติดตั้ง edge-tts เวอร์ชันล่าสุด', 'warning');
+  }
   if (_isVoiceModeActive) {
-    setVoiceVisualState('speaking', 'น้องพั้นกำลังพูดตอบกลับ...');
-  }
-
-  // Priority 1: Edge-TTS neural speech synthesis
-  try {
-    const res = await fetch('/api/tts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: cleanText })
-    });
-    if (res.ok) {
-      const blob = await res.blob();
-      const audioUrl = URL.createObjectURL(blob);
-      const audio = new Audio(audioUrl);
-      _currentTtsAudio = audio;
-      audio.onended = () => {
-        URL.revokeObjectURL(audioUrl);
-        _currentTtsAudio = null;
-        if (_isVoiceModeActive) {
-          startVoiceListening();
-        }
-      };
-      await audio.play();
-      return;
-    }
-  } catch (ttsErr) {
-    console.warn('[Edge-TTS error, falling back to Web Speech]:', ttsErr);
-  }
-
-  // Priority 2: Native browser SpeechSynthesis fallback
-  if ('speechSynthesis' in window) {
-    try {
-      const utterance = new SpeechSynthesisUtterance(cleanText.substring(0, 400));
-      utterance.lang = 'th-TH';
-      utterance.rate = 1.05;
-      utterance.pitch = 1.0;
-
-      const voices = window.speechSynthesis.getVoices();
-      const thaiVoice = voices.find(v => v.lang.includes('th') || v.lang.includes('TH'));
-      if (thaiVoice) utterance.voice = thaiVoice;
-
-      utterance.onend = () => {
-        if (_isVoiceModeActive) {
-          startVoiceListening();
-        }
-      };
-      window.speechSynthesis.speak(utterance);
-    } catch (e) {
-      console.warn('[TTS Error]', e);
-    }
+    setVoiceVisualState('idle', 'แตะวงกลมเพื่อพูดต่อ');
+    startVoiceListening();
   }
 }
 
@@ -3152,6 +3205,8 @@ function toggleLiveVoiceMode() {
     modal.classList.remove('hidden');
     modal.classList.add('flex');
     _isVoiceModeActive = true;
+    _voiceSilentRestarts = 0;
+    _voiceTtsWarned = false;
     startVoiceListening();
   } else {
     closeLiveVoiceMode();
@@ -3165,19 +3220,36 @@ function closeLiveVoiceMode() {
     m.classList.remove('flex');
   }
   _isVoiceModeActive = false;
+  _clearVoiceThinkTimer();
+  _stopAllSpeech();
+  _voiceState = 'idle';
   if (_voiceRecognition) {
-    try { _voiceRecognition.stop(); } catch (e) { }
-  }
-  if (_currentTtsAudio) {
-    try { _currentTtsAudio.pause(); _currentTtsAudio = null; } catch (e) { }
+    try { _voiceRecognition.abort(); } catch (e) { }
   }
 }
 
+function _voiceMsg(code) {
+  return ({
+    'not-allowed': 'ไมโครโฟนถูกบล็อก — กดไอคอนกุญแจ/ไมค์ข้าง URL แล้วเลือก "อนุญาต" จากนั้นแตะวงกลมอีกครั้ง',
+    'service-not-allowed': 'เบราว์เซอร์นี้ไม่อนุญาตให้ใช้บริการฟังเสียง (ลองใช้ Chrome/Edge ปกติ ไม่ใช่เบราว์เซอร์ในแอป)',
+    'audio-capture': 'ไม่พบไมโครโฟน — ตรวจว่าเสียบ/เปิดไมค์ แล้วลองใหม่',
+    'network': 'ระบบแปลงเสียงเป็นข้อความต้องใช้อินเทอร์เน็ต — ตรวจการเชื่อมต่อแล้วลองใหม่',
+    'language-not-supported': 'เบราว์เซอร์ไม่รองรับการฟังภาษาไทย',
+  })[code] || null;
+}
+
+function _clearVoiceThinkTimer() { if (_voiceThinkTimer) { clearTimeout(_voiceThinkTimer); _voiceThinkTimer = null; } }
+
 function startVoiceListening() {
+  // แตะวงกลมระหว่างที่ AI กำลังพูด = ขัดจังหวะ (barge-in): หยุดเสียงก่อนค่อยฟัง ไม่งั้นไมค์จะจับเสียง AI เอง
+  _stopAllSpeech();
+  _clearVoiceThinkTimer();
+
   if (!_voiceRecognition) {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      toast('เบราว์เซอร์นี้ไม่รองรับ Speech Recognition กรุณาใช้ Chrome หรือ Edge ค่ะ', 'warning');
+      toast('เบราว์เซอร์นี้ไม่รองรับการฟังเสียง กรุณาใช้ Chrome หรือ Edge ค่ะ', 'warning');
+      setVoiceVisualState('idle', 'เบราว์เซอร์นี้ไม่รองรับการฟังเสียง');
       return;
     }
     _voiceRecognition = new SpeechRecognition();
@@ -3186,37 +3258,60 @@ function startVoiceListening() {
     _voiceRecognition.interimResults = true;
 
     _voiceRecognition.onstart = () => {
-      setVoiceVisualState('listening', 'น้องพั้นกำลังฟังเสียงคุณอยู่ค่ะ...');
+      if (_voiceState !== 'thinking' && _voiceState !== 'speaking') setVoiceVisualState('listening', 'น้องพั้นกำลังฟังเสียงคุณอยู่ค่ะ...');
     };
 
     _voiceRecognition.onresult = (event) => {
+      if (_voiceState === 'thinking' || _voiceState === 'speaking') return;   // ไม่รับเสียงซ้อนระหว่างรอ/พูดตอบ
       let interim = '';
       let finalTranscript = '';
       for (let i = event.resultIndex; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript;
-        } else {
-          interim += event.results[i][0].transcript;
-        }
+        if (event.results[i].isFinal) finalTranscript += event.results[i][0].transcript;
+        else interim += event.results[i][0].transcript;
       }
       const caption = $('liveVoiceTranscript');
       if (caption) caption.textContent = finalTranscript || interim || '...';
 
-      if (finalTranscript && finalTranscript.trim()) {
+      const said = (finalTranscript || '').trim();
+      if (said.length >= 2) {
+        _voiceSilentRestarts = 0;
         setVoiceVisualState('thinking', 'กำลังคิดคำตอบ...');
-        sendMessage(finalTranscript.trim());
+        // กันค้าง: ถ้า 45 วิยังไม่มีคำตอบ ให้กลับมาฟังต่อ
+        _voiceThinkTimer = setTimeout(() => {
+          if (_isVoiceModeActive && _voiceState === 'thinking') {
+            toast('AI ตอบช้าเกินไป ลองพูดใหม่อีกครั้งค่ะ', 'warning');
+            setVoiceVisualState('idle', 'แตะวงกลมเพื่อพูดอีกครั้ง');
+            startVoiceListening();
+          }
+        }, 45000);
+        sendMessage(said);
       }
     };
 
     _voiceRecognition.onerror = (e) => {
-      console.warn('[Live Voice Error]', e);
-      setVoiceVisualState('idle', 'แตะปุ่มวงกลมเพื่อเริ่มพูด');
+      const code = e && e.error;
+      if (code === 'aborted') return;                                   // เราสั่งหยุดเอง (กำลังจะพูด) ไม่ใช่ข้อผิดพลาด
+      if (code === 'no-speech') return;                                 // ไม่มีเสียง → onend จะจัดการฟังซ้ำ
+      const msg = _voiceMsg(code);
+      console.warn('[Live Voice Error]', code);
+      if (msg) {
+        _isVoiceModeActive = _isVoiceModeActive && !(code === 'not-allowed' || code === 'service-not-allowed' || code === 'audio-capture');
+        setVoiceVisualState('idle', msg);
+        toast(msg, 'error');
+      } else {
+        setVoiceVisualState('idle', 'แตะวงกลมเพื่อเริ่มพูด');
+      }
     };
 
     _voiceRecognition.onend = () => {
-      if (_isVoiceModeActive && !_currentTtsAudio) {
-        setVoiceVisualState('idle', 'แตะปุ่มเพื่อพูดต่อ');
+      // จบรอบฟัง: ถ้ายังอยู่ในโหมดสนทนา, ไม่ได้รอคำตอบ/กำลังพูด → ฟังต่ออัตโนมัติ (ไม่ต้องแตะทุกประโยค) สูงสุด 3 รอบเงียบติด
+      if (!_isVoiceModeActive || _voiceState === 'thinking' || _voiceState === 'speaking') return;
+      if (_voiceSilentRestarts >= 3) {
+        setVoiceVisualState('idle', 'ไม่ได้ยินเสียง — แตะวงกลมเพื่อพูด');
+        return;
       }
+      _voiceSilentRestarts++;
+      setTimeout(() => { if (_isVoiceModeActive && _voiceState !== 'thinking' && _voiceState !== 'speaking') { try { _voiceRecognition.start(); } catch (e) { } } }, 350);
     };
   }
 
@@ -3228,6 +3323,7 @@ function startVoiceListening() {
 }
 
 function setVoiceVisualState(state, text) {
+  _voiceState = state;
   const caption = $('liveVoiceStatusText');
   const orb = $('liveVoiceOrb');
   if (caption) caption.textContent = text;
@@ -4434,18 +4530,18 @@ function renderLocationCard(loc, options = {}) {
   const widthClass = isPost ? 'w-full' : 'w-[290px] sm:w-[330px] max-w-full';
 
   return `
-    <div class="${widthClass} rounded-2xl border border-surface-200/90 dark:border-surface-750 bg-white dark:bg-surface-850 shadow-sm overflow-hidden text-left transition-all my-1.5">
+    <div class="${widthClass} rounded-2xl border border-surface-200/90 dark:border-surface-700 bg-white dark:bg-surface-800 shadow-sm overflow-hidden text-left transition-all my-2">
       <!-- Location Info Header -->
-      <div class="p-3 sm:p-3.5 flex items-start gap-3 bg-white dark:bg-surface-850 border-b border-surface-100 dark:border-surface-800">
-        <div class="w-9 h-9 rounded-xl bg-red-50 dark:bg-red-950/40 text-[#EA4335] flex items-center justify-center flex-shrink-0 mt-0.5">
-          <i data-lucide="map-pin" class="w-5 h-5 fill-[#EA4335]/15"></i>
+      <div class="p-3 sm:p-3.5 flex items-start gap-3 bg-white dark:bg-surface-800 border-b border-surface-100 dark:border-surface-700">
+        <div class="w-9 h-9 rounded-xl bg-red-50 dark:bg-red-950/50 text-[#EA4335] flex items-center justify-center flex-shrink-0 mt-0.5">
+          <i data-lucide="map-pin" class="w-5 h-5 fill-[#EA4335]/20"></i>
         </div>
         <div class="min-w-0 flex-1">
-          <div class="text-[10px] font-bold uppercase tracking-wider text-surface-400 dark:text-surface-500 mb-0.5 flex items-center gap-1.5">
+          <div class="text-[10px] font-bold uppercase tracking-wider text-surface-400 dark:text-surface-400 mb-0.5 flex items-center gap-1.5">
             <span>Google Maps</span>
-            ${hasCoords ? `<span class="font-mono text-[10px] text-surface-400 font-normal">(${lat}, ${lng})</span>` : ''}
+            ${hasCoords ? `<span class="font-mono text-[10px] text-surface-400 dark:text-surface-400 font-normal">(${lat}, ${lng})</span>` : ''}
           </div>
-          <div class="text-sm font-semibold text-surface-900 dark:text-surface-100 truncate">${escapeHtml(lName)}</div>
+          <div class="text-sm font-semibold text-surface-900 dark:text-white truncate">${escapeHtml(lName)}</div>
           ${loc.address ? `<div class="text-xs text-surface-500 dark:text-surface-400 truncate mt-0.5">${escapeHtml(loc.address)}</div>` : ''}
         </div>
       </div>
@@ -4455,7 +4551,7 @@ function renderLocationCard(loc, options = {}) {
         <div class="relative w-full ${isPost ? 'h-48 sm:h-56' : 'h-36 sm:h-40'} bg-surface-100 dark:bg-surface-900 group">
           <div id="${uid}" class="js-mini-location-map w-full h-full" data-lat="${lat}" data-lng="${lng}"></div>
           <a href="${mapUrl}" target="_blank" rel="noopener noreferrer" class="absolute inset-0 z-[400]" title="คลิกเพื่อเปิดดูบน Google Maps"></a>
-          <div class="absolute bottom-2 right-2 z-[410] pointer-events-none px-2 py-0.5 rounded-md bg-white/90 dark:bg-surface-900/90 text-surface-700 dark:text-surface-300 text-[10px] font-medium shadow-xs border border-surface-200/60 dark:border-surface-700 backdrop-blur-xs flex items-center gap-1">
+          <div class="absolute bottom-2 right-2 z-[410] pointer-events-none px-2 py-0.5 rounded-md bg-white/90 dark:bg-surface-900/90 text-surface-700 dark:text-surface-200 text-[10px] font-medium shadow-xs border border-surface-200/60 dark:border-surface-700 backdrop-blur-xs flex items-center gap-1">
             <span>Google Maps</span>
             <i data-lucide="external-link" class="w-2.5 h-2.5 opacity-70"></i>
           </div>
@@ -4463,11 +4559,11 @@ function renderLocationCard(loc, options = {}) {
       ` : ''}
 
       <!-- Action Buttons -->
-      <div class="p-2 sm:p-2.5 bg-surface-50/70 dark:bg-surface-800/40 border-t border-surface-100 dark:border-surface-800 flex items-center justify-end gap-2">
+      <div class="p-2.5 sm:p-3 bg-surface-50 dark:bg-surface-850 border-t border-surface-100 dark:border-surface-700 flex items-center justify-end gap-2">
         <a href="${mapUrl}" target="_blank" rel="noopener noreferrer"
-          class="px-3 py-1.5 rounded-xl bg-white dark:bg-surface-700/80 hover:bg-surface-100 dark:hover:bg-surface-650 text-surface-700 dark:text-surface-200 border border-surface-200 dark:border-surface-650 text-xs font-medium flex items-center gap-1.5 transition shadow-2xs"
+          class="px-3 py-1.5 rounded-xl bg-white dark:bg-surface-700 hover:bg-surface-100 dark:hover:bg-surface-600 text-surface-700 dark:text-surface-200 border border-surface-200 dark:border-surface-600 text-xs font-medium flex items-center gap-1.5 transition shadow-2xs"
           title="เปิดดูตำแหน่งบน Google Maps">
-          <i data-lucide="external-link" class="w-3.5 h-3.5 text-surface-400"></i>
+          <i data-lucide="external-link" class="w-3.5 h-3.5 text-surface-400 dark:text-surface-300"></i>
           <span>เปิดแผนที่</span>
         </a>
         <a href="${dirUrl}" target="_blank" rel="noopener noreferrer"
@@ -4744,7 +4840,7 @@ window.searchPlacesOnMap = async function () {
     if (res && res.ok && Array.isArray(res.results) && res.results.length > 0) {
       _searchedPlacesCache = res.results;
       resultsContainer.innerHTML = res.results.map((item, idx) => `
-        <div class="p-3 hover:bg-surface-50 dark:hover:bg-surface-750 cursor-pointer flex items-start gap-3 transition-colors"
+        <div class="p-3 hover:bg-surface-50 dark:hover:bg-surface-700 cursor-pointer flex items-start gap-3 transition-colors"
           onclick="selectSearchedPlaceByIndex(${idx})">
           <div class="w-7 h-7 rounded-lg bg-red-50 dark:bg-red-950/40 text-[#EA4335] flex items-center justify-center flex-shrink-0 mt-0.5">
             <i data-lucide="map-pin" class="w-3.5 h-3.5 fill-[#EA4335]/20"></i>
@@ -13569,7 +13665,9 @@ async function renderHomeDashboard() {
   const content = $('home-digest-content');
   if (content) {
     try {
-      const sumData = await apiFetch('/api/summary?category=all');
+      // เดิมเรียก /api/summary ที่ไม่มีอยู่จริง (404 ทุกครั้ง) → ใช้ briefing ที่มีจริง
+      const _b = await apiFetch('/api/dashboard/briefing');
+      const sumData = { summary: _b && _b.ok ? _b.briefing : '' };
       if (sumData && sumData.summary) {
         content.innerHTML = markdownToHtml(sumData.summary);
       } else {

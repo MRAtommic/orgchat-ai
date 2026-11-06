@@ -48,7 +48,7 @@
                 50: '#eff6ff', 100: '#e0ebff', 200: '#bfdbfe', 300: '#93c5fd', 400: '#60a5fa', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8', 800: '#1e40af', 900: '#1e3a8a', 950: '#0b132b',
               },
               surface: {
-                50: '#f8fafc', 100: '#f1f5f9', 200: '#e2e8f0', 300: '#cbd5e1', 400: '#94a3b8', 500: '#64748b', 600: '#475569', 700: '#334155', 800: '#1e293b', 900: '#0f172a', 950: '#090d16',
+                50: '#f8fafc', 100: '#f1f5f9', 200: '#e2e8f0', 300: '#cbd5e1', 400: '#94a3b8', 500: '#64748b', 600: '#475569', 700: '#334155', 750: '#273449', 800: '#1e293b', 850: '#151f32', 900: '#0f172a', 950: '#090d16',
               }
             },
             fontFamily: {
@@ -11260,7 +11260,7 @@
 
         <!-- Live search dropdown list -->
         <div id="mapSearchResults"
-          class="hidden absolute left-3 right-3 sm:left-4 sm:right-4 top-[56px] sm:top-[64px] z-[1650] bg-white dark:bg-surface-850 rounded-xl shadow-xl border border-surface-200 dark:border-surface-700 max-h-56 overflow-y-auto divide-y divide-surface-100 dark:divide-surface-750">
+          class="hidden absolute left-3 right-3 sm:left-4 sm:right-4 top-[56px] sm:top-[64px] z-[1650] bg-white dark:bg-surface-800 rounded-xl shadow-xl border border-surface-200 dark:border-surface-700 max-h-56 overflow-y-auto divide-y divide-surface-100 dark:divide-surface-700">
         </div>
       </div>
 
@@ -11272,7 +11272,7 @@
         <div class="absolute top-3 right-3 z-[1000] flex flex-col items-end gap-2">
           <!-- Satellite / Roadmap Toggle -->
           <button type="button" id="mapStyleToggleBtn" onclick="toggleMapTileStyle()"
-            class="h-9 px-3 rounded-xl bg-white/95 dark:bg-surface-850/95 text-surface-700 dark:text-surface-200 text-xs font-medium shadow-md hover:bg-white dark:hover:bg-surface-800 transition flex items-center gap-1.5 border border-surface-200/80 dark:border-surface-700 backdrop-blur-xs"
+            class="h-9 px-3 rounded-xl bg-white/95 dark:bg-surface-800/95 text-surface-700 dark:text-surface-200 text-xs font-medium shadow-md hover:bg-white dark:hover:bg-surface-700 transition flex items-center gap-1.5 border border-surface-200/80 dark:border-surface-700 backdrop-blur-xs"
             title="สลับแผนที่ดาวเทียม / ปกติ">
             <i data-lucide="layers" class="w-3.5 h-3.5 text-surface-500"></i>
             <span id="mapStyleToggleLabel">ดาวเทียม</span>
@@ -11283,13 +11283,13 @@
         <div class="absolute bottom-4 right-3 z-[1000] flex flex-col items-center gap-2">
           <!-- Current GPS Button -->
           <button type="button" id="mapMyGpsBtn" onclick="mapCenterOnCurrentGps()"
-            class="w-9 h-9 rounded-xl bg-white/95 dark:bg-surface-850/95 text-surface-700 dark:text-surface-200 shadow-md hover:bg-white dark:hover:bg-surface-800 hover:text-brand-600 transition flex items-center justify-center border border-surface-200/80 dark:border-surface-700 backdrop-blur-xs"
+            class="w-9 h-9 rounded-xl bg-white/95 dark:bg-surface-800/95 text-surface-700 dark:text-surface-200 shadow-md hover:bg-white dark:hover:bg-surface-700 hover:text-brand-600 transition flex items-center justify-center border border-surface-200/80 dark:border-surface-700 backdrop-blur-xs"
             title="ตำแหน่งปัจจุบันของฉัน">
             <i data-lucide="crosshair" class="w-4 h-4 text-surface-600 dark:text-surface-300"></i>
           </button>
 
           <!-- Zoom In / Out Pill -->
-          <div class="flex flex-col rounded-xl bg-white/95 dark:bg-surface-850/95 shadow-md border border-surface-200/80 dark:border-surface-700 overflow-hidden backdrop-blur-xs">
+          <div class="flex flex-col rounded-xl bg-white/95 dark:bg-surface-800/95 shadow-md border border-surface-200/80 dark:border-surface-700 overflow-hidden backdrop-blur-xs">
             <button type="button" onclick="mapZoomIn()" class="w-9 h-8 flex items-center justify-center text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 border-b border-surface-100 dark:border-surface-700 transition" title="ซูมเข้า">
               <i data-lucide="plus" class="w-4 h-4"></i>
             </button>
@@ -12859,18 +12859,18 @@
   <script src="/static/js/core.js?v=4.4"></script>
   <script src="/static/js/sound-fx.js?v=1.0"></script>
   <script src="/static/js/appearance.js?v=1.0"></script>
-  <script src="/static/js/chat.js?v=9.5"></script>
+  <script src="/static/js/chat.js?v=9.6"></script>
   <script src="/static/js/audit_labels.js?v=1.1"></script>
   <script src="/static/js/ui_polish.js?v=1.0"></script>
-  <script src="/static/js/org_tabs_ui.js?v=1.0"></script>
+  <script src="/static/js/org_tabs_ui.js?v=1.1"></script>
   <script src="/static/js/settings_ui.js?v=1.0"></script>
-  <script src="/static/js/org_features.js?v=1.0"></script>
+  <script src="/static/js/org_features.js?v=1.1"></script>
   <script src="/static/js/org_admin.js?v=1.1"></script>
   <script src="/static/js/line-oa.js?v=1.2"></script>
   <script src="/static/js/billing.js?v=4.0"></script>
   <script src="/static/js/kb.js?v=4.2"></script>
   <script src="/static/js/admin.js?v=4.2"></script>
-  <script src="/static/js/attendance.js?v=2.0"></script>
+  <script src="/static/js/attendance.js?v=2.1"></script>
   <script src="/static/js/line-groups-modal.js?v=4.1"></script>
   <script src="/static/js/plans-modal.js?v=4.1"></script>
   <script src="/static/js/sheets-reconcile.js?v=4.2"></script>
