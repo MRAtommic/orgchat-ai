@@ -173,6 +173,16 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style id="settings-ui-style">
+    .custom-google-pin {
+      background: transparent !important;
+      border: none !important;
+    }
+    .leaflet-container {
+      font-family: inherit;
+    }
+    .dark .leaflet-container {
+      background: #0f172a;
+    }
     .settings-nav-btn {
       display: flex;
       align-items: center;
@@ -1475,18 +1485,18 @@
 
                 <!-- AI Location Preview Badge -->
                 <div id="mainChatLocationPreview"
-                  class="hidden w-full px-3 py-2 flex items-center justify-between gap-2 border-b border-rose-100 dark:border-rose-900/40 bg-rose-50/70 dark:bg-rose-950/30 rounded-t-xl animate-in fade-in duration-150">
+                  class="hidden w-full px-3 py-2 flex items-center justify-between gap-2 border-b border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800 rounded-t-xl animate-in fade-in duration-150">
                   <div class="flex items-center gap-2.5 min-w-0">
-                    <div class="w-7 h-7 rounded-lg bg-rose-500/15 text-rose-600 dark:text-rose-400 flex items-center justify-center flex-shrink-0">
+                    <div class="w-7 h-7 rounded-lg bg-red-50 dark:bg-red-950/40 text-[#EA4335] flex items-center justify-center flex-shrink-0">
                       <i data-lucide="map-pin" class="w-3.5 h-3.5"></i>
                     </div>
                     <div class="min-w-0">
-                      <span id="mainChatLocationName" class="text-xs font-bold text-surface-900 dark:text-white truncate block">ชื่อสถานที่</span>
+                      <span id="mainChatLocationName" class="text-xs font-semibold text-surface-900 dark:text-white truncate block">ชื่อสถานที่</span>
                       <span id="mainChatLocationCoords" class="text-[10px] text-surface-500 dark:text-surface-400 font-mono truncate block">พิกัด</span>
                     </div>
                   </div>
                   <button type="button" onclick="clearMainChatLocation()"
-                    class="p-1 text-surface-400 hover:text-red-500 rounded-lg hover:bg-rose-100/50 dark:hover:bg-rose-900/30 transition-colors" title="ยกเลิกพิกัด">
+                    class="p-1 text-surface-400 hover:text-red-500 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors" title="ยกเลิกพิกัด">
                     <i data-lucide="x" class="w-3.5 h-3.5"></i>
                   </button>
                 </div>
@@ -3374,24 +3384,24 @@
 
                     <!-- Location Attached Card (Hidden by default, shown when location is picked) -->
                     <div id="locationInputContainer"
-                      class="hidden items-center justify-between gap-2.5 p-2.5 px-3 bg-gradient-to-r from-rose-50/80 via-white to-amber-50/60 dark:from-rose-950/40 dark:via-surface-800/80 dark:to-surface-800/40 rounded-xl border border-rose-200/90 dark:border-rose-900/60 shadow-2xs animate-in fade-in duration-200">
+                      class="hidden items-center justify-between gap-2.5 p-2.5 px-3 bg-surface-50 dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700 shadow-2xs animate-in fade-in duration-200">
                       <div class="flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer group"
                         onclick="openGoogleMapPickerModal('composer')" title="คลิกเพื่อปรับเปลี่ยนพิกัดบนแผนที่">
                         <div
-                          class="w-8 h-8 rounded-xl bg-gradient-to-tr from-rose-500 to-amber-500 text-white flex items-center justify-center shadow-xs flex-shrink-0 group-hover:scale-105 transition-transform">
+                          class="w-8 h-8 rounded-xl bg-red-50 dark:bg-red-950/40 text-[#EA4335] flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
                           <i data-lucide="map-pin" class="w-4 h-4"></i>
                         </div>
                         <div class="min-w-0 flex-1">
                           <div class="flex items-center gap-2">
                             <span id="locationBadgeTitle"
-                              class="text-xs font-bold text-surface-900 dark:text-surface-100 truncate">ตำแหน่งที่เลือก</span>
+                              class="text-xs font-semibold text-surface-900 dark:text-surface-100 truncate">ตำแหน่งที่เลือก</span>
                             <span
-                              class="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-md bg-rose-100 text-rose-700 dark:bg-rose-900/50 dark:text-rose-300 flex-shrink-0 flex items-center gap-0.5">
-                              <i data-lucide="map" class="w-2.5 h-2.5"></i> Google Maps
+                              class="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-surface-200/70 dark:bg-surface-700 text-surface-600 dark:text-surface-300 flex-shrink-0 flex items-center gap-0.5">
+                              Google Maps
                             </span>
                           </div>
                           <span id="locationBadgeSubtitle"
-                            class="text-[10px] text-surface-500 dark:text-surface-400 block truncate">กำลังโหลดที่อยู่...</span>
+                            class="text-[11px] text-surface-500 dark:text-surface-400 block truncate">กำลังโหลดที่อยู่...</span>
                         </div>
                       </div>
                       <input type="hidden" id="postLocationName">
@@ -3399,12 +3409,12 @@
                       <input type="hidden" id="postLongitude">
                       <div class="flex items-center gap-1.5 flex-shrink-0">
                         <button type="button" onclick="openGoogleMapPickerModal('composer')"
-                          class="px-2.5 py-1 text-xs font-semibold rounded-lg bg-white dark:bg-surface-700 text-surface-700 dark:text-surface-200 hover:bg-surface-100 dark:hover:bg-surface-600 border border-surface-200/80 dark:border-surface-600 flex items-center gap-1 transition shadow-2xs">
-                          <i data-lucide="edit-3" class="w-3 h-3 text-rose-500"></i>
+                          class="px-2.5 py-1 text-xs font-medium rounded-lg bg-white dark:bg-surface-700 text-surface-700 dark:text-surface-200 hover:bg-surface-100 dark:hover:bg-surface-600 border border-surface-200 dark:border-surface-600 flex items-center gap-1 transition shadow-2xs">
+                          <i data-lucide="edit-3" class="w-3 h-3 text-surface-500"></i>
                           <span>แก้ไขพิกัด</span>
                         </button>
                         <button type="button" onclick="clearPostLocation()"
-                          class="p-1.5 text-surface-400 hover:text-red-500 rounded-lg hover:bg-rose-100/60 dark:hover:bg-rose-950/40 transition"
+                          class="p-1.5 text-surface-400 hover:text-red-500 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-700 transition"
                           title="ยกเลิกพิกัด">
                           <i data-lucide="x" class="w-3.5 h-3.5"></i>
                         </button>
@@ -3438,10 +3448,10 @@
                           <!-- Location Button -->
                           <button type="button" onclick="openGoogleMapPickerModal('composer')"
                             id="postLocationToggleBtn"
-                            class="flex items-center gap-1.5 px-3 py-1.5 bg-surface-50 dark:bg-surface-800 text-surface-500 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-600 transition-all border border-surface-100 dark:border-surface-700/50"
+                            class="flex items-center gap-1.5 px-3 py-1.5 bg-surface-50 dark:bg-surface-800 text-surface-600 dark:text-surface-300 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-700 transition-all border border-surface-100 dark:border-surface-700/60"
                             title="แชร์พิกัด/เช็คอิน Google Maps">
-                            <i data-lucide="map-pin" class="w-3.5 h-3.5 text-rose-500"></i>
-                            <span class="text-[10px] font-bold uppercase tracking-wider">พิกัด</span>
+                            <i data-lucide="map-pin" class="w-3.5 h-3.5 text-[#EA4335]"></i>
+                            <span class="text-xs font-medium">พิกัด</span>
                           </button>
                           <!-- New Poll Button -->
                           <button onclick="togglePollComposer()"
@@ -11202,53 +11212,47 @@
     </div>
   </div>
 
-  <!-- 🗺️ Google Maps Location Picker Modal -->
+  <!-- 🗺️ Google Maps Location Picker Modal (Refined Human-Crafted UI) -->
   <div id="googleMapPickerModal"
-    class="fixed inset-0 z-[1600] flex items-center justify-center p-2.5 sm:p-4 bg-surface-900/70 backdrop-blur-md hidden transition-all">
+    class="fixed inset-0 z-[1600] flex items-center justify-center p-3 sm:p-5 bg-surface-900/70 backdrop-blur-sm hidden transition-all">
     <div
-      class="bg-white dark:bg-surface-900 w-full max-w-2xl rounded-2xl shadow-2xl border border-surface-200 dark:border-surface-800 overflow-hidden flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-200">
+      class="bg-white dark:bg-surface-900 w-full max-w-2xl rounded-2xl shadow-2xl border border-surface-200 dark:border-surface-800 overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
 
       <!-- Modal Header -->
       <div
-        class="px-5 py-3.5 border-b border-surface-100 dark:border-surface-800 flex justify-between items-center bg-surface-50/70 dark:bg-surface-800/60 flex-shrink-0">
+        class="px-5 py-4 border-b border-surface-100 dark:border-surface-800 flex justify-between items-center bg-white dark:bg-surface-900 flex-shrink-0">
         <div class="flex items-center gap-3">
           <div
-            class="w-10 h-10 rounded-xl bg-gradient-to-tr from-rose-500 to-amber-500 text-white flex items-center justify-center shadow-md shadow-rose-500/20">
-            <i data-lucide="map-pin" class="w-5 h-5"></i>
+            class="w-9 h-9 rounded-xl bg-red-50 dark:bg-red-950/40 text-[#EA4335] flex items-center justify-center flex-shrink-0 shadow-2xs">
+            <i data-lucide="map-pin" class="w-5 h-5 fill-[#EA4335]/15"></i>
           </div>
           <div>
-            <div class="flex items-center gap-2">
-              <h3 class="text-base font-bold text-surface-900 dark:text-white">เลือกพิกัดบน Google Maps</h3>
-              <span
-                class="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300">Live
-                Map</span>
-            </div>
-            <p class="text-xs text-surface-500 dark:text-surface-400">ค้นหาสถานที่
-              หรือคลิก/ลากหมุดบนแผนที่เพื่อระบุตำแหน่ง</p>
+            <h3 class="text-base font-semibold text-surface-900 dark:text-white">เลือกตำแหน่งบนแผนที่</h3>
+            <p class="text-xs text-surface-500 dark:text-surface-400">ค้นหาสถานที่ หรือเลื่อนหมุดเพื่อปักตำแหน่ง</p>
           </div>
         </div>
         <button type="button" onclick="closeGoogleMapPickerModal()"
-          class="p-2 hover:bg-surface-200 dark:hover:bg-surface-700 rounded-xl text-surface-400 hover:text-surface-600 dark:hover:text-surface-200 transition-colors">
+          class="w-8 h-8 rounded-lg text-surface-400 hover:text-surface-600 dark:hover:text-surface-200 hover:bg-surface-100 dark:hover:bg-surface-800 flex items-center justify-center transition-colors">
           <i data-lucide="x" class="w-5 h-5"></i>
         </button>
       </div>
 
-      <!-- Search Bar with Auto-suggest -->
+      <!-- Search Bar -->
       <div
-        class="p-3 sm:p-4 border-b border-surface-100 dark:border-surface-800 bg-surface-50/40 dark:bg-surface-900/40 relative flex-shrink-0">
+        class="p-3 sm:p-4 border-b border-surface-100 dark:border-surface-800 bg-surface-50/50 dark:bg-surface-900/50 relative flex-shrink-0">
         <div class="flex gap-2">
           <div class="relative flex-1">
-            <i data-lucide="search" class="w-4 h-4 text-surface-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+            <i data-lucide="search" class="w-4 h-4 text-surface-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
             <input type="text" id="mapSearchInput"
-              placeholder="ค้นหาสถานที่ เช่น เซ็นทรัลเวิลด์, สยาม, ท้องฟ้าจำลอง หรือพิมพ์ที่อยู่..." autocomplete="off"
-              class="w-full bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl pl-10 pr-9 py-2 text-xs sm:text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all shadow-2xs">
+              placeholder="ค้นหาสถานที่ เช่น เซ็นทรัลเวิลด์, สยาม หรือพิมพ์ชื่ออาคาร/ที่อยู่..." autocomplete="off"
+              class="w-full bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl pl-10 pr-9 py-2 text-xs sm:text-sm text-surface-900 dark:text-white placeholder-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-2xs">
             <button type="button" id="mapSearchClearBtn" onclick="clearMapSearch()"
-              class="hidden absolute right-3 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-600">
-              <i data-lucide="x" class="w-4 h-4"></i>
+              class="hidden absolute right-3 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-600 dark:hover:text-surface-200 p-1">
+              <i data-lucide="x" class="w-3.5 h-3.5"></i>
             </button>
           </div>
           <button type="button" id="mapSearchBtn" onclick="searchPlacesOnMap()"
-            class="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm shadow-brand-600/30 flex-shrink-0">
+            class="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-medium transition flex items-center gap-1.5 shadow-2xs flex-shrink-0">
             <i data-lucide="search" class="w-3.5 h-3.5"></i>
             <span>ค้นหา</span>
           </button>
@@ -11256,69 +11260,71 @@
 
         <!-- Live search dropdown list -->
         <div id="mapSearchResults"
-          class="hidden absolute left-3 right-3 sm:left-4 sm:right-4 top-[56px] sm:top-[64px] z-[1650] bg-white dark:bg-surface-800 rounded-xl shadow-2xl border border-surface-200 dark:border-surface-700 max-h-56 overflow-y-auto divide-y divide-surface-100 dark:divide-surface-700/50">
+          class="hidden absolute left-3 right-3 sm:left-4 sm:right-4 top-[56px] sm:top-[64px] z-[1650] bg-white dark:bg-surface-850 rounded-xl shadow-xl border border-surface-200 dark:border-surface-700 max-h-56 overflow-y-auto divide-y divide-surface-100 dark:divide-surface-750">
         </div>
       </div>
 
       <!-- Map View Container & Floating Controls -->
-      <div class="relative flex-1 min-h-[300px] sm:min-h-[380px] bg-surface-100 dark:bg-surface-950 overflow-hidden">
-        <div id="googleMapCanvas" class="w-full h-full min-h-[300px] sm:min-h-[380px] z-10"></div>
+      <div class="relative flex-1 min-h-[320px] sm:min-h-[400px] bg-surface-100 dark:bg-surface-950 overflow-hidden">
+        <div id="googleMapCanvas" class="w-full h-full min-h-[320px] sm:min-h-[400px] z-10"></div>
 
-        <!-- Floating Controls on Top of Map -->
-        <div class="absolute top-3 right-3 z-[1000] flex flex-col gap-2">
+        <!-- Floating Controls on Top-Right -->
+        <div class="absolute top-3 right-3 z-[1000] flex flex-col items-end gap-2">
           <!-- Satellite / Roadmap Toggle -->
           <button type="button" id="mapStyleToggleBtn" onclick="toggleMapTileStyle()"
-            class="px-3 py-1.5 rounded-xl bg-white/95 dark:bg-surface-800/95 text-surface-700 dark:text-surface-200 text-xs font-bold shadow-md hover:bg-white dark:hover:bg-surface-700 transition flex items-center gap-1.5 border border-surface-200/80 dark:border-surface-700 backdrop-blur-xs"
+            class="h-9 px-3 rounded-xl bg-white/95 dark:bg-surface-850/95 text-surface-700 dark:text-surface-200 text-xs font-medium shadow-md hover:bg-white dark:hover:bg-surface-800 transition flex items-center gap-1.5 border border-surface-200/80 dark:border-surface-700 backdrop-blur-xs"
             title="สลับแผนที่ดาวเทียม / ปกติ">
-            <i data-lucide="layers" class="w-3.5 h-3.5 text-brand-600"></i>
+            <i data-lucide="layers" class="w-3.5 h-3.5 text-surface-500"></i>
             <span id="mapStyleToggleLabel">ดาวเทียม</span>
-          </button>
-
-          <!-- My GPS Button -->
-          <button type="button" id="mapMyGpsBtn" onclick="mapCenterOnCurrentGps()"
-            class="px-3 py-1.5 rounded-xl bg-white/95 dark:bg-surface-800/95 text-surface-700 dark:text-surface-200 text-xs font-bold shadow-md hover:bg-white dark:hover:bg-surface-700 transition flex items-center gap-1.5 border border-surface-200/80 dark:border-surface-700 backdrop-blur-xs"
-            title="ดึงตำแหน่งปัจจุบันของฉัน">
-            <i data-lucide="crosshair" class="w-3.5 h-3.5 text-rose-500"></i>
-            <span id="mapMyGpsBtnLabel">ตำแหน่งฉัน</span>
           </button>
         </div>
 
-        <!-- Bottom Map Prompt Tooltip -->
-        <div class="absolute bottom-2.5 left-2.5 right-2.5 sm:left-auto sm:right-3 pointer-events-none z-[1000]">
-          <div
-            class="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-surface-900/85 text-white text-[10px] font-medium backdrop-blur-xs shadow-md">
-            <i data-lucide="mouse-pointer-click" class="w-3 h-3 text-amber-400"></i>
-            <span>คลิกหรือลากหมุดแดงบนแผนที่ เพื่อเปลี่ยนตำแหน่ง</span>
+        <!-- Floating Controls on Bottom-Right -->
+        <div class="absolute bottom-4 right-3 z-[1000] flex flex-col items-center gap-2">
+          <!-- Current GPS Button -->
+          <button type="button" id="mapMyGpsBtn" onclick="mapCenterOnCurrentGps()"
+            class="w-9 h-9 rounded-xl bg-white/95 dark:bg-surface-850/95 text-surface-700 dark:text-surface-200 shadow-md hover:bg-white dark:hover:bg-surface-800 hover:text-brand-600 transition flex items-center justify-center border border-surface-200/80 dark:border-surface-700 backdrop-blur-xs"
+            title="ตำแหน่งปัจจุบันของฉัน">
+            <i data-lucide="crosshair" class="w-4 h-4 text-surface-600 dark:text-surface-300"></i>
+          </button>
+
+          <!-- Zoom In / Out Pill -->
+          <div class="flex flex-col rounded-xl bg-white/95 dark:bg-surface-850/95 shadow-md border border-surface-200/80 dark:border-surface-700 overflow-hidden backdrop-blur-xs">
+            <button type="button" onclick="mapZoomIn()" class="w-9 h-8 flex items-center justify-center text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 border-b border-surface-100 dark:border-surface-700 transition" title="ซูมเข้า">
+              <i data-lucide="plus" class="w-4 h-4"></i>
+            </button>
+            <button type="button" onclick="mapZoomOut()" class="w-9 h-8 flex items-center justify-center text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition" title="ซูมออก">
+              <i data-lucide="minus" class="w-4 h-4"></i>
+            </button>
           </div>
         </div>
       </div>
 
       <!-- Selected Location Details & Actions Footer -->
       <div
-        class="p-3.5 sm:p-4 bg-surface-50/80 dark:bg-surface-800/60 border-t border-surface-100 dark:border-surface-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 flex-shrink-0">
+        class="p-3.5 sm:p-4 bg-white dark:bg-surface-900 border-t border-surface-100 dark:border-surface-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 flex-shrink-0">
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2 mb-0.5">
-            <i data-lucide="map-pin" class="w-4 h-4 text-rose-500 flex-shrink-0"></i>
+            <div class="w-2.5 h-2.5 rounded-full bg-[#EA4335] flex-shrink-0 animate-pulse"></div>
             <input type="text" id="mapSelectedPlaceName" placeholder="ระบุชื่อสถานที่..."
-              class="bg-transparent border-none p-0 text-xs sm:text-sm font-bold text-surface-900 dark:text-white focus:ring-0 w-full truncate placeholder-surface-400">
+              class="bg-transparent border-none p-0 text-sm sm:text-base font-semibold text-surface-900 dark:text-white focus:ring-0 w-full truncate placeholder-surface-400">
           </div>
-          <div class="flex items-center gap-2 text-[11px] text-surface-500 dark:text-surface-400 pl-6">
-            <span id="mapSelectedAddress" class="truncate max-w-[200px] sm:max-w-[340px]">กำลังระบุพิกัด...</span>
+          <div class="flex items-center gap-2 text-xs text-surface-500 dark:text-surface-400 pl-4.5">
+            <span id="mapSelectedAddress" class="truncate max-w-[220px] sm:max-w-[360px]">กำลังระบุพิกัด...</span>
             <span class="text-surface-300 dark:text-surface-600">•</span>
-            <span id="mapSelectedCoords" class="font-mono text-[10px] text-surface-400 flex-shrink-0">13.7563,
-              100.5018</span>
+            <span id="mapSelectedCoords" class="font-mono text-[11px] text-surface-400 flex-shrink-0">13.7563, 100.5018</span>
           </div>
         </div>
 
         <div class="flex items-center justify-end gap-2 flex-shrink-0">
           <button type="button" onclick="closeGoogleMapPickerModal()"
-            class="px-3.5 py-2 text-xs font-bold rounded-xl text-surface-600 dark:text-surface-300 hover:bg-surface-200/60 dark:hover:bg-surface-700 transition">
+            class="px-4 py-2 text-xs font-medium rounded-xl text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition">
             ยกเลิก
           </button>
           <button type="button" id="confirmMapBtn" onclick="confirmGoogleMapLocation()"
-            class="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-rose-600/30">
-            <i data-lucide="check" class="w-4 h-4"></i>
-            <span>ยืนยันพิกัดนี้</span>
+            class="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-medium transition flex items-center gap-1.5 shadow-2xs">
+            <i data-lucide="check" class="w-3.5 h-3.5"></i>
+            <span>ใช้ตำแหน่งนี้</span>
           </button>
         </div>
       </div>
@@ -12853,8 +12859,8 @@
   <script src="/static/js/core.js?v=4.4"></script>
   <script src="/static/js/sound-fx.js?v=1.0"></script>
   <script src="/static/js/appearance.js?v=1.0"></script>
-  <script src="/static/js/chat.js?v=9.3"></script>
-  <script src="/static/js/audit_labels.js?v=1.0"></script>
+  <script src="/static/js/chat.js?v=9.5"></script>
+  <script src="/static/js/audit_labels.js?v=1.1"></script>
   <script src="/static/js/ui_polish.js?v=1.0"></script>
   <script src="/static/js/org_tabs_ui.js?v=1.0"></script>
   <script src="/static/js/settings_ui.js?v=1.0"></script>

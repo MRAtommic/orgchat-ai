@@ -3,7 +3,7 @@ window._csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttrib
 
 // 🛡️ Global XSS Prevention Helper
 if (typeof window.escapeHtml !== 'function') {
-  window.escapeHtml = function(text) {
+  window.escapeHtml = function (text) {
     if (!text) return '';
     return String(text)
       .replace(/&/g, '&amp;')
@@ -50,7 +50,7 @@ window.fetch = async function (resource, options = {}) {
   }
   const _resp = await originalFetch.call(this, resource, options);
   if (_resp.status === 403 && typeof window.force2FASetup === 'function') {
-    _resp.clone().json().then(d => { if (d && d.error === '2fa_setup_required') window.force2FASetup(); }).catch(() => {});
+    _resp.clone().json().then(d => { if (d && d.error === '2fa_setup_required') window.force2FASetup(); }).catch(() => { });
   }
   return _resp;
 };
@@ -73,7 +73,7 @@ function scrollToBottom(behavior = 'smooth', onlyIfAtBottom = false) {
   if (!onlyIfAtBottom || isAtBottom) {
     // Immediate scroll (auto) to capture current state, then delayed scroll for content rendering
     chatArea.scrollTop = chatArea.scrollHeight;
-    
+
     requestAnimationFrame(() => {
       setTimeout(() => {
         chatArea.scrollTo({ top: chatArea.scrollHeight, behavior: behavior });
@@ -117,22 +117,22 @@ function setChatTargetLanguage(lang) {
 async function translateChatMessage(btnEl) {
   const rowEl = btnEl.closest('.chat-msg-row') || btnEl.closest('.msg-user') || btnEl.closest('.msg-bot') || btnEl.closest('.group\\/msg');
   if (!rowEl) return;
-  
+
   const proseEl = rowEl.querySelector('.prose') || rowEl.querySelector('.msg-text') || rowEl.querySelector('.chat-bubble') || rowEl;
-  
+
   // Clean text from existing translation box or html tags
   const clone = proseEl.cloneNode(true);
   const existingBox = clone.querySelector('.translation-box');
   if (existingBox) existingBox.remove();
   const text = (clone.innerText || clone.textContent || '').trim();
-  
+
   // Toggle existing translation box if present
   const transBoxInDom = rowEl.querySelector('.translation-box');
   if (transBoxInDom) {
     transBoxInDom.classList.toggle('hidden');
     return;
   }
-  
+
   if (!text) {
     toast('ไม่มีข้อความสำหรับแปลภาษา', 'warning');
     return;
@@ -192,7 +192,7 @@ async function translateChatMessage(btnEl) {
     </div>
     <div class="italic bg-brand-500/5 p-2 rounded-xl border border-brand-500/10 leading-relaxed">${escapeHtml(translatedText)}</div>
   `;
-  
+
   const targetContainer = rowEl.querySelector('.chat-bubble') || rowEl.querySelector('.msg-content-wrapper') || rowEl;
   targetContainer.appendChild(newTransBox);
   if (window.lucide) lucide.createIcons();
@@ -212,7 +212,7 @@ function formatAttachmentPreview(attachments) {
   if (!attachments) return '';
   let parsed = attachments;
   if (typeof attachments === 'string') {
-    try { parsed = JSON.parse(attachments); } catch(e) {}
+    try { parsed = JSON.parse(attachments); } catch (e) { }
   }
   if (Array.isArray(parsed) && parsed.length > 0) {
     const first = parsed[0] || {};
@@ -374,7 +374,7 @@ async function fetchUserStatusMap() {
       renderChatSidebar();
       updateChatHeaderStatus();
     }
-  } catch(e){}
+  } catch (e) { }
 }
 
 function renderActiveUsersTray() {
@@ -385,9 +385,9 @@ function renderActiveUsersTray() {
     tray.classList.add('hidden');
     return;
   }
-  
+
   // Find users who are online (excluding self)
-  const activeUsers = Object.values(state.userStatusMap).filter(u => 
+  const activeUsers = Object.values(state.userStatusMap).filter(u =>
     state.onlineUsers.includes(u.username) && u.username !== state.username
   );
 
@@ -397,7 +397,7 @@ function renderActiveUsersTray() {
   }
 
   tray.classList.remove('hidden');
-  
+
   tray.innerHTML = activeUsers.map(u => {
     const displayNameShort = (u.display_name || u.username).split(' ')[0];
     const safeUser = escHtml(u.username);
@@ -420,7 +420,7 @@ function renderActiveUsersTray() {
       </div>
     `;
   }).join('');
-  
+
   initIcons();
 }
 
@@ -443,7 +443,7 @@ function showTypingIndicator(username, displayName, roomId) {
     if (!state.typingUsers) state.typingUsers = {};
     if (!state.typingUsers[roomId]) state.typingUsers[roomId] = new Set();
     state.typingUsers[roomId].add(username);
-    
+
     // Auto-clear typing status after 5 seconds to prevent getting stuck
     setTimeout(() => {
       if (state.typingUsers && state.typingUsers[roomId]) {
@@ -484,7 +484,7 @@ function hideTypingIndicator(username, roomId) {
 async function sendReadSignal() {
   const chat = state.currentChat;
   if (!chat || !chat.id || !state.groupChat.messages.length) return;
-  
+
   // Find the highest message ID in the current batch
   let maxId = 0;
   state.groupChat.messages.forEach(m => {
@@ -496,7 +496,7 @@ async function sendReadSignal() {
   if (maxId === 0) return;
   // Prevent duplicate signals for same maxId
   if (state.groupChat.lastReadId === maxId) return;
-  
+
   try {
     await fetch('/api/chat/read', {
       method: 'POST',
@@ -508,7 +508,7 @@ async function sendReadSignal() {
       })
     });
     state.groupChat.lastReadId = maxId;
-  } catch(e) {}
+  } catch (e) { }
 }
 
 // Status / Init
@@ -868,7 +868,7 @@ async function loadAdminSettings() {
       const chk = $('settingAllowUserEdit');
       if (chk) chk.checked = state.appSettings.allow_user_edit === '1';
     }
-    
+
     // Load Whitelist Settings
     await loadWhitelist();
   } catch (e) {
@@ -949,16 +949,16 @@ function renderQuotationItems() {
   const container = $('qtItemsContainer');
   const tbody = $('prevItemsBody');
   if (!container || !tbody) return;
-  
+
   container.innerHTML = '';
   tbody.innerHTML = '';
-  
+
   let subtotal = 0;
-  
+
   quotationItems.forEach((item, index) => {
     const amount = item.qty * item.price;
     subtotal += amount;
-    
+
     // Admin Form
     container.innerHTML += `
       <div class="flex items-center gap-2 p-3 bg-surface-50 dark:bg-surface-800 rounded-xl border border-surface-100 dark:border-surface-700">
@@ -974,61 +974,61 @@ function renderQuotationItems() {
         </button>
       </div>
     `;
-    
+
     // Preview Table
     tbody.innerHTML += `
       <tr class="border-b border-surface-100 last:border-0">
         <td class="py-2 px-3 text-center">${index + 1}</td>
         <td class="py-2 px-3">${item.desc || '-'}</td>
         <td class="py-2 px-3 text-right">${Number(item.qty).toLocaleString()}</td>
-        <td class="py-2 px-3 text-right">${Number(item.price).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-        <td class="py-2 px-3 text-right font-bold">${amount.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+        <td class="py-2 px-3 text-right">${Number(item.price).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+        <td class="py-2 px-3 text-right font-bold">${amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
       </tr>
     `;
   });
-  
+
   if (quotationItems.length === 0) {
     tbody.innerHTML = `<tr><td colspan="5" class="py-4 text-center text-surface-400 italic">ไม่มีรายการสินค้า</td></tr>`;
   }
-  
+
   initIcons();
-  
+
   // Update Totals
   const discount = parseFloat($('qtDiscount')?.value || 0);
   const afterDiscount = subtotal - discount;
   const vatRate = parseFloat($('qtVatRate')?.value ?? 0.07);
   const vat = afterDiscount * vatRate;
   const grandTotal = afterDiscount + vat;
-  
-  if ($('prevSubTotal')) $('prevSubTotal').innerText = subtotal.toLocaleString(undefined, {minimumFractionDigits: 2});
-  if ($('prevDiscount')) $('prevDiscount').innerText = discount.toLocaleString(undefined, {minimumFractionDigits: 2});
-  if ($('prevAfterDiscount')) $('prevAfterDiscount').innerText = afterDiscount.toLocaleString(undefined, {minimumFractionDigits: 2});
-  if ($('prevVat')) $('prevVat').innerText = vat.toLocaleString(undefined, {minimumFractionDigits: 2});
-  if ($('prevGrandTotal')) $('prevGrandTotal').innerText = grandTotal.toLocaleString(undefined, {minimumFractionDigits: 2});
+
+  if ($('prevSubTotal')) $('prevSubTotal').innerText = subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 });
+  if ($('prevDiscount')) $('prevDiscount').innerText = discount.toLocaleString(undefined, { minimumFractionDigits: 2 });
+  if ($('prevAfterDiscount')) $('prevAfterDiscount').innerText = afterDiscount.toLocaleString(undefined, { minimumFractionDigits: 2 });
+  if ($('prevVat')) $('prevVat').innerText = vat.toLocaleString(undefined, { minimumFractionDigits: 2 });
+  if ($('prevGrandTotal')) $('prevGrandTotal').innerText = grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 });
 }
 
 async function generateAndSaveQuotation() {
   const btn = $('generatePdfBtn');
   if (!btn) return;
-  
+
   const originalHtml = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> กำลังสร้าง...`;
   initIcons();
-  
+
   try {
     const element = $('quotationPreview');
     const opt = {
-      margin:       0,
-      filename:     `${$('qtNo').value || 'Quotation'}.pdf`,
-      image:        { type: 'jpeg', quality: 0.98 },
-      html2canvas:  { scale: 2, useCORS: true },
-      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      margin: 0,
+      filename: `${$('qtNo').value || 'Quotation'}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
     };
-    
+
     // Generate PDF Blob
     const pdfBlob = await html2pdf().set(opt).from(element).output('blob');
-    
+
     // Prepare Data
     const discount = parseFloat($('qtDiscount')?.value || 0);
     const subtotal = quotationItems.reduce((sum, item) => sum + (item.qty * item.price), 0);
@@ -1040,17 +1040,17 @@ async function generateAndSaveQuotation() {
       total_discount: discount,
       grand_total: (subtotal - discount) * 1.07
     };
-    
+
     const formData = new FormData();
     formData.append('quotation_pdf', pdfBlob, opt.filename);
     formData.append('quotation_data', JSON.stringify(qtData));
-    
+
     // Upload to Server
     const response = await fetch('/api/quotation/create', {
       method: 'POST',
       body: formData
     });
-    
+
     const result = await response.json();
     if (result.ok) {
       let successMsg = 'สร้างใบเสนอราคาและบันทึกเรียบร้อย!';
@@ -1064,7 +1064,7 @@ async function generateAndSaveQuotation() {
     } else {
       toast(result.error || 'เกิดข้อผิดพลาดในการบันทึก', 'error');
     }
-    
+
   } catch (err) {
     console.error(err);
     toast('เกิดข้อผิดพลาดในการสร้าง PDF', 'error');
@@ -1086,19 +1086,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const el = $(id);
     if (el) el.addEventListener('input', updateQuotationPreview);
   });
-  
+
   if ($('addQtItemBtn')) $('addQtItemBtn').addEventListener('click', addQtItem);
   if ($('generatePdfBtn')) $('generatePdfBtn').addEventListener('click', generateAndSaveQuotation);
-  
+
   // Add initial item
   if (quotationItems.length === 0) addQtItem();
-  
+
   // Set default date
   if ($('qtDate')) {
     const today = new Date().toISOString().split('T')[0];
     $('qtDate').value = today;
   }
-  
+
   // Update initial preview
   updateQuotationPreview();
 
@@ -1110,11 +1110,11 @@ document.addEventListener('DOMContentLoaded', () => {
       const titleTh = $('prevDocTitle');
       const titleEn = $('prevDocTitleEn');
       const qtNoInput = $('qtNo');
-      
+
       let prefix = 'QT-';
       let title = 'ใบเสนอราคา';
       let titleEnText = 'QUOTATION';
-      
+
       if (val === 'invoice') {
         prefix = 'IV-';
         title = 'ใบแจ้งหนี้';
@@ -1128,7 +1128,7 @@ document.addEventListener('DOMContentLoaded', () => {
         title = 'ใบเสร็จรับเงิน/ใบแทนใบเสร็จ';
         titleEnText = 'REPLACEMENT RECEIPT';
       }
-      
+
       if (titleTh) titleTh.innerText = title;
       if (titleEn) titleEn.innerText = titleEnText;
       if (qtNoInput) {
@@ -1146,25 +1146,25 @@ document.addEventListener('DOMContentLoaded', () => {
     logoInput.addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
-      
+
       const placeholder = $('org_logo_placeholder');
       const preview = $('org_logo_preview');
       const deleteBtn = $('btn_delete_logo');
       const hiddenInput = $('biz_logo_url');
-      
+
       if (placeholder) placeholder.innerHTML = `<i data-lucide="loader-2" class="w-5 h-5 animate-spin text-brand-600"></i><span class="text-[10px] font-bold">กำลังอัปโหลด...</span>`;
       if (window.lucide) window.lucide.createIcons();
-      
+
       const formData = new FormData();
       formData.append('file', file);
-      
+
       try {
         const res = await fetch('/api/org/upload-logo', {
           method: 'POST',
           body: formData
         });
         const data = await res.json();
-        
+
         if (data.ok) {
           hiddenInput.value = data.url;
           preview.src = data.url;
@@ -1183,33 +1183,33 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
-  
+
   const sigInput = $('org_sig_file');
   if (sigInput) {
     sigInput.addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
-      
+
       const placeholder = $('org_sig_placeholder');
       const preview = $('org_sig_preview');
       const deleteBtn = $('btn_delete_sig');
       const hiddenInput = $('biz_signature_url');
       const removeBg = $('org_sig_remove_bg')?.checked;
-      
+
       if (placeholder) placeholder.innerHTML = `<i data-lucide="loader-2" class="w-5 h-5 animate-spin text-brand-600"></i><span class="text-[10px] font-bold">กำลังประมวลผล...</span>`;
       if (window.lucide) window.lucide.createIcons();
-      
+
       const formData = new FormData();
       formData.append('file', file);
       formData.append('remove_bg', removeBg ? 'true' : 'false');
-      
+
       try {
         const res = await fetch('/api/signature/process-background', {
           method: 'POST',
           body: formData
         });
         const data = await res.json();
-        
+
         if (data.ok) {
           hiddenInput.value = data.url;
           preview.src = data.url;
@@ -1236,7 +1236,7 @@ async function loadDashboard() {
   const upcomingList = $('dashUpcomingList');
   const taskList = $('dashTaskList');
   const recentFiles = $('dashRecentFiles');
-  
+
   // Stats
   const statUsers = $('dashStatUsers');
   const statFiles = $('dashStatFiles');
@@ -1259,63 +1259,63 @@ async function loadDashboard() {
       }
 
       if (greetingEl) {
-          const hour = new Date().getHours();
-          let msg = "สวัสดีตอนเช้า";
-          if (hour >= 11 && hour < 13) msg = "สวัสดีตอนกลางวัน";
-          else if (hour >= 13 && hour < 17) msg = "สวัสดีตอนบ่าย";
-          else if (hour >= 17 && hour < 21) msg = "สวัสดีตอนเย็น";
-          else if (hour >= 21 || hour < 5) msg = "สวัสดีตอนค่ำ";
-          
-          const userName = state.displayName || state.username || state.user || '';
-          // U1-4: Proper greeting with space and display name
-          greetingEl.textContent = userName ? `${msg}, คุณ ${userName}` : `${msg}, ยินดีต้อนรับ`;
+        const hour = new Date().getHours();
+        let msg = "สวัสดีตอนเช้า";
+        if (hour >= 11 && hour < 13) msg = "สวัสดีตอนกลางวัน";
+        else if (hour >= 13 && hour < 17) msg = "สวัสดีตอนบ่าย";
+        else if (hour >= 17 && hour < 21) msg = "สวัสดีตอนเย็น";
+        else if (hour >= 21 || hour < 5) msg = "สวัสดีตอนค่ำ";
+
+        const userName = state.displayName || state.username || state.user || '';
+        // U1-4: Proper greeting with space and display name
+        greetingEl.textContent = userName ? `${msg}, คุณ ${userName}` : `${msg}, ยินดีต้อนรับ`;
       }
-      
+
       if (summaryEl) {
         summaryEl.textContent = 'กำลังประมวลผลข้อมูลและสรุปภาพรวมกิจกรรมสำหรับวันนี้...';
         apiFetch('/api/dashboard/briefing').then(briefData => {
-           if (briefData.ok) summaryEl.textContent = briefData.briefing;
+          if (briefData.ok) summaryEl.textContent = briefData.briefing;
         }).catch(err => {
-           summaryEl.textContent = 'ไม่สามารถโหลดข้อมูลสรุปได้ในขณะนี้ครับ';
+          summaryEl.textContent = 'ไม่สามารถโหลดข้อมูลสรุปได้ในขณะนี้ครับ';
         });
       }
 
       // Fetch latest announcement for dashboard widget
       apiFetch('/api/org/announcements').then(annData => {
-         const banner = $('dashLatestAnnouncement');
-         if (annData.ok && annData.announcements && annData.announcements.length > 0) {
-            const latest = annData.announcements[0];
-            if (banner) {
-               banner.classList.remove('hidden');
-               banner.classList.add('flex');
-               
-               const priorityEl = $('dashAnnPriority');
-               const metaEl = $('dashAnnMeta');
-               const titleEl = $('dashAnnTitle');
-               const contentEl = $('dashAnnContent');
-               
-               if (priorityEl) {
-                  priorityEl.textContent = latest.priority === 'important' ? 'สำคัญมาก' : (latest.priority === 'update' ? 'อัปเดตงาน' : 'ทั่วไป');
-                  priorityEl.className = `px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide ${latest.priority === 'important' ? 'bg-red-500/10 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/50' : (latest.priority === 'update' ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-900/50' : 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-900/50')}`;
-               }
-               if (metaEl) metaEl.textContent = `โดย @${latest.created_by} • ${latest.created_at}`;
-               if (titleEl) titleEl.textContent = latest.title;
-               if (contentEl) contentEl.textContent = latest.content;
+        const banner = $('dashLatestAnnouncement');
+        if (annData.ok && annData.announcements && annData.announcements.length > 0) {
+          const latest = annData.announcements[0];
+          if (banner) {
+            banner.classList.remove('hidden');
+            banner.classList.add('flex');
+
+            const priorityEl = $('dashAnnPriority');
+            const metaEl = $('dashAnnMeta');
+            const titleEl = $('dashAnnTitle');
+            const contentEl = $('dashAnnContent');
+
+            if (priorityEl) {
+              priorityEl.textContent = latest.priority === 'important' ? 'สำคัญมาก' : (latest.priority === 'update' ? 'อัปเดตงาน' : 'ทั่วไป');
+              priorityEl.className = `px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide ${latest.priority === 'important' ? 'bg-red-500/10 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/50' : (latest.priority === 'update' ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-900/50' : 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-900/50')}`;
             }
-         } else {
-            if (banner) {
-               banner.classList.add('hidden');
-               banner.classList.remove('flex');
-            }
-         }
+            if (metaEl) metaEl.textContent = `โดย @${latest.created_by} • ${latest.created_at}`;
+            if (titleEl) titleEl.textContent = latest.title;
+            if (contentEl) contentEl.textContent = latest.content;
+          }
+        } else {
+          if (banner) {
+            banner.classList.add('hidden');
+            banner.classList.remove('flex');
+          }
+        }
       }).catch(err => console.error('Failed to load dashboard announcement:', err));
 
-      
+
       // Stats
       if (statUsers) statUsers.textContent = data.stats.total_users;
       if (statFiles) statFiles.textContent = data.stats.total_files;
       if (statQueries) statQueries.textContent = data.stats.total_queries;
-      
+
       // Task Completion %
       const completionEl = $('dashStatCompletion');
       if (completionEl) {
@@ -1372,16 +1372,16 @@ async function loadDashboard() {
       // Render Files
       if (recentFiles) {
         if (!data.recent_files.length) {
-           recentFiles.innerHTML = '<div class="text-xs text-surface-500 dark:text-surface-400 p-3 text-center">ยังไม่มีไฟล์ในคลัง</div>';
+          recentFiles.innerHTML = '<div class="text-xs text-surface-500 dark:text-surface-400 p-3 text-center">ยังไม่มีไฟล์ในคลัง</div>';
         } else {
-           recentFiles.innerHTML = data.recent_files.map(f => `
+          recentFiles.innerHTML = data.recent_files.map(f => `
              <div class="flex items-center gap-3 p-2.5 hover:bg-surface-50 dark:hover:bg-surface-800/60 rounded-xl transition-all cursor-pointer group" onclick="showView('kb')">
                <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/40 text-brand-600 dark:text-brand-400 border border-brand-200/40 dark:border-brand-800/40 flex items-center justify-center group-hover:bg-brand-600 group-hover:text-white transition-all flex-shrink-0">
                  <i data-lucide="file" class="w-4 h-4"></i>
                </div>
                <div class="flex-1 min-w-0">
                  <div class="text-xs font-semibold truncate text-surface-900 dark:text-surface-100">${f.name}</div>
-                 <div class="text-[11px] text-surface-500 dark:text-surface-400 font-medium">${f.type} • ${(f.size/1024).toFixed(0)} KB</div>
+                 <div class="text-[11px] text-surface-500 dark:text-surface-400 font-medium">${f.type} • ${(f.size / 1024).toFixed(0)} KB</div>
                </div>
              </div>
            `).join('');
@@ -1437,7 +1437,7 @@ async function loadDashboard() {
   } catch (e) {
     console.error('Dash Error:', e);
   }
-  
+
   // Update weather if we are on home view
   fetchWeather();
 }
@@ -1445,8 +1445,8 @@ async function loadDashboard() {
 // ─── View Management ────────────────────────
 function switchView(viewId) {
   // ── Permission guard: block unauthorized view access ──────────
-  const _ADMIN_VIEWS      = ['admin', 'stats', 'line-manager', 'reconciliation'];
-  const _ORG_ADMIN_VIEWS  = ['org', 'line-groups'];
+  const _ADMIN_VIEWS = ['admin', 'stats', 'line-manager', 'reconciliation'];
+  const _ORG_ADMIN_VIEWS = ['org', 'line-groups'];
   const _SUPERADMIN_VIEWS = ['super-admin'];
 
   if (_SUPERADMIN_VIEWS.includes(viewId) && !state.isSuperAdmin) {
@@ -1476,12 +1476,12 @@ function switchView(viewId) {
 
   console.log("🚀 Switching view to:", viewId);
   state.currentView = viewId;
-  
+
   // Sync URL hash
   if (window.location.hash.replace('#', '') !== viewId) {
     history.replaceState(null, null, '#' + viewId);
   }
-  
+
   // Highlight active menu item
   const navItems = document.querySelectorAll('.nav-item');
   if (navItems) {
@@ -1731,7 +1731,7 @@ async function loadHistory(isBackground = false) {
         state.history.forEach(msg => {
           const { displayHtml, calendarData, reconcileData } = parseAIActions(msg.text);
           const msgEl = appendMessage(msg.role, displayHtml, msg.sources || [], false, msg.id);
-          
+
           if (calendarData) {
             renderCalendarActionUI(msgEl, calendarData);
           }
@@ -1757,7 +1757,7 @@ async function loadHistory(isBackground = false) {
 }
 
 // ─── ตรวจประเภทเอกสารก่อนอัปโหลด KB ─────────────────────────
-const _FINANCIAL_CAT_KEYWORDS = ['บัญชี','finance','ค่าใช้จ่าย','invoice','slip','receipt','ใบเสร็จ','สลิป','รายจ่าย','expense','tax','ภาษี'];
+const _FINANCIAL_CAT_KEYWORDS = ['บัญชี', 'finance', 'ค่าใช้จ่าย', 'invoice', 'slip', 'receipt', 'ใบเสร็จ', 'สลิป', 'รายจ่าย', 'expense', 'tax', 'ภาษี'];
 
 // ─── Document Viewer Logic ────────────────────────
 function openPdfViewer(fileId, fileName, location = null) {
@@ -1832,10 +1832,10 @@ function setCatVisibility(vis) {
   currentCatVisibility = vis;
   document.querySelectorAll('.cat-vis-btn').forEach(b => b.classList.remove('active'));
   $(`catVis${vis.charAt(0).toUpperCase() + vis.slice(1)}`).classList.add('active');
-  
+
   const hint = $('catVisHint');
   const panel = $('catRestrictedPanel');
-  
+
   if (vis === 'public') {
     hint.textContent = 'หมวดหมู่สาธารณะ จะมองเห็นได้โดยทุกคนที่มีสิทธิ์เข้าถึงคลังความรู้';
     panel.classList.add('hidden');
@@ -1852,14 +1852,14 @@ async function saveCatSettings() {
   const id = $('catSettingsId').value;
   const visibility = currentCatVisibility;
   const authorized_users = selectedCatUsers;
-  
+
   try {
     const res = await apiFetch('/api/kb/categories/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: parseInt(id), visibility, authorized_users })
     });
-    
+
     if (res.ok) {
       toast('บันทึกการตั้งค่าแล้ว', 'success');
       const m = $('kbCategorySettingsModal');
@@ -1956,59 +1956,7 @@ function appendMessage(role, html, sources = [], scroll = true, msgId = null) {
     // 📍 User Google Maps location card in AI chat
     const locationCardsHtml = userLocations.length > 0 ? `
       <div class="flex flex-wrap justify-end gap-2 mb-2 w-full">
-        ${userLocations.map(loc => {
-          const lName = loc.name || 'พิกัด Google Maps';
-          const hasCoords = loc.latitude != null && loc.longitude != null && !isNaN(loc.latitude) && !isNaN(loc.longitude);
-          const mapUrl = hasCoords
-            ? `https://www.google.com/maps?q=${loc.latitude},${loc.longitude}`
-            : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(lName)}`;
-          const dirUrl = hasCoords
-            ? `https://www.google.com/maps/dir/?api=1&destination=${loc.latitude},${loc.longitude}`
-            : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(lName)}`;
-          const embedUrl = hasCoords
-            ? `https://maps.google.com/maps?q=${loc.latitude},${loc.longitude}&hl=th&z=15&output=embed`
-            : `https://maps.google.com/maps?q=${encodeURIComponent(lName)}&hl=th&z=15&output=embed`;
-          const coordsStr = hasCoords ? `(${Number(loc.latitude).toFixed(4)}, ${Number(loc.longitude).toFixed(4)})` : '';
-          return `
-            <div class="w-[280px] sm:w-[320px] max-w-full rounded-2xl overflow-hidden border border-rose-200/90 dark:border-rose-900/50 bg-gradient-to-br from-rose-50/50 via-white to-amber-50/30 dark:from-rose-950/30 dark:via-surface-900 dark:to-surface-900 shadow-sm text-left">
-              <div class="p-3 border-b border-rose-100 dark:border-rose-900/30 flex items-start justify-between gap-2">
-                <div class="flex items-start gap-2.5 min-w-0">
-                  <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-rose-500 to-amber-500 text-white flex items-center justify-center flex-shrink-0 shadow-xs mt-0.5">
-                    <i data-lucide="map-pin" class="w-4 h-4"></i>
-                  </div>
-                  <div class="min-w-0">
-                    <div class="text-[10px] font-extrabold uppercase tracking-wider text-rose-600 dark:text-rose-400 flex items-center gap-1">
-                      <span>Google Maps พิกัด</span>
-                      ${coordsStr ? `<span class="text-surface-400 font-normal font-mono text-[9px]">${coordsStr}</span>` : ''}
-                    </div>
-                    <div class="text-xs font-bold text-surface-900 dark:text-white truncate">${escapeHtml(lName)}</div>
-                    ${loc.address ? `<div class="text-[10px] text-surface-500 dark:text-surface-400 truncate mt-0.5">${escapeHtml(loc.address)}</div>` : ''}
-                  </div>
-                </div>
-              </div>
-              ${hasCoords ? `
-                <div class="w-full h-32 bg-surface-100 dark:bg-surface-800 relative">
-                  <iframe src="${embedUrl}" class="w-full h-full border-0 pointer-events-none" loading="lazy"></iframe>
-                  <a href="${mapUrl}" target="_blank" rel="noopener noreferrer" class="absolute inset-0 z-10" title="คลิกเพื่อเปิดแผนที่"></a>
-                </div>
-              ` : ''}
-              <div class="p-2 bg-surface-50/70 dark:bg-surface-800/60 border-t border-rose-100 dark:border-rose-900/30 flex items-center justify-end gap-1.5">
-                <a href="${dirUrl}" target="_blank" rel="noopener noreferrer"
-                  class="px-2.5 py-1 rounded-lg bg-gradient-to-r from-rose-500 to-amber-500 hover:from-rose-600 hover:to-amber-600 text-white text-[11px] font-bold flex items-center gap-1 transition shadow-xs hover:scale-105"
-                  title="เปิดโหมดนำทาง GPS ทันที">
-                  <i data-lucide="navigation" class="w-3 h-3"></i>
-                  <span>นำทาง</span>
-                </a>
-                <a href="${mapUrl}" target="_blank" rel="noopener noreferrer"
-                  class="px-2.5 py-1 rounded-lg bg-white dark:bg-surface-700 hover:bg-rose-50 dark:hover:bg-rose-900/40 text-rose-600 dark:text-rose-300 border border-surface-200 dark:border-surface-600 text-[11px] font-bold flex items-center gap-1 transition shadow-2xs hover:scale-105"
-                  title="เปิดดูตำแหน่งบน Google Maps">
-                  <span>เปิดแผนที่</span>
-                  <i data-lucide="external-link" class="w-3 h-3"></i>
-                </a>
-              </div>
-            </div>
-          `;
-        }).join('')}
+        ${userLocations.map(loc => renderLocationCard(loc, { isPost: false })).join('')}
       </div>` : '';
 
     // 2. User text bubble (Rendered below image/location, or standalone if text only)
@@ -2164,6 +2112,7 @@ function appendMessage(role, html, sources = [], scroll = true, msgId = null) {
   }
 
   initIcons();
+  initMiniLocationMaps();
   if (scroll) {
     scrollToBottom('auto');
   }
@@ -2362,7 +2311,7 @@ async function sendMessage(text) {
     });
   }
 
-  appendMessage('user', text, displayContext, true); 
+  appendMessage('user', text, displayContext, true);
   state.history.push({ role: 'user', text, sources: displayContext });
   saveHistory();
 
@@ -2371,7 +2320,7 @@ async function sendMessage(text) {
     window.soundEngine.playSendChime();
   }
 
-  showTyping(); 
+  showTyping();
 
   try {
     const payload = {
@@ -2477,78 +2426,78 @@ async function sendMessage(text) {
               }
             }
           }
-        if (data.content) {
-          botText += data.content;
-          
-          // 🎵 Play streaming tick
-          if (window.soundEngine) {
-            window.soundEngine.playStreamTick();
-          }
+          if (data.content) {
+            botText += data.content;
 
-          if (!botMsgEl) {
-            // Create the bubble if it doesn't exist
-            botMsgEl = appendMessage('bot', '<span class="typing-dots">...</span>', sources, true, botId);
+            // 🎵 Play streaming tick
+            if (window.soundEngine) {
+              window.soundEngine.playStreamTick();
+            }
+
+            if (!botMsgEl) {
+              // Create the bubble if it doesn't exist
+              botMsgEl = appendMessage('bot', '<span class="typing-dots">...</span>', sources, true, botId);
+            }
+
+            // Update bubble content
+            const bubbleText = botMsgEl.querySelector('.prose');
+            if (bubbleText) {
+              bubbleText.innerHTML = markdownToHtml(botText);
+              // Follow scroll if user was at bottom
+              scrollToBottom('auto', true);
+            }
           }
-          
-          // Update bubble content
-          const bubbleText = botMsgEl.querySelector('.prose');
-          if (bubbleText) {
-             bubbleText.innerHTML = markdownToHtml(botText);
-             // Follow scroll if user was at bottom
-             scrollToBottom('auto', true);
-          }
+        } catch (je) {
+          console.warn('Chunk parse error:', je, jsonStr);
         }
-      } catch (je) {
-        console.warn('Chunk parse error:', je, jsonStr);
       }
     }
-  }
 
-  // Display the complete bot message once streaming is done to finalize parsing (actions etc)
-  if (botText) {
-    // 🔔 Play Bot Completion Chime & Haptic
-    if (window.soundEngine) {
-      window.soundEngine.playReceiveChime();
+    // Display the complete bot message once streaming is done to finalize parsing (actions etc)
+    if (botText) {
+      // 🔔 Play Bot Completion Chime & Haptic
+      if (window.soundEngine) {
+        window.soundEngine.playReceiveChime();
+      }
+
+      const { displayHtml, calendarData, reconcileData } = parseAIActions(botText);
+
+      if (botMsgEl) {
+        const bubbleText = botMsgEl.querySelector('.prose');
+        if (bubbleText) bubbleText.innerHTML = displayHtml;
+        if (calendarData) renderCalendarActionUI(botMsgEl, calendarData);
+        if (reconcileData) renderReconcileActionUI(botMsgEl, reconcileData);
+        initIcons();
+      } else {
+        botMsgEl = appendMessage('bot', displayHtml, sources, false, botId);
+        if (calendarData) renderCalendarActionUI(botMsgEl, calendarData);
+        if (reconcileData) renderReconcileActionUI(botMsgEl, reconcileData);
+      }
+
+      state.history.push({ role: 'bot', text: botText, sources: sources, id: botId });
+      // Keep history manageable (last 20 messages) to speed up Pi communication
+      if (state.history.length > 20) {
+        state.history = state.history.slice(-20);
+      }
+      saveHistory();
+
+      // 🌟 Update Dynamic Suggestion Chips based on latest interaction
+      updateDynamicSuggestions(botText, text);
+
+      // 🔊 Auto-Speak TTS if enabled
+      if (_isAutoSpeakEnabled) {
+        speakTextThai(botText);
+      }
     }
 
-    const { displayHtml, calendarData, reconcileData } = parseAIActions(botText);
-    
-    if (botMsgEl) {
-       const bubbleText = botMsgEl.querySelector('.prose');
-       if (bubbleText) bubbleText.innerHTML = displayHtml;
-       if (calendarData) renderCalendarActionUI(botMsgEl, calendarData);
-       if (reconcileData) renderReconcileActionUI(botMsgEl, reconcileData);
-       initIcons();
-    } else {
-       botMsgEl = appendMessage('bot', displayHtml, sources, false, botId);
-       if (calendarData) renderCalendarActionUI(botMsgEl, calendarData);
-       if (reconcileData) renderReconcileActionUI(botMsgEl, reconcileData);
-    }
-
-    state.history.push({ role: 'bot', text: botText, sources: sources, id: botId });
-    // Keep history manageable (last 20 messages) to speed up Pi communication
-    if (state.history.length > 20) {
-      state.history = state.history.slice(-20);
-    }
-    saveHistory();
-
-    // 🌟 Update Dynamic Suggestion Chips based on latest interaction
-    updateDynamicSuggestions(botText, text);
-
-    // 🔊 Auto-Speak TTS if enabled
-    if (_isAutoSpeakEnabled) {
-      speakTextThai(botText);
-    }
-  }
-
-  // Final scroll
-  scrollToBottom('smooth', false);
+    // Final scroll
+    scrollToBottom('smooth', false);
 
   } catch (e) {
     removeTyping();
     let msg = e.message;
     if (msg.includes('429') || msg.toLowerCase().includes('quota')) {
-       msg = "โควต้า AI หมดชั่วคราว (Free Tier Limit) กรุณารอประมาณ 1 นาทีแล้วลองใหม่อีกครั้งครับ";
+      msg = "โควต้า AI หมดชั่วคราว (Free Tier Limit) กรุณารอประมาณ 1 นาทีแล้วลองใหม่อีกครั้งครับ";
     }
     appendMessage('bot', `<div class="p-3 rounded-lg border border-red-200 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm font-medium">⚠️ ${msg}</div>`);
   } finally {
@@ -2629,7 +2578,7 @@ function renderCalendarActionUI(msgEl, data) {
       } else {
         throw new Error((res && res.error) || 'Failed to save');
       }
-    } catch(e) {
+    } catch (e) {
       toast('ล้มเหลว: ' + e.message, 'error');
       confirmBtn.disabled = false;
       confirmBtn.innerHTML = 'ยืนยันนัดหมาย';
@@ -2653,7 +2602,7 @@ function renderReconcileActionUI(msgEl, data) {
   panel.classList.remove('hidden');
   // Premium Card Styling with Glassmorphism and vibrant emerald accents
   panel.className = "action-panel mt-6 p-0 overflow-hidden bg-white/80 dark:bg-emerald-950/20 backdrop-blur-xl border border-emerald-100 dark:border-emerald-800/50 rounded-[2rem] animate-in slide-in-from-top-4 fade-in duration-700 shadow-2xl shadow-emerald-500/5";
-  
+
   // Helper to normalize date from DD/MM/YYYY to YYYY-MM-DD for native date picker
   const toISODate = (dStr) => {
     if (!dStr) return '';
@@ -2781,7 +2730,7 @@ function renderReconcileActionUI(msgEl, data) {
       // Helper to convert YYYY-MM-DD back to DD/MM/YYYY if preferred, 
       // but the backend parse_date handles both. We'll send what's in the field.
       // If it's a date input, it will be YYYY-MM-DD.
-      
+
       const res = await apiFetch('/api/reconcile/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2878,7 +2827,7 @@ if (msgInput) {
 
   msgInput.addEventListener('input', (e) => {
     autoResize();
-    
+
     // 🔊 Mechanical Typing Click Sound
     if (window.soundEngine) {
       window.soundEngine.playTypingClick();
@@ -3064,7 +3013,7 @@ function toggleMobilePersonaList() {
   if (isHidden) {
     const personas = (window.state && Array.isArray(state.personas)) ? state.personas : [];
     const activeId = (window.state && state.activePersona) ? state.activePersona.id : null;
-    
+
     let html = `
       <div onclick="selectMobilePersona(null)" class="flex items-center justify-between p-2.5 rounded-xl cursor-pointer ${!activeId ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 font-bold' : 'hover:bg-surface-100 dark:hover:bg-surface-700/50 text-surface-700 dark:text-surface-300'} transition-colors">
         <div class="flex items-center gap-2">
@@ -3119,7 +3068,7 @@ let _voiceRecognition = null;
 async function speakTextThai(text) {
   if (!text) return;
   if (_currentTtsAudio) {
-    try { _currentTtsAudio.pause(); _currentTtsAudio = null; } catch (e) {}
+    try { _currentTtsAudio.pause(); _currentTtsAudio = null; } catch (e) { }
   }
   if ('speechSynthesis' in window) {
     window.speechSynthesis.cancel();
@@ -3217,10 +3166,10 @@ function closeLiveVoiceMode() {
   }
   _isVoiceModeActive = false;
   if (_voiceRecognition) {
-    try { _voiceRecognition.stop(); } catch (e) {}
+    try { _voiceRecognition.stop(); } catch (e) { }
   }
   if (_currentTtsAudio) {
-    try { _currentTtsAudio.pause(); _currentTtsAudio = null; } catch (e) {}
+    try { _currentTtsAudio.pause(); _currentTtsAudio = null; } catch (e) { }
   }
 }
 
@@ -3399,7 +3348,7 @@ function updateDynamicSuggestions(lastBotText = '', userQuery = '') {
 function getSpeechRecognition() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) return null;
-  
+
   const rec = new SpeechRecognition();
   rec.lang = 'th-TH';
   rec.continuous = false;
@@ -3684,7 +3633,7 @@ window.startRealTimeCall = startRealTimeCall;
 
 function initCallRecognition() {
   if (callRecognition) {
-    try { callRecognition.abort(); } catch (e) {}
+    try { callRecognition.abort(); } catch (e) { }
   }
 
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -3737,7 +3686,7 @@ function initCallRecognition() {
   callRecognition.onend = () => {
     // Only restart listening if call is active, not muted, and AI is NOT currently speaking
     if (callActive && !callMuted && (!callSynth || !callSynth.speaking)) {
-      try { callRecognition.start(); } catch (e) {}
+      try { callRecognition.start(); } catch (e) { }
     }
   };
 
@@ -3752,9 +3701,9 @@ async function handleCallTurn(userSpeech) {
   if (voiceWaveOrb) voiceWaveOrb.style.transform = 'scale(1.15)';
   // Temporarily pause recognition while fetching & speaking
   if (callRecognition) {
-    try { callRecognition.stop(); } catch (e) {}
+    try { callRecognition.stop(); } catch (e) { }
   }
-  
+
   try {
     const res = await fetch('/api/chat', {
       method: 'POST',
@@ -3782,14 +3731,14 @@ async function handleCallTurn(userSpeech) {
       speakCallResponse(spokenText);
     } else {
       if (callRecognition && callActive && !callMuted) {
-        try { callRecognition.start(); } catch (e) {}
+        try { callRecognition.start(); } catch (e) { }
       }
     }
   } catch (err) {
     console.error('[Call Turn Error]', err);
     if (voiceCallStatusText) voiceCallStatusText.innerText = 'เกิดข้อผิดพลาดในการประมวลผลเสียง';
     if (callRecognition && callActive && !callMuted) {
-      try { callRecognition.start(); } catch (e) {}
+      try { callRecognition.start(); } catch (e) { }
     }
   } finally {
     if (voiceWaveOrb) voiceWaveOrb.style.transform = 'scale(1)';
@@ -3810,7 +3759,7 @@ function speakCallResponse(text) {
       if (voicePulseRing) voicePulseRing.classList.remove('hidden');
       // Ensure microphone is stopped while speaker is outputting sound
       if (callRecognition) {
-        try { callRecognition.stop(); } catch (e) {}
+        try { callRecognition.stop(); } catch (e) { }
       }
     };
     utterance.onend = () => {
@@ -3819,21 +3768,21 @@ function speakCallResponse(text) {
       // Restart microphone only AFTER speech synthesis has completely finished
       setTimeout(() => {
         if (callActive && !callMuted && callRecognition) {
-          try { callRecognition.start(); } catch (e) {}
+          try { callRecognition.start(); } catch (e) { }
         }
       }, 300);
     };
     utterance.onerror = () => {
       if (voicePulseRing) voicePulseRing.classList.add('hidden');
       if (callActive && !callMuted && callRecognition) {
-        try { callRecognition.start(); } catch (e) {}
+        try { callRecognition.start(); } catch (e) { }
       }
     };
     callSynth.speak(utterance);
   } catch (e) {
     console.warn('[Speech synthesis error]', e);
     if (callActive && !callMuted && callRecognition) {
-      try { callRecognition.start(); } catch (e) {}
+      try { callRecognition.start(); } catch (e) { }
     }
   }
 }
@@ -3845,9 +3794,9 @@ function toggleMuteCall() {
     if (window.lucide) lucide.createIcons();
   }
   if (callMuted && callRecognition) {
-    try { callRecognition.stop(); } catch (e) {}
+    try { callRecognition.stop(); } catch (e) { }
   } else if (!callMuted && callRecognition && callActive) {
-    try { callRecognition.start(); } catch (e) {}
+    try { callRecognition.start(); } catch (e) { }
   }
   toast(callMuted ? 'ปิดไมค์แล้ว' : 'เปิดไมค์แล้ว', 'info');
 }
@@ -3857,7 +3806,7 @@ function endRealTimeCall() {
   callActive = false;
   if (callTimerInterval) clearInterval(callTimerInterval);
   if (callRecognition) {
-    try { callRecognition.stop(); } catch (e) {}
+    try { callRecognition.stop(); } catch (e) { }
   }
   if (callSynth) {
     callSynth.cancel();
@@ -4080,53 +4029,12 @@ function renderPosts(posts) {
       <div id="post-content-${p.id}" class="text-sm leading-relaxed text-surface-700 dark:text-surface-300 whitespace-pre-wrap">${highlightMentions(p.content)}</div>
 
       ${(p.location_name || (p.latitude && p.longitude)) ? (() => {
-        const locName = p.location_name || `${p.latitude}, ${p.longitude}`;
-        const hasCoords = p.latitude != null && p.longitude != null && !isNaN(p.latitude) && !isNaN(p.longitude);
-        const mapUrl = hasCoords
-          ? `https://www.google.com/maps?q=${p.latitude},${p.longitude}`
-          : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locName)}`;
-        const dirUrl = hasCoords
-          ? `https://www.google.com/maps/dir/?api=1&destination=${p.latitude},${p.longitude}`
-          : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(locName)}`;
-        const embedUrl = hasCoords
-          ? `https://maps.google.com/maps?q=${p.latitude},${p.longitude}&hl=th&z=15&output=embed`
-          : `https://maps.google.com/maps?q=${encodeURIComponent(locName)}&hl=th&z=15&output=embed`;
-        const coordsStr = hasCoords ? `(${Number(p.latitude).toFixed(4)}, ${Number(p.longitude).toFixed(4)})` : '';
-        return `
-          <div class="mt-2.5 rounded-2xl overflow-hidden border border-rose-200/80 dark:border-rose-900/40 bg-gradient-to-br from-rose-50/40 to-white dark:from-rose-950/20 dark:to-surface-900/60 shadow-2xs">
-            <div class="p-3 flex items-center justify-between gap-3 border-b border-rose-100 dark:border-rose-900/30">
-              <div class="flex items-center gap-2.5 min-w-0">
-                <div class="w-8 h-8 rounded-xl bg-rose-100 dark:bg-rose-900/40 text-rose-600 dark:text-rose-400 flex items-center justify-center flex-shrink-0">
-                  <i data-lucide="map-pin" class="w-4 h-4 fill-rose-500/20"></i>
-                </div>
-                <div class="min-w-0">
-                  <div class="text-[10px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
-                    <span>Google Maps เช็คอิน</span>
-                    ${coordsStr ? `<span class="text-surface-400 font-normal text-[9px]">${coordsStr}</span>` : ''}
-                  </div>
-                  <div class="text-xs font-bold text-surface-900 dark:text-white truncate">${escapeHtml(locName)}</div>
-                </div>
-              </div>
-              <div class="flex items-center gap-1.5 flex-shrink-0">
-                <a href="${dirUrl}" target="_blank" rel="noopener noreferrer"
-                   class="px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-rose-500 to-amber-500 hover:from-rose-600 hover:to-amber-600 text-white text-xs font-bold flex items-center gap-1 flex-shrink-0 transition shadow-xs hover:scale-105"
-                   title="เปิด Google Maps โหมดนำทาง GPS ทันที">
-                  <i data-lucide="navigation" class="w-3.5 h-3.5"></i>
-                  <span>นำทาง</span>
-                </a>
-                <a href="${mapUrl}" target="_blank" rel="noopener noreferrer"
-                   class="px-2.5 py-1.5 rounded-xl bg-white dark:bg-surface-800 hover:bg-rose-50 dark:hover:bg-rose-900/30 border border-surface-200 dark:border-surface-700 text-rose-600 dark:text-rose-400 text-xs font-semibold flex items-center gap-1.5 flex-shrink-0 transition shadow-2xs hover:scale-105"
-                   title="เปิดดูตำแหน่งบน Google Maps">
-                  <span>เปิดแผนที่</span>
-                  <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
-                </a>
-              </div>
-            </div>
-            <div class="w-full h-44 sm:h-52 bg-surface-100 dark:bg-surface-800 relative">
-              <iframe src="${embedUrl}" class="w-full h-full border-0" loading="lazy" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe>
-            </div>
-          </div>
-        `;
+        return renderLocationCard({
+          name: p.location_name,
+          latitude: p.latitude,
+          longitude: p.longitude,
+          address: p.location_name
+        }, { isPost: true });
       })() : ''}
 
 
@@ -4140,15 +4048,15 @@ function renderPosts(posts) {
           </div>
           <div class="space-y-2.5">
             ${p.poll.options.map(opt => {
-      const percent = p.poll.total_votes > 0 ? Math.round((opt.votes / p.poll.total_votes) * 100) : 0;
-      const voterNames = opt.voters.map(v => v.name).join(', ');
-      const votersTitle = voterNames ? `ผู้โหวต: ${voterNames}` : 'ยังไม่มีผู้โหวต';
+        const percent = p.poll.total_votes > 0 ? Math.round((opt.votes / p.poll.total_votes) * 100) : 0;
+        const voterNames = opt.voters.map(v => v.name).join(', ');
+        const votersTitle = voterNames ? `ผู้โหวต: ${voterNames}` : 'ยังไม่มีผู้โหวต';
 
-      // Get up to 5 voters to show avatars
-      const topVoters = opt.voters.slice(0, 5);
-      const hasMore = opt.votes > 5;
+        // Get up to 5 voters to show avatars
+        const topVoters = opt.voters.slice(0, 5);
+        const hasMore = opt.votes > 5;
 
-      return `
+        return `
                 <div class="relative group/pollopt w-full">
                   <button onclick="voteInPoll(${p.poll.id}, ${opt.id})" class="w-full relative overflow-hidden rounded-xl bg-surface-50 dark:bg-surface-900/30 border border-surface-200 dark:border-surface-700/50 hover:border-brand-500/50 transition-all">
                     <div class="absolute inset-y-0 left-0 bg-brand-500/10 rounded-r-none transition-all group-hover/pollopt:bg-brand-500/20" style="width: ${percent}%"></div>
@@ -4158,9 +4066,9 @@ function renderPosts(posts) {
                         <!-- Voter Avatars -->
                         <div class="flex -space-x-1.5 transition-all group-hover/pollopt:translate-x-1" title="${votersTitle}">
                           ${topVoters.map(v => v.avatar ?
-        `<img src="${v.avatar}" class="w-5 h-5 rounded-full border-2 border-white dark:border-surface-900 object-cover shadow-sm" title="${v.name}">` :
-        `<div class="w-5 h-5 rounded-full border-2 border-white dark:border-surface-900 bg-brand-500 text-white flex items-center justify-center text-[8px] font-bold shadow-sm" title="${v.name}">${v.name[0]}</div>`
-      ).join('')}
+          `<img src="${v.avatar}" class="w-5 h-5 rounded-full border-2 border-white dark:border-surface-900 object-cover shadow-sm" title="${v.name}">` :
+          `<div class="w-5 h-5 rounded-full border-2 border-white dark:border-surface-900 bg-brand-500 text-white flex items-center justify-center text-[8px] font-bold shadow-sm" title="${v.name}">${v.name[0]}</div>`
+        ).join('')}
                           ${hasMore ? `<div class="w-5 h-5 rounded-full border-2 border-white dark:border-surface-900 bg-surface-200 dark:bg-surface-700 text-surface-600 dark:text-surface-300 flex items-center justify-center text-[7px] font-black">+${opt.votes - 5}</div>` : ''}
                         </div>
                       </div>
@@ -4172,7 +4080,7 @@ function renderPosts(posts) {
                   </button>
                 </div>
               `;
-    }).join('')}
+      }).join('')}
           </div>
           <div class="text-[10px] text-surface-400 font-bold uppercase tracking-widest pt-1 flex items-center gap-2">
             <i data-lucide="users" class="w-3 h-3"></i> รวม ${p.poll.total_votes} คะแนน
@@ -4198,7 +4106,7 @@ function renderPosts(posts) {
         if (!effectiveLink) return '';
         const hasImages = p.attachments && p.attachments.some(f => f.type?.startsWith('image/') || f.path?.match(/\.(jpg|jpeg|png|gif|webp)$/i));
         const domain = (effectiveLink.split('/')[2] || 'LINK').replace('www.', '').toUpperCase();
-        
+
         if (!hasImages) {
           return `
             <div id="link-preview-${p.id}" class="post-preview-container mt-3">
@@ -4244,19 +4152,19 @@ function renderPosts(posts) {
         return `
         <div class="${gridClass}">
           ${p.attachments.map(file => {
-      const isImg = file.type?.startsWith('image/') || file.path.match(/\.(jpg|jpeg|png|gif|webp)$/i);
-      const path = file.path;
-      const name = file.name;
-      const type = file.type || '';
+          const isImg = file.type?.startsWith('image/') || file.path.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+          const path = file.path;
+          const name = file.name;
+          const type = file.type || '';
 
-      if (isImg) {
-        const cardClass = total === 1
-          ? 'w-full relative group/att overflow-hidden rounded-2xl border border-surface-200/80 dark:border-surface-800 bg-surface-50 dark:bg-surface-950/40 cursor-pointer shadow-xs'
-          : 'relative group/att overflow-hidden rounded-xl border border-surface-200/80 dark:border-surface-800 aspect-video cursor-pointer shadow-xs w-full bg-surface-50 dark:bg-surface-950/40';
-        const imgClass = total === 1
-          ? 'w-full max-h-[580px] object-contain mx-auto transition-transform group-hover/att:scale-[1.01] duration-300'
-          : 'w-full h-full object-cover transition-transform group-hover/att:scale-105 duration-300';
-        return `
+          if (isImg) {
+            const cardClass = total === 1
+              ? 'w-full relative group/att overflow-hidden rounded-2xl border border-surface-200/80 dark:border-surface-800 bg-surface-50 dark:bg-surface-950/40 cursor-pointer shadow-xs'
+              : 'relative group/att overflow-hidden rounded-xl border border-surface-200/80 dark:border-surface-800 aspect-video cursor-pointer shadow-xs w-full bg-surface-50 dark:bg-surface-950/40';
+            const imgClass = total === 1
+              ? 'w-full max-h-[580px] object-contain mx-auto transition-transform group-hover/att:scale-[1.01] duration-300'
+              : 'w-full h-full object-cover transition-transform group-hover/att:scale-105 duration-300';
+            return `
                 <div class="${cardClass}" onclick="openLightbox('${path}', '${name}')">
                   <img src="${path}" class="${imgClass}" loading="lazy">
                   <div class="absolute inset-0 bg-black/45 opacity-0 group-hover/att:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white">
@@ -4269,8 +4177,8 @@ function renderPosts(posts) {
                   </div>
                 </div>
               `;
-      }
-      return `
+          }
+          return `
               <div class="flex items-center gap-2 p-3 bg-surface-50 dark:bg-surface-800/40 border border-surface-100 dark:border-surface-700 rounded-xl hover:border-brand-500 transition-all truncate group/file text-[10px] font-bold relative">
                 <i data-lucide="file-text" class="w-4 h-4 text-surface-400"></i>
                 <span class="truncate pr-16">${name}</span>
@@ -4284,7 +4192,7 @@ function renderPosts(posts) {
                 </div>
               </div>
             `;
-    }).join('')}
+        }).join('')}
         </div>
         `;
       })() : ''}
@@ -4358,6 +4266,7 @@ function renderPosts(posts) {
     </div>
   `}).join('');
   initIcons();
+  initMiniLocationMaps();
 
   posts.forEach(p => {
     if (p.link) fetchLinkPreview(p.id, p.link);
@@ -4369,6 +4278,7 @@ function renderPosts(posts) {
     const el = document.querySelector(`.post-card[data-post-id="${p.id}"]`);
     if (el) postViewObserver.observe(el);
   });
+  initMiniLocationMaps();
 }
 
 function loadSeenCount(pid) {
@@ -4505,7 +4415,121 @@ function getGooglePinIcon() {
   });
 }
 
-window.openGoogleMapPickerModal = function(target = 'composer') {
+function renderLocationCard(loc, options = {}) {
+  if (!loc) return '';
+  const lName = loc.name || loc.location_name || 'พิกัด Google Maps';
+  const rawLat = loc.latitude != null ? loc.latitude : loc.lat;
+  const rawLng = loc.longitude != null ? loc.longitude : loc.lng;
+  const hasCoords = rawLat != null && rawLng != null && !isNaN(rawLat) && !isNaN(rawLng);
+  const lat = hasCoords ? Number(rawLat).toFixed(5) : null;
+  const lng = hasCoords ? Number(rawLng).toFixed(5) : null;
+  const mapUrl = hasCoords
+    ? `https://www.google.com/maps?q=${lat},${lng}`
+    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(lName)}`;
+  const dirUrl = hasCoords
+    ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`
+    : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(lName)}`;
+  const uid = 'locmap_' + Math.random().toString(36).substring(2, 9);
+  const isPost = Boolean(options.isPost);
+  const widthClass = isPost ? 'w-full' : 'w-[290px] sm:w-[330px] max-w-full';
+
+  return `
+    <div class="${widthClass} rounded-2xl border border-surface-200/90 dark:border-surface-750 bg-white dark:bg-surface-850 shadow-sm overflow-hidden text-left transition-all my-1.5">
+      <!-- Location Info Header -->
+      <div class="p-3 sm:p-3.5 flex items-start gap-3 bg-white dark:bg-surface-850 border-b border-surface-100 dark:border-surface-800">
+        <div class="w-9 h-9 rounded-xl bg-red-50 dark:bg-red-950/40 text-[#EA4335] flex items-center justify-center flex-shrink-0 mt-0.5">
+          <i data-lucide="map-pin" class="w-5 h-5 fill-[#EA4335]/15"></i>
+        </div>
+        <div class="min-w-0 flex-1">
+          <div class="text-[10px] font-bold uppercase tracking-wider text-surface-400 dark:text-surface-500 mb-0.5 flex items-center gap-1.5">
+            <span>Google Maps</span>
+            ${hasCoords ? `<span class="font-mono text-[10px] text-surface-400 font-normal">(${lat}, ${lng})</span>` : ''}
+          </div>
+          <div class="text-sm font-semibold text-surface-900 dark:text-surface-100 truncate">${escapeHtml(lName)}</div>
+          ${loc.address ? `<div class="text-xs text-surface-500 dark:text-surface-400 truncate mt-0.5">${escapeHtml(loc.address)}</div>` : ''}
+        </div>
+      </div>
+
+      <!-- Real Map Canvas Preview (No Broken iframes) -->
+      ${hasCoords ? `
+        <div class="relative w-full ${isPost ? 'h-48 sm:h-56' : 'h-36 sm:h-40'} bg-surface-100 dark:bg-surface-900 group">
+          <div id="${uid}" class="js-mini-location-map w-full h-full" data-lat="${lat}" data-lng="${lng}"></div>
+          <a href="${mapUrl}" target="_blank" rel="noopener noreferrer" class="absolute inset-0 z-[400]" title="คลิกเพื่อเปิดดูบน Google Maps"></a>
+          <div class="absolute bottom-2 right-2 z-[410] pointer-events-none px-2 py-0.5 rounded-md bg-white/90 dark:bg-surface-900/90 text-surface-700 dark:text-surface-300 text-[10px] font-medium shadow-xs border border-surface-200/60 dark:border-surface-700 backdrop-blur-xs flex items-center gap-1">
+            <span>Google Maps</span>
+            <i data-lucide="external-link" class="w-2.5 h-2.5 opacity-70"></i>
+          </div>
+        </div>
+      ` : ''}
+
+      <!-- Action Buttons -->
+      <div class="p-2 sm:p-2.5 bg-surface-50/70 dark:bg-surface-800/40 border-t border-surface-100 dark:border-surface-800 flex items-center justify-end gap-2">
+        <a href="${mapUrl}" target="_blank" rel="noopener noreferrer"
+          class="px-3 py-1.5 rounded-xl bg-white dark:bg-surface-700/80 hover:bg-surface-100 dark:hover:bg-surface-650 text-surface-700 dark:text-surface-200 border border-surface-200 dark:border-surface-650 text-xs font-medium flex items-center gap-1.5 transition shadow-2xs"
+          title="เปิดดูตำแหน่งบน Google Maps">
+          <i data-lucide="external-link" class="w-3.5 h-3.5 text-surface-400"></i>
+          <span>เปิดแผนที่</span>
+        </a>
+        <a href="${dirUrl}" target="_blank" rel="noopener noreferrer"
+          class="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium flex items-center gap-1.5 transition shadow-xs"
+          title="เปิดโหมดนำทาง GPS ทันที">
+          <i data-lucide="navigation" class="w-3.5 h-3.5"></i>
+          <span>นำทาง</span>
+        </a>
+      </div>
+    </div>
+  `;
+}
+window.renderLocationCard = renderLocationCard;
+
+function initMiniLocationMaps() {
+  if (typeof L === 'undefined') return;
+  const els = document.querySelectorAll('.js-mini-location-map:not([data-initialized="true"])');
+  if (!els.length) return;
+
+  els.forEach(el => {
+    el.setAttribute('data-initialized', 'true');
+    const lat = parseFloat(el.getAttribute('data-lat'));
+    const lng = parseFloat(el.getAttribute('data-lng'));
+    if (isNaN(lat) || isNaN(lng)) return;
+
+    try {
+      const mini = L.map(el, {
+        center: [lat, lng],
+        zoom: 15,
+        zoomControl: false,
+        attributionControl: false,
+        dragging: false,
+        touchZoom: false,
+        scrollWheelZoom: false,
+        doubleClickZoom: false,
+        boxZoom: false,
+        keyboard: false
+      });
+
+      L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+        subdomains: ['0', '1', '2', '3'],
+        maxZoom: 20
+      }).addTo(mini);
+
+      const pinIcon = getGooglePinIcon();
+      if (pinIcon) {
+        L.marker([lat, lng], { icon: pinIcon, interactive: false }).addTo(mini);
+      }
+
+      el._leafletMiniMap = mini;
+      setTimeout(() => {
+        try { mini.invalidateSize(); } catch (_) {}
+      }, 150);
+    } catch (err) {
+      console.warn('initMiniLocationMaps error:', err);
+    }
+  });
+  if (window.lucide) lucide.createIcons();
+}
+window.initMiniLocationMaps = initMiniLocationMaps;
+
+window.openGoogleMapPickerModal = function (target = 'composer') {
   _mapPickerTarget = target;
   const modal = $('googleMapPickerModal');
   if (!modal) return;
@@ -4569,7 +4593,7 @@ window.openGoogleMapPickerModal = function(target = 'composer') {
   if (window.lucide) lucide.createIcons();
 };
 
-window.closeGoogleMapPickerModal = function() {
+window.closeGoogleMapPickerModal = function () {
   const modal = $('googleMapPickerModal');
   if (modal) {
     modal.classList.add('hidden');
@@ -4591,7 +4615,7 @@ function initOrUpdateGoogleMap(lat, lng, existingName = '') {
     _googleMapInstance = L.map('googleMapCanvas', {
       center: [lat, lng],
       zoom: 15,
-      zoomControl: true
+      zoomControl: false
     });
 
     const tileUrl = `https://mt{s}.google.com/vt/lyrs=${_googleMapStyle}&x={x}&y={y}&z={z}`;
@@ -4700,7 +4724,7 @@ async function reverseGeocodeMapLocation(lat, lng) {
   }, 250);
 }
 
-window.searchPlacesOnMap = async function() {
+window.searchPlacesOnMap = async function () {
   const input = $('mapSearchInput');
   const query = input ? input.value.trim() : '';
   if (!query) {
@@ -4720,14 +4744,14 @@ window.searchPlacesOnMap = async function() {
     if (res && res.ok && Array.isArray(res.results) && res.results.length > 0) {
       _searchedPlacesCache = res.results;
       resultsContainer.innerHTML = res.results.map((item, idx) => `
-        <div class="p-3 hover:bg-rose-50/70 dark:hover:bg-rose-950/30 cursor-pointer flex items-start gap-2.5 transition-colors"
+        <div class="p-3 hover:bg-surface-50 dark:hover:bg-surface-750 cursor-pointer flex items-start gap-3 transition-colors"
           onclick="selectSearchedPlaceByIndex(${idx})">
-          <div class="w-6 h-6 rounded-md bg-rose-100 text-rose-600 dark:bg-rose-900/50 dark:text-rose-300 flex items-center justify-center flex-shrink-0 mt-0.5">
-            <i data-lucide="map-pin" class="w-3.5 h-3.5"></i>
+          <div class="w-7 h-7 rounded-lg bg-red-50 dark:bg-red-950/40 text-[#EA4335] flex items-center justify-center flex-shrink-0 mt-0.5">
+            <i data-lucide="map-pin" class="w-3.5 h-3.5 fill-[#EA4335]/20"></i>
           </div>
           <div class="min-w-0 flex-1">
-            <div class="text-xs font-bold text-surface-900 dark:text-white truncate">${escapeHtml(item.name || '')}</div>
-            <div class="text-[11px] text-surface-500 dark:text-surface-400 truncate">${escapeHtml(item.display_name || '')}</div>
+            <div class="text-xs sm:text-sm font-semibold text-surface-900 dark:text-white truncate">${escapeHtml(item.name || '')}</div>
+            <div class="text-[11px] text-surface-500 dark:text-surface-400 truncate mt-0.5">${escapeHtml(item.display_name || '')}</div>
           </div>
         </div>
       `).join('');
@@ -4749,13 +4773,13 @@ window.searchPlacesOnMap = async function() {
   }
 };
 
-window.selectSearchedPlaceByIndex = function(idx) {
+window.selectSearchedPlaceByIndex = function (idx) {
   const item = _searchedPlacesCache[idx];
   if (!item) return;
   selectSearchedPlace(item.lat, item.lng, item.name, item.display_name);
 };
 
-window.selectSearchedPlace = function(lat, lng, name, address) {
+window.selectSearchedPlace = function (lat, lng, name, address) {
   _currentPickedLocation.lat = lat;
   _currentPickedLocation.lng = lng;
   _currentPickedLocation.name = name;
@@ -4775,7 +4799,7 @@ window.selectSearchedPlace = function(lat, lng, name, address) {
   if (resultsContainer) resultsContainer.classList.add('hidden');
 };
 
-window.clearMapSearch = function() {
+window.clearMapSearch = function () {
   const input = $('mapSearchInput');
   if (input) input.value = '';
   const clearBtn = $('mapSearchClearBtn');
@@ -4787,13 +4811,21 @@ window.clearMapSearch = function() {
   }
 };
 
-window.mapCenterOnCurrentGps = function() {
+window.mapZoomIn = function () {
+  if (_googleMapInstance) _googleMapInstance.zoomIn();
+};
+
+window.mapZoomOut = function () {
+  if (_googleMapInstance) _googleMapInstance.zoomOut();
+};
+
+window.mapCenterOnCurrentGps = function () {
   if (!navigator.geolocation) {
     toast('เบราว์เซอร์ของคุณไม่รองรับการดึงพิกัด GPS', 'error');
     return;
   }
-  const label = $('mapMyGpsBtnLabel');
-  if (label) label.textContent = 'กำลังหา...';
+  const btn = $('mapMyGpsBtn');
+  if (btn) btn.classList.add('animate-pulse');
 
   navigator.geolocation.getCurrentPosition(
     (pos) => {
@@ -4803,11 +4835,11 @@ window.mapCenterOnCurrentGps = function() {
         _googleMapInstance.flyTo([lat, lng], 16, { animate: true, duration: 1.0 });
       }
       updateMapPin(lat, lng, true);
-      if (label) label.textContent = 'ตำแหน่งฉัน';
+      if (btn) btn.classList.remove('animate-pulse');
       toast(`ระบุพิกัด GPS ของคุณสำเร็จ (${lat}, ${lng})`, 'success');
     },
     (err) => {
-      if (label) label.textContent = 'ตำแหน่งฉัน';
+      if (btn) btn.classList.remove('animate-pulse');
       let msg = 'ไม่สามารถดึงพิกัด GPS ได้';
       if (err.code === 1) msg = 'กรุณาอนุญาตการเข้าถึงตำแหน่ง (Location Permission) ในเบราว์เซอร์';
       else if (err.code === 2) msg = 'สัญญาณ GPS ขาดหาย';
@@ -4818,7 +4850,7 @@ window.mapCenterOnCurrentGps = function() {
   );
 };
 
-window.toggleMapTileStyle = function() {
+window.toggleMapTileStyle = function () {
   _googleMapStyle = (_googleMapStyle === 'm') ? 'y' : 'm';
   const label = $('mapStyleToggleLabel');
   if (label) {
@@ -4836,7 +4868,7 @@ window.toggleMapTileStyle = function() {
   }
 };
 
-window.confirmGoogleMapLocation = function() {
+window.confirmGoogleMapLocation = function () {
   const nameInput = $('mapSelectedPlaceName');
   const chosenName = (nameInput && nameInput.value.trim()) || _currentPickedLocation.name || 'พิกัด Google Maps';
   const lat = _currentPickedLocation.lat;
@@ -4904,7 +4936,7 @@ window.confirmGoogleMapLocation = function() {
   if (window.lucide) lucide.createIcons();
 };
 
-window.clearMainChatLocation = function() {
+window.clearMainChatLocation = function () {
   state.pendingLocation = null;
   const prev = $('mainChatLocationPreview');
   if (prev) {
@@ -4913,13 +4945,13 @@ window.clearMainChatLocation = function() {
   }
 };
 
-window.clearGroupChatLocation = function() {
+window.clearGroupChatLocation = function () {
   if (state.groupChat) state.groupChat.pendingLocation = null;
   renderChatAttachmentPreview();
   if (window.lucide) lucide.createIcons();
 };
 
-window.clearPostLocation = function() {
+window.clearPostLocation = function () {
   const locContainer = $('locationInputContainer');
   if (locContainer) {
     locContainer.classList.add('hidden');
@@ -4932,7 +4964,7 @@ window.clearPostLocation = function() {
   if ($('locationBadgeSubtitle')) $('locationBadgeSubtitle').textContent = '';
 };
 
-window.clearEditPostLocation = function() {
+window.clearEditPostLocation = function () {
   if ($('editPostLocation')) $('editPostLocation').value = '';
   if ($('editPostLat')) $('editPostLat').value = '';
   if ($('editPostLng')) $('editPostLng').value = '';
@@ -5259,7 +5291,7 @@ async function deleteComment(pid, cid) {
 // ─── @Mention Autocomplete ───────────────────────────────────────────────
 function escapeHTML(str) {
   if (!str) return '';
-  return str.replace(/[&<>'"]/g, 
+  return str.replace(/[&<>'"]/g,
     tag => ({
       '&': '&amp;',
       '<': '&lt;',
@@ -5553,12 +5585,12 @@ function updateReactionUI(pid, counts, total, myReaction) {
         .filter(([_, c]) => c > 0)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 3);
-      
+
       const topEmojisHtml = topEntries.length > 0
         ? `<div class="flex -space-x-1.5 items-center mr-0.5">${topEntries.map(([rtype]) => {
-            const e = REACTION_CONFIG[rtype]?.emoji || '👍';
-            return `<span class="inline-flex items-center justify-center w-4 h-4 text-[11px] rounded-full bg-white dark:bg-surface-700 shadow-2xs border border-white dark:border-surface-800 select-none">${e}</span>`;
-          }).join('')}</div>`
+          const e = REACTION_CONFIG[rtype]?.emoji || '👍';
+          return `<span class="inline-flex items-center justify-center w-4 h-4 text-[11px] rounded-full bg-white dark:bg-surface-700 shadow-2xs border border-white dark:border-surface-800 select-none">${e}</span>`;
+        }).join('')}</div>`
         : '';
 
       countsEl.innerHTML = `
@@ -5755,7 +5787,7 @@ function initSocket() {
     if (isVisible) {
       if (data.sender !== currentUser) {
         console.log("👀 New message in active chat, refreshing sync...");
-        loadChatMessages(true); 
+        loadChatMessages(true);
       }
       loadChatList();
     } else {
@@ -6196,7 +6228,7 @@ function renderCalendar() {
   // Apply Filters
   const q = (state.calendar.searchQuery || '').toLowerCase();
   const cat = state.calendar.categoryFilter || 'all';
-  
+
   const filteredSchedules = state.calendar.schedules.filter(s => {
     const matchSearch = !q || s.title.toLowerCase().includes(q) || (s.desc || '').toLowerCase().includes(q);
     const matchCat = cat === 'all' || s.category === cat;
@@ -6258,7 +6290,7 @@ function renderCalendar() {
         const isDone = s.status === 'done';
         const isPast = dateStr < new Date().toISOString().split('T')[0];
         const isOverdue = isPast && !isDone;
-        
+
         const overdueBadge = isOverdue ? '<span class="text-[6px] bg-rose-600 text-white px-1 py-0.5 rounded-[4px] font-black uppercase ml-0.5 shrink-0 shadow-sm shadow-rose-900/10">OVERDUE</span>' : '';
         const publicBadge = s.is_public ? '<span class="text-[6px] bg-emerald-500 text-white px-1 py-0.5 rounded-[4px] font-black uppercase ml-0.5 shrink-0 shadow-sm shadow-emerald-900/10">PUBLIC</span>' : '';
         const doneClass = isDone ? 'opacity-50 grayscale' : (isPast ? 'opacity-75' : '');
@@ -6367,7 +6399,7 @@ function renderUpcoming() {
       <div class="flex-1 min-w-0">
         <div class="flex items-start justify-between gap-1 leading-tight mb-1">
           <div class="text-xs font-bold text-surface-900 dark:text-surface-100 group-hover:text-brand-600 transition-colors break-words flex-1 leading-snug ${s.status === 'done' ? 'line-through opacity-50' : ''}">
-            ${s.status === 'done' ? '<i data-lucide="check-circle-2" class="w-3 h-3 inline-block mr-1 text-emerald-500"></i>' : (new Date(s.date) < (new Date().setHours(0,0,0,0)) ? '<span class="text-[8px] bg-rose-600 text-white px-1.5 py-0.5 rounded-full uppercase mr-1 inline-block animate-pulse">Overdue</span>' : '')}
+            ${s.status === 'done' ? '<i data-lucide="check-circle-2" class="w-3 h-3 inline-block mr-1 text-emerald-500"></i>' : (new Date(s.date) < (new Date().setHours(0, 0, 0, 0)) ? '<span class="text-[8px] bg-rose-600 text-white px-1.5 py-0.5 rounded-full uppercase mr-1 inline-block animate-pulse">Overdue</span>' : '')}
             ${s.title}
           </div>
 
@@ -6840,7 +6872,7 @@ function exportToICS() {
     toast('ไม่มีข้อมูลสำหรับส่งออก', 'info');
     return;
   }
-  
+
   let icsLines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
@@ -6848,12 +6880,12 @@ function exportToICS() {
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH'
   ];
-  
+
   schedules.forEach(s => {
     const cleanDate = (s.date || '').replace(/-/g, '');
     const cleanTime = (s.time || '09:00').replace(/:/g, '') + '00';
     const stamp = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
-    
+
     icsLines.push('BEGIN:VEVENT');
     icsLines.push(`UID:sch-${s.id}-${stamp}`);
     icsLines.push(`DTSTAMP:${stamp}`);
@@ -6864,9 +6896,9 @@ function exportToICS() {
     icsLines.push(`CATEGORIES:${s.category}`);
     icsLines.push('END:VEVENT');
   });
-  
+
   icsLines.push('END:VCALENDAR');
-  
+
   const blob = new Blob([icsLines.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -6903,7 +6935,7 @@ async function initViz() {
     const csvs = (data.files || []).filter(f => f.type === 'csv');
     vizFileSelect.innerHTML = '<option value="">-- เลือกไฟล์ CSV --</option>' +
       csvs.map(f => `<option value="${f.file_id}">${f.name}</option>`).join('');
-    
+
     vizFileSelect.onchange = async () => {
       const fileId = vizFileSelect.value;
       if (!fileId) {
@@ -6925,7 +6957,7 @@ async function initViz() {
           const numericHeader = res.headers.find(h => !isNaN(parseFloat(firstRow[h])));
           if (numericHeader) vizYSelect.value = numericHeader;
         }
-        
+
         renderVizColumnSelectors();
         if (state.viz.mode === 'chart') renderChart();
         else renderVizTable();
@@ -6947,7 +6979,7 @@ async function initViz() {
         link.click();
       };
     }
-    
+
     const aiBtn = $('generateAiSummaryBtn');
     if (aiBtn) aiBtn.onclick = generateAiSummary;
 
@@ -7022,7 +7054,7 @@ function renderChart() {
 
   const data = state.viz.filteredData;
   const allYValues = data.map(d => parseFloat(d[yAttr])).filter(v => !isNaN(v));
-  
+
   if (allYValues.length > 0) {
     $('statsAvg').textContent = (allYValues.reduce((a, b) => a + b, 0) / allYValues.length).toLocaleString(undefined, { maximumFractionDigits: 2 });
     $('statsMax').textContent = Math.max(...allYValues).toLocaleString();
@@ -7060,12 +7092,12 @@ function renderChart() {
       responsive: true,
       maintainAspectRatio: false,
       onClick: (evt, elements) => {
-         if (elements.length > 0) {
-            const index = elements[0].index;
-            const label = labels[index];
-            const fileId = $('vizFileSelect').value;
-            if (fileId) drillDownToExplorer(fileId, xAttr, label);
-         }
+        if (elements.length > 0) {
+          const index = elements[0].index;
+          const label = labels[index];
+          const fileId = $('vizFileSelect').value;
+          if (fileId) drillDownToExplorer(fileId, xAttr, label);
+        }
       },
       scales: type === 'pie' ? {} : {
         x: { ticks: { color: isDark ? '#94a3b8' : '#475569', font: { size: 9 } } },
@@ -7095,21 +7127,21 @@ async function generateAiSummary() {
   try {
     // Sample data for prompt
     const sample = state.viz.filteredData.slice(0, 30).map(d => ({ [xAttr]: d[xAttr], [yAttr]: d[yAttr] }));
-    
+
     const prompt = `ช่วยวิเคราะห์สรุปข้อมูลจากไฟล์ CSV ชุดนี้ โดยเน้นแนวโน้มของ "${yAttr}" เมื่อเทียบกับ "${xAttr}"\nข้อมูลตัวอย่าง:\n${JSON.stringify(sample, null, 2)}\n\nกรุณาสรุปเป็นข้อๆ ภาษาไทย 3-4 ข้อที่น่าสนใจ`;
 
     const res = await apiFetch('/api/chat', {
-       method: 'POST',
-       body: JSON.stringify({ message: prompt, history: [] })
+      method: 'POST',
+      body: JSON.stringify({ message: prompt, history: [] })
     });
-    
+
     // apiFetch returns json if possible, but here we might need streaming or just simple response
     // For simplicity in this app's pattern:
     if (res.ok !== false) {
-       // Check if response has text
-       content.innerHTML = res.response || 'ไม่สามารถดึงข้อมูลสรุปได้ในขณะนี้';
+      // Check if response has text
+      content.innerHTML = res.response || 'ไม่สามารถดึงข้อมูลสรุปได้ในขณะนี้';
     } else {
-       throw new Error(res.error || 'AI Failed');
+      throw new Error(res.error || 'AI Failed');
     }
   } catch (e) {
     content.innerHTML = '<span class="text-rose-500 font-bold">ไม่สามารถวิเคราะห์ข้อมูลได้: ' + e.message + '</span>';
@@ -7129,7 +7161,7 @@ function renderVizColumnSelectors() {
       <span class="text-[10px] font-bold text-surface-600 dark:text-surface-300">${h}</span>
     </label>
   `).join('');
-  
+
   document.querySelectorAll('.viz-col-toggle').forEach(chk => {
     chk.onchange = () => {
       const col = chk.dataset.col;
@@ -7144,7 +7176,7 @@ function renderVizTable() {
   const head = $('vizTableHead');
   const body = $('vizTableBody');
   if (!head || !body) return;
-  
+
   const cols = state.viz.selectedColumns;
   if (cols.length === 0 || state.viz.filteredData.length === 0) {
     head.innerHTML = ''; body.innerHTML = ''; return;
@@ -7175,30 +7207,30 @@ state.explorer = {
 
 
 async function drillDownToExplorer(fileId, column, value) {
-   // 1. Switch view
-   switchView('csv-explorer');
-   
-   // 2. Set file
-   const fileSelect = $('explorerFileSelect');
-   fileSelect.value = fileId;
-   
-   // 3. Load data for explorer
-   try {
-      const res = await apiFetch(`/api/csv/${fileId}`);
-      state.explorer.rawData = res.data;
-      state.explorer.headers = res.headers;
-      state.explorer.selectedColumns = [...res.headers];
-      
-      // 4. Apply filter
-      state.explorer.filters = [{ column: column, operator: 'equals', value: value }];
-      state.explorer.currentPage = 1;
-      
-      renderExplorerColumnSelectors();
-      renderExplorerFilters();
-      updateExplorerData();
-      
-      toast(`กรองข้อมูลสำหรับ ${column} = ${value}`, 'success');
-   } catch(e) { console.error('Drilldown failed', e); }
+  // 1. Switch view
+  switchView('csv-explorer');
+
+  // 2. Set file
+  const fileSelect = $('explorerFileSelect');
+  fileSelect.value = fileId;
+
+  // 3. Load data for explorer
+  try {
+    const res = await apiFetch(`/api/csv/${fileId}`);
+    state.explorer.rawData = res.data;
+    state.explorer.headers = res.headers;
+    state.explorer.selectedColumns = [...res.headers];
+
+    // 4. Apply filter
+    state.explorer.filters = [{ column: column, operator: 'equals', value: value }];
+    state.explorer.currentPage = 1;
+
+    renderExplorerColumnSelectors();
+    renderExplorerFilters();
+    updateExplorerData();
+
+    toast(`กรองข้อมูลสำหรับ ${column} = ${value}`, 'success');
+  } catch (e) { console.error('Drilldown failed', e); }
 }
 
 async function initCSVExplorer() {
@@ -7210,7 +7242,7 @@ async function initCSVExplorer() {
     const csvs = (data.files || []).filter(f => f.type === 'csv');
     fileSelect.innerHTML = '<option value="">-- เลือกไฟล์ฐานข้อมูล CSV --</option>' +
       csvs.map(f => `<option value="${f.file_id}">${f.name}</option>`).join('');
-    
+
     fileSelect.onchange = async () => {
       const fileId = fileSelect.value;
       if (!fileId) return;
@@ -7223,9 +7255,9 @@ async function initCSVExplorer() {
         state.explorer.globalSearch = '';
         state.explorer.sortBy = null;
         state.explorer.currentPage = 1;
-        
+
         $('explorerGlobalSearch').value = '';
-        
+
         renderExplorerColumnSelectors();
         renderExplorerFilters();
         updateExplorerData();
@@ -7233,21 +7265,21 @@ async function initCSVExplorer() {
     };
 
     $('explorerGlobalSearch').oninput = (e) => {
-       state.explorer.globalSearch = e.target.value.toLowerCase();
-       state.explorer.currentPage = 1;
-       updateExplorerData();
+      state.explorer.globalSearch = e.target.value.toLowerCase();
+      state.explorer.currentPage = 1;
+      updateExplorerData();
     };
 
     $('explorerPageSize').onchange = (e) => {
-       state.explorer.pageSize = parseInt(e.target.value);
-       state.explorer.currentPage = 1;
-       updateExplorerData();
+      state.explorer.pageSize = parseInt(e.target.value);
+      state.explorer.currentPage = 1;
+      updateExplorerData();
     };
 
-    $('explorerPrevBtn').onclick = () => { if(state.explorer.currentPage > 1) { state.explorer.currentPage--; updateExplorerData(); } };
-    $('explorerNextBtn').onclick = () => { 
-       const totalPages = Math.ceil(state.explorer.filteredData.length / state.explorer.pageSize);
-       if(state.explorer.currentPage < totalPages) { state.explorer.currentPage++; updateExplorerData(); } 
+    $('explorerPrevBtn').onclick = () => { if (state.explorer.currentPage > 1) { state.explorer.currentPage--; updateExplorerData(); } };
+    $('explorerNextBtn').onclick = () => {
+      const totalPages = Math.ceil(state.explorer.filteredData.length / state.explorer.pageSize);
+      if (state.explorer.currentPage < totalPages) { state.explorer.currentPage++; updateExplorerData(); }
     };
 
     $('explorerAddFilterBtn').onclick = addExplorerFilter;
@@ -7266,7 +7298,7 @@ function renderExplorerColumnSelectors() {
       <span class="text-xs font-bold text-surface-600 dark:text-surface-300">${h}</span>
     </label>
   `).join('');
-  
+
   document.querySelectorAll('.explorer-col-toggle').forEach(chk => {
     chk.onchange = () => {
       const col = chk.dataset.col;
@@ -7285,7 +7317,7 @@ function addExplorerFilter() {
 function renderExplorerFilters() {
   const list = $('explorerFilterList');
   if (!list) return;
-  
+
   if (state.explorer.filters.length === 0) {
     list.innerHTML = '<div class="text-[10px] text-surface-400 italic">ยังไม่มีการตั้งค่าการกรองข้อมูล</div>';
     $('explorerFilterStatus').classList.add('hidden');
@@ -7294,7 +7326,7 @@ function renderExplorerFilters() {
 
   $('explorerFilterStatus').classList.remove('hidden');
   const dateKeywords = ['date', 'วันที่', 'เวลา', 'time', 'วันเกิด', 'นัดหมาย'];
-  
+
   list.innerHTML = state.explorer.filters.map((f, i) => {
     const isDateCol = dateKeywords.some(k => f.column.toLowerCase().includes(k));
     return `
@@ -7314,7 +7346,7 @@ function renderExplorerFilters() {
       </button>
     </div>
   `}).join('');
-  
+
   initIcons();
   document.querySelectorAll('.exp-filter-col').forEach(el => el.onchange = (e) => { state.explorer.filters[e.target.dataset.index].column = e.target.value; updateExplorerData(); });
   document.querySelectorAll('.exp-filter-op').forEach(el => el.onchange = (e) => { state.explorer.filters[e.target.dataset.index].operator = e.target.value; updateExplorerData(); });
@@ -7323,14 +7355,14 @@ function renderExplorerFilters() {
 
 function updateExplorerData() {
   let data = [...state.explorer.rawData];
-  
+
   // 1. Multi-level Filters
   state.explorer.filters.forEach(f => {
     if (!f.column || f.value === '') return;
     const val = f.value.toLowerCase();
     data = data.filter(row => {
       const cell = String(row[f.column] || '').toLowerCase();
-      switch(f.operator) {
+      switch (f.operator) {
         case 'contains': return cell.includes(val);
         case 'equals': return cell === val;
         case 'gt': return parseFloat(cell) > parseFloat(val);
@@ -7342,24 +7374,24 @@ function updateExplorerData() {
 
   // 2. Global Search
   if (state.explorer.globalSearch) {
-     const gs = state.explorer.globalSearch;
-     data = data.filter(row => {
-        return state.explorer.selectedColumns.some(col => String(row[col]||'').toLowerCase().includes(gs));
-     });
+    const gs = state.explorer.globalSearch;
+    data = data.filter(row => {
+      return state.explorer.selectedColumns.some(col => String(row[col] || '').toLowerCase().includes(gs));
+    });
   }
 
   // 3. Sorting
   if (state.explorer.sortBy) {
-     const col = state.explorer.sortBy;
-     const order = state.explorer.sortOrder === 'asc' ? 1 : -1;
-     data.sort((a,b) => {
-        const valA = a[col];
-        const valB = b[col];
-        if (!isNaN(parseFloat(valA)) && !isNaN(parseFloat(valB))) {
-           return (parseFloat(valA) - parseFloat(valB)) * order;
-        }
-        return String(valA || '').localeCompare(String(valB || ''), 'th') * order;
-     });
+    const col = state.explorer.sortBy;
+    const order = state.explorer.sortOrder === 'asc' ? 1 : -1;
+    data.sort((a, b) => {
+      const valA = a[col];
+      const valB = b[col];
+      if (!isNaN(parseFloat(valA)) && !isNaN(parseFloat(valB))) {
+        return (parseFloat(valA) - parseFloat(valB)) * order;
+      }
+      return String(valA || '').localeCompare(String(valB || ''), 'th') * order;
+    });
   }
 
   state.explorer.filteredData = data;
@@ -7374,7 +7406,7 @@ function renderExplorerTable() {
   const empty = $('explorerEmpty');
   const pagination = $('explorerPagination');
   if (!head || !body) return;
-  
+
   const cols = state.explorer.selectedColumns;
   if (cols.length === 0 || state.explorer.filteredData.length === 0) {
     head.innerHTML = ''; body.innerHTML = ''; empty.classList.remove('hidden'); pagination.classList.add('hidden'); return;
@@ -7385,9 +7417,9 @@ function renderExplorerTable() {
 
   // Header with Sorting
   head.innerHTML = `<tr>${cols.map(c => {
-     const isSorting = state.explorer.sortBy === c;
-     const arrow = isSorting ? (state.explorer.sortOrder === 'asc' ? '↑' : '↓') : '↕';
-     return `<th onclick="toggleExplorerSort('${c}')" class="px-5 py-4 font-black uppercase text-xs text-surface-400 border-b border-surface-100 dark:border-surface-800 cursor-pointer hover:bg-surface-100 dark:hover:bg-surface-800 select-none group transition-colors">
+    const isSorting = state.explorer.sortBy === c;
+    const arrow = isSorting ? (state.explorer.sortOrder === 'asc' ? '↑' : '↓') : '↕';
+    return `<th onclick="toggleExplorerSort('${c}')" class="px-5 py-4 font-black uppercase text-xs text-surface-400 border-b border-surface-100 dark:border-surface-800 cursor-pointer hover:bg-surface-100 dark:hover:bg-surface-800 select-none group transition-colors">
         <div class="flex items-center gap-2">
            ${c} <span class="${isSorting ? 'text-brand-600' : 'text-surface-300'} group-hover:text-brand-500">${arrow}</span>
         </div>
@@ -7404,65 +7436,65 @@ function renderExplorerTable() {
       ${cols.map(c => `<td class="px-5 py-3.5 border-r border-surface-50 dark:border-surface-800/50 text-surface-700 dark:text-surface-200">${row[c] || ''}</td>`).join('')}
     </tr>
   `).join('');
-  
+
   renderExplorerPagination();
   $('explorerAiInsight').classList.toggle('hidden', state.explorer.filteredData.length === 0);
 }
 
 function toggleExplorerSort(col) {
-   if (state.explorer.sortBy === col) {
-      state.explorer.sortOrder = state.explorer.sortOrder === 'asc' ? 'desc' : 'asc';
-   } else {
-      state.explorer.sortBy = col;
-      state.explorer.sortOrder = 'asc';
-   }
-   updateExplorerData();
+  if (state.explorer.sortBy === col) {
+    state.explorer.sortOrder = state.explorer.sortOrder === 'asc' ? 'desc' : 'asc';
+  } else {
+    state.explorer.sortBy = col;
+    state.explorer.sortOrder = 'asc';
+  }
+  updateExplorerData();
 }
 
 function renderExplorerPagination() {
-   const total = state.explorer.filteredData.length;
-   const pages = Math.ceil(total / state.explorer.pageSize);
-   const current = state.explorer.currentPage;
-   
-   $('explorerCurrentPage').textContent = current;
-   $('explorerTotalPages').textContent = pages;
-   
-   $('explorerPrevBtn').disabled = current === 1;
-   $('explorerNextBtn').disabled = current === pages || pages === 0;
+  const total = state.explorer.filteredData.length;
+  const pages = Math.ceil(total / state.explorer.pageSize);
+  const current = state.explorer.currentPage;
 
-   const numContainer = $('explorerPageNumbers');
-   numContainer.innerHTML = '';
-   
-   // Simple logic: first, current-1, current, current+1, last
-   const range = [];
-   if (pages <= 5) {
-      for(let i=1; i<=pages; i++) range.push(i);
-   } else {
-      range.push(1);
-      if(current > 3) range.push('...');
-      for(let i=Math.max(2, current-1); i<=Math.min(pages-1, current+1); i++) range.push(i);
-      if(current < pages-2) range.push('...');
-      range.push(pages);
-   }
+  $('explorerCurrentPage').textContent = current;
+  $('explorerTotalPages').textContent = pages;
 
-   range.forEach(p => {
-      if(p === '...') {
-         numContainer.innerHTML += `<span class="px-2 py-1 text-surface-400">...</span>`;
-      } else {
-         const btn = document.createElement('button');
-         btn.className = `px-3 py-1 rounded-lg text-xs font-black transition-all ${p === current ? 'bg-brand-600 text-white' : 'text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-800'}`;
-         btn.textContent = p;
-         btn.onclick = () => { state.explorer.currentPage = p; renderExplorerTable(); };
-         numContainer.appendChild(btn);
-      }
-   });
+  $('explorerPrevBtn').disabled = current === 1;
+  $('explorerNextBtn').disabled = current === pages || pages === 0;
+
+  const numContainer = $('explorerPageNumbers');
+  numContainer.innerHTML = '';
+
+  // Simple logic: first, current-1, current, current+1, last
+  const range = [];
+  if (pages <= 5) {
+    for (let i = 1; i <= pages; i++) range.push(i);
+  } else {
+    range.push(1);
+    if (current > 3) range.push('...');
+    for (let i = Math.max(2, current - 1); i <= Math.min(pages - 1, current + 1); i++) range.push(i);
+    if (current < pages - 2) range.push('...');
+    range.push(pages);
+  }
+
+  range.forEach(p => {
+    if (p === '...') {
+      numContainer.innerHTML += `<span class="px-2 py-1 text-surface-400">...</span>`;
+    } else {
+      const btn = document.createElement('button');
+      btn.className = `px-3 py-1 rounded-lg text-xs font-black transition-all ${p === current ? 'bg-brand-600 text-white' : 'text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-800'}`;
+      btn.textContent = p;
+      btn.onclick = () => { state.explorer.currentPage = p; renderExplorerTable(); };
+      numContainer.appendChild(btn);
+    }
+  });
 }
 
 function exportExplorerCsv() {
   const data = state.explorer.filteredData;
   const cols = state.explorer.selectedColumns;
   if (!data.length) return toast('ไม่มีข้อมูลให้ส่งออก', 'info');
-  const csv = [cols.join(','), ...data.map(r => cols.map(c => `"${String(r[c]||'').replace(/"/g,'""')}"`).join(','))].join('\n');
+  const csv = [cols.join(','), ...data.map(r => cols.map(c => `"${String(r[c] || '').replace(/"/g, '""')}"`).join(','))].join('\n');
   const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `explorer_export_${Date.now()}.csv`; a.click();
 }
@@ -7472,19 +7504,19 @@ async function generateExplorerAiSummary() {
   const btn = $('explorerAiBtn');
   content.innerHTML = 'AI กำลังรวบรวมข้อมูลและวิเคราะห์แนวโน้มให้คุณ...';
   btn.disabled = true;
-  
+
   try {
     const data = state.explorer.filteredData.slice(0, 30);
     const dataStr = data.map(d => JSON.stringify(d)).join('\n');
     const res = await apiFetch('/api/chat', {
-       method: 'POST',
-       body: JSON.stringify({ message: `ช่วยสรุป Insight จากข้อมูล CSV ที่ผ่านการกรองแล้วนี้:\n${dataStr}\n\nสรุปเป็นประเด็นสำคัญภาษาไทย 3-5 ข้อ`, history: [] })
+      method: 'POST',
+      body: JSON.stringify({ message: `ช่วยสรุป Insight จากข้อมูล CSV ที่ผ่านการกรองแล้วนี้:\n${dataStr}\n\nสรุปเป็นประเด็นสำคัญภาษาไทย 3-5 ข้อ`, history: [] })
     });
     // This is a stream but for simplicity here we just use the first chunk or adapt if needed
     // In this app apiFetch handles JSON, but /api/chat is a stream.
     // Let's use the real streaming logic if possible.
     content.innerHTML = 'การวิเคราะห์เสร็จสมบูรณ์ (AI Stream handled by Chat endpoint)';
-  } catch(e) { content.innerHTML = 'เกิดข้อผิดพลาดในการวิเคราะห์'; }
+  } catch (e) { content.innerHTML = 'เกิดข้อผิดพลาดในการวิเคราะห์'; }
   finally { btn.disabled = false; }
 }
 
@@ -7987,8 +8019,8 @@ function renderChatSidebar() {
   // 3. Search
   if (state.sidebarSearch) {
     const q = state.sidebarSearch.toLowerCase();
-    items = items.filter(item => 
-      item.name.toLowerCase().includes(q) || 
+    items = items.filter(item =>
+      item.name.toLowerCase().includes(q) ||
       (item.last_msg && item.last_msg.toLowerCase().includes(q))
     );
   }
@@ -8049,11 +8081,11 @@ function renderChatSidebar() {
 
 function setReply(msgId, username, text) {
   state.groupChat.replyTo = { id: msgId, username, text };
-  
+
   const tray = $('replyPreview');
   const userEl = $('replyToUser');
   const textEl = $('replyToText');
-  
+
   if (tray && userEl && textEl) {
     userEl.textContent = username;
     textEl.textContent = text;
@@ -8078,11 +8110,11 @@ async function switchChat(type, id, name, avatarUrl) {
   if (socket) {
     const socketRoom = type === 'room' ? `room_${id}` : `dm_${id}`;
     socket.emit('join', { room: socketRoom });
-    
+
     // Also join self room for DMs
     const currentUser = (typeof state.user === 'object' ? state.user?.username : state.user);
     if (currentUser) {
-        socket.emit('join', { room: `dm_${currentUser}` });
+      socket.emit('join', { room: `dm_${currentUser}` });
     }
 
     // Update Call Button Visibility
@@ -8294,7 +8326,7 @@ function renderChatMessages(shouldScroll = false) {
     // 🏆 Messenger-style Read Avatars Logic
     let readAvatarsHtml = '';
     const currentUser = (typeof state.user === 'object' ? state.user?.username : state.user)?.toLowerCase();
-    
+
     if (state.currentChat.type === 'room') {
       const readers = (state.groupChat.lastReads || []).filter(r => r.max_id === m.id && r.username.toLowerCase() !== currentUser);
       if (readers.length > 0) {
@@ -8310,15 +8342,15 @@ function renderChatMessages(shouldScroll = false) {
         `;
       }
     } else if (state.currentChat.type === 'dm' && isMe && m.is_read) {
-        // Messenger style for DM: Only show avatar for the LATEST read message sent by me
-        const lastReadMsg = [...state.groupChat.messages].reverse().find(msg => (String(msg.username).toLowerCase() === currentUser) && msg.is_read);
-        if (lastReadMsg && lastReadMsg.id === m.id) {
-             readAvatarsHtml = `
+      // Messenger style for DM: Only show avatar for the LATEST read message sent by me
+      const lastReadMsg = [...state.groupChat.messages].reverse().find(msg => (String(msg.username).toLowerCase() === currentUser) && msg.is_read);
+      if (lastReadMsg && lastReadMsg.id === m.id) {
+        readAvatarsHtml = `
                <div class="w-3.5 h-3.5 rounded-full border-2 border-white dark:border-surface-900 overflow-hidden shadow-sm mt-1 bg-surface-200">
                   ${state.currentChat.avatarUrl ? `<img src="${state.currentChat.avatarUrl}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center text-[6px] font-black bg-brand-100 text-brand-600">${state.currentChat.name[0].toUpperCase()}</div>`}
                </div>
              `;
-        }
+      }
     }
 
     const imageAttachments = m.attachments ? m.attachments.filter(a => a.type === 'image' || (a.name && (a.name.endsWith('.png') || a.name.endsWith('.jpg') || a.name.endsWith('.jpeg') || a.name.endsWith('.gif')))) : [];
@@ -8343,59 +8375,7 @@ function renderChatMessages(shouldScroll = false) {
 
     const locationHtml = locationAttachments.length > 0 ? `
       <div class="chat-attachment-container ${isMe ? 'justify-end' : ''} mt-2 flex flex-col gap-2">
-        ${locationAttachments.map(loc => {
-          const lName = loc.name || 'พิกัด Google Maps';
-          const hasCoords = loc.latitude != null && loc.longitude != null && !isNaN(loc.latitude) && !isNaN(loc.longitude);
-          const mapUrl = hasCoords
-            ? `https://www.google.com/maps?q=${loc.latitude},${loc.longitude}`
-            : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(lName)}`;
-          const dirUrl = hasCoords
-            ? `https://www.google.com/maps/dir/?api=1&destination=${loc.latitude},${loc.longitude}`
-            : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(lName)}`;
-          const embedUrl = hasCoords
-            ? `https://maps.google.com/maps?q=${loc.latitude},${loc.longitude}&hl=th&z=15&output=embed`
-            : `https://maps.google.com/maps?q=${encodeURIComponent(lName)}&hl=th&z=15&output=embed`;
-          const coordsStr = hasCoords ? `(${Number(loc.latitude).toFixed(4)}, ${Number(loc.longitude).toFixed(4)})` : '';
-          return `
-            <div class="w-[280px] sm:w-[320px] max-w-full rounded-2xl overflow-hidden border border-rose-200/90 dark:border-rose-900/50 bg-gradient-to-br from-rose-50/50 via-white to-amber-50/30 dark:from-rose-950/30 dark:via-surface-900 dark:to-surface-900 shadow-sm text-left">
-              <div class="p-3 border-b border-rose-100 dark:border-rose-900/30 flex items-start justify-between gap-2">
-                <div class="flex items-start gap-2.5 min-w-0">
-                  <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-rose-500 to-amber-500 text-white flex items-center justify-center flex-shrink-0 shadow-xs mt-0.5">
-                    <i data-lucide="map-pin" class="w-4 h-4"></i>
-                  </div>
-                  <div class="min-w-0">
-                    <div class="text-[10px] font-extrabold uppercase tracking-wider text-rose-600 dark:text-rose-400 flex items-center gap-1">
-                      <span>Google Maps พิกัด</span>
-                      ${coordsStr ? `<span class="text-surface-400 font-normal font-mono text-[9px]">${coordsStr}</span>` : ''}
-                    </div>
-                    <div class="text-xs font-bold text-surface-900 dark:text-white truncate">${escapeHtml(lName)}</div>
-                    ${loc.address ? `<div class="text-[10px] text-surface-500 dark:text-surface-400 truncate mt-0.5">${escapeHtml(loc.address)}</div>` : ''}
-                  </div>
-                </div>
-              </div>
-              ${hasCoords ? `
-                <div class="w-full h-32 bg-surface-100 dark:bg-surface-800 relative">
-                  <iframe src="${embedUrl}" class="w-full h-full border-0 pointer-events-none" loading="lazy"></iframe>
-                  <a href="${mapUrl}" target="_blank" rel="noopener noreferrer" class="absolute inset-0 z-10" title="คลิกเพื่อเปิดแผนที่"></a>
-                </div>
-              ` : ''}
-              <div class="p-2 bg-surface-50/70 dark:bg-surface-800/60 border-t border-rose-100 dark:border-rose-900/30 flex items-center justify-end gap-1.5">
-                <a href="${dirUrl}" target="_blank" rel="noopener noreferrer"
-                  class="px-2.5 py-1 rounded-lg bg-gradient-to-r from-rose-500 to-amber-500 hover:from-rose-600 hover:to-amber-600 text-white text-[11px] font-bold flex items-center gap-1 transition shadow-xs hover:scale-105"
-                  title="เปิดโหมดนำทาง GPS ทันที">
-                  <i data-lucide="navigation" class="w-3 h-3"></i>
-                  <span>นำทาง</span>
-                </a>
-                <a href="${mapUrl}" target="_blank" rel="noopener noreferrer"
-                  class="px-2.5 py-1 rounded-lg bg-white dark:bg-surface-700 hover:bg-rose-50 dark:hover:bg-rose-900/40 text-rose-600 dark:text-rose-300 border border-surface-200 dark:border-surface-600 text-[11px] font-bold flex items-center gap-1 transition shadow-2xs hover:scale-105"
-                  title="เปิดดูตำแหน่งบน Google Maps">
-                  <span>เปิดแผนที่</span>
-                  <i data-lucide="external-link" class="w-3 h-3"></i>
-                </a>
-              </div>
-            </div>
-          `;
-        }).join('')}
+        ${locationAttachments.map(loc => renderLocationCard(loc, { isPost: false })).join('')}
       </div>
     ` : '';
 
@@ -8409,11 +8389,11 @@ function renderChatMessages(shouldScroll = false) {
             <div class="flex-1 flex flex-col gap-1 min-w-[150px]">
               <div class="voice-waveform-container relative h-8 flex items-center cursor-pointer gap-[3px] px-1" onclick="seekVoice(event, this)" data-audio-url="${audio.url}">
                  ${(() => {
-                   const cached = state.analyzedWaveforms.get(audio.url);
-                   const pattern = cached || [40, 70, 90, 60, 45, 80, 100, 75, 50, 85, 95, 65, 40, 70, 90, 60, 45, 80, 100, 75, 50, 85, 95, 65];
-                   if (!cached) analyzeAudioWaveform(audio.url);
-                   return pattern.slice(0, 24).map(h => `<div class="waveform-bar w-[3px] bg-surface-300 dark:bg-surface-700 rounded-full transition-all duration-500" style="height: ${h}%"></div>`).join('');
-                 })()}
+        const cached = state.analyzedWaveforms.get(audio.url);
+        const pattern = cached || [40, 70, 90, 60, 45, 80, 100, 75, 50, 85, 95, 65, 40, 70, 90, 60, 45, 80, 100, 75, 50, 85, 95, 65];
+        if (!cached) analyzeAudioWaveform(audio.url);
+        return pattern.slice(0, 24).map(h => `<div class="waveform-bar w-[3px] bg-surface-300 dark:bg-surface-700 rounded-full transition-all duration-500" style="height: ${h}%"></div>`).join('');
+      })()}
               </div>
               <div class="flex items-center justify-between px-1">
                  <span class="voice-duration text-[9px] font-black opacity-40">0:00</span>
@@ -8451,7 +8431,7 @@ function renderChatMessages(shouldScroll = false) {
             </div>
             <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
               ${(m.id && !isBot) ? `<button onclick="setReply(${m.id}, '${(m.display_name || m.username).replace(/'/g, "\\'")}', ${JSON.stringify(m.text || '').replace(/"/g, '&quot;')})" class="p-1 text-slate-300 hover:text-brand-600 transition-colors" title="ตอบกลับ"><i data-lucide="reply" class="w-2.5 h-2.5"></i></button>` : ''}
-              ${( (state.isAdmin || state.currentChat.type === 'dm') && m.id) ? `<button onclick="toggleRoomMessagePin(${m.id})" class="p-1 text-slate-300 hover:text-brand-600 transition-colors" title="ปักหมุด"><i data-lucide="pin" class="w-2.5 h-2.5 ${m.is_pinned ? 'fill-current text-brand-600' : ''}"></i></button>` : ''}
+              ${((state.isAdmin || state.currentChat.type === 'dm') && m.id) ? `<button onclick="toggleRoomMessagePin(${m.id})" class="p-1 text-slate-300 hover:text-brand-600 transition-colors" title="ปักหมุด"><i data-lucide="pin" class="w-2.5 h-2.5 ${m.is_pinned ? 'fill-current text-brand-600' : ''}"></i></button>` : ''}
               ${(isMe && m.id) ? `<button onclick="editChatMessage('${state.currentChat.type}', ${m.id}, this.closest('.chat-msg-row'))" class="p-1 text-slate-300 hover:text-blue-500 transition-colors" title="แก้ไข"><i data-lucide="edit-3" class="w-2.5 h-2.5"></i></button>` : ''}
               ${(isMe && m.id) ? `<button onclick="deleteChatMessage('${state.currentChat.type}', ${m.id}, this.closest('.chat-msg-row'))" class="p-1 text-slate-300 hover:text-red-500 transition-colors" title="ลบ"><i data-lucide="trash-2" class="w-2.5 h-2.5"></i></button>` : ''}
               ${(!isMe && !isBot && m.text) ? `<button onclick="extractActionItems(${JSON.stringify(m.text).replace(/"/g, '&quot;')}, ${m.id})" class="ai-extract-btn p-1 text-slate-300 hover:text-purple-600 transition-colors" title="สกัดงานด้วย AI"><i data-lucide="wand-2" class="w-2.5 h-2.5"></i></button>` : ''}
@@ -8487,15 +8467,16 @@ function renderChatMessages(shouldScroll = false) {
 
   groupChatMessages.innerHTML = html || '<div class="text-center py-10 text-surface-400 text-xs italic">ยังไม่มีข้อความ...</div>';
   initIcons();
+  initMiniLocationMaps();
 
   // Link Preview Trigger
   state.groupChat.messages.forEach(m => {
     if (m.text && m.text.includes('http')) {
       const urlMatch = m.text.match(/https?:\/\/[^\s]+/);
       if (urlMatch) {
-         // Check if there is ONLY a link or if it's a single line link message
-         const isSingleLink = m.text.trim() === urlMatch[0];
-         renderLinkPreview(urlMatch[0], m.id, isSingleLink);
+        // Check if there is ONLY a link or if it's a single line link message
+        const isSingleLink = m.text.trim() === urlMatch[0];
+        renderLinkPreview(urlMatch[0], m.id, isSingleLink);
       }
     }
   });
@@ -8508,16 +8489,16 @@ function renderChatMessages(shouldScroll = false) {
   // Handle Interactive Actions (Reconciliation / Calendar) in Group Chat
   state.groupChat.messages.forEach(m => {
     if (m.text && (m.text.includes('[RECONCILE_ACTION]') || m.text.includes('[CALENDAR_ACTION]'))) {
-       const msgEl = $(`msg-row-${m.id}`);
-       if (msgEl) {
-         const panel = msgEl.querySelector('.action-panel');
-         // Only trigger if panel is hidden to prevent resetting user edits during polling
-         if (panel && panel.classList.contains('hidden')) {
-           const { calendarData, reconcileData } = parseAIActions(m.text);
-           if (calendarData) renderCalendarActionUI(msgEl, calendarData);
-           if (reconcileData) renderReconcileActionUI(msgEl, reconcileData);
-         }
-       }
+      const msgEl = $(`msg-row-${m.id}`);
+      if (msgEl) {
+        const panel = msgEl.querySelector('.action-panel');
+        // Only trigger if panel is hidden to prevent resetting user edits during polling
+        if (panel && panel.classList.contains('hidden')) {
+          const { calendarData, reconcileData } = parseAIActions(m.text);
+          if (calendarData) renderCalendarActionUI(msgEl, calendarData);
+          if (reconcileData) renderReconcileActionUI(msgEl, reconcileData);
+        }
+      }
     }
   });
 }
@@ -8915,15 +8896,15 @@ function renderChatAttachmentPreview() {
   if (hasLoc) {
     const loc = state.groupChat.pendingLocation;
     locHtml = `
-      <div class="flex items-center gap-2 bg-gradient-to-r from-rose-50 to-orange-50/50 dark:from-rose-950/50 dark:to-surface-800 border border-rose-200/90 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 px-3 py-1.5 rounded-xl text-xs font-semibold shadow-2xs animate-in zoom-in-95 duration-150">
-        <div class="w-6 h-6 rounded-lg bg-rose-500/15 text-rose-600 dark:text-rose-400 flex items-center justify-center flex-shrink-0">
+      <div class="flex items-center gap-2.5 bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 px-3 py-1.5 rounded-xl text-xs font-medium shadow-2xs animate-in zoom-in-95 duration-150">
+        <div class="w-6 h-6 rounded-lg bg-red-50 dark:bg-red-950/40 text-[#EA4335] flex items-center justify-center flex-shrink-0">
           <i data-lucide="map-pin" class="w-3.5 h-3.5"></i>
         </div>
         <div class="min-w-0">
-          <span class="max-w-[180px] sm:max-w-[240px] truncate block font-bold text-surface-900 dark:text-white">${escapeHtml(loc.name || 'พิกัด Google Maps')}</span>
+          <span class="max-w-[180px] sm:max-w-[240px] truncate block font-semibold text-surface-900 dark:text-white">${escapeHtml(loc.name || 'พิกัด Google Maps')}</span>
           <span class="text-[9px] text-surface-400 font-mono block">${loc.latitude}, ${loc.longitude}</span>
         </div>
-        <button type="button" onclick="clearGroupChatLocation()" class="p-1 text-surface-400 hover:text-red-500 hover:bg-rose-100/50 rounded-lg transition-colors ml-1" title="ยกเลิกพิกัด">
+        <button type="button" onclick="clearGroupChatLocation()" class="p-1 text-surface-400 hover:text-red-500 hover:bg-surface-100 dark:hover:bg-surface-700 rounded-lg transition-colors ml-1" title="ยกเลิกพิกัด">
           <i data-lucide="x" class="w-3.5 h-3.5"></i>
         </button>
       </div>
@@ -9195,12 +9176,12 @@ function startPrivateChat(username, displayName) {
     startDmModal.classList.add('hidden');
     startDmModal.classList.remove('flex', 'items-center', 'justify-center');
   }
-  
+
   // Ensure we are in the chat view when starting a private chat
   if (typeof switchView === 'function' && state.currentView !== 'chat') {
     switchView('chat');
   }
-  
+
   switchChat('dm', username, displayName);
 }
 
@@ -9239,7 +9220,7 @@ async function initAppContent() {
     await loadSchedules();
     await loadPersonas();
     await loadDashboard();
-    
+
     console.log("✅ App Content Loaded.");
 
     // 3. Final UI cleanup
@@ -9287,13 +9268,13 @@ function resetChatToEmptyState() {
   state.currentChat = { type: null, id: null, name: null };
   state.lastRendered.messages = '';
   stopChatPolling();
-  
+
   if (chatHeaderName) chatHeaderName.textContent = 'เลือกบทสนทนา';
   if (chatHeaderAvatar) {
     chatHeaderAvatar.innerHTML = '<i data-lucide="message-square" class="w-5 h-5 text-brand-600"></i>';
   }
   if (chatHeaderStatus) chatHeaderStatus.classList.add('hidden');
-  
+
   // Hide call and group action buttons
   $('voiceCallBtn')?.classList.add('hidden');
   $('videoCallBtn')?.classList.add('hidden');
@@ -9301,20 +9282,20 @@ function resetChatToEmptyState() {
   $('addMemberBtn')?.classList.add('hidden');
   $('editGroupBtn')?.classList.add('hidden');
   $('deleteGroupBtn')?.classList.add('hidden');
-  
+
   // Hide footer input & previews
   $('chatInputFooter')?.classList.add('hidden');
   $('replyPreview')?.classList.add('hidden');
   $('pinnedMessagesContainer')?.classList.add('hidden');
   $('unifiedTypingIndicator')?.classList.add('hidden');
-  
+
   // Clear input value and file queue
   if (groupChatInput) groupChatInput.value = '';
   state.groupChat.pendingFiles = [];
   if (typeof renderChatAttachmentPreview === 'function') {
     renderChatAttachmentPreview();
   }
-  
+
   // Render empty placeholder inside messages container
   if (groupChatMessages) {
     groupChatMessages.innerHTML = `
@@ -9334,10 +9315,10 @@ function resetChatToEmptyState() {
       </div>
     `;
   }
-  
+
   // Remove active highlight from sidebar items
   document.querySelectorAll('.messenger-chat-item').forEach(el => el.classList.remove('active'));
-  
+
   if (typeof initIcons === 'function') initIcons();
 }
 window.resetChatToEmptyState = resetChatToEmptyState;
@@ -9350,13 +9331,13 @@ function openMobileChat() {
   if (state.groupChat.isOpen) {
     groupChatModal.classList.remove('hidden');
     groupChatModal.classList.remove('chat-open'); // Messenger style: start at list
-    
+
     // Always start with clean empty state so old chat is not retained
     resetChatToEmptyState();
-    
+
     loadChatList();
     loadUnreadCounts();
-    
+
     document.getElementById('mobileMessagesBtn')?.classList.add('active');
 
     setTimeout(() => {
@@ -9372,7 +9353,7 @@ function backToChatList() {
   if (groupChatModal) {
     groupChatModal.classList.remove('chat-open'); // Slide main area away
     resetChatToEmptyState();
-    
+
     // Smooth delay for clearing and reloading
     setTimeout(() => {
       loadChatList();
@@ -9931,18 +9912,18 @@ async function init() {
   const _urlParams = new URLSearchParams(window.location.search);
   if (_urlParams.has('google_connected') || _urlParams.has('google_cancelled') || _urlParams.has('google_error')) {
     history.replaceState({}, '', window.location.pathname + window.location.hash);
-    
+
     // Explicitly hide login overlay in case it rendered before session sync
     const _loginOv = document.getElementById('loginOverlay');
     if (_loginOv) _loginOv.classList.add('hidden');
-    
+
     // Ensure sidebar overlay is dismissed
     const _sbOverlay = document.getElementById('sidebarOverlay');
     if (_sbOverlay) {
       _sbOverlay.classList.remove('active');
       _sbOverlay.classList.add('hidden');
     }
-    
+
     if (_urlParams.get('google_connected') === '1') {
       toast('เชื่อมต่อ Google สำเร็จ!', 'success');
       if (typeof loadGoogleDriveStatus === 'function') loadGoogleDriveStatus();
@@ -10269,11 +10250,11 @@ async function adminChatLoadRooms() {
   const el = document.getElementById('adminChatContent');
   el.innerHTML = '<div class="text-xs text-surface-400 animate-pulse">กำลังโหลด...</div>';
   try {
-  const res = await fetch('/api/admin/chat/overview');
-  if (!res.ok) throw new Error(res.statusText);
-  const data = await res.json();
-  const rooms = data.rooms || [];
-  el.innerHTML = `
+    const res = await fetch('/api/admin/chat/overview');
+    if (!res.ok) throw new Error(res.statusText);
+    const data = await res.json();
+    const rooms = data.rooms || [];
+    el.innerHTML = `
     <div class="flex flex-wrap gap-2 mb-2">
       ${rooms.map(r => `<button onclick="adminChatLoadRoom(${r.id}, ${JSON.stringify(r.name)})" class="px-3 py-1.5 text-xs font-bold bg-surface-100 dark:bg-surface-800 hover:bg-brand-50 dark:hover:bg-brand-900/30 hover:text-brand-600 rounded-lg border border-surface-200 dark:border-surface-700 transition-colors">${escHtml(r.name)}</button>`).join('')}
     </div>
@@ -10288,16 +10269,16 @@ async function adminChatLoadRoom(roomId, roomName) {
   adminChatState.selectedRoom = { id: roomId, name: roomName };
   adminChatState.tab = 'room';
   try {
-  const res = await fetch(`/api/admin/chat/room/${roomId}`);
-  if (!res.ok) throw new Error(res.statusText);
-  const data = await res.json();
-  adminChatState.messages = data.messages || [];
-  const el = document.getElementById('adminRoomMsgs');
-  if (el) {
-    el.innerHTML = '';
-    renderAdminMsgList(el, adminChatState.messages, 'room');
-  }
-  updateAdminMsgCount();
+    const res = await fetch(`/api/admin/chat/room/${roomId}`);
+    if (!res.ok) throw new Error(res.statusText);
+    const data = await res.json();
+    adminChatState.messages = data.messages || [];
+    const el = document.getElementById('adminRoomMsgs');
+    if (el) {
+      el.innerHTML = '';
+      renderAdminMsgList(el, adminChatState.messages, 'room');
+    }
+    updateAdminMsgCount();
   } catch (e) {
     const el2 = document.getElementById('adminRoomMsgs');
     if (el2) el2.innerHTML = '<div class="text-xs text-red-400">โหลดข้อมูลไม่สำเร็จ</div>';
@@ -10308,15 +10289,15 @@ async function adminChatLoadDmPairs() {
   const el = document.getElementById('adminChatContent');
   el.innerHTML = '<div class="text-xs text-surface-400 animate-pulse">กำลังโหลด...</div>';
   try {
-  const res = await fetch('/api/admin/chat/overview');
-  if (!res.ok) throw new Error(res.statusText);
-  const data = await res.json();
-  const pairs = data.dm_pairs || [];
-  if (!pairs.length) {
-    el.innerHTML = '<div class="text-xs text-surface-400 italic text-center py-8">ไม่มีข้อความ DM</div>';
-    return;
-  }
-  el.innerHTML = `
+    const res = await fetch('/api/admin/chat/overview');
+    if (!res.ok) throw new Error(res.statusText);
+    const data = await res.json();
+    const pairs = data.dm_pairs || [];
+    if (!pairs.length) {
+      el.innerHTML = '<div class="text-xs text-surface-400 italic text-center py-8">ไม่มีข้อความ DM</div>';
+      return;
+    }
+    el.innerHTML = `
     <div class="flex flex-col gap-1 mb-2">
       ${pairs.map(p => `<button onclick="adminChatLoadDm(${JSON.stringify(p.user1)},${JSON.stringify(p.user2)})" class="flex items-center justify-between px-3 py-2 text-xs font-bold bg-surface-100 dark:bg-surface-800 hover:bg-brand-50 dark:hover:bg-brand-900/30 hover:text-brand-600 rounded-lg border border-surface-200 dark:border-surface-700 transition-colors text-left">
         <span>${escHtml(p.user1)} ↔ ${escHtml(p.user2)}</span>
@@ -10333,16 +10314,16 @@ async function adminChatLoadDmPairs() {
 async function adminChatLoadDm(u1, u2) {
   adminChatState.selectedDm = { user1: u1, user2: u2 };
   try {
-  const res = await fetch(`/api/admin/chat/dm?user1=${encodeURIComponent(u1)}&user2=${encodeURIComponent(u2)}`);
-  if (!res.ok) throw new Error(res.statusText);
-  const data = await res.json();
-  adminChatState.messages = data.messages || [];
-  const el = document.getElementById('adminDmMsgs');
-  if (el) {
-    el.innerHTML = '';
-    renderAdminMsgList(el, adminChatState.messages, 'dm');
-  }
-  updateAdminMsgCount();
+    const res = await fetch(`/api/admin/chat/dm?user1=${encodeURIComponent(u1)}&user2=${encodeURIComponent(u2)}`);
+    if (!res.ok) throw new Error(res.statusText);
+    const data = await res.json();
+    adminChatState.messages = data.messages || [];
+    const el = document.getElementById('adminDmMsgs');
+    if (el) {
+      el.innerHTML = '';
+      renderAdminMsgList(el, adminChatState.messages, 'dm');
+    }
+    updateAdminMsgCount();
   } catch (e) {
     const el2 = document.getElementById('adminDmMsgs');
     if (el2) el2.innerHTML = '<div class="text-xs text-red-400">โหลดข้อมูลไม่สำเร็จ</div>';
@@ -10517,7 +10498,7 @@ function switchOrgTab(tab) {
     if (btn) {
       btn.className = active ? activeClass : inactiveClass;
       if (active) {
-        try { btn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }); } catch(e) {}
+        try { btn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }); } catch (e) { }
       }
     }
     if (content) content.classList.toggle('hidden', !active);
@@ -10811,7 +10792,7 @@ async function loadCustomCategoriesAndRules() {
       }
     }
     if (typeof lucide !== 'undefined') lucide.createIcons();
-  } catch(e) {
+  } catch (e) {
     console.error('Failed to load categories/rules', e);
   }
 }
@@ -10825,7 +10806,7 @@ async function addCustomCategoryBtn() {
   try {
     const res = await fetch('/api/categories', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ category_name: name, account_code: code })
     });
     const data = await res.json();
@@ -10837,7 +10818,7 @@ async function addCustomCategoryBtn() {
     } else {
       if (typeof showToast === 'function') showToast(data.error || 'เกิดข้อผิดพลาด', 'error');
     }
-  } catch(e) { console.error(e); }
+  } catch (e) { console.error(e); }
 }
 
 async function deleteCustomCategoryBtn(id) {
@@ -10849,7 +10830,7 @@ async function deleteCustomCategoryBtn(id) {
       if (typeof showToast === 'function') showToast('ลบหมวดหมู่สำเร็จ', 'success');
       loadCustomCategoriesAndRules();
     }
-  } catch(e) {}
+  } catch (e) { }
 }
 
 async function addAIRuleBtn() {
@@ -10861,7 +10842,7 @@ async function addAIRuleBtn() {
   try {
     const res = await fetch('/api/category-rules', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ keyword: kw, category_name: cat })
     });
     const data = await res.json();
@@ -10873,7 +10854,7 @@ async function addAIRuleBtn() {
     } else {
       if (typeof showToast === 'function') showToast(data.error || 'เกิดข้อผิดพลาด', 'error');
     }
-  } catch(e) { console.error(e); }
+  } catch (e) { console.error(e); }
 }
 
 async function deleteAIRuleBtn(id) {
@@ -10885,7 +10866,7 @@ async function deleteAIRuleBtn(id) {
       if (typeof showToast === 'function') showToast('ลบกฎ AI สำเร็จ', 'success');
       loadCustomCategoriesAndRules();
     }
-  } catch(e) {}
+  } catch (e) { }
 }
 
 window.loadCustomCategoriesAndRules = loadCustomCategoriesAndRules;
@@ -10924,13 +10905,13 @@ async function createBatchPaymentVoucher() {
   checkedBoxes.forEach(cb => {
     try {
       items.push(JSON.parse(cb.getAttribute('data-item')));
-    } catch(e){}
+    } catch (e) { }
   });
 
   try {
     const res = await fetch('/api/dashboard/create-payment-voucher', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ items: items })
     });
     const data = await res.json();
@@ -10940,7 +10921,7 @@ async function createBatchPaymentVoucher() {
     } else {
       if (typeof showToast === 'function') showToast(data.error || 'เกิดข้อผิดพลาดในการสร้างใบสำคัญจ่าย', 'error');
     }
-  } catch(e) {
+  } catch (e) {
     if (typeof showToast === 'function') showToast('เกิดข้อผิดพลาดในการเชื่อมต่อระบบ', 'error');
   }
 }
@@ -11212,7 +11193,7 @@ function getOrgLogUserAvatar(username) {
 
 function formatOrgLogTime(timeStr) {
   if (!timeStr) return { dateKey: 'ไม่ระบุวันที่', displayTime: '', dateHeader: 'ไม่ระบุวันที่', fullTime: '' };
-  
+
   const parts = timeStr.trim().split(' ');
   const datePart = parts[0] || '';
   const timePart = parts[1] || '';
@@ -11237,7 +11218,7 @@ function formatOrgLogTime(timeStr) {
         dateHeader = `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
       }
     }
-  } catch (e) {}
+  } catch (e) { }
 
   return { dateKey: datePart, displayTime, dateHeader, fullTime: timeStr };
 }
@@ -11343,11 +11324,11 @@ async function loadOrgBusinessProfile() {
     const data = await apiFetch('/api/org/profile');
     if (data.ok && data.profile) {
       const p = data.profile;
-      
+
       // Select fields
       if ($('biz_type')) $('biz_type').value = p.business_type || 'บริษัทจำกัด';
       if ($('biz_province')) $('biz_province').value = p.province || '';
-      
+
       // Text inputs
       if ($('biz_name_th')) $('biz_name_th').value = p.business_name_th || '';
       if ($('biz_name_en')) $('biz_name_en').value = p.business_name_en || '';
@@ -11357,7 +11338,7 @@ async function loadOrgBusinessProfile() {
       if ($('biz_district')) $('biz_district').value = p.district || '';
       if ($('biz_zipcode')) $('biz_zipcode').value = p.zipcode || '';
       if ($('biz_phone')) $('biz_phone').value = p.phone || '';
-      
+
       // Logo and Signature fields
       if (p.logo_url) {
         if ($('biz_logo_url')) $('biz_logo_url').value = p.logo_url;
@@ -11370,7 +11351,7 @@ async function loadOrgBusinessProfile() {
       } else {
         resetOrgLogoUI();
       }
-      
+
       if (p.signature_url) {
         if ($('biz_signature_url')) $('biz_signature_url').value = p.signature_url;
         if ($('org_sig_preview')) {
@@ -11382,14 +11363,14 @@ async function loadOrgBusinessProfile() {
       } else {
         resetOrgSigUI();
       }
-      
+
       // Radio inputs
       const vatVal = p.vat_status || 'จด VAT แล้ว';
       const vatRadios = document.getElementsByName('vat_status');
       for (let r of vatRadios) {
         r.checked = (r.value === vatVal);
       }
-      
+
       const branchVal = p.branch_type || 'ไม่มี';
       const branchRadios = document.getElementsByName('branch_type');
       for (let r of branchRadios) {
@@ -11406,24 +11387,24 @@ async function saveOrgBusinessProfile() {
   const business_type = $('biz_type')?.value;
   const business_name_th = $('biz_name_th')?.value;
   const phone = $('biz_phone')?.value;
-  
+
   if (!business_type || !business_name_th || !phone) {
     toast('กรุณากรอกข้อมูลในช่องที่จำเป็น (*) ให้ครบถ้วน', 'error');
     return;
   }
-  
+
   let vat_status = 'จด VAT แล้ว';
   const vatRadios = document.getElementsByName('vat_status');
   for (let r of vatRadios) {
     if (r.checked) vat_status = r.value;
   }
-  
+
   let branch_type = 'ไม่มี';
   const branchRadios = document.getElementsByName('branch_type');
   for (let r of branchRadios) {
     if (r.checked) branch_type = r.value;
   }
-  
+
   const payload = {
     business_type,
     vat_status,
@@ -11440,7 +11421,7 @@ async function saveOrgBusinessProfile() {
     logo_url: $('biz_logo_url')?.value || '',
     signature_url: $('biz_signature_url')?.value || ''
   };
-  
+
   try {
     const data = await apiFetch('/api/org/profile', {
       method: 'POST',
@@ -11611,9 +11592,9 @@ function renderOrgMembers(members, canManage) {
     const avatarFallback = (m.display_name || m.username).charAt(0).toUpperCase();
     const avatarHtml = m.avatar_url
       ? `<img src="${m.avatar_url}" class="w-9 h-9 rounded-xl object-cover flex-shrink-0" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
-        + `<div class="w-9 h-9 rounded-xl bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 items-center justify-center text-surface-700 dark:text-surface-200 text-xs font-bold flex-shrink-0" style="display:none">${avatarFallback}</div>`
+      + `<div class="w-9 h-9 rounded-xl bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 items-center justify-center text-surface-700 dark:text-surface-200 text-xs font-bold flex-shrink-0" style="display:none">${avatarFallback}</div>`
       : `<div class="w-9 h-9 rounded-xl bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 flex items-center justify-center text-surface-700 dark:text-surface-200 text-xs font-bold flex-shrink-0">${avatarFallback}</div>`;
-    
+
     // Primary Role Badge (Consistent, clean, non-shouty)
     let roleBadge = `<span class="inline-flex items-center px-2 py-0.5 text-[10px] font-medium text-surface-500 dark:text-surface-400 bg-surface-100 dark:bg-surface-800 border border-surface-200/80 dark:border-surface-700/80 rounded-md">Member</span>`;
     if (m.is_owner) {
@@ -11623,7 +11604,7 @@ function renderOrgMembers(members, canManage) {
     }
 
     const statusDot = `<span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-white dark:ring-surface-900 ${isActive ? 'bg-emerald-500' : 'bg-surface-400'}" title="${isActive ? 'ใช้งานอยู่' : 'ปิดใช้งาน'}"></span>`;
-    
+
     // Sub-permissions: Muted, cohesive tags (No rainbow neon confetti!)
     const activePerms = [];
     if (m.can_view_financial) activePerms.push('รายจ่าย');
@@ -11636,7 +11617,7 @@ function renderOrgMembers(members, canManage) {
     if (activePerms.length === 5) {
       permsHtml = `<span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium text-surface-600 dark:text-surface-300 bg-surface-100 dark:bg-surface-800 border border-surface-200/80 dark:border-surface-700/80 rounded-md" title="มีสิทธิ์ครบทุกระบบ: รายจ่าย, อนุมัติลา, คลังความรู้, LINE Broadcast, PEAK"><i data-lucide="shield-check" class="w-3 h-3 text-emerald-500"></i>ทุกสิทธิ์เข้าถึง</span>`;
     } else if (activePerms.length > 0) {
-      permsHtml = activePerms.map(p => 
+      permsHtml = activePerms.map(p =>
         `<span class="inline-flex items-center px-2 py-0.5 text-[10px] font-medium text-surface-600 dark:text-surface-300 bg-surface-100/80 dark:bg-surface-800/80 border border-surface-200/60 dark:border-surface-700/60 rounded-md">${p}</span>`
       ).join('');
     }
@@ -11843,7 +11824,7 @@ async function confirmTransferOrgOwnership() {
   if (!_orgEditingUsername) return;
   const m = _orgMembersCache.find(x => x.username === _orgEditingUsername);
   if (!m) return;
-  
+
   const confirmed = confirm(
     `⚠️ ยืนยันการโอนสิทธิ์ความเป็นเจ้าขององค์กร (Owner)\n\n` +
     `คุณกำลังจะโอนสิทธิ์ Owner ให้กับ "${m.display_name || m.username}" (@${m.username})\n` +
@@ -11944,7 +11925,7 @@ async function loadMySettings(force = false) {
       _mySettingsCache = data;
       _renderMySettings(data);
     }
-  } catch (e) {}
+  } catch (e) { }
   finally { if (loading) loading.classList.add('hidden'); }
 }
 
@@ -11974,9 +11955,10 @@ function _renderMySettings(d) {
   // Role badge
   const roleEl = $('myRoleBadge');
   if (roleEl) {
-    const isAdmin = d.role === 'admin';
+    const isSuper = d.role === 'superadmin';
+    const isAdmin = d.role === 'admin' || isSuper;
     roleEl.innerHTML = isAdmin
-      ? `<span class="admin-role-badge admin">Admin</span>`
+      ? `<span class="admin-role-badge admin">${isSuper ? 'Super Admin' : 'Admin'}</span>`
       : `<span class="admin-role-badge user">User</span>`;
   }
   // Status badge
@@ -12192,12 +12174,12 @@ async function submitDirectLineBind() {
     toast('กรุณาระบุรหัสเชื่อมต่อ (Token) หรือ LINE User ID ค่ะ', 'warning');
     return;
   }
-  
+
   const payload = val.startsWith('U') && val.length === 33 ? { line_user_id: val } : { token: val };
   btn.disabled = true;
   btn.innerHTML = '<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> กำลังเชื่อมต่อ...';
   if (window.lucide) lucide.createIcons();
-  
+
   try {
     const res = await fetch('/api/user/bind-line-direct', {
       method: 'POST',
@@ -12280,7 +12262,7 @@ let currentInviteTab = 'existing';
 
 function setInviteTab(tabName) {
   currentInviteTab = tabName;
-  
+
   // Update Tab buttons visual states
   ['existing', 'precreate', 'gmail', 'link_qr'].forEach(t => {
     const btn = $('inviteTabBtn_' + t);
@@ -12342,7 +12324,7 @@ function toggleInvitePwVisibility() {
 function showInviteMemberModal(defaultTab = 'existing') {
   const modal = $('inviteMemberModal');
   if (!modal) return;
-  
+
   // Reset values
   $('inviteUsernameInput').value = '';
   $('invitePrecreateUsernameInput').value = '';
@@ -12351,17 +12333,17 @@ function showInviteMemberModal(defaultTab = 'existing') {
   $('invitePrecreateDisplayNameInput').value = '';
   $('inviteEmailInput').value = '';
   $('inviteRoleSelect').value = 'member';
-  
+
   $('invitePrecreatePwEyeIcon')?.setAttribute('data-lucide', 'eye');
-  
+
   // Reset form / success views
   $('inviteFormWrapper')?.classList.remove('hidden');
   $('inviteSuccessView')?.classList.add('hidden');
-  
+
   setInviteTab(defaultTab);
   modal.classList.remove('hidden');
   initIcons();
-  
+
   if (defaultTab === 'existing') {
     setTimeout(() => $('inviteUsernameInput')?.focus(), 50);
   } else if (defaultTab === 'link_qr') {
@@ -12373,7 +12355,7 @@ async function generateOrgInviteToken(notify = true) {
   const expirySelect = $('inviteTokenExpiry');
   const deptInput = $('inviteTokenDept');
   const roleSelect = $('inviteRoleSelect');
-  
+
   const payload = {
     role: roleSelect ? roleSelect.value : 'member',
     department: deptInput ? deptInput.value.trim() : '',
@@ -12390,9 +12372,9 @@ async function generateOrgInviteToken(notify = true) {
       const qrCanvas = $('inviteQrCanvas');
       const qrImg = $('inviteQrImg');
       const linkInput = $('inviteQrLinkInput');
-      
+
       if (linkInput) linkInput.value = res.invite_url;
-      
+
       // Render QR code: prioritize local QRCode canvas, fallback to image API
       if (qrCanvas && typeof QRCode !== 'undefined') {
         qrCanvas.innerHTML = '';
@@ -12409,7 +12391,7 @@ async function generateOrgInviteToken(notify = true) {
         qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(res.invite_url)}`;
         qrImg.classList.remove('hidden');
       }
-      
+
       if (qrResult) qrResult.classList.remove('hidden');
       if (notify) toast('สร้างลิงก์เชิญ & QR Code สำเร็จ!', 'success');
       initIcons();
@@ -12451,7 +12433,7 @@ function copyInviteSuccessLink() {
   input.select();
   input.setSelectionRange(0, 99999);
   navigator.clipboard.writeText(input.value);
-  
+
   const btn = $('inviteCopyBtn');
   if (btn) {
     btn.innerHTML = '<i data-lucide="check" class="w-3.5 h-3.5"></i> คัดลอกสำเร็จแล้ว!';
@@ -12469,7 +12451,7 @@ async function submitInviteMember() {
   const role = $('inviteRoleSelect')?.value || 'member';
   const errEl = $('inviteError');
   const btn = $('inviteSubmitBtn');
-  
+
   let endpoint = '/api/org/invite';
   let payload = { role };
   let successMsg = 'เชิญสมาชิกสำเร็จ';
@@ -12488,7 +12470,7 @@ async function submitInviteMember() {
     const username = $('invitePrecreateUsernameInput')?.value.trim();
     const password = $('invitePrecreatePasswordInput')?.value.trim();
     const displayName = $('invitePrecreateDisplayNameInput')?.value.trim();
-    
+
     if (!username) {
       errEl.textContent = 'กรุณากรอกชื่อผู้ใช้ใหม่';
       errEl.classList.remove('hidden');
@@ -12499,11 +12481,11 @@ async function submitInviteMember() {
       errEl.classList.remove('hidden');
       return;
     }
-    
+
     payload.username = username;
     payload.password = password;
     if (displayName) payload.display_name = displayName;
-    
+
     // We send this to /api/org/members which supports on-the-fly user creation
     endpoint = '/api/org/members';
     successMsg = `สร้างบัญชีผู้ใช้ ${username} และแอดเข้าองค์กรสำเร็จ`;
@@ -12533,13 +12515,13 @@ async function submitInviteMember() {
     if (data.ok) {
       toast(data.message || successMsg, 'success');
       loadOrgMembers();
-      
+
       const successView = $('inviteSuccessView');
       const formWrapper = $('inviteFormWrapper');
       if (successView && formWrapper) {
         $('inviteSuccessMessage').textContent = data.message || successMsg;
         $('inviteSuccessLinkInput').value = window.location.origin;
-        
+
         formWrapper.classList.add('hidden');
         successView.classList.remove('hidden');
         initIcons();
@@ -12657,7 +12639,7 @@ function openEditUserModal(username) {
   $('editUserCanEditKB').checked = !!user.can_edit_kb;
   $('editUserCanDeleteKB').checked = !!user.can_delete_kb;
   if ($('editUserCanViewFinancial')) $('editUserCanViewFinancial').checked = !!user.can_view_financial;
-  
+
   const linePerms = (user.line_permissions || "report,links,reconcile,search,folder,leave").split(",");
   if ($('linePermReport')) $('linePermReport').checked = linePerms.includes('report');
   if ($('linePermLinks')) $('linePermLinks').checked = linePerms.includes('links');
@@ -12711,7 +12693,7 @@ async function unbindUserLine() {
   if (!await showConfirm('ยกเลิกการผูกบัญชี LINE สมาชิก', `คุณแน่ใจหรือไม่ที่จะยกเลิกการผูกบัญชี LINE สำหรับผู้ใช้ @${currentEditingUsername}?`, { type: 'danger', confirmText: 'ยกเลิกการผูกบัญชี' })) {
     return;
   }
-  
+
   try {
     const res = await fetch(`/api/admin/users/${currentEditingUsername}/unbind-line`, {
       method: 'POST',
@@ -12720,7 +12702,7 @@ async function unbindUserLine() {
     const data = await res.json();
     if (data.ok) {
       await showAlert('สำเร็จ', 'ยกเลิกการผูกบัญชี LINE เรียบร้อยแล้วค่ะพี่!', { type: 'success' });
-      
+
       // Update UI in modal
       const lineStatusEl = $('editUserLineStatus');
       const btnUnbindLine = $('btnUnbindLine');
@@ -12732,13 +12714,13 @@ async function unbindUserLine() {
       if (btnUnbindLine) {
         btnUnbindLine.classList.add('hidden');
       }
-      
+
       // Update cache
       const user = adminUsersListCache.find(u => u.username === currentEditingUsername);
       if (user) {
         user.line_user_id = null;
       }
-      
+
       // Refresh list
       renderAdminUserList(adminUsersListCache);
     } else {
@@ -13423,13 +13405,13 @@ async function renderLinkPreview(url, messageId) {
     if (data.ok) {
       const container = $(`preview-${messageId}`);
       if (!container) return;
-      
+
       // Ensure the parent container expands to fit the preview full-width
       const parent = container.closest('.chat-bubble-container');
       if (parent) {
-          parent.style.alignItems = 'stretch';
-          // Adjust width to match bubble or requested max
-          container.style.width = '100%';
+        parent.style.alignItems = 'stretch';
+        // Adjust width to match bubble or requested max
+        container.style.width = '100%';
       }
 
       container.innerHTML = `
@@ -13443,7 +13425,7 @@ async function renderLinkPreview(url, messageId) {
           </div>
         </a>
       `;
-      initIcons(); 
+      initIcons();
     }
   } catch (e) {
     console.error('Preview error:', e);
@@ -13527,17 +13509,17 @@ async function analyzeVizData() {
   const headers = state.currentViewHeaders || Object.keys(dataSnippet[0]);
 
   const rtcConfig = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' },
-    { urls: 'stun:stun.services.mozilla.com' },
-    { urls: 'stun:stun.anyfirewall.com:3478' },
-    { urls: 'stun:stun.stunprotocol.org' }
-  ]
-};
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' },
+      { urls: 'stun:stun.services.mozilla.com' },
+      { urls: 'stun:stun.anyfirewall.com:3478' },
+      { urls: 'stun:stun.stunprotocol.org' }
+    ]
+  };
   const prompt = `ในฐานะนักวิเคราะห์ข้อมูลอัจฉริยะ (Data Scientist) ช่วยวิเคราะห์ไฟล์ข้อมูลนี้ที่มีหัวข้อดังนี้: ${headers.join(', ')}
 และนี่คือตัวอย่างข้อมูลบางส่วน:
 ${JSON.stringify(dataSnippet)}
@@ -13616,11 +13598,11 @@ async function renderHomeDashboard() {
 async function scanFileWithAI(fileId) {
   toast('กำลังส่งคำสั่งสแกนไฟล์ไปยัง AI...', 'info');
   showView('chat');
-  
+
   // Set tab to AI
   const tabBtn = document.querySelector('.chat-tab-btn[data-tab="ai"]');
   if (tabBtn) tabBtn.click();
-  
+
   const msg = `ช่วยสรุปเนื้อหาและดึงข้อมูลสำคัญจากไฟล์ ID: ${fileId} ออกมาที สรุปเป็นหัวข้อสั้นๆ เข้าใจง่าย`;
   setTimeout(() => {
     sendMessage(msg);
@@ -13964,7 +13946,7 @@ async function renderLinkPreview(url, messageId) {
           </div>
         </a>
       `;
-      initIcons(); 
+      initIcons();
 
 
     }
@@ -14067,7 +14049,7 @@ async function loadKanbanBoard() {
   try {
     // Ensure users are loaded for assignee rendering
     await fetchUsersForKanban();
-    
+
     const data = await apiFetch('/api/kanban/board');
     if (data.ok) {
       kanbanState.columns = data.columns;
@@ -14152,10 +14134,10 @@ function buildKanbanCardHTML(card) {
     medium: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
     low: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
   };
-  const priorityLabel = { 
-    high: 'สูง', 
-    medium: 'กลาง', 
-    low: 'ต่ำ' 
+  const priorityLabel = {
+    high: 'สูง',
+    medium: 'กลาง',
+    low: 'ต่ำ'
   };
   const pLabel = priorityLabel[card.priority] || 'กลาง';
   const pColor = priorityColors[card.priority] || priorityColors.medium;
@@ -14181,9 +14163,9 @@ function buildKanbanCardHTML(card) {
         `).join('')}
       </div>
       <div class="text-[9px] font-bold text-surface-500 dark:text-surface-400 leading-tight">
-        ${assigneeDetails.length <= 3 
-          ? assigneeDetails.map(d => escHtml(d.name)).join(', ') 
-          : `${assigneeDetails.slice(0, 2).map(d => escHtml(d.name)).join(', ')} และอีก ${assigneeDetails.length - 2} คน`}
+        ${assigneeDetails.length <= 3
+      ? assigneeDetails.map(d => escHtml(d.name)).join(', ')
+      : `${assigneeDetails.slice(0, 2).map(d => escHtml(d.name)).join(', ')} และอีก ${assigneeDetails.length - 2} คน`}
       </div>
     </div>` : '';
 
@@ -14249,7 +14231,7 @@ function initKanbanSortable() {
   const colLists = board.querySelectorAll('.kanban-cards-list');
   colLists.forEach(list => {
     if (list._sortable) {
-      try { list._sortable.destroy(); } catch (e) {}
+      try { list._sortable.destroy(); } catch (e) { }
     }
     list._sortable = new Sortable(list, {
       group: 'kanban-board-cards',
@@ -14263,7 +14245,7 @@ function initKanbanSortable() {
       fallbackTolerance: 2,
       emptyInsertThreshold: 35,
       direction: 'vertical',
-      onEnd: async function(evt) {
+      onEnd: async function (evt) {
         const cardEl = evt.item;
         const targetColList = evt.to;
         const sourceColList = evt.from;
@@ -14508,8 +14490,8 @@ function showKanbanCardModal(card = null) {
             <input type="text" id="kUserSearch" placeholder="ค้นหาชื่อ..." oninput="filterKanbanUsers(this.value)" class="w-full bg-surface-50 dark:bg-surface-800 rounded-xl px-4 py-2 text-xs border border-surface-200 dark:border-surface-700 focus:ring-2 focus:ring-brand-600 outline-none mb-2">
             <div id="kUserList" class="user-selector-grid grid grid-cols-2 gap-2 max-h-40 overflow-y-auto p-2 border border-surface-200 dark:border-surface-800 rounded-2xl bg-surface-50/50 dark:bg-surface-900/50 custom-scrollbar">
               ${kanbanState.users.map(u => {
-                const isSelected = card && (card.assignee || '').split(',').map(s => s.trim()).includes(u.username);
-                return `
+    const isSelected = card && (card.assignee || '').split(',').map(s => s.trim()).includes(u.username);
+    return `
                   <label class="user-select-item flex items-center gap-2 p-2 rounded-xl border border-transparent hover:bg-white dark:hover:bg-surface-800 hover:border-surface-200 dark:hover:border-surface-700 cursor-pointer transition-all ${isSelected ? 'bg-brand-50/50 dark:bg-brand-900/20 border-brand-200 dark:border-brand-800' : ''}" data-username="${u.username.toLowerCase()}" data-display="${u.display_name.toLowerCase()}">
                     <input type="checkbox" name="assignee" value="${u.username}" ${isSelected ? 'checked' : ''} class="w-3.5 h-3.5 rounded border-surface-300 text-brand-600 focus:ring-brand-500">
                     <div class="flex items-center gap-1.5 min-w-0">
@@ -14520,7 +14502,7 @@ function showKanbanCardModal(card = null) {
                     </div>
                   </label>
                 `;
-              }).join('')}
+  }).join('')}
             </div>
           </div>
         </div>
@@ -14997,7 +14979,7 @@ function renderNotificationsList() {
 
   filtered.forEach(n => {
     let t = 0;
-    try { t = new Date(n.timestamp).getTime(); } catch(e){}
+    try { t = new Date(n.timestamp).getTime(); } catch (e) { }
     if (!t || isNaN(t)) t = 0;
 
     if (t >= startOfToday) {
@@ -15026,8 +15008,8 @@ function renderNotificationsList() {
     g.items.forEach(n => {
       const meta = getNotifMeta(n);
       const isUnread = !n.is_read;
-      const cardBg = isUnread 
-        ? 'bg-white dark:bg-surface-900 border-surface-200 dark:border-surface-700/80 shadow-sm' 
+      const cardBg = isUnread
+        ? 'bg-white dark:bg-surface-900 border-surface-200 dark:border-surface-700/80 shadow-sm'
         : 'bg-surface-50/70 dark:bg-surface-950/40 border-surface-200/50 dark:border-surface-800/50 hover:bg-white dark:hover:bg-surface-900';
 
       html += `
@@ -15235,17 +15217,17 @@ window.updateVoiceProgress = function (audio) {
 
   if (!audio.duration) return;
   const percent = (audio.currentTime / audio.duration) * 100;
-  
+
   const activeCount = Math.floor((percent / 100) * bars.length);
   bars.forEach((bar, idx) => {
     if (idx < activeCount) {
-        bar.style.backgroundColor = isMe ? '#ffffff' : '#2563eb';
-        bar.style.opacity = '1';
-        bar.style.boxShadow = isMe ? '0 0 4px rgba(255,255,255,0.3)' : '0 0 4px rgba(37,99,235,0.3)';
+      bar.style.backgroundColor = isMe ? '#ffffff' : '#2563eb';
+      bar.style.opacity = '1';
+      bar.style.boxShadow = isMe ? '0 0 4px rgba(255,255,255,0.3)' : '0 0 4px rgba(37,99,235,0.3)';
     } else {
-        bar.style.backgroundColor = ''; 
-        bar.style.opacity = '';
-        bar.style.boxShadow = '';
+      bar.style.backgroundColor = '';
+      bar.style.opacity = '';
+      bar.style.boxShadow = '';
     }
   });
 
@@ -15258,7 +15240,7 @@ window.resetVoicePlayer = function (audio) {
   const container = audio.closest('.audio-player-bubble');
   const bars = container.querySelectorAll('.waveform-bar');
   const btnIcon = container.querySelector('.voice-play-btn svg') || container.querySelector('.voice-play-btn i');
-  
+
   bars.forEach(bar => {
     bar.style.backgroundColor = '';
     bar.style.opacity = '';
@@ -15282,7 +15264,7 @@ window.seekVoice = function (e, container) {
 // --- REAL WAVEFORM ANALYSIS ---
 async function analyzeAudioWaveform(url) {
   if (state.analyzedWaveforms.has(url)) return;
-  
+
   // Placeholder to prevent duplicate requests
   state.analyzedWaveforms.set(url, Array(24).fill(20));
 
@@ -15295,7 +15277,7 @@ async function analyzeAudioWaveform(url) {
     const samples = 24;
     const blockSize = Math.floor(raw.length / samples);
     const peaks = [];
-    
+
     for (let i = 0; i < samples; i++) {
       let start = blockSize * i;
       let sum = 0;
@@ -15304,12 +15286,12 @@ async function analyzeAudioWaveform(url) {
       }
       peaks.push(sum / blockSize);
     }
-    
+
     const max = Math.max(...peaks);
     const normalized = peaks.map(p => Math.max(15, Math.floor((p / max) * 100)));
-    
+
     state.analyzedWaveforms.set(url, normalized);
-    
+
     // Update all matching UI elements
     document.querySelectorAll(`.voice-waveform-container[data-audio-url="${url}"]`).forEach(container => {
       const bars = container.querySelectorAll('.waveform-bar');
@@ -15337,7 +15319,7 @@ window.toggleRecording = async function () {
 async function startVoiceRecording() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    
+
     // Setup Web Audio for Visualizer
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
     const source = audioContext.createMediaStreamSource(stream);
@@ -15381,21 +15363,21 @@ function drawRecordingWave() {
   const canvas = document.getElementById('recordingVisualizer');
   if (!canvas || !analyser) return;
   const ctx = canvas.getContext('2d');
-  
+
   const draw = () => {
     if (!mediaRecorder || mediaRecorder.state !== 'recording') return;
     animationId = requestAnimationFrame(draw);
-    
+
     analyser.getByteFrequencyData(dataArray);
-    
+
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
+
     const barWidth = 3;
     const gap = 2;
     const barCount = Math.floor(canvas.width / (barWidth + gap));
-    
+
     ctx.fillStyle = '#2563eb'; // Brand Color
-    
+
     for (let i = 0; i < barCount; i++) {
       // Use middle frequencies for a more "voice-like" feel
       const freqIndex = Math.floor(i * (dataArray.length / barCount));
@@ -15403,7 +15385,7 @@ function drawRecordingWave() {
       const percent = val / 255;
       const height = Math.max(2, canvas.height * percent);
       const y = (canvas.height - height) / 2;
-      
+
       // Draw rounded rectangle
       ctx.beginPath();
       ctx.roundRect(i * (barWidth + gap), y, barWidth, height, 1.5);
@@ -15513,7 +15495,7 @@ let startX = 0, startY = 0, lastX = 0, lastY = 0;
 function wbIsDark() { return document.documentElement.classList.contains('dark') || (state.theme === 'auto' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches); }
 let wbColor = 'auto'; // 'auto' = สีหมึกที่ตัดกับพื้นตามธีม (ดำบนพื้นสว่าง / ขาวบนพื้นมืด)
 let wbBrushSize = 3;
-let wbTool = 'pencil'; 
+let wbTool = 'pencil';
 let wbCursors = {}; // { username: { x, y, color } }
 
 function initWhiteboard() {
@@ -15522,11 +15504,11 @@ function initWhiteboard() {
     if (socket) socket.emit('join_whiteboard');
     return;
   }
-  
+
   wbCanvas = $('whiteboardCanvas');
   wbOverlay = $('whiteboardOverlay');
   if (!wbCanvas || !wbOverlay) return;
-  
+
   wbCtx = wbCanvas.getContext('2d');
   wbOverlayCtx = wbOverlay.getContext('2d');
 
@@ -15549,28 +15531,28 @@ function initWhiteboard() {
 
   const onMove = (e) => {
     const [x, y] = getPos(e);
-    
+
     // Broadcast cursor position (throttled + normalized)
     if (socket && (!window._lastCursorSync || Date.now() - window._lastCursorSync > 50)) {
-      socket.emit('whiteboard_cursor', { 
-        x: x / wbCanvas.width, 
-        y: y / wbCanvas.height, 
-        color: wbColor 
+      socket.emit('whiteboard_cursor', {
+        x: x / wbCanvas.width,
+        y: y / wbCanvas.height,
+        color: wbColor
       });
       window._lastCursorSync = Date.now();
     }
 
     if (!isDrawing) return;
     const color = wbTool === 'eraser' ? (wbIsDark() ? '#0a0a0a' : '#ffffff') : wbColor;
-    
+
     if (wbTool === 'pencil' || wbTool === 'eraser') {
       renderShape(wbCtx, 'line', lastX, lastY, x, y, color, wbBrushSize);
       if (socket) {
-        socket.emit('draw', { 
-          type: 'line', 
-          x0: lastX / wbCanvas.width, y0: lastY / wbCanvas.height, 
-          x1: x / wbCanvas.width, y1: y / wbCanvas.height, 
-          color, size: wbBrushSize 
+        socket.emit('draw', {
+          type: 'line',
+          x0: lastX / wbCanvas.width, y0: lastY / wbCanvas.height,
+          x1: x / wbCanvas.width, y1: y / wbCanvas.height,
+          color, size: wbBrushSize
         });
       }
       [lastX, lastY] = [x, y];
@@ -15583,7 +15565,7 @@ function initWhiteboard() {
   const onUp = (e) => {
     if (!isDrawing) return;
     isDrawing = false;
-    
+
     const [x, y] = getPos(e);
 
     if (wbTool === 'text') {
@@ -15591,15 +15573,15 @@ function initWhiteboard() {
       if (text && text.trim() !== '') {
         renderShape(wbCtx, 'text', x, y, 0, 0, wbColor, wbBrushSize, text);
         if (socket) {
-          socket.emit('draw', { 
-            type: 'text', 
-            x0: x / wbCanvas.width, y0: y / wbCanvas.height, 
-            x1: 0, y1: 0, 
-            color: wbColor, size: wbBrushSize, text: text 
+          socket.emit('draw', {
+            type: 'text',
+            x0: x / wbCanvas.width, y0: y / wbCanvas.height,
+            x1: 0, y1: 0,
+            color: wbColor, size: wbBrushSize, text: text
           });
         }
       }
-      drawCursors(); 
+      drawCursors();
       return;
     }
 
@@ -15607,11 +15589,11 @@ function initWhiteboard() {
       renderShape(wbCtx, wbTool, startX, startY, x, y, wbColor, wbBrushSize);
       drawCursors(); // Clear preview and redraw cursors
       if (socket) {
-        socket.emit('draw', { 
-          type: wbTool, 
-          x0: startX / wbCanvas.width, y0: startY / wbCanvas.height, 
-          x1: x / wbCanvas.width, y1: y / wbCanvas.height, 
-          color: wbColor, size: wbBrushSize 
+        socket.emit('draw', {
+          type: wbTool,
+          x0: startX / wbCanvas.width, y0: startY / wbCanvas.height,
+          x1: x / wbCanvas.width, y1: y / wbCanvas.height,
+          color: wbColor, size: wbBrushSize
         });
       }
     }
@@ -15620,9 +15602,9 @@ function initWhiteboard() {
   wbOverlay.addEventListener('mousedown', onDown);
   wbOverlay.addEventListener('mousemove', onMove);
   wbOverlay.addEventListener('mouseup', onUp);
-  wbOverlay.addEventListener('mouseout', () => { 
-    isDrawing = false; 
-    if(wbOverlayCtx) wbOverlayCtx.clearRect(0, 0, wbOverlay.width, wbOverlay.height); 
+  wbOverlay.addEventListener('mouseout', () => {
+    isDrawing = false;
+    if (wbOverlayCtx) wbOverlayCtx.clearRect(0, 0, wbOverlay.width, wbOverlay.height);
   });
 
   wbOverlay.addEventListener('touchstart', (e) => { e.preventDefault(); onDown(e.touches[0]); }, { passive: false });
@@ -15639,25 +15621,25 @@ function initWhiteboard() {
 
   if (socket) {
     socket.emit('join_whiteboard');
-    
+
     socket.off('wb_cursor_update');
     socket.on('wb_cursor_update', (data) => {
       if (data.username === state.user) return;
-      wbCursors[data.username] = { 
-        x: data.x, 
-        y: data.y, 
-        color: data.color, 
-        lastUpdate: Date.now() 
+      wbCursors[data.username] = {
+        x: data.x,
+        y: data.y,
+        color: data.color,
+        lastUpdate: Date.now()
       };
       drawCursors();
     });
 
-    socket.off('draw_update'); 
+    socket.off('draw_update');
     socket.on('draw_update', (data) => {
       console.log("Remote draw:", data);
-      renderShape(wbCtx, data.type, 
-        data.x0 * wbCanvas.width, data.y0 * wbCanvas.height, 
-        data.x1 * wbCanvas.width, data.y1 * wbCanvas.height, 
+      renderShape(wbCtx, data.type,
+        data.x0 * wbCanvas.width, data.y0 * wbCanvas.height,
+        data.x1 * wbCanvas.width, data.y1 * wbCanvas.height,
         data.color, data.size, data.text);
     });
     socket.off('whiteboard_cleared');
@@ -15669,7 +15651,7 @@ function initWhiteboard() {
 
   wbInitialized = true;
   lucide.createIcons();
-  
+
   // Cleanup old cursors
   setInterval(() => {
     const now = Date.now();
@@ -15687,17 +15669,17 @@ function initWhiteboard() {
 function drawCursors() {
   if (!wbOverlayCtx || !wbCanvas) return;
   wbOverlayCtx.clearRect(0, 0, wbOverlay.width, wbOverlay.height);
-  
+
   for (const user in wbCursors) {
     const c = wbCursors[user];
     const x = c.x * wbCanvas.width;
     const y = c.y * wbCanvas.height;
-    
+
     wbOverlayCtx.fillStyle = (c.color === 'auto' || c.color === '#000000') ? '#3b82f6' : c.color;
     wbOverlayCtx.beginPath();
     wbOverlayCtx.arc(x, y, 5, 0, Math.PI * 2);
     wbOverlayCtx.fill();
-    
+
     wbOverlayCtx.font = 'bold 12px sans-serif';
     wbOverlayCtx.shadowBlur = 4;
     wbOverlayCtx.shadowColor = 'rgba(0,0,0,0.5)';
@@ -15728,7 +15710,7 @@ function resizeWhiteboard() {
 }
 
 function renderShape(ctx, type, x0, y0, x1, y1, color, size, text = '') {
-  if(!ctx) return;
+  if (!ctx) return;
   // สี 'auto' (และดำเดิม #000000 จากไคลเอนต์รุ่นเก่า) → เลือกให้ตัดกับพื้นกระดานของธีมปัจจุบัน ไม่งั้นหมึกดำบนพื้นมืดจะมองไม่เห็น
   if (color === 'auto' || color === '#000000') color = wbIsDark() ? '#f8fafc' : '#0f172a';
   ctx.beginPath();
@@ -15748,7 +15730,7 @@ function renderShape(ctx, type, x0, y0, x1, y1, color, size, text = '') {
     const radius = Math.sqrt(Math.pow(x1 - x0, 2) + Math.pow(y1 - y0, 2));
     if (radius > 0) ctx.arc(x0, y0, radius, 0, 2 * Math.PI);
   } else if (type === 'text') {
-    const fontSize = Math.max(12, weight * 5); 
+    const fontSize = Math.max(12, weight * 5);
     ctx.font = `bold ${fontSize}px sans-serif`;
     ctx.textBaseline = 'top';
     ctx.fillText(text, x0, y0);
@@ -15756,7 +15738,7 @@ function renderShape(ctx, type, x0, y0, x1, y1, color, size, text = '') {
   }
   ctx.stroke();
   ctx.closePath();
-  
+
   // Redraw cursors if on overlay
   if (ctx === wbOverlayCtx) {
     for (const user in wbCursors) {
@@ -15788,13 +15770,13 @@ function setWhiteboardColor(color, el) {
   wbColor = color;
   if (wbTool === 'eraser') setWhiteboardTool('pencil');
   document.querySelectorAll('.wb-color-btn').forEach(btn => btn.classList.remove('ring-2', 'ring-brand-500'));
-  if(el) el.classList.add('ring-2', 'ring-brand-500');
+  if (el) el.classList.add('ring-2', 'ring-brand-500');
 }
 
 function clearWhiteboardLocal(broadcast = true) {
   if (!wbCanvas) return;
   wbCtx.clearRect(0, 0, wbCanvas.width, wbCanvas.height);
-  if(wbOverlayCtx) wbOverlayCtx.clearRect(0, 0, wbOverlay.width, wbOverlay.height);
+  if (wbOverlayCtx) wbOverlayCtx.clearRect(0, 0, wbOverlay.width, wbOverlay.height);
   if (broadcast && socket) {
     socket.emit('clear_whiteboard');
     toast('ล้างกระดานแล้ว', 'info');
@@ -15929,7 +15911,7 @@ function stopRingtone() {
       rtcState.ringtoneCtx.close();
       rtcState.ringtoneCtx = null;
     }
-  } catch (e) {}
+  } catch (e) { }
   rtcState.ringtoneNodes = [];
 }
 
@@ -16018,7 +16000,7 @@ async function createPC() {
   if (rtcState.pendingIceCandidates.length > 0) {
     console.log(`📥 Flushing ${rtcState.pendingIceCandidates.length} pending ICE candidates`);
     for (const candidate of rtcState.pendingIceCandidates) {
-      try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch(e) {}
+      try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch (e) { }
     }
     rtcState.pendingIceCandidates = [];
   }
@@ -16193,17 +16175,17 @@ async function acceptCall() {
   if (modal) modal.classList.add('hidden');
 
   // Audio unlock trick for browsers
-    const remoteAudio = document.getElementById('remoteAudio');
-    if (rtcState.ringtoneCtx && rtcState.ringtoneCtx.state === 'suspended') {
-      rtcState.ringtoneCtx.resume();
-    }
-    if (remoteAudio) {
-      remoteAudio.muted = false;
-      remoteAudio.play().catch(() => {
-        console.log("Waiting for user gesture to play audio...");
-        document.addEventListener('click', () => { remoteAudio.play(); }, { once: true });
-      }); 
-    }
+  const remoteAudio = document.getElementById('remoteAudio');
+  if (rtcState.ringtoneCtx && rtcState.ringtoneCtx.state === 'suspended') {
+    rtcState.ringtoneCtx.resume();
+  }
+  if (remoteAudio) {
+    remoteAudio.muted = false;
+    remoteAudio.play().catch(() => {
+      console.log("Waiting for user gesture to play audio...");
+      document.addEventListener('click', () => { remoteAudio.play(); }, { once: true });
+    });
+  }
   if (!rtcState.pendingOffer || !rtcState.remoteUser) {
     toast('ไม่พบข้อมูลสาย', 'error');
     return;
@@ -16237,7 +16219,7 @@ async function acceptCall() {
 
     // Flush pending ICE candidates
     for (const candidate of rtcState.pendingIceCandidates) {
-      try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch (e) {}
+      try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch (e) { }
     }
     rtcState.pendingIceCandidates = [];
 
@@ -16535,14 +16517,14 @@ function initWebRTCSignaling() {
 }
 
 // ─── Expose global functions ──────────────────────────────────
-window.initiateCall  = initiateCall;
-window.acceptCall    = acceptCall;
-window.rejectCall    = rejectCall;
-window.endCall       = endCall;
-window.toggleMic     = toggleMic;
-window.toggleCam     = toggleCam;
+window.initiateCall = initiateCall;
+window.acceptCall = acceptCall;
+window.rejectCall = rejectCall;
+window.endCall = endCall;
+window.toggleMic = toggleMic;
+window.toggleCam = toggleCam;
 window.toggleSpeaker = toggleSpeaker;
-window.shareScreen   = shareScreen;
+window.shareScreen = shareScreen;
 
 // ─── Wire up call buttons ─────────────────────────────────────
 if (voiceCallBtn) voiceCallBtn.addEventListener('click', () => initiateCall(false));
@@ -16553,7 +16535,7 @@ if (videoCallBtn) videoCallBtn.addEventListener('click', () => initiateCall(true
 (function waitForSocket() {
   const initSocketListeners = (s) => {
     initWebRTCSignaling();
-    
+
     // 🟢 Handle User Status Updates
     s.on('user_status_updated', (data) => {
       console.log('👥 User status updated:', data);
@@ -16569,7 +16551,7 @@ if (videoCallBtn) videoCallBtn.addEventListener('click', () => initiateCall(true
 
     // Handle incoming messages to update status if needed
     s.on('new_message', () => {
-        // Optional: refresh user status if message received
+      // Optional: refresh user status if message received
     });
 
     // Initial check-in
@@ -16623,7 +16605,7 @@ function updateChatHeaderStatus() {
   // For DMs, check if the contact is online
   // Note: For DMs, id is typically the username of the contact
   const isOnline = state.onlineUsers.includes(chat.id) || state.onlineUsers.includes(chat.name);
-  
+
   if (isOnline) {
     statusContainer.innerHTML = `
       <span class="messenger-header-status-dot online"></span>
@@ -16656,7 +16638,7 @@ function urlB64ToUint8Array(base64String) {
 
 async function requestPushPermission() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
-  
+
   if (Notification.permission === 'granted') {
     subscribeUserToPush();
   } else if (Notification.permission !== 'denied') {
@@ -16671,7 +16653,7 @@ async function subscribeUserToPush() {
   try {
     const registration = await navigator.serviceWorker.ready;
     let subscription = await registration.pushManager.getSubscription();
-    
+
     // Only subscribe if VAPID key is provided by the backend (rendered in index.html)
     if (!subscription && window.VAPID_PUBLIC_KEY) {
       const applicationServerKey = urlB64ToUint8Array(window.VAPID_PUBLIC_KEY);
@@ -16680,7 +16662,7 @@ async function subscribeUserToPush() {
         applicationServerKey: applicationServerKey
       });
       console.log('🟢 Push Notifications Subscribed');
-      
+
       await fetch('/api/notifications/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -16699,7 +16681,7 @@ function toggleSecurityPanel() {
   const cardContainer = document.getElementById('loginCardContainer');
   const leftCol = document.getElementById('loginLeftCol');
   if (!panel) return;
-  
+
   const isHidden = panel.classList.contains('hidden') || panel.classList.contains('max-md:hidden');
   if (isHidden) {
     panel.classList.remove('hidden', 'max-md:hidden');
@@ -16757,7 +16739,7 @@ async function showQRLogin() {
     const token = data.token;
     const qrUrl = `${window.location.origin}/qr-login/${token}`;
     const canvas = $('qrCodeCanvas');
-    
+
     // Clear previous QR
     if (canvas) {
       canvas.innerHTML = '';
@@ -16785,7 +16767,7 @@ async function showQRLogin() {
     let remaining = 300;
     const countdownEl = $('qrCountdown');
     const statusEl = $('qrStatus');
-    
+
     if (_qrCountdownInterval) clearInterval(_qrCountdownInterval);
     _qrCountdownInterval = setInterval(() => {
       remaining--;
@@ -16808,17 +16790,17 @@ async function showQRLogin() {
       try {
         const pollRes = await fetch(`/api/qr/poll/${token}`);
         const pollData = await pollRes.json();
-        
+
         if (pollData.ok && pollData.status === 'approved') {
           // SUCCESS!
           if (_qrPollInterval) clearInterval(_qrPollInterval);
           if (_qrCountdownInterval) clearInterval(_qrCountdownInterval);
-          
+
           if (statusEl) statusEl.innerHTML = `
             <div class="w-2 h-2 bg-emerald-400 rounded-full"></div>
             <span class="text-emerald-600 font-black">✅ อนุมัติแล้ว! กำลังเข้าระบบ...</span>
           `;
-          
+
           state.user = pollData.user;
           state.username = pollData.user;
 
@@ -16856,11 +16838,11 @@ function hideQRLogin() {
   const loginForm = document.querySelector('#loginOverlay .p-8.space-y-4');
   const qrModal = $('qrLoginModal');
   const loginFooter = $('loginFooter');
-  
+
   if (loginForm) loginForm.classList.remove('hidden');
   if (qrModal) qrModal.classList.add('hidden');
   if (loginFooter) loginFooter.classList.remove('hidden');
-  
+
   // Cleanup
   if (_qrPollInterval) clearInterval(_qrPollInterval);
   if (_qrCountdownInterval) clearInterval(_qrCountdownInterval);
@@ -16890,7 +16872,7 @@ function openQRScanner() {
       (decodedText) => {
         // QR scanned successfully!
         console.log("QR Scanned:", decodedText);
-        
+
         // Stop scanning
         _html5QrScanner.stop().then(() => {
           _html5QrScanner.clear();
@@ -17142,131 +17124,131 @@ async function loadTeamLeaveCalendar() {
 
 let _leaveFormInitialized = false;
 function initLeaveForm() {
-    if (_leaveFormInitialized) return;
-    const form = $('leaveRequestForm');
-    if (form) {
-        form.onsubmit = async (e) => {
-            e.preventDefault();
-            const lType = $('leaveType').value;
-            const sDate = $('leaveStartDate').value;
-            const eDate = $('leaveEndDate').value;
-            const reason = $('leaveReason').value;
+  if (_leaveFormInitialized) return;
+  const form = $('leaveRequestForm');
+  if (form) {
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      const lType = $('leaveType').value;
+      const sDate = $('leaveStartDate').value;
+      const eDate = $('leaveEndDate').value;
+      const reason = $('leaveReason').value;
 
-            if (!sDate || !eDate) {
-                toast("กรุณาระบุวันที่เริ่มและสิ้นสุด", "error");
-                return;
-            }
+      if (!sDate || !eDate) {
+        toast("กรุณาระบุวันที่เริ่มและสิ้นสุด", "error");
+        return;
+      }
 
-            const submitBtn = form.querySelector('button[type="submit"]') || form.querySelector('.btn-primary');
-            if (submitBtn) {
-                if (submitBtn.disabled) return;
-                submitBtn.disabled = true;
-                submitBtn.dataset.origText = submitBtn.textContent;
-                submitBtn.textContent = "กำลังส่งคำขอลา...";
-            }
+      const submitBtn = form.querySelector('button[type="submit"]') || form.querySelector('.btn-primary');
+      if (submitBtn) {
+        if (submitBtn.disabled) return;
+        submitBtn.disabled = true;
+        submitBtn.dataset.origText = submitBtn.textContent;
+        submitBtn.textContent = "กำลังส่งคำขอลา...";
+      }
 
-            try {
-                const res = await fetch('/api/leave/request', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ type: lType, start_date: sDate, end_date: eDate, reason: reason })
-                });
-                const data = await res.json();
-                if (data.ok) {
-                    toast("ส่งคำขอลาเรียบร้อยแล้ว", "success");
-                    form.reset();
-                    loadMyLeaves();
-                } else {
-                    toast(data.error || "เกิดข้อผิดพลาด", "error");
-                }
-            } catch (err) {
-                console.error(err);
-                toast("ไม่สามารถติดต่อเซิร์ฟเวอร์ได้", "error");
-            } finally {
-                if (submitBtn) {
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = submitBtn.dataset.origText || "ส่งคำขอลา";
-                }
-            }
-        };
-        _leaveFormInitialized = true;
-    }
+      try {
+        const res = await fetch('/api/leave/request', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: lType, start_date: sDate, end_date: eDate, reason: reason })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          toast("ส่งคำขอลาเรียบร้อยแล้ว", "success");
+          form.reset();
+          loadMyLeaves();
+        } else {
+          toast(data.error || "เกิดข้อผิดพลาด", "error");
+        }
+      } catch (err) {
+        console.error(err);
+        toast("ไม่สามารถติดต่อเซิร์ฟเวอร์ได้", "error");
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = submitBtn.dataset.origText || "ส่งคำขอลา";
+        }
+      }
+    };
+    _leaveFormInitialized = true;
+  }
 }
 
 async function loadMyLeaves() {
-    const list = $('leaveHistoryList');
-    if (!list) return;
+  const list = $('leaveHistoryList');
+  if (!list) return;
 
-    try {
-        const [leavesRes, balanceRes] = await Promise.all([
-            fetch('/api/leave/my').then(r => r.json()).catch(() => ({ ok: false })),
-            fetch('/api/leave/balance').then(r => r.json()).catch(() => ({ ok: false }))
-        ]);
+  try {
+    const [leavesRes, balanceRes] = await Promise.all([
+      fetch('/api/leave/my').then(r => r.json()).catch(() => ({ ok: false })),
+      fetch('/api/leave/balance').then(r => r.json()).catch(() => ({ ok: false }))
+    ]);
 
-        if (leavesRes.ok) {
-            renderLeaveHistory(leavesRes.leaves);
-        }
-        if (balanceRes.ok && balanceRes.balance) {
-            updateLeaveQuotaDashboard(balanceRes.balance);
-        }
-    } catch (err) {
-        console.error(err);
+    if (leavesRes.ok) {
+      renderLeaveHistory(leavesRes.leaves);
     }
+    if (balanceRes.ok && balanceRes.balance) {
+      updateLeaveQuotaDashboard(balanceRes.balance);
+    }
+  } catch (err) {
+    console.error(err);
+  }
 }
 
 function updateLeaveQuotaDashboard(balance) {
-    if (!balance || !balance.quotas) return;
+  if (!balance || !balance.quotas) return;
 
-    if ($('leaveQuotaYear')) $('leaveQuotaYear').textContent = balance.year || new Date().getFullYear();
+  if ($('leaveQuotaYear')) $('leaveQuotaYear').textContent = balance.year || new Date().getFullYear();
 
-    const q = balance.quotas;
-    const catKeys = ['sick', 'personal', 'vacation', 'other'];
+  const q = balance.quotas;
+  const catKeys = ['sick', 'personal', 'vacation', 'other'];
 
-    catKeys.forEach(key => {
-        const item = q[key];
-        if (!item) return;
+  catKeys.forEach(key => {
+    const item = q[key];
+    if (!item) return;
 
-        const maxEl = $(`${key}Max`);
-        const usedEl = $(`${key}Used`);
-        const remEl = $(`${key}Remaining`);
-        const badgeEl = $(`${key}RemainingBadge`);
-        const barEl = $(`${key}ProgressBar`);
+    const maxEl = $(`${key}Max`);
+    const usedEl = $(`${key}Used`);
+    const remEl = $(`${key}Remaining`);
+    const badgeEl = $(`${key}RemainingBadge`);
+    const barEl = $(`${key}ProgressBar`);
 
-        if (maxEl) maxEl.textContent = item.max;
-        if (usedEl) usedEl.textContent = item.used;
-        if (remEl) remEl.textContent = item.remaining;
-        if (badgeEl) badgeEl.textContent = `${item.remaining} วันคงเหลือ`;
+    if (maxEl) maxEl.textContent = item.max;
+    if (usedEl) usedEl.textContent = item.used;
+    if (remEl) remEl.textContent = item.remaining;
+    if (badgeEl) badgeEl.textContent = `${item.remaining} วันคงเหลือ`;
 
-        if (barEl) {
-            const pct = item.max > 0 ? Math.min(100, Math.round((item.used / item.max) * 100)) : 0;
-            barEl.style.width = `${pct}%`;
-        }
-    });
+    if (barEl) {
+      const pct = item.max > 0 ? Math.min(100, Math.round((item.used / item.max) * 100)) : 0;
+      barEl.style.width = `${pct}%`;
+    }
+  });
 }
 
 function renderLeaveHistory(leaves) {
-    const list = $('leaveHistoryList');
-    if (leaves.length === 0) {
-        list.innerHTML = `
+  const list = $('leaveHistoryList');
+  if (leaves.length === 0) {
+    list.innerHTML = `
             <div class="text-center py-12 bg-surface-50 dark:bg-surface-800/30 rounded-[32px] border-2 border-dashed border-surface-200 dark:border-surface-800">
               <p class="text-surface-400 text-sm">ยังไม่มีประวัติการลา</p>
             </div>
         `;
-        return;
+    return;
+  }
+
+  list.innerHTML = leaves.map(l => {
+    let statusColor = 'bg-amber-100 text-amber-700';
+    let statusText = 'รอดำเนินการ';
+    if (l.status === 'approved') {
+      statusColor = 'bg-emerald-100 text-emerald-700';
+      statusText = 'อนุมัติแล้ว';
+    } else if (l.status === 'rejected') {
+      statusColor = 'bg-rose-100 text-rose-700';
+      statusText = 'ปฏิเสธแล้ว';
     }
 
-    list.innerHTML = leaves.map(l => {
-        let statusColor = 'bg-amber-100 text-amber-700';
-        let statusText = 'รอดำเนินการ';
-        if (l.status === 'approved') {
-            statusColor = 'bg-emerald-100 text-emerald-700';
-            statusText = 'อนุมัติแล้ว';
-        } else if (l.status === 'rejected') {
-            statusColor = 'bg-rose-100 text-rose-700';
-            statusText = 'ปฏิเสธแล้ว';
-        }
-
-        return `
+    return `
             <div class="p-6 bg-white dark:bg-surface-900 border border-surface-100 dark:border-surface-800 rounded-3xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 animate-in slide-in-from-bottom-2 duration-300">
                 <div class="flex items-center gap-4">
                     <div class="w-12 h-12 rounded-2xl bg-surface-50 dark:bg-surface-800 flex items-center justify-center text-surface-400">
@@ -17288,8 +17270,8 @@ function renderLeaveHistory(leaves) {
                 </div>
             </div>
         `;
-    }).join('');
-    lucide.createIcons();
+  }).join('');
+  lucide.createIcons();
 }
 
 // ─── Admin Leave Management (Enterprise, Anti-AI-Slop) ────────────
@@ -17299,133 +17281,133 @@ let _leaveStatusFilter = 'all';
 let _selectedLeaveIds = new Set();
 
 async function refreshAdminLeaves() {
-    const tableBody = $('adminLeaveTableBody');
-    if (!tableBody) return;
+  const tableBody = $('adminLeaveTableBody');
+  if (!tableBody) return;
 
-    try {
-        tableBody.innerHTML = '<tr><td colspan="7" class="px-6 py-12 text-center text-surface-400"><i data-lucide="loader" class="w-5 h-5 animate-spin inline-block mr-2"></i>กำลังโหลดข้อมูลคำขอลา...</td></tr>';
-        if (typeof lucide !== 'undefined') lucide.createIcons();
+  try {
+    tableBody.innerHTML = '<tr><td colspan="7" class="px-6 py-12 text-center text-surface-400"><i data-lucide="loader" class="w-5 h-5 animate-spin inline-block mr-2"></i>กำลังโหลดข้อมูลคำขอลา...</td></tr>';
+    if (typeof lucide !== 'undefined') lucide.createIcons();
 
-        const res = await fetch('/api/admin/leave/all');
-        const data = await res.json();
-        if (data.ok) {
-            _adminLeavesList = data.leaves || [];
-            
-            // Populate department filter options if available
-            const deptFilter = $('adminLeaveDeptFilter');
-            if (deptFilter) {
-                const depts = new Set();
-                _adminLeavesList.forEach(l => {
-                    const dept = l.department || l.dept_name || '';
-                    if (dept) depts.add(dept);
-                });
-                const currentDept = deptFilter.value || 'all';
-                deptFilter.innerHTML = '<option value="all">ทุกแผนก</option>' + 
-                    Array.from(depts).sort().map(d => `<option value="${escHtml(d)}" ${d === currentDept ? 'selected' : ''}>${escHtml(d)}</option>`).join('');
-            }
+    const res = await fetch('/api/admin/leave/all');
+    const data = await res.json();
+    if (data.ok) {
+      _adminLeavesList = data.leaves || [];
 
-            // Update pending count badge
-            const pendingCount = _adminLeavesList.filter(l => l.status === 'pending').length;
-            const badge = $('pendingLeaveCountBadge');
-            if (badge) {
-                if (pendingCount > 0) {
-                    badge.textContent = pendingCount;
-                    badge.classList.remove('hidden');
-                } else {
-                    badge.classList.add('hidden');
-                }
-            }
+      // Populate department filter options if available
+      const deptFilter = $('adminLeaveDeptFilter');
+      if (deptFilter) {
+        const depts = new Set();
+        _adminLeavesList.forEach(l => {
+          const dept = l.department || l.dept_name || '';
+          if (dept) depts.add(dept);
+        });
+        const currentDept = deptFilter.value || 'all';
+        deptFilter.innerHTML = '<option value="all">ทุกแผนก</option>' +
+          Array.from(depts).sort().map(d => `<option value="${escHtml(d)}" ${d === currentDept ? 'selected' : ''}>${escHtml(d)}</option>`).join('');
+      }
 
-            // Clear any lingering selection that might not exist anymore
-            clearLeaveSelection();
-            applyAdminLeaveFilters();
+      // Update pending count badge
+      const pendingCount = _adminLeavesList.filter(l => l.status === 'pending').length;
+      const badge = $('pendingLeaveCountBadge');
+      if (badge) {
+        if (pendingCount > 0) {
+          badge.textContent = pendingCount;
+          badge.classList.remove('hidden');
         } else {
-            tableBody.innerHTML = `<tr><td colspan="7" class="px-6 py-12 text-center text-rose-500">${escHtml(data.error || 'ไม่สามารถโหลดข้อมูลคำขอลาได้')}</td></tr>`;
+          badge.classList.add('hidden');
         }
-    } catch (err) {
-        console.error('refreshAdminLeaves error:', err);
-        tableBody.innerHTML = '<tr><td colspan="7" class="px-6 py-12 text-center text-rose-500">เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์</td></tr>';
+      }
+
+      // Clear any lingering selection that might not exist anymore
+      clearLeaveSelection();
+      applyAdminLeaveFilters();
+    } else {
+      tableBody.innerHTML = `<tr><td colspan="7" class="px-6 py-12 text-center text-rose-500">${escHtml(data.error || 'ไม่สามารถโหลดข้อมูลคำขอลาได้')}</td></tr>`;
     }
+  } catch (err) {
+    console.error('refreshAdminLeaves error:', err);
+    tableBody.innerHTML = '<tr><td colspan="7" class="px-6 py-12 text-center text-rose-500">เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์</td></tr>';
+  }
 }
 
 function setLeaveStatusFilter(status) {
-    _leaveStatusFilter = status;
-    const buttons = ['all', 'pending', 'approved', 'rejected'];
-    buttons.forEach(b => {
-        const btn = $(`btnStatusFilter_${b}`);
-        if (!btn) return;
-        if (b === status) {
-            btn.className = 'px-2.5 py-1 rounded-lg text-xs font-bold transition-all bg-surface-900 text-white dark:bg-white dark:text-surface-900 shadow-xs flex items-center gap-1.5';
-        } else {
-            btn.className = 'px-2.5 py-1 rounded-lg text-xs font-bold transition-all text-surface-500 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800 flex items-center gap-1.5';
-        }
-    });
-    applyAdminLeaveFilters();
+  _leaveStatusFilter = status;
+  const buttons = ['all', 'pending', 'approved', 'rejected'];
+  buttons.forEach(b => {
+    const btn = $(`btnStatusFilter_${b}`);
+    if (!btn) return;
+    if (b === status) {
+      btn.className = 'px-2.5 py-1 rounded-lg text-xs font-bold transition-all bg-surface-900 text-white dark:bg-white dark:text-surface-900 shadow-xs flex items-center gap-1.5';
+    } else {
+      btn.className = 'px-2.5 py-1 rounded-lg text-xs font-bold transition-all text-surface-500 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800 flex items-center gap-1.5';
+    }
+  });
+  applyAdminLeaveFilters();
 }
 
 function applyAdminLeaveFilters() {
-    const searchVal = ($('adminLeaveSearchInput')?.value || '').trim().toLowerCase();
-    const typeVal = $('adminLeaveTypeFilter')?.value || 'all';
-    const deptVal = $('adminLeaveDeptFilter')?.value || 'all';
+  const searchVal = ($('adminLeaveSearchInput')?.value || '').trim().toLowerCase();
+  const typeVal = $('adminLeaveTypeFilter')?.value || 'all';
+  const deptVal = $('adminLeaveDeptFilter')?.value || 'all';
 
-    let filtered = _adminLeavesList.filter(l => {
-        // Status filter
-        if (_leaveStatusFilter !== 'all' && l.status !== _leaveStatusFilter) return false;
-        
-        // Type filter
-        if (typeVal !== 'all' && (l.type || '') !== typeVal) return false;
+  let filtered = _adminLeavesList.filter(l => {
+    // Status filter
+    if (_leaveStatusFilter !== 'all' && l.status !== _leaveStatusFilter) return false;
 
-        // Department filter
-        if (deptVal !== 'all') {
-            const d = l.department || l.dept_name || '';
-            if (d !== deptVal) return false;
-        }
+    // Type filter
+    if (typeVal !== 'all' && (l.type || '') !== typeVal) return false;
 
-        // Search text
-        if (searchVal) {
-            const name = (l.display_name || l.username || '').toLowerCase();
-            const reason = (l.reason || '').toLowerCase();
-            const approver = (l.approved_by || '').toLowerCase();
-            if (!name.includes(searchVal) && !reason.includes(searchVal) && !approver.includes(searchVal)) {
-                return false;
-            }
-        }
-        return true;
-    });
+    // Department filter
+    if (deptVal !== 'all') {
+      const d = l.department || l.dept_name || '';
+      if (d !== deptVal) return false;
+    }
 
-    renderAdminLeaveTable(filtered);
+    // Search text
+    if (searchVal) {
+      const name = (l.display_name || l.username || '').toLowerCase();
+      const reason = (l.reason || '').toLowerCase();
+      const approver = (l.approved_by || '').toLowerCase();
+      if (!name.includes(searchVal) && !reason.includes(searchVal) && !approver.includes(searchVal)) {
+        return false;
+      }
+    }
+    return true;
+  });
+
+  renderAdminLeaveTable(filtered);
 }
 
 function renderAdminLeaveTable(leaves) {
-    const tableBody = $('adminLeaveTableBody');
-    if (!tableBody) return;
+  const tableBody = $('adminLeaveTableBody');
+  if (!tableBody) return;
 
-    if (!leaves || leaves.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="7" class="px-6 py-12 text-center text-surface-400">ไม่พบข้อมูลคำขอลาตามเงื่อนไขที่เลือก</td></tr>';
-        return;
-    }
+  if (!leaves || leaves.length === 0) {
+    tableBody.innerHTML = '<tr><td colspan="7" class="px-6 py-12 text-center text-surface-400">ไม่พบข้อมูลคำขอลาตามเงื่อนไขที่เลือก</td></tr>';
+    return;
+  }
 
-    tableBody.innerHTML = leaves.map(l => {
-        const isActionable = l.status === 'pending';
-        const isChecked = _selectedLeaveIds.has(l.id);
+  tableBody.innerHTML = leaves.map(l => {
+    const isActionable = l.status === 'pending';
+    const isChecked = _selectedLeaveIds.has(l.id);
 
-        let statusHtml = `<span class="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">Pending</span>`;
-        if (l.status === 'approved') {
-            statusHtml = `<div class="space-y-0.5">
+    let statusHtml = `<span class="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">Pending</span>`;
+    if (l.status === 'approved') {
+      statusHtml = `<div class="space-y-0.5">
                 <span class="inline-block px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">Approved</span>
                 ${l.approved_by ? `<div class="text-[10px] text-surface-400">ผู้อนุมัติ: <span class="font-semibold text-surface-600 dark:text-surface-300">${escHtml(l.approved_by)}</span></div>` : ''}
             </div>`;
-        } else if (l.status === 'rejected') {
-            statusHtml = `<div class="space-y-0.5">
+    } else if (l.status === 'rejected') {
+      statusHtml = `<div class="space-y-0.5">
                 <span class="inline-block px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">Rejected</span>
                 ${l.approved_by ? `<div class="text-[10px] text-surface-400">ผู้ปฏิเสธ: <span class="font-semibold text-surface-600 dark:text-surface-300">${escHtml(l.approved_by)}</span></div>` : ''}
             </div>`;
-        }
+    }
 
-        const nameInitial = (l.display_name || l.username || '?').charAt(0).toUpperCase();
-        const durationText = l.duration_days ? `${l.duration_days} วัน` : '';
+    const nameInitial = (l.display_name || l.username || '?').charAt(0).toUpperCase();
+    const durationText = l.duration_days ? `${l.duration_days} วัน` : '';
 
-        return `
+    return `
             <tr class="hover:bg-surface-50 dark:hover:bg-surface-800/40 transition-colors ${isChecked ? 'bg-brand-50/40 dark:bg-brand-950/20' : ''}">
                 <td class="w-10 px-4 py-3.5 text-center">
                     ${isActionable ? `
@@ -17476,186 +17458,186 @@ function renderAdminLeaveTable(leaves) {
                 </td>
             </tr>
         `;
-    }).join('');
+  }).join('');
 
-    // Update master checkbox state
-    updateMasterCheckboxState();
-    if (typeof lucide !== 'undefined') lucide.createIcons();
+  // Update master checkbox state
+  updateMasterCheckboxState();
+  if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
 function toggleSelectLeave(id, checked) {
-    if (checked) {
-        _selectedLeaveIds.add(id);
-    } else {
-        _selectedLeaveIds.delete(id);
-    }
-    updateBatchBar();
-    updateMasterCheckboxState();
+  if (checked) {
+    _selectedLeaveIds.add(id);
+  } else {
+    _selectedLeaveIds.delete(id);
+  }
+  updateBatchBar();
+  updateMasterCheckboxState();
 }
 
 function toggleSelectAllLeaves(checked) {
-    const actionable = _adminLeavesList.filter(l => l.status === 'pending');
-    if (checked) {
-        actionable.forEach(l => _selectedLeaveIds.add(l.id));
-    } else {
-        _selectedLeaveIds.clear();
-    }
-    applyAdminLeaveFilters();
-    updateBatchBar();
+  const actionable = _adminLeavesList.filter(l => l.status === 'pending');
+  if (checked) {
+    actionable.forEach(l => _selectedLeaveIds.add(l.id));
+  } else {
+    _selectedLeaveIds.clear();
+  }
+  applyAdminLeaveFilters();
+  updateBatchBar();
 }
 
 function clearLeaveSelection() {
-    _selectedLeaveIds.clear();
-    const master = $('masterLeaveCheckbox');
-    if (master) master.checked = false;
-    updateBatchBar();
+  _selectedLeaveIds.clear();
+  const master = $('masterLeaveCheckbox');
+  if (master) master.checked = false;
+  updateBatchBar();
 }
 
 function updateMasterCheckboxState() {
-    const master = $('masterLeaveCheckbox');
-    if (!master) return;
-    const actionable = _adminLeavesList.filter(l => l.status === 'pending');
-    if (actionable.length === 0) {
-        master.checked = false;
-        master.disabled = true;
-    } else {
-        master.disabled = false;
-        master.checked = actionable.every(l => _selectedLeaveIds.has(l.id));
-    }
+  const master = $('masterLeaveCheckbox');
+  if (!master) return;
+  const actionable = _adminLeavesList.filter(l => l.status === 'pending');
+  if (actionable.length === 0) {
+    master.checked = false;
+    master.disabled = true;
+  } else {
+    master.disabled = false;
+    master.checked = actionable.every(l => _selectedLeaveIds.has(l.id));
+  }
 }
 
 function updateBatchBar() {
-    const bar = $('adminLeaveBatchBar');
-    const countEl = $('selectedLeaveCount');
-    if (!bar || !countEl) return;
+  const bar = $('adminLeaveBatchBar');
+  const countEl = $('selectedLeaveCount');
+  if (!bar || !countEl) return;
 
-    const count = _selectedLeaveIds.size;
-    countEl.textContent = count;
-    if (count > 0) {
-        bar.classList.remove('hidden');
-    } else {
-        bar.classList.add('hidden');
-    }
+  const count = _selectedLeaveIds.size;
+  countEl.textContent = count;
+  if (count > 0) {
+    bar.classList.remove('hidden');
+  } else {
+    bar.classList.add('hidden');
+  }
 }
 
 async function adminBatchSetLeaveStatus(status) {
-    const ids = Array.from(_selectedLeaveIds);
-    if (ids.length === 0) return;
+  const ids = Array.from(_selectedLeaveIds);
+  if (ids.length === 0) return;
 
-    const actionText = status === 'approved' ? 'อนุมัติ' : 'ปฏิเสธ';
-    if (!confirm(`คุณแน่ใจหรือไม่ว่าต้องการ ${actionText} คำขอลาที่เลือกจำนวน ${ids.length} รายการพร้อมกัน?`)) return;
+  const actionText = status === 'approved' ? 'อนุมัติ' : 'ปฏิเสธ';
+  if (!confirm(`คุณแน่ใจหรือไม่ว่าต้องการ ${actionText} คำขอลาที่เลือกจำนวน ${ids.length} รายการพร้อมกัน?`)) return;
 
-    try {
-        const res = await fetch('/api/admin/leave/batch-status', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ids, status })
-        });
-        const data = await res.json();
-        if (data.ok) {
-            toast(`ดำเนินการ ${actionText} เรียบร้อยแล้ว ${data.success_count} รายการ`, "success");
-            clearLeaveSelection();
-            refreshAdminLeaves();
-            loadTeamLeaveCalendar();
-        } else {
-            toast(data.error || "ไม่สามารถดำเนินการกลุ่มได้", "error");
-        }
-    } catch (err) {
-        console.error('adminBatchSetLeaveStatus error:', err);
-        toast("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์", "error");
+  try {
+    const res = await fetch('/api/admin/leave/batch-status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids, status })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      toast(`ดำเนินการ ${actionText} เรียบร้อยแล้ว ${data.success_count} รายการ`, "success");
+      clearLeaveSelection();
+      refreshAdminLeaves();
+      loadTeamLeaveCalendar();
+    } else {
+      toast(data.error || "ไม่สามารถดำเนินการกลุ่มได้", "error");
     }
+  } catch (err) {
+    console.error('adminBatchSetLeaveStatus error:', err);
+    toast("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์", "error");
+  }
 }
 
 async function adminSetLeaveStatus(id, status) {
-    const actionText = status === 'approved' ? 'อนุมัติ' : 'ปฏิเสธ';
-    if (!confirm(`คุณแน่ใจหรือไม่ว่าต้องการ ${actionText} คำขอลานี้?`)) return;
+  const actionText = status === 'approved' ? 'อนุมัติ' : 'ปฏิเสธ';
+  if (!confirm(`คุณแน่ใจหรือไม่ว่าต้องการ ${actionText} คำขอลานี้?`)) return;
 
-    try {
-        const res = await fetch('/api/admin/leave/status', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id, status })
-        });
-        const data = await res.json();
-        if (data.ok) {
-            toast("ดำเนินการเรียบร้อยแล้ว", "success");
-            refreshAdminLeaves();
-            loadTeamLeaveCalendar();
-            // If day modal is open, refresh it as well
-            if (!$('leaveDayDetailModal')?.classList.contains('hidden')) {
-                const title = $('leaveDayDetailTitle')?.getAttribute('data-date');
-                if (title) openLeaveDayDetail(title);
-            }
-        } else {
-            toast(data.error || "ไม่สามารถดำเนินการได้", "error");
-        }
-    } catch (err) {
-        console.error('adminSetLeaveStatus error:', err);
-        toast("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์", "error");
+  try {
+    const res = await fetch('/api/admin/leave/status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, status })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      toast("ดำเนินการเรียบร้อยแล้ว", "success");
+      refreshAdminLeaves();
+      loadTeamLeaveCalendar();
+      // If day modal is open, refresh it as well
+      if (!$('leaveDayDetailModal')?.classList.contains('hidden')) {
+        const title = $('leaveDayDetailTitle')?.getAttribute('data-date');
+        if (title) openLeaveDayDetail(title);
+      }
+    } else {
+      toast(data.error || "ไม่สามารถดำเนินการได้", "error");
     }
+  } catch (err) {
+    console.error('adminSetLeaveStatus error:', err);
+    toast("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์", "error");
+  }
 }
 
 // ─── Day Detail Modal for Calendar ───────────────────────
 
 function openLeaveDayDetail(dateStr, highlightId = null) {
-    const modal = $('leaveDayDetailModal');
-    const titleEl = $('leaveDayDetailTitle');
-    const listEl = $('leaveDayDetailList');
-    const summaryEl = $('leaveDayDetailSummary');
-    if (!modal || !listEl) return;
+  const modal = $('leaveDayDetailModal');
+  const titleEl = $('leaveDayDetailTitle');
+  const listEl = $('leaveDayDetailList');
+  const summaryEl = $('leaveDayDetailSummary');
+  if (!modal || !listEl) return;
 
-    // Format date in Thai
-    const [y, m, d] = dateStr.split('-').map(Number);
-    const dateObj = new Date(y, m - 1, d);
-    const thaiDateStr = dateObj.toLocaleDateString('th-TH', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-    });
+  // Format date in Thai
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dateObj = new Date(y, m - 1, d);
+  const thaiDateStr = dateObj.toLocaleDateString('th-TH', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
 
-    if (titleEl) {
-        titleEl.textContent = thaiDateStr;
-        titleEl.setAttribute('data-date', dateStr);
-    }
+  if (titleEl) {
+    titleEl.textContent = thaiDateStr;
+    titleEl.setAttribute('data-date', dateStr);
+  }
 
-    // Filter events spanning dateStr from window._currentTeamCalendarEvents or _adminLeavesList
-    const allEvents = window._currentTeamCalendarEvents || _adminLeavesList || [];
-    const dayEvents = allEvents.filter(e => {
-        const s = e.start_date || '';
-        const end = e.end_date || s;
-        return dateStr >= s && dateStr <= end;
-    });
+  // Filter events spanning dateStr from window._currentTeamCalendarEvents or _adminLeavesList
+  const allEvents = window._currentTeamCalendarEvents || _adminLeavesList || [];
+  const dayEvents = allEvents.filter(e => {
+    const s = e.start_date || '';
+    const end = e.end_date || s;
+    return dateStr >= s && dateStr <= end;
+  });
 
-    if (summaryEl) {
-        summaryEl.textContent = `${dayEvents.length} รายการ`;
-    }
+  if (summaryEl) {
+    summaryEl.textContent = `${dayEvents.length} รายการ`;
+  }
 
-    if (dayEvents.length === 0) {
-        listEl.innerHTML = `
+  if (dayEvents.length === 0) {
+    listEl.innerHTML = `
             <div class="py-12 text-center text-surface-400">
                 <i data-lucide="calendar-check" class="w-8 h-8 mx-auto mb-2 opacity-40"></i>
                 <p class="text-sm font-medium">ไม่มีรายการลาในวันที่เลือก</p>
                 <p class="text-xs text-surface-400 mt-1">ทุกคนในทีมพร้อมปฏิบัติงานตามปกติ</p>
             </div>
         `;
-    } else {
-        listEl.innerHTML = dayEvents.map(e => {
-            const isHighlight = highlightId && e.id === highlightId;
-            const isPending = e.status === 'pending';
-            const safeName = escHtml(e.display_name || e.username || '');
-            const safeType = escHtml(e.type || 'ลางาน');
-            const safeReason = escHtml(e.reason || '-');
-            const safeDates = `${e.start_date} ถึง ${e.end_date}`;
+  } else {
+    listEl.innerHTML = dayEvents.map(e => {
+      const isHighlight = highlightId && e.id === highlightId;
+      const isPending = e.status === 'pending';
+      const safeName = escHtml(e.display_name || e.username || '');
+      const safeType = escHtml(e.type || 'ลางาน');
+      const safeReason = escHtml(e.reason || '-');
+      const safeDates = `${e.start_date} ถึง ${e.end_date}`;
 
-            let statusBadge = `<span class="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">Pending</span>`;
-            if (e.status === 'approved') {
-                statusBadge = `<span class="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">Approved</span>`;
-            } else if (e.status === 'rejected') {
-                statusBadge = `<span class="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">Rejected</span>`;
-            }
+      let statusBadge = `<span class="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">Pending</span>`;
+      if (e.status === 'approved') {
+        statusBadge = `<span class="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">Approved</span>`;
+      } else if (e.status === 'rejected') {
+        statusBadge = `<span class="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">Rejected</span>`;
+      }
 
-            return `
+      return `
                 <div class="pt-3 first:pt-0 ${isHighlight ? 'p-3 bg-brand-50/50 dark:bg-brand-950/30 rounded-xl border border-brand-200 dark:border-brand-800' : ''}">
                     <div class="flex items-start justify-between gap-3">
                         <div class="flex items-start gap-3">
@@ -17696,90 +17678,90 @@ function openLeaveDayDetail(dateStr, highlightId = null) {
                     ` : ''}
                 </div>
             `;
-        }).join('');
-    }
+    }).join('');
+  }
 
-    modal.classList.remove('hidden');
-    if (typeof lucide !== 'undefined') lucide.createIcons();
+  modal.classList.remove('hidden');
+  if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
 function closeLeaveDayDetailModal() {
-    const modal = $('leaveDayDetailModal');
-    if (modal) modal.classList.add('hidden');
+  const modal = $('leaveDayDetailModal');
+  if (modal) modal.classList.add('hidden');
 }
 
 // ─── Export CSV ───────────────────────────────────────────
 
 function exportAdminLeavesToCsv() {
-    if (!_adminLeavesList || _adminLeavesList.length === 0) {
-        toast("ไม่มีข้อมูลคำขอลาสำหรับส่งออก", "warning");
-        return;
-    }
+  if (!_adminLeavesList || _adminLeavesList.length === 0) {
+    toast("ไม่มีข้อมูลคำขอลาสำหรับส่งออก", "warning");
+    return;
+  }
 
-    const headers = ["ID", "ชื่อพนักงาน", "Username", "แผนก", "ประเภทการลา", "วันที่เริ่ม", "วันที่สิ้นสุด", "จำนวนวัน", "เหตุผล", "สถานะ", "ผู้อนุมัติ", "วันที่สร้างคำขอ"];
-    const rows = _adminLeavesList.map(l => [
-        l.id || "",
-        `"${(l.display_name || "").replace(/"/g, '""')}"`,
-        `"${(l.username || "").replace(/"/g, '""')}"`,
-        `"${(l.department || l.dept_name || "").replace(/"/g, '""')}"`,
-        `"${(l.type || "").replace(/"/g, '""')}"`,
-        l.start_date || "",
-        l.end_date || "",
-        l.duration_days || "",
-        `"${(l.reason || "").replace(/"/g, '""')}"`,
-        l.status || "",
-        `"${(l.approved_by || "").replace(/"/g, '""')}"`,
-        l.created_at || ""
-    ]);
+  const headers = ["ID", "ชื่อพนักงาน", "Username", "แผนก", "ประเภทการลา", "วันที่เริ่ม", "วันที่สิ้นสุด", "จำนวนวัน", "เหตุผล", "สถานะ", "ผู้อนุมัติ", "วันที่สร้างคำขอ"];
+  const rows = _adminLeavesList.map(l => [
+    l.id || "",
+    `"${(l.display_name || "").replace(/"/g, '""')}"`,
+    `"${(l.username || "").replace(/"/g, '""')}"`,
+    `"${(l.department || l.dept_name || "").replace(/"/g, '""')}"`,
+    `"${(l.type || "").replace(/"/g, '""')}"`,
+    l.start_date || "",
+    l.end_date || "",
+    l.duration_days || "",
+    `"${(l.reason || "").replace(/"/g, '""')}"`,
+    l.status || "",
+    `"${(l.approved_by || "").replace(/"/g, '""')}"`,
+    l.created_at || ""
+  ]);
 
-    const csvContent = "\uFEFF" + [headers.join(","), ...rows.map(e => e.join(","))].join("\r\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    const today = new Date().toISOString().slice(0, 10);
-    link.setAttribute("href", url);
-    link.setAttribute("download", `leave_records_${today}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    toast("ส่งออกไฟล์ CSV สำเร็จแล้วค่ะ", "success");
+  const csvContent = "\uFEFF" + [headers.join(","), ...rows.map(e => e.join(","))].join("\r\n");
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const today = new Date().toISOString().slice(0, 10);
+  link.setAttribute("href", url);
+  link.setAttribute("download", `leave_records_${today}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+  toast("ส่งออกไฟล์ CSV สำเร็จแล้วค่ะ", "success");
 }
 
 // ─── Leave Comment System ─────────────────────────────
 
 async function openLeaveComments(leaveId) {
-    const modal = $('leaveCommentModal');
-    const list = $('leaveCommentList');
-    const inputId = $('leaveCommentId');
-    const title = $('leaveCommentModalTitle');
-    
-    if (!modal || !list || !inputId) return;
-    
-    inputId.value = leaveId;
-    title.textContent = `คำขอลา #${leaveId}`;
-    list.innerHTML = '<div class="text-center py-4 text-surface-400">กำลังโหลดข้อความ...</div>';
-    modal.classList.remove('hidden');
-    modal.classList.add('flex', 'items-center', 'justify-center');
-    
-    try {
-        const res = await fetch(`/api/leave/comments/${leaveId}`);
-        const data = await res.json();
-        if (data.ok) {
-            renderLeaveComments(data.comments);
-        }
-    } catch (err) {
-        console.error(err);
-        list.innerHTML = '<div class="text-center py-4 text-rose-500">โหลดข้อมูลล้มเหลว</div>';
+  const modal = $('leaveCommentModal');
+  const list = $('leaveCommentList');
+  const inputId = $('leaveCommentId');
+  const title = $('leaveCommentModalTitle');
+
+  if (!modal || !list || !inputId) return;
+
+  inputId.value = leaveId;
+  title.textContent = `คำขอลา #${leaveId}`;
+  list.innerHTML = '<div class="text-center py-4 text-surface-400">กำลังโหลดข้อความ...</div>';
+  modal.classList.remove('hidden');
+  modal.classList.add('flex', 'items-center', 'justify-center');
+
+  try {
+    const res = await fetch(`/api/leave/comments/${leaveId}`);
+    const data = await res.json();
+    if (data.ok) {
+      renderLeaveComments(data.comments);
     }
+  } catch (err) {
+    console.error(err);
+    list.innerHTML = '<div class="text-center py-4 text-rose-500">โหลดข้อมูลล้มเหลว</div>';
+  }
 }
 
 function renderLeaveComments(comments) {
-    const list = $('leaveCommentList');
-    const currentUser = (state.user && typeof state.user === 'object' ? state.user.username : state.user || '').toLowerCase();
-    
-    if (comments.length === 0) {
-        list.innerHTML = `
+  const list = $('leaveCommentList');
+  const currentUser = (state.user && typeof state.user === 'object' ? state.user.username : state.user || '').toLowerCase();
+
+  if (comments.length === 0) {
+    list.innerHTML = `
             <div class="text-center py-8">
                 <div class="w-12 h-12 bg-surface-100 dark:bg-surface-800 rounded-full flex items-center justify-center mx-auto mb-3 text-surface-400">
                     <i data-lucide="message-square" class="w-6 h-6"></i>
@@ -17787,13 +17769,13 @@ function renderLeaveComments(comments) {
                 <p class="text-xs text-surface-400">ยังไม่มีข้อความตอบกลับ</p>
             </div>
         `;
-        lucide.createIcons();
-        return;
-    }
-    
-    list.innerHTML = comments.map(c => {
-        const isMe = c.username.toLowerCase() === currentUser;
-        return `
+    lucide.createIcons();
+    return;
+  }
+
+  list.innerHTML = comments.map(c => {
+    const isMe = c.username.toLowerCase() === currentUser;
+    return `
             <div class="flex flex-col ${isMe ? 'items-end' : 'items-start'} gap-1">
                 <div class="max-w-[85%] p-4 rounded-3xl text-sm ${isMe ? 'bg-brand-600 text-white rounded-tr-none' : 'bg-white dark:bg-surface-800 text-surface-900 dark:text-white border border-surface-100 dark:border-surface-700 rounded-tl-none shadow-sm'}">
                     ${c.comment}
@@ -17804,121 +17786,121 @@ function renderLeaveComments(comments) {
                 </div>
             </div>
         `;
-    }).join('');
-    
-    // Auto scroll to bottom
-    setTimeout(() => {
-        list.scrollTop = list.scrollHeight;
-    }, 100);
+  }).join('');
+
+  // Auto scroll to bottom
+  setTimeout(() => {
+    list.scrollTop = list.scrollHeight;
+  }, 100);
 }
 
 // Initialize Comment Form
 (function initCommentForm() {
-    const form = $('leaveCommentForm');
-    if (form) {
-        form.onsubmit = async (e) => {
-            e.preventDefault();
-            const lid = $('leaveCommentId').value;
-            const comment = $('leaveCommentInput').value.trim();
-            if (!lid || !comment) return;
-            
-            try {
-                const res = await fetch('/api/leave/comment', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ leave_id: lid, comment: comment })
-                });
-                const data = await res.json();
-                if (data.ok) {
-                    $('leaveCommentInput').value = '';
-                    openLeaveComments(lid); // Refresh
-                }
-            } catch (err) {
-                console.error(err);
-                toast("ส่งข้อความล้มเหลว", "error");
-            }
-        };
-    }
+  const form = $('leaveCommentForm');
+  if (form) {
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      const lid = $('leaveCommentId').value;
+      const comment = $('leaveCommentInput').value.trim();
+      if (!lid || !comment) return;
+
+      try {
+        const res = await fetch('/api/leave/comment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ leave_id: lid, comment: comment })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          $('leaveCommentInput').value = '';
+          openLeaveComments(lid); // Refresh
+        }
+      } catch (err) {
+        console.error(err);
+        toast("ส่งข้อความล้มเหลว", "error");
+      }
+    };
+  }
 })();
 
 function switchLeaveView(viewMode) {
-    const tableView = $('adminLeaveTableView');
-    const calView = $('adminLeaveCalendarView');
-    const btnTable = $('btnLeaveViewTable');
-    const btnCal = $('btnLeaveViewCalendar');
+  const tableView = $('adminLeaveTableView');
+  const calView = $('adminLeaveCalendarView');
+  const btnTable = $('btnLeaveViewTable');
+  const btnCal = $('btnLeaveViewCalendar');
 
-    if (viewMode === 'calendar') {
-        if (tableView) tableView.classList.add('hidden');
-        if (calView) calView.classList.remove('hidden');
+  if (viewMode === 'calendar') {
+    if (tableView) tableView.classList.add('hidden');
+    if (calView) calView.classList.remove('hidden');
 
-        if (btnTable) {
-            btnTable.className = "px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200";
-        }
-        if (btnCal) {
-            btnCal.className = "px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-white dark:bg-surface-700 text-brand-600 dark:text-brand-400 shadow-sm";
-        }
-        loadTeamLeaveCalendar();
-    } else {
-        if (calView) calView.classList.add('hidden');
-        if (tableView) tableView.classList.remove('hidden');
-
-        if (btnCal) {
-            btnCal.className = "px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200";
-        }
-        if (btnTable) {
-            btnTable.className = "px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-white dark:bg-surface-700 text-brand-600 dark:text-brand-400 shadow-sm";
-        }
-        refreshAdminLeaves();
+    if (btnTable) {
+      btnTable.className = "px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200";
     }
+    if (btnCal) {
+      btnCal.className = "px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-white dark:bg-surface-700 text-brand-600 dark:text-brand-400 shadow-sm";
+    }
+    loadTeamLeaveCalendar();
+  } else {
+    if (calView) calView.classList.add('hidden');
+    if (tableView) tableView.classList.remove('hidden');
+
+    if (btnCal) {
+      btnCal.className = "px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200";
+    }
+    if (btnTable) {
+      btnTable.className = "px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-white dark:bg-surface-700 text-brand-600 dark:text-brand-400 shadow-sm";
+    }
+    refreshAdminLeaves();
+  }
 }
 
 function prevLeaveMonth() {
-    changeTeamCalendarMonth(-1);
+  changeTeamCalendarMonth(-1);
 }
 
 function nextLeaveMonth() {
-    changeTeamCalendarMonth(1);
+  changeTeamCalendarMonth(1);
 }
 
 function toggleLeaveCalendar(forceState) {
-    const body = $('leaveCalendarBody');
-    const icon = $('leaveCalendarToggleIcon');
-    const text = $('leaveCalendarToggleText');
-    const nav = $('leaveCalendarMonthNav');
-    if (!body) return;
+  const body = $('leaveCalendarBody');
+  const icon = $('leaveCalendarToggleIcon');
+  const text = $('leaveCalendarToggleText');
+  const nav = $('leaveCalendarMonthNav');
+  if (!body) return;
 
-    const isCurrentlyHidden = body.classList.contains('hidden');
-    const shouldHide = forceState !== undefined ? !forceState : !isCurrentlyHidden;
+  const isCurrentlyHidden = body.classList.contains('hidden');
+  const shouldHide = forceState !== undefined ? !forceState : !isCurrentlyHidden;
 
-    if (shouldHide) {
-        body.classList.add('hidden');
-        if (text) text.textContent = 'กางปฏิทิน';
-        if (icon) {
-            icon.setAttribute('data-lucide', 'chevron-down');
-            icon.classList.remove('rotate-0');
-            icon.classList.add('rotate-180');
-        }
-        if (nav) nav.classList.add('opacity-40', 'pointer-events-none');
-        localStorage.setItem('orgchat_leave_calendar_collapsed', 'true');
-    } else {
-        body.classList.remove('hidden');
-        if (text) text.textContent = 'หุบปฏิทิน';
-        if (icon) {
-            icon.setAttribute('data-lucide', 'chevron-up');
-            icon.classList.remove('rotate-180');
-            icon.classList.add('rotate-0');
-        }
-        if (nav) nav.classList.remove('opacity-40', 'pointer-events-none');
-        localStorage.setItem('orgchat_leave_calendar_collapsed', 'false');
+  if (shouldHide) {
+    body.classList.add('hidden');
+    if (text) text.textContent = 'กางปฏิทิน';
+    if (icon) {
+      icon.setAttribute('data-lucide', 'chevron-down');
+      icon.classList.remove('rotate-0');
+      icon.classList.add('rotate-180');
     }
-    if (typeof lucide !== 'undefined') lucide.createIcons();
+    if (nav) nav.classList.add('opacity-40', 'pointer-events-none');
+    localStorage.setItem('orgchat_leave_calendar_collapsed', 'true');
+  } else {
+    body.classList.remove('hidden');
+    if (text) text.textContent = 'หุบปฏิทิน';
+    if (icon) {
+      icon.setAttribute('data-lucide', 'chevron-up');
+      icon.classList.remove('rotate-180');
+      icon.classList.add('rotate-0');
+    }
+    if (nav) nav.classList.remove('opacity-40', 'pointer-events-none');
+    localStorage.setItem('orgchat_leave_calendar_collapsed', 'false');
+  }
+  if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
 function initLeaveCalendarCollapse() {
-    const saved = localStorage.getItem('orgchat_leave_calendar_collapsed');
-    if (saved === 'true') {
-        toggleLeaveCalendar(false); // collapse
-    }
+  const saved = localStorage.getItem('orgchat_leave_calendar_collapsed');
+  if (saved === 'true') {
+    toggleLeaveCalendar(false); // collapse
+  }
 }
 
 window.toggleLeaveCalendar = toggleLeaveCalendar;
@@ -17930,30 +17912,30 @@ window.changeTeamCalendarMonth = changeTeamCalendarMonth;
 window.loadTeamLeaveCalendar = loadTeamLeaveCalendar;
 
 async function testMorningBriefing() {
-    const btn = $('btnTestBriefing');
+  const btn = $('btnTestBriefing');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> กำลังส่ง...';
+    if (typeof initIcons === 'function') initIcons();
+  }
+  try {
+    const res = await fetch('/api/admin/briefing/trigger', { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      toast('ส่ง Morning Briefing เข้า LINE เรียบร้อยแล้ว', 'success');
+    } else {
+      toast(data.error || 'เกิดข้อผิดพลาดในการส่ง', 'error');
+    }
+  } catch (e) {
+    console.error(e);
+    toast('ไม่สามารถติดต่อเซิร์ฟเวอร์ได้', 'error');
+  } finally {
     if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = '<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> กำลังส่ง...';
-        if (typeof initIcons === 'function') initIcons();
+      btn.disabled = false;
+      btn.innerHTML = '<i data-lucide="sunrise" class="w-3.5 h-3.5"></i> ทดสอบ Morning Brief';
+      if (typeof initIcons === 'function') initIcons();
     }
-    try {
-        const res = await fetch('/api/admin/briefing/trigger', { method: 'POST' });
-        const data = await res.json();
-        if (data.ok) {
-            toast('ส่ง Morning Briefing เข้า LINE เรียบร้อยแล้ว', 'success');
-        } else {
-            toast(data.error || 'เกิดข้อผิดพลาดในการส่ง', 'error');
-        }
-    } catch (e) {
-        console.error(e);
-        toast('ไม่สามารถติดต่อเซิร์ฟเวอร์ได้', 'error');
-    } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = '<i data-lucide="sunrise" class="w-3.5 h-3.5"></i> ทดสอบ Morning Brief';
-            if (typeof initIcons === 'function') initIcons();
-        }
-    }
+  }
 }
 
 
@@ -17977,364 +17959,364 @@ let reconReportUrl = null;
 let _reconFilteredData = [];
 
 document.addEventListener('DOMContentLoaded', () => {
-    // ─── Authentication Logic ───────────────────
-    const loginBtn = $('loginBtn');
-    const loginPass = $('loginPassword');
-    if (loginBtn) loginBtn.onclick = initAuth;
-    if (loginPass) {
-        loginPass.onkeypress = (e) => {
-            if (e.key === 'Enter') initAuth();
-        };
-    }
+  // ─── Authentication Logic ───────────────────
+  const loginBtn = $('loginBtn');
+  const loginPass = $('loginPassword');
+  if (loginBtn) loginBtn.onclick = initAuth;
+  if (loginPass) {
+    loginPass.onkeypress = (e) => {
+      if (e.key === 'Enter') initAuth();
+    };
+  }
 
-    const mpInput = $('reconMPFiles');
-    const shipInput = $('reconShipFiles');
-    const peakInput = $('reconPeakFiles');
-    if (mpInput) mpInput.onchange = (e) => { $('reconMPList').textContent = `${e.target.files.length} ไฟล์ที่เลือก`; };
-    if (shipInput) shipInput.onchange = (e) => { $('reconShipList').textContent = `${e.target.files.length} ไฟล์ที่เลือก`; };
-    if (peakInput) peakInput.onchange = (e) => { $('reconPeakList').textContent = `${e.target.files.length} ไฟล์ที่เลือก`; };
-    const startBtn = $('startReconBtn');
-    if (startBtn) startBtn.onclick = runReconciliation;
+  const mpInput = $('reconMPFiles');
+  const shipInput = $('reconShipFiles');
+  const peakInput = $('reconPeakFiles');
+  if (mpInput) mpInput.onchange = (e) => { $('reconMPList').textContent = `${e.target.files.length} ไฟล์ที่เลือก`; };
+  if (shipInput) shipInput.onchange = (e) => { $('reconShipList').textContent = `${e.target.files.length} ไฟล์ที่เลือก`; };
+  if (peakInput) peakInput.onchange = (e) => { $('reconPeakList').textContent = `${e.target.files.length} ไฟล์ที่เลือก`; };
+  const startBtn = $('startReconBtn');
+  if (startBtn) startBtn.onclick = runReconciliation;
 
-    // Set default dates for PEAK API mode (current month)
-    const today = new Date();
-    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-    const fmt = (d) => d.toISOString().split('T')[0];
-    const startEl = $('peakStartDate'); if (startEl && !startEl.value) startEl.value = fmt(firstDay);
-    const endEl = $('peakEndDate'); if (endEl && !endEl.value) endEl.value = fmt(today);
+  // Set default dates for PEAK API mode (current month)
+  const today = new Date();
+  const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+  const fmt = (d) => d.toISOString().split('T')[0];
+  const startEl = $('peakStartDate'); if (startEl && !startEl.value) startEl.value = fmt(firstDay);
+  const endEl = $('peakEndDate'); if (endEl && !endEl.value) endEl.value = fmt(today);
 
-    // Load PEAK settings status (only if authenticated)
-    if (typeof state !== 'undefined' && state.user) {
-        loadPeakSettingsStatus();
-    }
-    const downloadBtn = $('downloadReconReportBtn');
-    if (downloadBtn) downloadBtn.onclick = () => { if (reconReportUrl) window.open(reconReportUrl, '_blank'); };
-    const resetBtn = $('resetReconBtn');
-    if (resetBtn) resetBtn.onclick = resetReconciliation;
-    const filteredBtn = $('downloadFilteredBtn');
-    if (filteredBtn) filteredBtn.onclick = downloadFilteredRecon;
-    const localScanBtn = $('startLocalScanBtn');
-    if (localScanBtn) localScanBtn.onclick = triggerLocalScan;
+  // Load PEAK settings status (only if authenticated)
+  if (typeof state !== 'undefined' && state.user) {
+    loadPeakSettingsStatus();
+  }
+  const downloadBtn = $('downloadReconReportBtn');
+  if (downloadBtn) downloadBtn.onclick = () => { if (reconReportUrl) window.open(reconReportUrl, '_blank'); };
+  const resetBtn = $('resetReconBtn');
+  if (resetBtn) resetBtn.onclick = resetReconciliation;
+  const filteredBtn = $('downloadFilteredBtn');
+  if (filteredBtn) filteredBtn.onclick = downloadFilteredRecon;
+  const localScanBtn = $('startLocalScanBtn');
+  if (localScanBtn) localScanBtn.onclick = triggerLocalScan;
 });
 
 async function triggerLocalScan() {
-    const btn = $('startLocalScanBtn');
-    if (!btn) return;
-    const originalText = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> กำลังส่งคำขอ...`;
-    initIcons();
-    
-    try {
-        const res = await fetch('/api/admin/reconcile/local-scan', { 
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        });
-        const data = await res.json();
-        if (data.ok) {
-            toast(data.message || 'เริ่มสแกนโฟลเดอร์เอกสารและกระทบยอดแล้วค่ะ ⏳', 'info');
-            btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> กำลังสแกนในเบื้องหลัง...`;
-            initIcons();
-        } else {
-            toast(data.error || 'เกิดข้อผิดพลาดในการสแกน', 'error');
-            btn.disabled = false;
-            btn.innerHTML = originalText;
-            initIcons();
-        }
-    } catch (e) {
-        console.error(e);
-        toast('การเชื่อมต่อล้มเหลว', 'error');
-        btn.disabled = false;
-        btn.innerHTML = originalText;
-        initIcons();
+  const btn = $('startLocalScanBtn');
+  if (!btn) return;
+  const originalText = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> กำลังส่งคำขอ...`;
+  initIcons();
+
+  try {
+    const res = await fetch('/api/admin/reconcile/local-scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await res.json();
+    if (data.ok) {
+      toast(data.message || 'เริ่มสแกนโฟลเดอร์เอกสารและกระทบยอดแล้วค่ะ ⏳', 'info');
+      btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> กำลังสแกนในเบื้องหลัง...`;
+      initIcons();
+    } else {
+      toast(data.error || 'เกิดข้อผิดพลาดในการสแกน', 'error');
+      btn.disabled = false;
+      btn.innerHTML = originalText;
+      initIcons();
     }
+  } catch (e) {
+    console.error(e);
+    toast('การเชื่อมต่อล้มเหลว', 'error');
+    btn.disabled = false;
+    btn.innerHTML = originalText;
+    initIcons();
+  }
 }
 
 async function initAuth() {
-    const userEl = $('loginUsername');
-    const passEl = $('loginPassword');
-    const btn = $('loginBtn');
-    const errorEl = $('loginError');
-    const errorMsg = $('loginErrorMsg');
+  const userEl = $('loginUsername');
+  const passEl = $('loginPassword');
+  const btn = $('loginBtn');
+  const errorEl = $('loginError');
+  const errorMsg = $('loginErrorMsg');
 
-    if (!userEl || !passEl || !btn) return;
+  if (!userEl || !passEl || !btn) return;
 
-    const username = userEl.value.trim();
-    const password = passEl.value.trim();
+  const username = userEl.value.trim();
+  const password = passEl.value.trim();
 
-    if (!username || !password) {
-        toast('กรุณากรอกชื่อผู้ใช้งานและรหัสผ่าน', 'error');
-        if (errorEl) {
-            errorEl.classList.remove('hidden');
-            errorMsg.textContent = 'กรุณากรอกข้อมูลให้ครบถ้วน';
-        }
+  if (!username || !password) {
+    toast('กรุณากรอกชื่อผู้ใช้งานและรหัสผ่าน', 'error');
+    if (errorEl) {
+      errorEl.classList.remove('hidden');
+      errorMsg.textContent = 'กรุณากรอกข้อมูลให้ครบถ้วน';
+    }
+    return;
+  }
+
+  const originalText = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = `<i data-lucide="loader-2" class="w-5 h-5 animate-spin inline-block mr-2"></i> กำลังตรวจสอบ...`;
+  if (errorEl) errorEl.classList.add('hidden');
+
+  try {
+    const data = await apiFetch('/api/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password })
+    });
+
+    if (data.requires_2fa || data.require_2fa) {
+      handle2FAChallenge(data.pre_auth_token, data.totp_type, { hasEmail: data.has_email, emailMasked: data.email_masked });
+      btn.disabled = false;
+      btn.innerHTML = originalText;
+      return;
+    }
+
+    if (data.ok) {
+      state.user = data.user;
+      state.username = (typeof data.user === 'object') ? data.user.username : data.user;
+
+      if (!data.has_org) {
+        window.location.href = '/onboarding';
         return;
-    }
+      }
 
-    const originalText = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = `<i data-lucide="loader-2" class="w-5 h-5 animate-spin inline-block mr-2"></i> กำลังตรวจสอบ...`;
-    if (errorEl) errorEl.classList.add('hidden');
+      toast(`ยินดีต้อนรับคุณ ${state.username}`, 'success');
 
-    try {
-        const data = await apiFetch('/api/login', {
-            method: 'POST',
-            body: JSON.stringify({ username, password })
-        });
-
-        if (data.requires_2fa || data.require_2fa) {
-            handle2FAChallenge(data.pre_auth_token, data.totp_type, { hasEmail: data.has_email, emailMasked: data.email_masked });
-            btn.disabled = false;
-            btn.innerHTML = originalText;
-            return;
-        }
-
-        if (data.ok) {
-            state.user = data.user;
-            state.username = (typeof data.user === 'object') ? data.user.username : data.user;
-            
-            if (!data.has_org) {
-                window.location.href = '/onboarding';
-                return;
-            }
-
-            toast(`ยินดีต้อนรับคุณ ${state.username}`, 'success');
-            
-            // Reload page so browser receives and attaches all session cookies cleanly
-            setTimeout(() => {
-                if (window.location.pathname === '/onboarding') {
-                    window.location.href = '/';
-                } else {
-                    window.location.reload();
-                }
-            }, 500);
+      // Reload page so browser receives and attaches all session cookies cleanly
+      setTimeout(() => {
+        if (window.location.pathname === '/onboarding') {
+          window.location.href = '/';
         } else {
-            const msg = data.error || 'ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง';
-            toast(msg, 'error');
-            if (errorEl) {
-                errorEl.classList.remove('hidden');
-                errorMsg.textContent = msg;
-            }
+          window.location.reload();
         }
-    } catch (e) {
-        console.error('Login error:', e);
-        // ข้อความจากเซิร์ฟเวอร์ (เช่น รหัสผ่านไม่ถูกต้อง = HTTP 401) ให้แสดงตรง ๆ ส่วนข้อผิดพลาดเครือข่ายใช้ข้อความทั่วไป
-        const _em = (e && e.message && !/failed to fetch|networkerror|load failed/i.test(e.message)) ? e.message : 'การเชื่อมต่อล้มเหลว กรุณาลองใหม่อีกครั้ง';
-        toast(_em, 'error');
-        if (errorEl) { errorEl.classList.remove('hidden'); if (errorMsg) errorMsg.textContent = _em; }
-    } finally {
-        btn.disabled = false;
-        btn.innerHTML = originalText;
-        lucide.createIcons();
+      }, 500);
+    } else {
+      const msg = data.error || 'ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง';
+      toast(msg, 'error');
+      if (errorEl) {
+        errorEl.classList.remove('hidden');
+        errorMsg.textContent = msg;
+      }
     }
+  } catch (e) {
+    console.error('Login error:', e);
+    // ข้อความจากเซิร์ฟเวอร์ (เช่น รหัสผ่านไม่ถูกต้อง = HTTP 401) ให้แสดงตรง ๆ ส่วนข้อผิดพลาดเครือข่ายใช้ข้อความทั่วไป
+    const _em = (e && e.message && !/failed to fetch|networkerror|load failed/i.test(e.message)) ? e.message : 'การเชื่อมต่อล้มเหลว กรุณาลองใหม่อีกครั้ง';
+    toast(_em, 'error');
+    if (errorEl) { errorEl.classList.remove('hidden'); if (errorMsg) errorMsg.textContent = _em; }
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalText;
+    lucide.createIcons();
+  }
 }
 
 async function runReconciliation() {
-    const mpFiles = $('reconMPFiles').files;
-    const shipFiles = $('reconShipFiles').files;
-    const isApiMode = window._peakMode === 'api';
+  const mpFiles = $('reconMPFiles').files;
+  const shipFiles = $('reconShipFiles').files;
+  const isApiMode = window._peakMode === 'api';
 
-    if (!mpFiles.length || !shipFiles.length) { toast('กรุณาอัปโหลดไฟล์ Marketplace และ Shipnity', 'error'); return; }
-    if (!isApiMode && !$('reconPeakFiles').files.length) { toast('กรุณาอัปโหลดไฟล์ PEAK หรือเปลี่ยนเป็นโหมด API', 'error'); return; }
+  if (!mpFiles.length || !shipFiles.length) { toast('กรุณาอัปโหลดไฟล์ Marketplace และ Shipnity', 'error'); return; }
+  if (!isApiMode && !$('reconPeakFiles').files.length) { toast('กรุณาอัปโหลดไฟล์ PEAK หรือเปลี่ยนเป็นโหมด API', 'error'); return; }
 
-    const btn = $('startReconBtn');
-    const originalText = btn.innerHTML;
-    btn.disabled = true;
-    showGlobalLoading('กำลังเตรียมข้อมูลการกระทบยอด...');
-    initIcons();
+  const btn = $('startReconBtn');
+  const originalText = btn.innerHTML;
+  btn.disabled = true;
+  showGlobalLoading('กำลังเตรียมข้อมูลการกระทบยอด...');
+  initIcons();
 
-    const formData = new FormData();
-    for (let f of mpFiles) formData.append('marketplace', f);
-    for (let f of shipFiles) formData.append('shipnity', f);
+  const formData = new FormData();
+  for (let f of mpFiles) formData.append('marketplace', f);
+  for (let f of shipFiles) formData.append('shipnity', f);
 
-    try {
-        if (isApiMode) {
-            btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> กำลังดึงข้อมูลจาก PEAK...`;
-            showGlobalLoading('กำลังดึงข้อมูลจาก PEAK API...');
-            initIcons();
-            const start = $('peakStartDate')?.value || '';
-            const end = $('peakEndDate')?.value || '';
-            const peakRes = await fetch(`/api/reconciliation/fetch-peak?start_date=${start}&end_date=${end}`);
-            const peakData = await peakRes.json();
-            if (!peakData.ok) { 
-                toast(peakData.error || 'ดึงข้อมูล PEAK ไม่สำเร็จ', 'error'); 
-                btn.disabled = false;
-                btn.innerHTML = originalText;
-                hideGlobalLoading();
-                return; 
-            }
-            formData.append('peak_api_rows', JSON.stringify(peakData.rows));
-            toast(`ดึงข้อมูลจาก PEAK สำเร็จ ${peakData.count} รายการ`, 'info');
-        } else {
-            for (let f of $('reconPeakFiles').files) formData.append('peak', f);
-        }
-
-        btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> กำลังประมวลผล...`;
-        showGlobalLoading('กำลังประมวลผลและสร้างรายงานการกระทบยอด...');
-        initIcons();
-        const res = await fetch('/api/reconciliation/process', { method: 'POST', body: formData });
-        const data = await res.json();
-        if (data.ok) {
-            renderReconResults(data.summary);
-            toast('ประมวลผลการกระทบยอดสำเร็จ', 'success');
-            $('reconLastRun').textContent = 'ล่าสุดเมื่อ: ' + new Date().toLocaleString('th-TH');
-            const rb = $('resetReconBtn'); if (rb) rb.classList.remove('hidden');
-        } else { toast(data.error || 'เกิดข้อผิดพลาด', 'error'); }
-    } catch (e) { console.error(e); toast('การเชื่อมต่อล้มเหลว', 'error'); }
-    finally { 
-        btn.disabled = false; 
-        btn.innerHTML = originalText; 
-        initIcons(); 
+  try {
+    if (isApiMode) {
+      btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> กำลังดึงข้อมูลจาก PEAK...`;
+      showGlobalLoading('กำลังดึงข้อมูลจาก PEAK API...');
+      initIcons();
+      const start = $('peakStartDate')?.value || '';
+      const end = $('peakEndDate')?.value || '';
+      const peakRes = await fetch(`/api/reconciliation/fetch-peak?start_date=${start}&end_date=${end}`);
+      const peakData = await peakRes.json();
+      if (!peakData.ok) {
+        toast(peakData.error || 'ดึงข้อมูล PEAK ไม่สำเร็จ', 'error');
+        btn.disabled = false;
+        btn.innerHTML = originalText;
         hideGlobalLoading();
+        return;
+      }
+      formData.append('peak_api_rows', JSON.stringify(peakData.rows));
+      toast(`ดึงข้อมูลจาก PEAK สำเร็จ ${peakData.count} รายการ`, 'info');
+    } else {
+      for (let f of $('reconPeakFiles').files) formData.append('peak', f);
     }
+
+    btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> กำลังประมวลผล...`;
+    showGlobalLoading('กำลังประมวลผลและสร้างรายงานการกระทบยอด...');
+    initIcons();
+    const res = await fetch('/api/reconciliation/process', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (data.ok) {
+      renderReconResults(data.summary);
+      toast('ประมวลผลการกระทบยอดสำเร็จ', 'success');
+      $('reconLastRun').textContent = 'ล่าสุดเมื่อ: ' + new Date().toLocaleString('th-TH');
+      const rb = $('resetReconBtn'); if (rb) rb.classList.remove('hidden');
+    } else { toast(data.error || 'เกิดข้อผิดพลาด', 'error'); }
+  } catch (e) { console.error(e); toast('การเชื่อมต่อล้มเหลว', 'error'); }
+  finally {
+    btn.disabled = false;
+    btn.innerHTML = originalText;
+    initIcons();
+    hideGlobalLoading();
+  }
 }
 
 function resetReconciliation() {
-    window._reconData = null; _reconFilteredData = []; reconReportUrl = null;
-    $('reconSummary')?.classList.add('hidden');
-    $('reconResultsArea')?.classList.add('hidden');
-    $('resetReconBtn')?.classList.add('hidden');
-    ['reconMPFiles','reconShipFiles','reconPeakFiles'].forEach(id => { const el = $(id); if (el) el.value = ''; });
-    ['reconMPList','reconShipList','reconPeakList'].forEach(id => { const el = $(id); if (el) el.textContent = ''; });
-    const s = $('reconSearchInput'); if (s) s.value = '';
-    $('reconLastRun').textContent = 'ยังไม่มีการประมวลผล';
-    toast('ล้างข้อมูลเรียบร้อย', 'success');
+  window._reconData = null; _reconFilteredData = []; reconReportUrl = null;
+  $('reconSummary')?.classList.add('hidden');
+  $('reconResultsArea')?.classList.add('hidden');
+  $('resetReconBtn')?.classList.add('hidden');
+  ['reconMPFiles', 'reconShipFiles', 'reconPeakFiles'].forEach(id => { const el = $(id); if (el) el.value = ''; });
+  ['reconMPList', 'reconShipList', 'reconPeakList'].forEach(id => { const el = $(id); if (el) el.textContent = ''; });
+  const s = $('reconSearchInput'); if (s) s.value = '';
+  $('reconLastRun').textContent = 'ยังไม่มีการประมวลผล';
+  toast('ล้างข้อมูลเรียบร้อย', 'success');
 }
 
 function renderReconResults(summary) {
-    const { total, issues, data, report_url, financial } = summary;
-    reconReportUrl = report_url;
-    window._reconData = data;
-    $('reconStatTotal').textContent = total.toLocaleString();
-    $('reconStatNormal').textContent = (total - issues).toLocaleString();
-    $('reconStatIssues').textContent = issues.toLocaleString();
-    const cEl = $('reconStatCancelled'); if (cEl) cEl.textContent = (financial?.mp_cancelled || 0).toLocaleString();
-    const fmt = (v) => '฿' + (v || 0).toLocaleString('th-TH', {minimumFractionDigits: 0, maximumFractionDigits: 0});
-    const ss = $('reconStatShipSales'); if (ss) ss.textContent = fmt(financial?.total_shipnity_sales);
-    const pa = $('reconStatPeakAmount'); if (pa) pa.textContent = fmt(financial?.total_peak_amount);
-    const pt = $('reconStatPeakTax'); if (pt) pt.textContent = fmt(financial?.total_peak_tax);
-    const dEl = $('reconStatDiff');
-    if (dEl) { const d = financial?.amount_diff || 0; dEl.textContent = (d >= 0 ? '+' : '') + fmt(d); }
-    $('reconSummary').classList.remove('hidden');
-    $('reconResultsArea').classList.remove('hidden');
-    
-    // Dynamically populate brand filter
-    const brandFilter = $('reconBrandFilter');
-    if (brandFilter && data && data.length > 0) {
-        const brands = new Set();
-        data.forEach(row => { if (row.brand) brands.add(row.brand); });
-        
-        const currentBrand = brandFilter.value;
-        brandFilter.innerHTML = '<option value="all">ทุกแบรนด์</option>';
-        Array.from(brands).sort().forEach(b => {
-            brandFilter.innerHTML += `<option value="${b}">${b}</option>`;
-        });
-        // Restore selection if it still exists
-        if (brands.has(currentBrand)) brandFilter.value = currentBrand;
-    }
+  const { total, issues, data, report_url, financial } = summary;
+  reconReportUrl = report_url;
+  window._reconData = data;
+  $('reconStatTotal').textContent = total.toLocaleString();
+  $('reconStatNormal').textContent = (total - issues).toLocaleString();
+  $('reconStatIssues').textContent = issues.toLocaleString();
+  const cEl = $('reconStatCancelled'); if (cEl) cEl.textContent = (financial?.mp_cancelled || 0).toLocaleString();
+  const fmt = (v) => '฿' + (v || 0).toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  const ss = $('reconStatShipSales'); if (ss) ss.textContent = fmt(financial?.total_shipnity_sales);
+  const pa = $('reconStatPeakAmount'); if (pa) pa.textContent = fmt(financial?.total_peak_amount);
+  const pt = $('reconStatPeakTax'); if (pt) pt.textContent = fmt(financial?.total_peak_tax);
+  const dEl = $('reconStatDiff');
+  if (dEl) { const d = financial?.amount_diff || 0; dEl.textContent = (d >= 0 ? '+' : '') + fmt(d); }
+  $('reconSummary').classList.remove('hidden');
+  $('reconResultsArea').classList.remove('hidden');
 
-    updateReconBadges(data);
-    renderReconTable(data);
-    const si = $('reconSearchInput'); if (si) si.oninput = () => applyReconFilters();
-    document.querySelectorAll('.recon-filter-btn').forEach(btn => {
-        btn.onclick = () => {
-            document.querySelectorAll('.recon-filter-btn').forEach(b => b.classList.remove('ring-2', 'ring-offset-1', 'ring-indigo-500'));
-            btn.classList.add('ring-2', 'ring-offset-1', 'ring-indigo-500');
-            applyReconFilters();
-        };
+  // Dynamically populate brand filter
+  const brandFilter = $('reconBrandFilter');
+  if (brandFilter && data && data.length > 0) {
+    const brands = new Set();
+    data.forEach(row => { if (row.brand) brands.add(row.brand); });
+
+    const currentBrand = brandFilter.value;
+    brandFilter.innerHTML = '<option value="all">ทุกแบรนด์</option>';
+    Array.from(brands).sort().forEach(b => {
+      brandFilter.innerHTML += `<option value="${b}">${b}</option>`;
     });
-    const pf = $('reconPlatformFilter'); if (pf) pf.onchange = () => applyReconFilters();
-    const bf = $('reconBrandFilter'); if (bf) bf.onchange = () => applyReconFilters();
-    if (typeof initIcons === 'function') initIcons();
+    // Restore selection if it still exists
+    if (brands.has(currentBrand)) brandFilter.value = currentBrand;
+  }
+
+  updateReconBadges(data);
+  renderReconTable(data);
+  const si = $('reconSearchInput'); if (si) si.oninput = () => applyReconFilters();
+  document.querySelectorAll('.recon-filter-btn').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.recon-filter-btn').forEach(b => b.classList.remove('ring-2', 'ring-offset-1', 'ring-indigo-500'));
+      btn.classList.add('ring-2', 'ring-offset-1', 'ring-indigo-500');
+      applyReconFilters();
+    };
+  });
+  const pf = $('reconPlatformFilter'); if (pf) pf.onchange = () => applyReconFilters();
+  const bf = $('reconBrandFilter'); if (bf) bf.onchange = () => applyReconFilters();
+  if (typeof initIcons === 'function') initIcons();
 }
 
 function applyReconFilters() {
-    const data = window._reconData || [];
-    const search = ($('reconSearchInput')?.value || '').toLowerCase().trim();
-    const activeBtn = document.querySelector('.recon-filter-btn.ring-2');
-    const filterType = activeBtn?.getAttribute('data-recon-filter') || 'all';
-    const platform = $('reconPlatformFilter')?.value || 'all';
-    const brand = $('reconBrandFilter')?.value || 'all';
-    const filtered = data.filter(row => {
-        if (search) {
-            const s = [row.mp_order_id, row.shipnity_id, row.peak_invoice_id, row.platform, row.status_mp, row.issue, row.brand].map(v => (v || '').toLowerCase()).join(' ');
-            if (!s.includes(search)) return false;
-        }
-        if (platform !== 'all' && (row.platform || '') !== platform) return false;
-        if (brand !== 'all' && (row.brand || '') !== brand) return false;
-        const isIssue = row.issue && row.issue !== '✅ ปกติ';
-        const isCancelled = ['ยกเลิกแล้ว', 'canceled', 'cancelled', 'returned'].includes((row.status_mp || '').toLowerCase());
-        switch (filterType) {
-            case 'issues': return isIssue;
-            case 'normal': return !isIssue;
-            case 'cancelled': return isCancelled;
-            case 'no-shipnity': return (row.issue || '').includes('Shipnity');
-            case 'no-peak': return (row.issue || '').includes('PEAK');
-            case 'amount-mismatch': return (row.issue || '').includes('💰');
-            default: return true;
-        }
-    });
-    _reconFilteredData = filtered;
-    renderReconTable(filtered);
-    $('reconFilterCount').textContent = `แสดง ${filtered.length} / ${data.length} รายการ`;
+  const data = window._reconData || [];
+  const search = ($('reconSearchInput')?.value || '').toLowerCase().trim();
+  const activeBtn = document.querySelector('.recon-filter-btn.ring-2');
+  const filterType = activeBtn?.getAttribute('data-recon-filter') || 'all';
+  const platform = $('reconPlatformFilter')?.value || 'all';
+  const brand = $('reconBrandFilter')?.value || 'all';
+  const filtered = data.filter(row => {
+    if (search) {
+      const s = [row.mp_order_id, row.shipnity_id, row.peak_invoice_id, row.platform, row.status_mp, row.issue, row.brand].map(v => (v || '').toLowerCase()).join(' ');
+      if (!s.includes(search)) return false;
+    }
+    if (platform !== 'all' && (row.platform || '') !== platform) return false;
+    if (brand !== 'all' && (row.brand || '') !== brand) return false;
+    const isIssue = row.issue && row.issue !== '✅ ปกติ';
+    const isCancelled = ['ยกเลิกแล้ว', 'canceled', 'cancelled', 'returned'].includes((row.status_mp || '').toLowerCase());
+    switch (filterType) {
+      case 'issues': return isIssue;
+      case 'normal': return !isIssue;
+      case 'cancelled': return isCancelled;
+      case 'no-shipnity': return (row.issue || '').includes('Shipnity');
+      case 'no-peak': return (row.issue || '').includes('PEAK');
+      case 'amount-mismatch': return (row.issue || '').includes('💰');
+      default: return true;
+    }
+  });
+  _reconFilteredData = filtered;
+  renderReconTable(filtered);
+  $('reconFilterCount').textContent = `แสดง ${filtered.length} / ${data.length} รายการ`;
 }
 
 function renderReconTable(data) {
-    const body = $('reconResultsBody'); if (!body) return;
-    body.innerHTML = '';
-    _reconFilteredData = data;
-    if (data.length === 0) { body.innerHTML = `<tr><td colspan="9" class="p-8 text-center text-surface-400 text-xs">ไม่พบรายการที่ตรงกับเงื่อนไข</td></tr>`; return; }
-    data.forEach(row => {
-        const tr = document.createElement('tr');
-        const isIssue = row.issue && row.issue !== '✅ ปกติ';
-        tr.className = isIssue ? 'bg-rose-50/50 dark:bg-rose-900/5 hover:bg-rose-100/50 transition-colors' : 'hover:bg-surface-50 dark:hover:bg-surface-800/50 transition-colors';
-        const aS = parseFloat(row.amount_shipnity) || 0;
-        const aP = parseFloat(row.amount_peak) || 0;
-        const mismatch = aS > 0 && aP > 0 && Math.abs(aS - aP) > 5;
-        tr.innerHTML = `
+  const body = $('reconResultsBody'); if (!body) return;
+  body.innerHTML = '';
+  _reconFilteredData = data;
+  if (data.length === 0) { body.innerHTML = `<tr><td colspan="9" class="p-8 text-center text-surface-400 text-xs">ไม่พบรายการที่ตรงกับเงื่อนไข</td></tr>`; return; }
+  data.forEach(row => {
+    const tr = document.createElement('tr');
+    const isIssue = row.issue && row.issue !== '✅ ปกติ';
+    tr.className = isIssue ? 'bg-rose-50/50 dark:bg-rose-900/5 hover:bg-rose-100/50 transition-colors' : 'hover:bg-surface-50 dark:hover:bg-surface-800/50 transition-colors';
+    const aS = parseFloat(row.amount_shipnity) || 0;
+    const aP = parseFloat(row.amount_peak) || 0;
+    const mismatch = aS > 0 && aP > 0 && Math.abs(aS - aP) > 5;
+    tr.innerHTML = `
             <td class="p-3 font-mono text-[10px]">${row.mp_order_id || '-'}</td>
             <td class="p-3"><span class="px-2 py-0.5 rounded-full text-[9px] font-black ${row.platform === 'Shopee' ? 'bg-orange-100 text-orange-700' : row.platform === 'Lazada' ? 'bg-blue-100 text-blue-700' : 'bg-surface-100 text-surface-500'}">${row.platform || '-'}</span></td>
             <td class="p-3"><span class="px-2 py-0.5 rounded-full text-[9px] font-black ${row.brand === 'DUIT' ? 'bg-pink-100 text-pink-700' : row.brand === 'Thumb Toe' ? 'bg-teal-100 text-teal-700' : row.brand === 'Bytuneller' ? 'bg-cyan-100 text-cyan-700' : 'bg-surface-100 text-surface-400'}">${row.brand || '-'}</span></td>
             <td class="p-3 font-mono text-[10px]">${row.shipnity_id || '-'}</td>
             <td class="p-3 font-mono text-[10px]">${row.peak_invoice_id || '-'}</td>
-            <td class="p-3"><span class="px-2 py-0.5 rounded-full text-[9px] font-black ${['ยกเลิกแล้ว','canceled','cancelled','returned'].includes((row.status_mp||'').toLowerCase()) ? 'bg-rose-100 text-rose-600' : ['สำเร็จแล้ว','confirmed'].includes((row.status_mp||'').toLowerCase()) ? 'bg-emerald-100 text-emerald-600' : 'bg-surface-100 text-surface-500'}">${row.status_mp || '-'}</span></td>
+            <td class="p-3"><span class="px-2 py-0.5 rounded-full text-[9px] font-black ${['ยกเลิกแล้ว', 'canceled', 'cancelled', 'returned'].includes((row.status_mp || '').toLowerCase()) ? 'bg-rose-100 text-rose-600' : ['สำเร็จแล้ว', 'confirmed'].includes((row.status_mp || '').toLowerCase()) ? 'bg-emerald-100 text-emerald-600' : 'bg-surface-100 text-surface-500'}">${row.status_mp || '-'}</span></td>
             <td class="p-3 text-[10px] text-right font-mono ${mismatch ? 'text-amber-600 font-bold' : ''}">${aS ? aS.toLocaleString() : '-'}</td>
             <td class="p-3 text-[10px] text-right font-mono ${mismatch ? 'text-amber-600 font-bold' : ''}">${aP ? aP.toLocaleString() : '-'}</td>
             <td class="p-3 text-[10px] font-bold ${isIssue ? 'text-rose-600' : 'text-emerald-600'}">${row.issue || '-'}</td>
         `;
-        body.appendChild(tr);
-    });
-    $('reconFilterCount').textContent = `แสดง ${data.length} / ${(window._reconData || []).length} รายการ`;
+    body.appendChild(tr);
+  });
+  $('reconFilterCount').textContent = `แสดง ${data.length} / ${(window._reconData || []).length} รายการ`;
 }
 
 function updateReconBadges(data) {
-    const c = { 'all': data.length, 'issues': 0, 'normal': 0, 'cancelled': 0, 'no-shipnity': 0, 'no-peak': 0, 'amount-mismatch': 0 };
-    data.forEach(row => {
-        const isIssue = row.issue && row.issue !== '✅ ปกติ';
-        if (isIssue) c['issues']++; else c['normal']++;
-        if (['ยกเลิกแล้ว','canceled','cancelled','returned'].includes((row.status_mp||'').toLowerCase())) c['cancelled']++;
-        if ((row.issue||'').includes('Shipnity')) c['no-shipnity']++;
-        if ((row.issue||'').includes('PEAK')) c['no-peak']++;
-        if ((row.issue||'').includes('💰')) c['amount-mismatch']++;
-    });
-    const labels = { 'all': 'ทั้งหมด', 'issues': 'เฉพาะปัญหา', 'normal': 'ปกติ', 'cancelled': 'ยกเลิกแล้ว', 'no-shipnity': 'ไม่พบใน Shipnity', 'no-peak': 'ไม่มีใน PEAK', 'amount-mismatch': 'ยอดไม่ตรง' };
-    document.querySelectorAll('.recon-filter-btn').forEach(btn => {
-        const k = btn.getAttribute('data-recon-filter');
-        if (k && labels[k] !== undefined) btn.textContent = `${labels[k]} (${c[k]})`;
-    });
+  const c = { 'all': data.length, 'issues': 0, 'normal': 0, 'cancelled': 0, 'no-shipnity': 0, 'no-peak': 0, 'amount-mismatch': 0 };
+  data.forEach(row => {
+    const isIssue = row.issue && row.issue !== '✅ ปกติ';
+    if (isIssue) c['issues']++; else c['normal']++;
+    if (['ยกเลิกแล้ว', 'canceled', 'cancelled', 'returned'].includes((row.status_mp || '').toLowerCase())) c['cancelled']++;
+    if ((row.issue || '').includes('Shipnity')) c['no-shipnity']++;
+    if ((row.issue || '').includes('PEAK')) c['no-peak']++;
+    if ((row.issue || '').includes('💰')) c['amount-mismatch']++;
+  });
+  const labels = { 'all': 'ทั้งหมด', 'issues': 'เฉพาะปัญหา', 'normal': 'ปกติ', 'cancelled': 'ยกเลิกแล้ว', 'no-shipnity': 'ไม่พบใน Shipnity', 'no-peak': 'ไม่มีใน PEAK', 'amount-mismatch': 'ยอดไม่ตรง' };
+  document.querySelectorAll('.recon-filter-btn').forEach(btn => {
+    const k = btn.getAttribute('data-recon-filter');
+    if (k && labels[k] !== undefined) btn.textContent = `${labels[k]} (${c[k]})`;
+  });
 }
 
 async function downloadFilteredRecon() {
-    if (!_reconFilteredData || !_reconFilteredData.length) { toast('ไม่มีข้อมูลสำหรับดาวน์โหลด', 'error'); return; }
-    try {
-        const res = await fetch('/api/reconciliation/download-filtered', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rows: _reconFilteredData }) });
-        if (!res.ok) { toast('ดาวน์โหลดล้มเหลว', 'error'); return; }
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a'); a.href = url; a.download = 'reconciliation_filtered.xlsx'; a.click();
-        URL.revokeObjectURL(url);
-        toast('ดาวน์โหลดสำเร็จ', 'success');
-    } catch (e) { console.error(e); toast('เกิดข้อผิดพลาด', 'error'); }
+  if (!_reconFilteredData || !_reconFilteredData.length) { toast('ไม่มีข้อมูลสำหรับดาวน์โหลด', 'error'); return; }
+  try {
+    const res = await fetch('/api/reconciliation/download-filtered', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rows: _reconFilteredData }) });
+    if (!res.ok) { toast('ดาวน์โหลดล้มเหลว', 'error'); return; }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'reconciliation_filtered.xlsx'; a.click();
+    URL.revokeObjectURL(url);
+    toast('ดาวน์โหลดสำเร็จ', 'success');
+  } catch (e) { console.error(e); toast('เกิดข้อผิดพลาด', 'error'); }
 }
 
 // ─── Google Drive Explorer ────────────────────
@@ -18357,7 +18339,7 @@ async function loadDriveContents(folderId = 'root') {
     const data = await apiFetch(`/api/drive/contents?folder_id=${folderId}`, { _timeout: 8000 });
     if (data.ok) {
       state.drive.currentFolderId = folderId;
-      
+
       // Update history for breadcrumbs
       if (folderId === 'root') {
         state.drive.history = [{ id: 'root', name: data.folder_name || 'My Drive' }];
@@ -18373,7 +18355,7 @@ async function loadDriveContents(folderId = 'root') {
 
       renderDriveContents(data.items);
       updateDriveBreadcrumbs();
-      
+
       // Update Back Button State
       const backBtn = $('driveBackBtn');
       if (backBtn) {
@@ -18423,7 +18405,7 @@ async function loadDriveContents(folderId = 'root') {
 async function renameDriveFile(fileId, currentName) {
   const newName = prompt('เปลี่ยนชื่อไฟล์:', currentName);
   if (!newName || newName === currentName) return;
-  
+
   try {
     const data = await apiFetch('/api/drive/rename', {
       method: 'POST',
@@ -18442,7 +18424,7 @@ async function renameDriveFile(fileId, currentName) {
 
 async function deleteDriveFile(fileId, name) {
   if (!confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบ "${name}"?`)) return;
-  
+
   try {
     const data = await apiFetch('/api/drive/delete', {
       method: 'POST',
@@ -18473,7 +18455,7 @@ function renderDriveContents(items) {
     const isImage = item.mimeType.startsWith('image/');
     const previewUrl = (isImage && item.thumbnailLink) ? item.thumbnailLink.replace('=s220', '=s400') : null;
     const onClick = isFolder ? `navigateToDriveFolder('${item.id}', '${item.name.replace(/'/g, "\\'")}')` : `window.open('${item.webViewLink}', '_blank')`;
-    
+
     // Administrative controls (gated)
     let adminControls = '';
     if (state.isAdmin) {
@@ -18497,13 +18479,13 @@ function renderDriveContents(items) {
            style="animation-delay: ${idx * 30}ms"
            onclick="${onClick}">
         <div class="aspect-square rounded-xl bg-surface-50 dark:bg-surface-800 flex items-center justify-center mb-3 group-hover:bg-brand-50 dark:group-hover:bg-brand-900/20 transition-colors overflow-hidden">
-          ${isFolder ? 
-            `<i data-lucide="folder" class="w-12 h-12 text-amber-500 fill-amber-500/20"></i>` : 
-            (previewUrl ? 
-              `<img src="${previewUrl}" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110">` :
-              `<img src="${item.iconLink}" class="w-10 h-10 object-contain opacity-80 group-hover:opacity-100 transition-opacity">`
-            )
-          }
+          ${isFolder ?
+        `<i data-lucide="folder" class="w-12 h-12 text-amber-500 fill-amber-500/20"></i>` :
+        (previewUrl ?
+          `<img src="${previewUrl}" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110">` :
+          `<img src="${item.iconLink}" class="w-10 h-10 object-contain opacity-80 group-hover:opacity-100 transition-opacity">`
+        )
+      }
         </div>
         <div class="space-y-1">
           <p class="text-[11px] font-bold text-surface-900 dark:text-surface-100 truncate pr-2" title="${item.name}">${item.name}</p>
@@ -18575,27 +18557,27 @@ function updateSystemStatus(text = 'Live', type = 'success') {
   const dashBadge = $('dashSystemStatus');
   const dashText = $('dashSystemStatusText');
   const sidebarBadge = $('statusBadge');
-  
+
   const colors = {
     success: { bg: 'bg-emerald-50 dark:bg-emerald-900/20', text: 'text-emerald-600', dot: 'bg-emerald-500', border: 'border-emerald-100 dark:border-emerald-800' },
     warning: { bg: 'bg-amber-50 dark:bg-amber-900/20', text: 'text-amber-600', dot: 'bg-amber-500', border: 'border-amber-100 dark:border-amber-800' },
     error: { bg: 'bg-red-50 dark:bg-red-900/20', text: 'text-red-600', dot: 'bg-red-500', border: 'border-red-100 dark:border-red-800' }
   };
-  
+
   const c = colors[type] || colors.success;
-  
+
   if (dashBadge && dashText) {
     dashBadge.className = `hidden md:flex items-center gap-2 px-3 py-1.5 ${c.bg} ${c.text} rounded-full border ${c.border}`;
     const dot = dashBadge.querySelector('.rounded-full');
     if (dot) dot.className = `w-2 h-2 ${c.dot} rounded-full animate-pulse`;
     dashText.textContent = `System ${text}`;
   }
-  
+
   if (sidebarBadge) {
-     sidebarBadge.className = `flex items-center gap-1.5 px-2 py-0.5 rounded ${c.bg} ${c.text} text-[10px] font-bold border ${c.border}`;
-     const dot = sidebarBadge.querySelector('.rounded-full');
-     if (dot) dot.className = `w-1 h-1 rounded-full ${c.dot}`;
-     if (sidebarBadge.lastChild) sidebarBadge.lastChild.textContent = ` ${text === 'Live' ? 'พร้อมทำงาน' : text}`;
+    sidebarBadge.className = `flex items-center gap-1.5 px-2 py-0.5 rounded ${c.bg} ${c.text} text-[10px] font-bold border ${c.border}`;
+    const dot = sidebarBadge.querySelector('.rounded-full');
+    if (dot) dot.className = `w-1 h-1 rounded-full ${c.dot}`;
+    if (sidebarBadge.lastChild) sidebarBadge.lastChild.textContent = ` ${text === 'Live' ? 'พร้อมทำงาน' : text}`;
   }
 }
 
@@ -18604,22 +18586,22 @@ async function fetchWeather() {
   try {
     const lat = 13.7563; // Bangkok
     const lon = 100.5018;
-    
+
     const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,uv_index&hourly=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=Asia%2FBangkok&forecast_days=7`;
     const aqUrl = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&current=pm2_5,us_aqi&timezone=Asia%2FBangkok`;
 
     const [wRes, aqRes] = await Promise.allSettled([fetch(weatherUrl), fetch(aqUrl)]);
-    
+
     let data = null;
     if (wRes.status === 'fulfilled' && wRes.value.ok) {
       data = await wRes.value.json();
     }
-    
+
     let aqData = null;
     if (aqRes.status === 'fulfilled' && aqRes.value.ok) {
       try {
         aqData = await aqRes.value.json();
-      } catch (_) {}
+      } catch (_) { }
     }
 
     if (data && data.current) {
@@ -18629,7 +18611,7 @@ async function fetchWeather() {
       const rain = data.current.precipitation;
       const uv = data.current.uv_index;
       const code = data.current.weather_code;
-      
+
       // Update Dashboard Card
       if ($('currentTemp')) $('currentTemp').textContent = `${temp}°C`;
       if ($('dashFeelsLike')) $('dashFeelsLike').textContent = `${feels}°C`;
@@ -18639,7 +18621,7 @@ async function fetchWeather() {
         $('dashUV').className = `text-sm font-black ${uv > 6 ? 'text-rose-500' : uv > 3 ? 'text-amber-500' : 'text-emerald-500'}`;
       }
       if ($('rainChance')) $('rainChance').innerHTML = `<i data-lucide="droplets" class="w-3 h-3"></i> ฝน ${rain}mm`;
-      
+
       // Update PM 2.5
       const pm25El = $('dashPM25');
       if (pm25El) {
@@ -18651,13 +18633,13 @@ async function fetchWeather() {
           pm25El.textContent = '--';
         }
       }
-      
+
       const condition = getWeatherCondition(code);
       if ($('weatherCondition')) $('weatherCondition').textContent = condition;
-      
+
       const now = new Date();
       if ($('weatherLastUpdate')) $('weatherLastUpdate').textContent = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-      
+
       // Store globally for detail modal
       window._weatherData = data;
       window._airQualityData = aqData;
@@ -18665,7 +18647,7 @@ async function fetchWeather() {
         state.weather = data;
         state.airQuality = aqData;
       }
-      
+
       if (typeof lucide !== 'undefined') lucide.createIcons();
     }
   } catch (err) {
@@ -18688,12 +18670,12 @@ function getWeatherCondition(code) {
 function showWeatherDetail() {
   const modal = $('weatherDetailModal');
   if (!modal || !window._weatherData) return;
-  
+
   const d = window._weatherData;
   const aq = window._airQualityData;
   modal.classList.remove('hidden');
   modal.classList.add('flex', 'items-center', 'justify-center');
-  
+
   // Update Header & Stats
   if ($('detailFeelsLike')) $('detailFeelsLike').textContent = `${Math.round(d.current.apparent_temperature)}°C`;
   if ($('detailHumidity')) $('detailHumidity').textContent = `${d.current.relative_humidity_2m}%`;
@@ -18707,19 +18689,19 @@ function showWeatherDetail() {
       $('detailPM25').textContent = '--';
     }
   }
-  
+
   // Hourly Forecast
   const hourlyList = $('hourlyForecastList');
   if (hourlyList) {
     const hours = d.hourly.time.slice(0, 24);
     hourlyList.innerHTML = hours.map((h, i) => {
-       const date = new Date(h);
-       const hour = date.getHours();
-       const temp = Math.round(d.hourly.temperature_2m[i]);
-       const code = d.hourly.weather_code[i];
-       const active = hour === new Date().getHours() ? 'ring-2 ring-brand-500 bg-brand-50 dark:bg-brand-900/20' : 'bg-white dark:bg-surface-900';
-       
-       return `
+      const date = new Date(h);
+      const hour = date.getHours();
+      const temp = Math.round(d.hourly.temperature_2m[i]);
+      const code = d.hourly.weather_code[i];
+      const active = hour === new Date().getHours() ? 'ring-2 ring-brand-500 bg-brand-50 dark:bg-brand-900/20' : 'bg-white dark:bg-surface-900';
+
+      return `
          <div class="flex flex-col items-center gap-2 p-4 ${active} rounded-3xl min-w-[90px] border border-surface-100 dark:border-surface-800 shadow-sm">
             <span class="text-[10px] font-black text-surface-400">${hour}:00</span>
             <div class="text-brand-600 my-1"><i data-lucide="${getWeatherIcon(code)}" class="w-6 h-6"></i></div>
@@ -18728,18 +18710,18 @@ function showWeatherDetail() {
        `;
     }).join('');
   }
-  
+
   // Daily Forecast
   const dailyList = $('dailyForecastList');
   if (dailyList) {
     dailyList.innerHTML = d.daily.time.map((t, i) => {
-       const date = new Date(t);
-       const dayName = date.toLocaleDateString('th-TH', { weekday: 'long' });
-       const max = Math.round(d.daily.temperature_2m_max[i]);
-       const min = Math.round(d.daily.temperature_2m_min[i]);
-       const code = d.daily.weather_code[i];
-       
-       return `
+      const date = new Date(t);
+      const dayName = date.toLocaleDateString('th-TH', { weekday: 'long' });
+      const max = Math.round(d.daily.temperature_2m_max[i]);
+      const min = Math.round(d.daily.temperature_2m_min[i]);
+      const code = d.daily.weather_code[i];
+
+      return `
          <div class="flex items-center justify-between py-4 group">
             <div class="flex items-center gap-4">
                <div class="w-10 h-10 bg-surface-50 dark:bg-surface-800 rounded-xl flex items-center justify-center text-brand-600 group-hover:scale-110 transition-transform">
@@ -18758,7 +18740,7 @@ function showWeatherDetail() {
        `;
     }).join('');
   }
-  
+
   lucide.createIcons();
 }
 
@@ -18785,10 +18767,10 @@ async function loadLunchPlaces() {
   try {
     const data = await apiFetch('/api/lunch/all');
     if (data.ok) {
-       state.lunchPlaces = data.places;
-       renderLunchList();
+      state.lunchPlaces = data.places;
+      renderLunchList();
     }
-  } catch(e) {
+  } catch (e) {
     console.error('loadLunchPlaces error:', e);
   }
 }
@@ -18796,7 +18778,7 @@ async function loadLunchPlaces() {
 function renderLunchList() {
   const container = $('lunchPlaceList');
   if (!container || !state.lunchPlaces) return;
-  
+
   container.innerHTML = state.lunchPlaces.map(p => `
     <div class="flex items-center justify-between p-3 bg-white dark:bg-surface-900 rounded-xl border border-surface-100 dark:border-surface-800 group">
        <div class="flex items-center gap-3">
@@ -18813,7 +18795,7 @@ function renderLunchList() {
        </button>
     </div>
   `).join('');
-  
+
   lucide.createIcons();
 }
 
@@ -18822,12 +18804,12 @@ async function rollLunch() {
   const dashResult = $('dashLunchResultArea');
   const modalOverlay = $('modalLunchRollingOverlay');
   const modalResult = $('modalLunchResultArea');
-  
+
   if (dashOverlay) dashOverlay.classList.remove('hidden');
   if (dashResult) dashResult.classList.add('opacity-50', 'blur-sm');
   if (modalOverlay) modalOverlay.classList.remove('hidden');
   if (modalResult) modalResult.classList.add('opacity-50', 'blur-sm');
-  
+
   try {
     const data = await apiFetch('/api/lunch/random');
     setTimeout(() => {
@@ -18835,14 +18817,14 @@ async function rollLunch() {
       if (dashResult) dashResult.classList.remove('opacity-50', 'blur-sm');
       if (modalOverlay) modalOverlay.classList.add('hidden');
       if (modalResult) modalResult.classList.remove('opacity-50', 'blur-sm');
-      
+
       if (data.ok && data.place) {
         // Update Dashboard Elements
         if ($('dashLunchPlaceName')) $('dashLunchPlaceName').textContent = data.place.name;
         if ($('dashLunchPlaceType')) $('dashLunchPlaceType').textContent = data.place.type || 'ร้านอาหารยอดฮิต';
         if ($('dashLunchPlaceLocation')) $('dashLunchPlaceLocation').innerHTML = `<i data-lucide="map-pin" class="w-3 h-3"></i> ${data.place.location || 'รอบออฟฟิศ'}`;
         if ($('dashLunchQuickPreview')) {
-           $('dashLunchQuickPreview').innerHTML = `
+          $('dashLunchQuickPreview').innerHTML = `
              <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
              <span class="text-[10px] font-black text-brand-600">แนะนำ: ${data.place.name}</span>
            `;
@@ -18852,7 +18834,7 @@ async function rollLunch() {
         if ($('modalLunchPlaceName')) $('modalLunchPlaceName').textContent = data.place.name;
         if ($('modalLunchPlaceType')) $('modalLunchPlaceType').textContent = data.place.type || 'ร้านอาหารยอดฮิต';
         if ($('modalLunchPlaceLocation')) $('modalLunchPlaceLocation').innerHTML = `<i data-lucide="map-pin" class="w-3 h-3"></i> ${data.place.location || 'รอบออฟฟิศ'}`;
-        
+
         toast(`สุ่มได้ร้าน: ${data.place.name}`, 'success');
         lucide.createIcons();
       }
@@ -18873,7 +18855,7 @@ async function addLunchPlacePrompt() {
   const name = prompt('กรุณาใส่ชื่อร้านอาหาร:');
   if (!name) return;
   const type = prompt('ประเภทอาหาร (เช่น ตามสั่ง, ก๋วยเตี๋ยว):', 'อาหารทั่วไป');
-  
+
   try {
     const res = await apiFetch('/api/lunch/add', {
       method: 'POST',
@@ -18905,12 +18887,12 @@ async function deleteLunchPlace(id) {
 async function sendLineBroadcast(msgId = 'lineBroadcastMsg', btnId = 'lineBroadcastBtn', toggleId = null, timeId = null) {
   const btn = $(btnId);
   const msgInput = $(msgId);
-  
+
   if (!msgInput || !btn) {
     console.warn(`[LINE Broadcast] UI Elements not found: msg=${msgId}, btn=${btnId}`);
     return;
   }
-  
+
   const text = msgInput.value.trim();
   if (!text) {
     toast('กรุณาพิมพ์ข้อความที่ต้องการบรอดแคสต์ค่ะพี่', 'error');
@@ -18924,29 +18906,29 @@ async function sendLineBroadcast(msgId = 'lineBroadcastMsg', btnId = 'lineBroadc
   if (toggle && toggle.checked && timeInput && timeInput.value) {
     schedule_time = timeInput.value; // Format from input is 'YYYY-MM-DDTHH:MM'
   }
-  
-  const confirmMsg = schedule_time 
+
+  const confirmMsg = schedule_time
     ? `ยืนยันการตั้งเวลาส่งบรอดแคสต์ข้อความนี้ในวันที่ ${schedule_time.replace('T', ' ')} หรือไม่คะ?`
     : 'ยืนยันการส่งบรอดแคสต์ข้อความนี้ไปยังผู้ติดตามทุกคนคะ?';
-    
+
   if (!confirm(confirmMsg)) return;
-  
+
   const originalHtml = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> ${schedule_time ? 'กำลังตั้งเวลา...' : 'กำลังส่ง...'}`;
   if (window.lucide) lucide.createIcons();
-  
+
   try {
     const payload = { text };
     if (schedule_time) {
       payload.schedule_time = schedule_time;
     }
-    
+
     const data = await apiFetch('/api/admin/line/broadcast', {
       method: 'POST',
       body: JSON.stringify(payload)
     });
-    
+
     if (data && data.success !== false) {
       toast(data.message || 'น้องพั้นส่งบรอดแคสต์ให้เรียบร้อยแล้วค่ะ!', 'success');
       msgInput.value = ''; // clear
@@ -18973,204 +18955,204 @@ async function sendLineBroadcast(msgId = 'lineBroadcastMsg', btnId = 'lineBroadc
 
 // --- LINE OA Settings Logic ---
 async function openLineSettings() {
-    const modal = $('lineSettingsModal');
-    if (!modal) return;
-    
-    // Fetch and populate personas dropdown
-    try {
-        const personasData = await apiFetch('/api/personas');
-        const select = $('lineSettingsPersona');
-        if (select && personasData && personasData.ok) {
-            select.innerHTML = '<option value="default">ค่าเริ่มต้น (น้องพั้นซ์)</option>';
-            personasData.personas.forEach(p => {
-                const opt = document.createElement('option');
-                opt.value = p.id;
-                opt.textContent = p.name;
-                select.appendChild(opt);
-            });
-        }
-    } catch (err) {
-        console.error('Failed to load personas for LINE config:', err);
-    }
-    
-    // Load general settings
-    try {
-        const data = await apiFetch('/api/admin/line/settings');
-        if (data && data.ok) {
-            $('lineSettingsGreeting').value = data.config.greeting_message || '';
-            $('lineSettingsAIEnabled').checked = data.config.ai_auto_responder_enabled || false;
-            if ($('lineSettingsPersona')) {
-                $('lineSettingsPersona').value = data.config.selected_persona_id || 'default';
-            }
-        }
-    } catch (err) {
-        console.error('Failed to fetch general LINE settings:', err);
-    }
+  const modal = $('lineSettingsModal');
+  if (!modal) return;
 
-    // Load Org-specific LINE Channel credentials
-    try {
-        const orgData = await apiFetch('/api/org/line/channel-config');
-        if (orgData && orgData.ok) {
-            $('lineSettingsBotId').value = orgData.bot_basic_id || '';
-            $('lineSettingsToken').value = orgData.channel_access_token_masked || '';
-            $('lineSettingsSecret').value = orgData.channel_secret_masked || '';
-            
-            const badge = $('lineOrgBadge');
-            if (badge) {
-                if (orgData.has_custom_keys) {
-                    badge.textContent = 'บอทเฉพาะองค์กร';
-                    badge.className = 'text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300';
-                } else {
-                    badge.textContent = 'บอทส่วนกลาง';
-                    badge.className = 'text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300';
-                }
-            }
-            if ($('lineTokenStatus')) {
-                $('lineTokenStatus').textContent = orgData.has_custom_keys ? '✅ ใช้ Custom Key อยู่' : 'ℹ️ ใช้บอทส่วนกลาง';
-            }
-        }
-    } catch (err) {
-        console.error('Failed to fetch org LINE channel config:', err);
+  // Fetch and populate personas dropdown
+  try {
+    const personasData = await apiFetch('/api/personas');
+    const select = $('lineSettingsPersona');
+    if (select && personasData && personasData.ok) {
+      select.innerHTML = '<option value="default">ค่าเริ่มต้น (น้องพั้นซ์)</option>';
+      personasData.personas.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = p.name;
+        select.appendChild(opt);
+      });
     }
-    
-    modal.classList.remove('hidden');
-    if (window.lucide) lucide.createIcons();
+  } catch (err) {
+    console.error('Failed to load personas for LINE config:', err);
+  }
+
+  // Load general settings
+  try {
+    const data = await apiFetch('/api/admin/line/settings');
+    if (data && data.ok) {
+      $('lineSettingsGreeting').value = data.config.greeting_message || '';
+      $('lineSettingsAIEnabled').checked = data.config.ai_auto_responder_enabled || false;
+      if ($('lineSettingsPersona')) {
+        $('lineSettingsPersona').value = data.config.selected_persona_id || 'default';
+      }
+    }
+  } catch (err) {
+    console.error('Failed to fetch general LINE settings:', err);
+  }
+
+  // Load Org-specific LINE Channel credentials
+  try {
+    const orgData = await apiFetch('/api/org/line/channel-config');
+    if (orgData && orgData.ok) {
+      $('lineSettingsBotId').value = orgData.bot_basic_id || '';
+      $('lineSettingsToken').value = orgData.channel_access_token_masked || '';
+      $('lineSettingsSecret').value = orgData.channel_secret_masked || '';
+
+      const badge = $('lineOrgBadge');
+      if (badge) {
+        if (orgData.has_custom_keys) {
+          badge.textContent = 'บอทเฉพาะองค์กร';
+          badge.className = 'text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300';
+        } else {
+          badge.textContent = 'บอทส่วนกลาง';
+          badge.className = 'text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300';
+        }
+      }
+      if ($('lineTokenStatus')) {
+        $('lineTokenStatus').textContent = orgData.has_custom_keys ? '✅ ใช้ Custom Key อยู่' : 'ℹ️ ใช้บอทส่วนกลาง';
+      }
+    }
+  } catch (err) {
+    console.error('Failed to fetch org LINE channel config:', err);
+  }
+
+  modal.classList.remove('hidden');
+  if (window.lucide) lucide.createIcons();
 }
 
 async function saveLineSettings() {
-    const btn = $('btnSaveLineSettings') || event?.target;
-    const originalHtml = btn ? btn.innerHTML : 'บันทึกการตั้งค่า';
-    
-    const token = $('lineSettingsToken').value.trim();
-    const secret = $('lineSettingsSecret').value.trim();
-    const botId = $('lineSettingsBotId').value.trim();
+  const btn = $('btnSaveLineSettings') || event?.target;
+  const originalHtml = btn ? btn.innerHTML : 'บันทึกการตั้งค่า';
 
+  const token = $('lineSettingsToken').value.trim();
+  const secret = $('lineSettingsSecret').value.trim();
+  const botId = $('lineSettingsBotId').value.trim();
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> กำลังบันทึก...';
+    if (window.lucide) lucide.createIcons();
+  }
+
+  try {
+    // 1. If token and secret are provided, save custom org credentials
+    if (token && secret && !token.includes('...') && !secret.includes('...')) {
+      const orgRes = await apiFetch('/api/org/line/channel-config', {
+        method: 'POST',
+        body: JSON.stringify({
+          channel_access_token: token,
+          channel_secret: secret,
+          bot_basic_id: botId,
+          is_active: 1
+        })
+      });
+      if (!orgRes || !orgRes.ok) {
+        toast(orgRes?.error || 'บันทึก Channel Key ไม่สำเร็จค่ะ', 'error');
+        return;
+      }
+    }
+
+    // 2. Save general settings (persona, greeting, AI responder)
+    const payload = {
+      greeting_message: $('lineSettingsGreeting').value.trim(),
+      ai_auto_responder_enabled: $('lineSettingsAIEnabled').checked,
+      selected_persona_id: $('lineSettingsPersona') ? $('lineSettingsPersona').value : 'default'
+    };
+
+    const data = await apiFetch('/api/admin/line/settings', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+    if (data && data.ok) {
+      toast('บันทึกการตั้งค่า LINE เรียบร้อยแล้ว', 'success');
+      $('lineSettingsModal').classList.add('hidden');
+    } else {
+      toast(data.error || 'บันทึกไม่สำเร็จค่ะ', 'error');
+    }
+  } catch (err) {
+    toast('เกิดข้อผิดพลาดในการเชื่อมต่อค่ะ', 'error');
+  } finally {
     if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> กำลังบันทึก...';
-        if (window.lucide) lucide.createIcons();
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
+      if (window.lucide) lucide.createIcons();
     }
-    
-    try {
-        // 1. If token and secret are provided, save custom org credentials
-        if (token && secret && !token.includes('...') && !secret.includes('...')) {
-            const orgRes = await apiFetch('/api/org/line/channel-config', {
-                method: 'POST',
-                body: JSON.stringify({
-                    channel_access_token: token,
-                    channel_secret: secret,
-                    bot_basic_id: botId,
-                    is_active: 1
-                })
-            });
-            if (!orgRes || !orgRes.ok) {
-                toast(orgRes?.error || 'บันทึก Channel Key ไม่สำเร็จค่ะ', 'error');
-                return;
-            }
-        }
-        
-        // 2. Save general settings (persona, greeting, AI responder)
-        const payload = {
-            greeting_message: $('lineSettingsGreeting').value.trim(),
-            ai_auto_responder_enabled: $('lineSettingsAIEnabled').checked,
-            selected_persona_id: $('lineSettingsPersona') ? $('lineSettingsPersona').value : 'default'
-        };
-        
-        const data = await apiFetch('/api/admin/line/settings', {
-            method: 'POST',
-            body: JSON.stringify(payload)
-        });
-        if (data && data.ok) {
-            toast('บันทึกการตั้งค่า LINE เรียบร้อยแล้ว', 'success');
-            $('lineSettingsModal').classList.add('hidden');
-        } else {
-            toast(data.error || 'บันทึกไม่สำเร็จค่ะ', 'error');
-        }
-    } catch (err) {
-        toast('เกิดข้อผิดพลาดในการเชื่อมต่อค่ะ', 'error');
-    } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = originalHtml;
-            if (window.lucide) lucide.createIcons();
-        }
-    }
+  }
 }
 
 async function testOrgLineConnection() {
-    const btn = $('btnTestLineChannel');
-    const token = $('lineSettingsToken').value.trim();
-    const originalHtml = btn ? btn.innerHTML : 'ทดสอบการเชื่อมต่อ';
-    
+  const btn = $('btnTestLineChannel');
+  const token = $('lineSettingsToken').value.trim();
+  const originalHtml = btn ? btn.innerHTML : 'ทดสอบการเชื่อมต่อ';
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> กำลังทดสอบ...';
+    if (window.lucide) lucide.createIcons();
+  }
+
+  try {
+    const res = await apiFetch('/api/org/line/channel-config/test', {
+      method: 'POST',
+      body: JSON.stringify({ channel_access_token: token })
+    });
+    if (res && res.ok) {
+      toast(res.message || 'เชื่อมต่อ LINE Bot สำเร็จเรียบร้อย!', 'success');
+      if (res.bot_info?.basicId && !$('lineSettingsBotId').value) {
+        $('lineSettingsBotId').value = res.bot_info.basicId;
+      }
+    } else {
+      toast(res?.error || 'ไม่สามารถเชื่อมต่อกับ LINE API ได้', 'error');
+    }
+  } catch (e) {
+    toast('เกิดข้อผิดพลาดในการทดสอบค่ะ', 'error');
+  } finally {
     if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = '<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> กำลังทดสอบ...';
-        if (window.lucide) lucide.createIcons();
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
+      if (window.lucide) lucide.createIcons();
     }
-    
-    try {
-        const res = await apiFetch('/api/org/line/channel-config/test', {
-            method: 'POST',
-            body: JSON.stringify({ channel_access_token: token })
-        });
-        if (res && res.ok) {
-            toast(res.message || 'เชื่อมต่อ LINE Bot สำเร็จเรียบร้อย!', 'success');
-            if (res.bot_info?.basicId && !$('lineSettingsBotId').value) {
-                $('lineSettingsBotId').value = res.bot_info.basicId;
-            }
-        } else {
-            toast(res?.error || 'ไม่สามารถเชื่อมต่อกับ LINE API ได้', 'error');
-        }
-    } catch (e) {
-        toast('เกิดข้อผิดพลาดในการทดสอบค่ะ', 'error');
-    } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = originalHtml;
-            if (window.lucide) lucide.createIcons();
-        }
-    }
+  }
 }
 
 async function resetOrgLineBot() {
-    if (!await showConfirm('คืนค่าบอทส่วนกลาง', 'คุณต้องการลบ Channel Key ประจำองค์กรและกลับไปใช้ LINE Bot ส่วนกลางของระบบหรือไม่?', { type: 'warning', confirmText: 'คืนค่าบอทระบบ' })) {
-        return;
+  if (!await showConfirm('คืนค่าบอทส่วนกลาง', 'คุณต้องการลบ Channel Key ประจำองค์กรและกลับไปใช้ LINE Bot ส่วนกลางของระบบหรือไม่?', { type: 'warning', confirmText: 'คืนค่าบอทระบบ' })) {
+    return;
+  }
+  try {
+    const res = await apiFetch('/api/org/line/channel-config', { method: 'DELETE' });
+    if (res && res.ok) {
+      toast('คืนค่าการใช้งานบอทส่วนกลางสำเร็จค่ะ', 'success');
+      $('lineSettingsToken').value = '';
+      $('lineSettingsSecret').value = '';
+      $('lineSettingsBotId').value = '@905gsngi';
+      openLineSettings();
+    } else {
+      toast(res?.error || 'ไม่สามารถลบการตั้งค่าได้ค่ะ', 'error');
     }
-    try {
-        const res = await apiFetch('/api/org/line/channel-config', { method: 'DELETE' });
-        if (res && res.ok) {
-            toast('คืนค่าการใช้งานบอทส่วนกลางสำเร็จค่ะ', 'success');
-            $('lineSettingsToken').value = '';
-            $('lineSettingsSecret').value = '';
-            $('lineSettingsBotId').value = '@905gsngi';
-            openLineSettings();
-        } else {
-            toast(res?.error || 'ไม่สามารถลบการตั้งค่าได้ค่ะ', 'error');
-        }
-    } catch (e) {
-        toast('เกิดข้อผิดพลาดในการเชื่อมต่อค่ะ', 'error');
-    }
+  } catch (e) {
+    toast('เกิดข้อผิดพลาดในการเชื่อมต่อค่ะ', 'error');
+  }
 }
 
 function copyLineWebhookUrl() {
-    const text = $('lineWebhookUrlText')?.textContent || window.location.origin + '/api/line/webhook';
-    navigator.clipboard.writeText(text).then(() => {
-        toast('คัดลอก Webhook URL เรียบร้อยแล้วค่ะ', 'success');
-    }).catch(() => {
-        toast('ไม่สามารถคัดลอกได้ กรุณาคัดลอกด้วยตนเองค่ะ', 'warning');
-    });
+  const text = $('lineWebhookUrlText')?.textContent || window.location.origin + '/api/line/webhook';
+  navigator.clipboard.writeText(text).then(() => {
+    toast('คัดลอก Webhook URL เรียบร้อยแล้วค่ะ', 'success');
+  }).catch(() => {
+    toast('ไม่สามารถคัดลอกได้ กรุณาคัดลอกด้วยตนเองค่ะ', 'warning');
+  });
 }
 
 async function refreshBroadcastHistory() {
-    const list = $('broadcastHistoryList');
-    if (!list) return;
-    
-    try {
-        const data = await apiFetch('/api/admin/line/broadcast-history');
-        if (data && data.ok) {
-            list.innerHTML = data.history.map(item => `
+  const list = $('broadcastHistoryList');
+  if (!list) return;
+
+  try {
+    const data = await apiFetch('/api/admin/line/broadcast-history');
+    if (data && data.ok) {
+      list.innerHTML = data.history.map(item => `
                 <tr class="text-xs text-surface-600 dark:text-surface-300">
-                    <td class="py-3 pr-4">${new Date(item.timestamp).toLocaleString('th-TH', {hour12:false, month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'})}</td>
+                    <td class="py-3 pr-4">${new Date(item.timestamp).toLocaleString('th-TH', { hour12: false, month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
                     <td class="py-3 pr-4 truncate max-w-[150px]">${item.message}</td>
                     <td class="py-3">
                         <span class="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${item.status === 'Success' ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'}">
@@ -19179,13 +19161,13 @@ async function refreshBroadcastHistory() {
                     </td>
                 </tr>
             `).join('');
-            if (!data.history.length) {
-                list.innerHTML = '<tr><td colspan="3" class="py-8 text-center text-surface-400 text-[10px]">ยังไม่มีประวัติการส่งค่ะ</td></tr>';
-            }
-        }
-    } catch (err) {
-        console.error('Failed to fetch history:', err);
+      if (!data.history.length) {
+        list.innerHTML = '<tr><td colspan="3" class="py-8 text-center text-surface-400 text-[10px]">ยังไม่มีประวัติการส่งค่ะ</td></tr>';
+      }
     }
+  } catch (err) {
+    console.error('Failed to fetch history:', err);
+  }
 }
 
 // Global Event Listener for Broadcast Buttons
@@ -19317,7 +19299,7 @@ async function savePersona() {
   try {
     const method = id ? 'PUT' : 'POST';
     const url = id ? `/api/admin/personas/${id}` : '/api/admin/personas';
-    
+
     const res = await apiFetch(url, {
       method,
       body: JSON.stringify({ name, icon, description, prompt })
@@ -19393,9 +19375,9 @@ async function loadActivityLogs() {
 function renderLogs() {
   const tbody = $('activityLogTableBody');
   const q = $('logSearch').value.toLowerCase().trim();
-  
-  const filtered = activityLogs.filter(l => 
-    l.user.toLowerCase().includes(q) || 
+
+  const filtered = activityLogs.filter(l =>
+    l.user.toLowerCase().includes(q) ||
     l.event.toLowerCase().includes(q)
   );
 
@@ -19588,9 +19570,9 @@ function showUpgradePrompt(errData) {
   const current = planLabel[errData.current_plan] || errData.current_plan || 'Free';
   const isUsage = errData.error === 'usage_limit_reached';
 
-  const titleText  = isUsage ? 'โควต้าหมดแล้ว' : 'ฟีเจอร์นี้ต้องการ Plan สูงกว่า';
-  const bodyText   = errData.message || 'กรุณาอัปเกรด Plan เพื่อใช้งานต่อ';
-  const usageHtml  = isUsage && errData.limit > 0 ? `
+  const titleText = isUsage ? 'โควต้าหมดแล้ว' : 'ฟีเจอร์นี้ต้องการ Plan สูงกว่า';
+  const bodyText = errData.message || 'กรุณาอัปเกรด Plan เพื่อใช้งานต่อ';
+  const usageHtml = isUsage && errData.limit > 0 ? `
     <div class="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 mb-4">
       <div class="flex-1">
         <p class="text-xs text-slate-500 font-medium mb-1">การใช้งานเดือนนี้</p>
@@ -19666,7 +19648,7 @@ function initReplacementReceiptView() {
   const rrNewNo = $('rrNewNo');
   if (rrNewNo && !rrNewNo.value) {
     const now = new Date();
-    rrNewNo.value = `RR-${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-001`;
+    rrNewNo.value = `RR-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-001`;
   }
 
   // Wire up reason dropdown → show/hide custom input
@@ -19715,7 +19697,7 @@ function initReplacementReceiptView() {
     }
 
     updateRRPreview();
-  }).catch(() => {});
+  }).catch(() => { });
 
   updateRRPreview();
   if (typeof initIcons === 'function') initIcons();
@@ -19741,7 +19723,7 @@ function openReplacementFromExpense(item) {
         const parts = String(item.date).split('/');
         if (parts.length === 3) {
           const y = parts[2].length === 4 ? parts[2] : String(parseInt(parts[2]) - 543);
-          origDate.value = `${y}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+          origDate.value = `${y}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
         } else {
           origDate.value = item.date;
         }
@@ -19760,16 +19742,16 @@ function calcRRTotal() {
   const before = parseFloat($('rrAmountBeforeVat')?.value) || 0;
   const wht = parseFloat($('rrWhtAmt')?.value) || 0;
   const vatEl = $('rrVatAmt');
-  
+
   let vat = parseFloat(vatEl?.value);
-  
+
   // Logic: If vat is NaN (empty) or if this was triggered by 'before' changing,
   // we might want to suggest the 7% calculation.
   // To keep it simple and flexible: If value is invalid, we auto-calc 7%.
   // If user wants 0, they can type 0.
   if (isNaN(vat)) {
-      vat = Math.round(before * 0.07 * 100) / 100;
-      if (vatEl) vatEl.value = vat.toFixed(2);
+    vat = Math.round(before * 0.07 * 100) / 100;
+    if (vatEl) vatEl.value = vat.toFixed(2);
   }
 
   const grand = Math.round((before + vat - wht) * 100) / 100;
@@ -19792,59 +19774,59 @@ function thaiBahtText(num) {
   if (num === null || num === undefined || isNaN(num)) return 'ศูนย์บาทถ้วน';
   num = parseFloat(num).toFixed(2);
   if (parseFloat(num) === 0) return 'ศูนย์บาทถ้วน';
-  
+
   const thNum = ["ศูนย์", "หนึ่ง", "สอง", "สาม", "สี่", "ห้า", "หก", "เจ็ด", "แปด", "เก้า"];
   const thDigit = ["", "สิบ", "ร้อย", "พัน", "หมื่น", "แสน", "ล้าน"];
-  
+
   let [baht, satang] = num.split('.');
-  
+
   function convertSection(numberStr) {
-      let text = "";
-      let len = numberStr.length;
-      for (let i = 0; i < len; i++) {
-          let digit = parseInt(numberStr[i]);
-          let pos = len - i - 1;
-          if (digit !== 0) {
-              if (pos === 1 && digit === 2) {
-                  text += "ยี่สิบ";
-              } else if (pos === 1 && digit === 1) {
-                  text += "สิบ";
-              } else if (pos === 0 && digit === 1 && len > 1 && numberStr[i - 1] !== '0') {
-                  text += "เอ็ด";
-              } else {
-                  text += thNum[digit] + thDigit[pos];
-              }
-          }
+    let text = "";
+    let len = numberStr.length;
+    for (let i = 0; i < len; i++) {
+      let digit = parseInt(numberStr[i]);
+      let pos = len - i - 1;
+      if (digit !== 0) {
+        if (pos === 1 && digit === 2) {
+          text += "ยี่สิบ";
+        } else if (pos === 1 && digit === 1) {
+          text += "สิบ";
+        } else if (pos === 0 && digit === 1 && len > 1 && numberStr[i - 1] !== '0') {
+          text += "เอ็ด";
+        } else {
+          text += thNum[digit] + thDigit[pos];
+        }
       }
-      return text;
+    }
+    return text;
   }
-  
+
   let bahtText = "";
   let bahtLen = baht.length;
   if (bahtLen > 6) {
-      let millionPos = bahtLen - 6;
-      let millionStr = baht.substring(0, millionPos);
-      let remainStr = baht.substring(millionPos);
-      bahtText = convertSection(millionStr) + "ล้าน" + convertSection(remainStr);
+    let millionPos = bahtLen - 6;
+    let millionStr = baht.substring(0, millionPos);
+    let remainStr = baht.substring(millionPos);
+    bahtText = convertSection(millionStr) + "ล้าน" + convertSection(remainStr);
   } else {
-      bahtText = convertSection(baht);
+    bahtText = convertSection(baht);
   }
-  
+
   let result = "";
   if (bahtText !== "") {
-      result += bahtText + "บาท";
+    result += bahtText + "บาท";
   }
-  
+
   if (satang === "00" || satang === "") {
-      result += "ถ้วน";
+    result += "ถ้วน";
   } else {
-      result += convertSection(satang) + "สตางค์";
+    result += convertSection(satang) + "สตางค์";
   }
   return result;
 }
 
 function updateRRPreview() {
-  const g = (id) => $( id )?.value || '';
+  const g = (id) => $(id)?.value || '';
   const set = (id, val) => { const el = $(id); if (el) el.textContent = val || '-'; };
 
   // Seller
@@ -19905,13 +19887,13 @@ function updateRRPreview() {
 }
 
 function clearRRForm() {
-  ['rrSellerName','rrSellerAddr','rrSellerTax','rrSellerPhone',
-   'rrNewNo','rrNewDate','rrOrigNo','rrOrigDate',
-   'rrCustName','rrCustAddr','rrCustTax',
-   'rrDescription','rrAmountBeforeVat','rrWhtAmt','rrVatAmt','rrGrandTotal'].forEach(id => {
-    const el = $(id);
-    if (el) el.value = '';
-  });
+  ['rrSellerName', 'rrSellerAddr', 'rrSellerTax', 'rrSellerPhone',
+    'rrNewNo', 'rrNewDate', 'rrOrigNo', 'rrOrigDate',
+    'rrCustName', 'rrCustAddr', 'rrCustTax',
+    'rrDescription', 'rrAmountBeforeVat', 'rrWhtAmt', 'rrVatAmt', 'rrGrandTotal'].forEach(id => {
+      const el = $(id);
+      if (el) el.value = '';
+    });
   const rrReason = $('rrReason');
   if (rrReason) rrReason.selectedIndex = 0;
   const rrReasonCustom = $('rrReasonCustom');
@@ -19949,17 +19931,17 @@ function generateRRPdf() {
 async function scanReceiptWithAI(input) {
   const file = input.files[0];
   if (!file) return;
-  
+
   const formData = new FormData();
   formData.append('file', file);
-  
+
   const btn = document.querySelector('button[onclick*="rrOcrInput"]');
   const originalHtml = btn ? btn.innerHTML : '';
   if (btn) {
     btn.disabled = true;
     btn.innerHTML = '<span class="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block mr-1"></span> กำลังวิเคราะห์...';
   }
-  
+
   try {
     const res = await fetch('/api/receipt-replacement/scan', {
       method: 'POST',
@@ -19968,7 +19950,7 @@ async function scanReceiptWithAI(input) {
     const data = await res.json();
     if (data.ok) {
       toast('สแกนบิลสำเร็จ ดึงข้อมูลลงฟอร์มเรียบร้อยค่ะ', 'success');
-      
+
       if (data.sender && data.sender !== '-') {
         const nameEl = $('rrSellerName');
         if (nameEl) nameEl.value = data.sender;
@@ -19989,21 +19971,21 @@ async function scanReceiptWithAI(input) {
         const origNoEl = $('rrOrigNo');
         if (origNoEl) origNoEl.value = data.ref_number;
       }
-      
+
       if (data.date && data.date !== '-') {
         try {
           const parts = data.date.split('/');
           const origDateEl = $('rrOrigDate');
           if (origDateEl) {
             if (parts.length === 3) {
-              origDateEl.value = `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+              origDateEl.value = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
             } else {
               origDateEl.value = data.date;
             }
           }
-        } catch (_) {}
+        } catch (_) { }
       }
-      
+
       if (data.memo && data.memo !== '-') {
         const descEl = $('rrDescription');
         if (descEl) descEl.value = data.memo;
@@ -20020,7 +20002,7 @@ async function scanReceiptWithAI(input) {
         const whtEl = $('rrWhtAmt');
         if (whtEl) whtEl.value = parseFloat(data.wht_amount).toFixed(2);
       }
-      
+
       calcRRTotal();
       updateRRPreview();
     } else {
@@ -20160,67 +20142,67 @@ window.printRRPaper = printRRPaper;
 window._peakMode = 'upload';
 
 function setPeakMode(mode) {
-    window._peakMode = mode;
-    const uploadBtn = $('peakModeUpload');
-    const apiBtn = $('peakModeApi');
-    const uploadZone = $('peakUploadZone');
-    const apiZone = $('peakApiZone');
-    if (!uploadBtn || !apiBtn) return;
-    if (mode === 'api') {
-        uploadBtn.className = uploadBtn.className.replace('bg-white dark:bg-surface-700 text-indigo-600 shadow-sm', 'text-surface-400');
-        apiBtn.className = apiBtn.className.replace('text-surface-400', 'bg-white dark:bg-surface-700 text-indigo-600 shadow-sm');
-        uploadZone?.classList.add('hidden');
-        apiZone?.classList.remove('hidden');
-    } else {
-        apiBtn.className = apiBtn.className.replace('bg-white dark:bg-surface-700 text-indigo-600 shadow-sm', 'text-surface-400');
-        uploadBtn.className = uploadBtn.className.replace('text-surface-400', 'bg-white dark:bg-surface-700 text-indigo-600 shadow-sm');
-        apiZone?.classList.add('hidden');
-        uploadZone?.classList.remove('hidden');
-    }
+  window._peakMode = mode;
+  const uploadBtn = $('peakModeUpload');
+  const apiBtn = $('peakModeApi');
+  const uploadZone = $('peakUploadZone');
+  const apiZone = $('peakApiZone');
+  if (!uploadBtn || !apiBtn) return;
+  if (mode === 'api') {
+    uploadBtn.className = uploadBtn.className.replace('bg-white dark:bg-surface-700 text-indigo-600 shadow-sm', 'text-surface-400');
+    apiBtn.className = apiBtn.className.replace('text-surface-400', 'bg-white dark:bg-surface-700 text-indigo-600 shadow-sm');
+    uploadZone?.classList.add('hidden');
+    apiZone?.classList.remove('hidden');
+  } else {
+    apiBtn.className = apiBtn.className.replace('bg-white dark:bg-surface-700 text-indigo-600 shadow-sm', 'text-surface-400');
+    uploadBtn.className = uploadBtn.className.replace('text-surface-400', 'bg-white dark:bg-surface-700 text-indigo-600 shadow-sm');
+    apiZone?.classList.add('hidden');
+    uploadZone?.classList.remove('hidden');
+  }
 }
 
 async function loadPeakSettingsStatus() {
-    try {
-        const res = await fetch('/api/peak/settings');
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!data.ok) return;
-        const statusEl = $('peakSettingsStatus');
-        const notConnectedEl = $('peakApiNotConnected');
-        const isConnected = data.connect_id && data.has_user_token;
-        if (statusEl) {
-            statusEl.textContent = isConnected ? 'เชื่อมต่อแล้ว' : 'ยังไม่ได้เชื่อมต่อ';
-            statusEl.className = statusEl.className.replace(/text-\w+-\d+/, isConnected ? 'text-emerald-600' : 'text-surface-400');
-        }
-        if (notConnectedEl) {
-            if (window._peakMode === 'api' && !isConnected) notConnectedEl.classList.remove('hidden');
-            else notConnectedEl.classList.add('hidden');
-        }
-        if (isConnected && $('peakConnectId')) $('peakConnectId').value = data.connect_id;
-    } catch (e) { /* ignore */ }
+  try {
+    const res = await fetch('/api/peak/settings');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.ok) return;
+    const statusEl = $('peakSettingsStatus');
+    const notConnectedEl = $('peakApiNotConnected');
+    const isConnected = data.connect_id && data.has_user_token;
+    if (statusEl) {
+      statusEl.textContent = isConnected ? 'เชื่อมต่อแล้ว' : 'ยังไม่ได้เชื่อมต่อ';
+      statusEl.className = statusEl.className.replace(/text-\w+-\d+/, isConnected ? 'text-emerald-600' : 'text-surface-400');
+    }
+    if (notConnectedEl) {
+      if (window._peakMode === 'api' && !isConnected) notConnectedEl.classList.remove('hidden');
+      else notConnectedEl.classList.add('hidden');
+    }
+    if (isConnected && $('peakConnectId')) $('peakConnectId').value = data.connect_id;
+  } catch (e) { /* ignore */ }
 }
 
 async function savePeakSettings() {
-    const connectId = $('peakConnectId')?.value?.trim();
-    const password = $('peakPassword')?.value?.trim();
-    const userToken = $('peakUserToken')?.value?.trim();
-    if (!connectId || !userToken) { toast('กรุณากรอก Connect ID และ User Token', 'error'); return; }
-    try {
-        const res = await fetch('/api/peak/settings', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ connect_id: connectId, password, user_token: userToken }),
-        });
-        const data = await res.json();
-        if (data.ok) {
-            toast('บันทึกการตั้งค่า PEAK สำเร็จ', 'success');
-            loadPeakSettingsStatus();
-        } else {
-            toast(data.error || 'บันทึกไม่สำเร็จ', 'error');
-        }
-    } catch (e) {
-        toast('การเชื่อมต่อล้มเหลว', 'error');
+  const connectId = $('peakConnectId')?.value?.trim();
+  const password = $('peakPassword')?.value?.trim();
+  const userToken = $('peakUserToken')?.value?.trim();
+  if (!connectId || !userToken) { toast('กรุณากรอก Connect ID และ User Token', 'error'); return; }
+  try {
+    const res = await fetch('/api/peak/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ connect_id: connectId, password, user_token: userToken }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      toast('บันทึกการตั้งค่า PEAK สำเร็จ', 'success');
+      loadPeakSettingsStatus();
+    } else {
+      toast(data.error || 'บันทึกไม่สำเร็จ', 'error');
     }
+  } catch (e) {
+    toast('การเชื่อมต่อล้มเหลว', 'error');
+  }
 }
 
 window.setPeakMode = setPeakMode;
@@ -20261,7 +20243,7 @@ function applyOrgTreeTransform() {
 function initOrgTreeCanvasEvents() {
   const wrapper = document.getElementById("orgTreeCanvasWrapper");
   if (!wrapper) return;
-  
+
   wrapper.addEventListener("mousedown", (e) => {
     if (e.target.closest(".org-node-card") || e.target.closest("button") || e.target.closest("select")) {
       return;
@@ -20271,14 +20253,14 @@ function initOrgTreeCanvasEvents() {
     startPanX = e.clientX - orgTreePanX;
     startPanY = e.clientY - orgTreePanY;
   });
-  
+
   window.addEventListener("mousemove", (e) => {
     if (!isPanningOrgTree) return;
     orgTreePanX = e.clientX - startPanX;
     orgTreePanY = e.clientY - startPanY;
     applyOrgTreeTransform();
   });
-  
+
   window.addEventListener("mouseup", () => {
     if (isPanningOrgTree) {
       isPanningOrgTree = false;
@@ -20353,7 +20335,7 @@ function getDeptColorConfig(dept) {
 async function renderOrgTree() {
   const wrapper = document.getElementById("orgTreeCanvasWrapper");
   if (!wrapper) return;
-  
+
   if (!wrapper.dataset.eventsInitialized) {
     initOrgTreeCanvasEvents();
     wrapper.dataset.eventsInitialized = "true";
@@ -20405,23 +20387,23 @@ async function renderOrgTree() {
 
   function layoutSubtree(node, depth, xOffset) {
     node.y = 50 + depth * levelHeight;
-    
+
     if (node.children.length === 0) {
       node.x = xOffset;
       return xOffset + siblingWidth;
     }
-    
+
     let currentX = xOffset;
     const childXs = [];
     node.children.forEach(child => {
       currentX = layoutSubtree(child, depth + 1, currentX);
       childXs.push(child.x);
     });
-    
+
     const minChildX = Math.min(...childXs);
     const maxChildX = Math.max(...childXs);
     node.x = minChildX + (maxChildX - minChildX) / 2;
-    
+
     return currentX;
   }
 
@@ -20450,30 +20432,30 @@ async function renderOrgTree() {
     if (deptConfig.customColor) {
       card.style.borderLeftColor = deptConfig.customColor;
     }
-    
+
     card.dataset.username = node.username.toLowerCase();
     card.dataset.name = (node.display_name || '').toLowerCase();
     card.dataset.pos = (node.position || '').toLowerCase();
     card.dataset.dept = (node.department || '').toLowerCase();
 
     const isAdmin = node.role === "admin";
-    const roleBadge = isAdmin 
+    const roleBadge = isAdmin
       ? `<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/50">Admin</span>`
       : `<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-surface-50 dark:bg-surface-800 text-surface-500 dark:text-surface-400 border border-surface-100 dark:border-surface-700">Member</span>`;
 
-    const avatarHtml = node.avatar_url 
+    const avatarHtml = node.avatar_url
       ? `<img src="${node.avatar_url}" class="w-10 h-10 rounded-full object-cover border border-surface-200 dark:border-surface-700 flex-shrink-0" onerror="this.outerHTML='<div class=&quot;w-10 h-10 rounded-full flex items-center justify-center text-xs font-black uppercase text-brand-600 bg-brand-50 border border-surface-200 dark:border-surface-700 flex-shrink-0&quot;>${(node.display_name || node.username)[0].toUpperCase()}</div>'">`
       : `<div class="w-10 h-10 rounded-full flex items-center justify-center text-xs font-black uppercase text-brand-600 bg-brand-50 border border-surface-200 dark:border-surface-700 flex-shrink-0">${(node.display_name || node.username)[0].toUpperCase()}</div>`;
     const deptText = node.department || 'General';
     const posText = node.position || 'พนักงาน';
 
     const reportCount = node.children.length;
-    const reportBadge = reportCount > 0 
+    const reportBadge = reportCount > 0
       ? `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[8px] font-extrabold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/50" title="ผู้ใต้บังคับบัญชาโดยตรง ${reportCount} คน"><i data-lucide="users" class="w-2.5 h-2.5"></i> ${reportCount} คน</span>`
       : '';
 
     const canEdit = state.isOrgAdmin || state.isAdmin;
-    const editBtn = canEdit 
+    const editBtn = canEdit
       ? `<button onclick="event.stopPropagation(); openEditManagerModal('${node.username}')" class="p-1 hover:bg-surface-100 dark:hover:bg-surface-700 rounded-lg text-surface-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors ml-auto cursor-pointer" title="ปรับสายการรายงาน">
            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 0 1-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75"/></svg>
          </button>`
@@ -20522,7 +20504,7 @@ async function renderOrgTree() {
       path.setAttribute("stroke-width", "2.5");
       path.setAttribute("stroke-linecap", "round");
       path.setAttribute("opacity", "0.45");
-      
+
       path.addEventListener("mouseenter", () => {
         path.setAttribute("opacity", "0.95");
         path.setAttribute("stroke-width", "3.5");
@@ -20535,7 +20517,7 @@ async function renderOrgTree() {
       svgContainer.appendChild(path);
     });
   });
-  
+
   if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
@@ -20567,7 +20549,7 @@ function openEditManagerModal(username) {
     _orgMembersCache.forEach(m => {
       if (!m || !m.username) return;
       const candidateUsername = m.username.toLowerCase();
-      
+
       if (candidateUsername === (username || '').toLowerCase()) return;
 
       let curr = candidateUsername;
@@ -20619,13 +20601,13 @@ async function saveManagerChange() {
     if (data.ok) {
       toast("ปรับปรุงสายงานสำเร็จแล้ว", "success");
       closeEditManagerModal();
-      
+
       const targetUserLower = targetMember.toLowerCase();
       const cachedMember = _orgMembersCache.find(m => m && (m.username || '').toLowerCase() === targetUserLower);
       if (cachedMember) {
         cachedMember.manager_username = managerUsername;
       }
-      
+
       if (typeof loadOrgMembers === 'function') {
         await loadOrgMembers();
       }
@@ -20693,7 +20675,7 @@ function resetOrgTreeView() {
     orgTreePanY = 40;
   }
   applyOrgTreeTransform();
-  
+
   const searchInput = document.getElementById("orgTreeSearchInput");
   if (searchInput) searchInput.value = "";
   searchOrgTreeNode("");
@@ -20725,12 +20707,12 @@ function initChatDragAndResize() {
     }
     card.style.position = "absolute";
     card.style.maxWidth = "none";
-    
+
     const cardWidth = Math.min(window.innerWidth - 40, 1100);
     const cardHeight = Math.min(window.innerHeight - 40, 700);
     const left = Math.max(20, (window.innerWidth - cardWidth) / 2);
     const top = Math.max(20, (window.innerHeight - cardHeight) / 2);
-    
+
     card.style.left = `${left}px`;
     card.style.top = `${top}px`;
     card.style.width = `${cardWidth}px`;
@@ -20765,7 +20747,7 @@ function initChatDragAndResize() {
 
   const sidebarHeader = document.querySelector("#chatSidebarPanel header");
   const mainChatHeader = document.querySelector("#chatMainArea header");
-  
+
   [sidebarHeader, mainChatHeader].forEach(header => {
     if (!header) return;
     header.style.cursor = "move";
@@ -20855,14 +20837,14 @@ function initChatDragAndResize() {
 async function initReplyAssistantView() {
   const selectEl = $('raSourceFile');
   if (!selectEl) return;
-  
+
   const qEl = $('raQueryText');
   const dEl = $('raDraftResult');
   const tEl = $('raTipsResult');
   if (qEl) qEl.value = '';
   if (dEl) dEl.value = '';
   if (tEl) tEl.textContent = 'เลือกอ้างอิงเอกสาร โทนที่ต้องการ และใส่คำถามลูกค้าเพื่อสแกนและแนะนำแนวทางการปิดการขายค่ะ';
-  
+
   try {
     const data = await apiFetch('/api/files');
     selectEl.innerHTML = '<option value="">📚 ค้นหาอัตโนมัติจากทุกไฟล์ในคลังความรู้ (Recommended)</option>';
@@ -20885,30 +20867,30 @@ async function generateAIDraft() {
   const draftEl = $('raDraftResult');
   const tipsEl = $('raTipsResult');
   const submitBtn = $('raSubmitBtn');
-  
+
   if (!queryEl || !queryEl.value.trim()) {
     toast('กรุณาระบุข้อความสอบถามของลูกค้าก่อนนะคะ', 'error');
     return;
   }
-  
+
   const query = queryEl.value.trim();
   const fileId = fileEl ? fileEl.value : '';
   const toneRadio = document.querySelector('input[name="raTone"]:checked');
   const tone = toneRadio ? toneRadio.value : 'formal';
-  
+
   const originalHtml = submitBtn ? submitBtn.innerHTML : '';
   if (submitBtn) {
     submitBtn.disabled = true;
     submitBtn.innerHTML = '<span class="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block mr-1"></span> กำลังประมวลผล...';
   }
-  
+
   try {
     const res = await apiFetch('/api/reply-assistant/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query, tone, file_id: fileId })
     });
-    
+
     if (res && res.ok) {
       toast('ร่างข้อความสแกนจากคลังความรู้เรียบร้อยค่ะ', 'success');
       if (draftEl) draftEl.value = res.draft || '';
@@ -20934,11 +20916,11 @@ async function copyReplyAssistantDraft() {
     toast('ไม่มีข้อความให้คัดลอกค่ะ', 'error');
     return;
   }
-  
+
   try {
     await navigator.clipboard.writeText(draftEl.value.trim());
     toast('คัดลอกข้อความลงคลิปบอร์ดแล้วค่ะ', 'success');
-    
+
     const originalText = copyBtn ? copyBtn.innerHTML : '';
     if (copyBtn) {
       copyBtn.innerHTML = '<i data-lucide="check" class="w-3 h-3 text-emerald-500"></i> คัดลอกแล้ว!';
@@ -21248,184 +21230,184 @@ let deptUsageChartInstance = null;
 let securityTimelineChartInstance = null;
 
 async function loadSecurityAuditDashboard() {
-    try {
-        const res = await fetch('/api/admin/security/metrics?days=30');
-        const data = await res.json();
-        if (!data.ok || !data.metrics) return;
+  try {
+    const res = await fetch('/api/admin/security/metrics?days=30');
+    const data = await res.json();
+    if (!data.ok || !data.metrics) return;
 
-        const m = data.metrics;
-        const t = m.totals || {};
+    const m = data.metrics;
+    const t = m.totals || {};
 
-        // Top Cards Update
-        if ($('secTotalLogins')) $('secTotalLogins').textContent = (t.total_logins || 0).toLocaleString();
-        if ($('secFailedLogins')) $('secFailedLogins').textContent = (t.failed_logins || 0).toLocaleString();
-        if ($('secTotalAIQueries')) $('secTotalAIQueries').textContent = (t.total_ai_requests || 0).toLocaleString();
-        if ($('secTokensBadge')) $('secTokensBadge').textContent = `${(t.total_tokens || 0).toLocaleString()} Tokens`;
-        if ($('secTotalLockouts')) $('secTotalLockouts').textContent = (t.lockout_incidents || 0).toLocaleString();
-        if ($('secLockoutsBadge')) $('secLockoutsBadge').textContent = `${t.lockout_incidents || 0} เคส`;
+    // Top Cards Update
+    if ($('secTotalLogins')) $('secTotalLogins').textContent = (t.total_logins || 0).toLocaleString();
+    if ($('secFailedLogins')) $('secFailedLogins').textContent = (t.failed_logins || 0).toLocaleString();
+    if ($('secTotalAIQueries')) $('secTotalAIQueries').textContent = (t.total_ai_requests || 0).toLocaleString();
+    if ($('secTokensBadge')) $('secTokensBadge').textContent = `${(t.total_tokens || 0).toLocaleString()} Tokens`;
+    if ($('secTotalLockouts')) $('secTotalLockouts').textContent = (t.lockout_incidents || 0).toLocaleString();
+    if ($('secLockoutsBadge')) $('secLockoutsBadge').textContent = `${t.lockout_incidents || 0} เคส`;
 
-        // Success Login Rate calculation
-        const succ = t.successful_logins || 0;
-        const tot = t.total_logins || 1;
-        const rate = Math.round((succ / (tot || 1)) * 100);
-        if ($('securityLoginsBadge')) $('securityLoginsBadge').textContent = `${rate}% สำเร็จ`;
+    // Success Login Rate calculation
+    const succ = t.successful_logins || 0;
+    const tot = t.total_logins || 1;
+    const rate = Math.round((succ / (tot || 1)) * 100);
+    if ($('securityLoginsBadge')) $('securityLoginsBadge').textContent = `${rate}% สำเร็จ`;
 
-        // Top Department
-        const depts = m.department_usage || [];
-        if (depts.length > 0) {
-            const topDept = depts[0].department || 'General';
-            if ($('secTopDepartment')) $('secTopDepartment').textContent = topDept;
-            if ($('topDeptBadge')) $('topDeptBadge').textContent = `${topDept} (${depts[0].count} ครั้ง)`;
-        }
-
-        // Render Charts
-        renderDeptUsageChart(depts);
-        renderSecurityTimelineChart(m.timeline || []);
-
-        // Load Table
-        loadAuditLogsTable();
-    } catch (err) {
-        console.error('[Security Audit] Dashboard load error:', err);
+    // Top Department
+    const depts = m.department_usage || [];
+    if (depts.length > 0) {
+      const topDept = depts[0].department || 'General';
+      if ($('secTopDepartment')) $('secTopDepartment').textContent = topDept;
+      if ($('topDeptBadge')) $('topDeptBadge').textContent = `${topDept} (${depts[0].count} ครั้ง)`;
     }
+
+    // Render Charts
+    renderDeptUsageChart(depts);
+    renderSecurityTimelineChart(m.timeline || []);
+
+    // Load Table
+    loadAuditLogsTable();
+  } catch (err) {
+    console.error('[Security Audit] Dashboard load error:', err);
+  }
 }
 
 function renderDeptUsageChart(depts) {
-    const ctx = document.getElementById('deptUsageChart');
-    if (!ctx) return;
+  const ctx = document.getElementById('deptUsageChart');
+  if (!ctx) return;
 
-    if (deptUsageChartInstance) {
-        deptUsageChartInstance.destroy();
+  if (deptUsageChartInstance) {
+    deptUsageChartInstance.destroy();
+  }
+
+  const labels = depts.map(d => d.department || 'General');
+  const counts = depts.map(d => d.count || 0);
+
+  deptUsageChartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels.length ? labels : ['General'],
+      datasets: [{
+        label: 'จำนวนการใช้งาน AI (ครั้ง)',
+        data: counts.length ? counts : [0],
+        backgroundColor: [
+          'rgba(99, 102, 241, 0.85)',
+          'rgba(16, 185, 129, 0.85)',
+          'rgba(245, 158, 11, 0.85)',
+          'rgba(168, 85, 247, 0.85)',
+          'rgba(236, 72, 153, 0.85)'
+        ],
+        borderRadius: 12,
+        borderSkipped: false
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false }
+      },
+      scales: {
+        y: { beginAtZero: true, grid: { color: 'rgba(148, 163, 184, 0.1)' } },
+        x: { grid: { display: false } }
+      }
     }
-
-    const labels = depts.map(d => d.department || 'General');
-    const counts = depts.map(d => d.count || 0);
-
-    deptUsageChartInstance = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: labels.length ? labels : ['General'],
-            datasets: [{
-                label: 'จำนวนการใช้งาน AI (ครั้ง)',
-                data: counts.length ? counts : [0],
-                backgroundColor: [
-                    'rgba(99, 102, 241, 0.85)',
-                    'rgba(16, 185, 129, 0.85)',
-                    'rgba(245, 158, 11, 0.85)',
-                    'rgba(168, 85, 247, 0.85)',
-                    'rgba(236, 72, 153, 0.85)'
-                ],
-                borderRadius: 12,
-                borderSkipped: false
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false }
-            },
-            scales: {
-                y: { beginAtZero: true, grid: { color: 'rgba(148, 163, 184, 0.1)' } },
-                x: { grid: { display: false } }
-            }
-        }
-    });
+  });
 }
 
 function renderSecurityTimelineChart(timeline) {
-    const ctx = document.getElementById('securityTimelineChart');
-    if (!ctx) return;
+  const ctx = document.getElementById('securityTimelineChart');
+  if (!ctx) return;
 
-    if (securityTimelineChartInstance) {
-        securityTimelineChartInstance.destroy();
-    }
+  if (securityTimelineChartInstance) {
+    securityTimelineChartInstance.destroy();
+  }
 
-    const labels = timeline.map(t => t.date_str);
-    const logins = timeline.map(t => t.logins || 0);
-    const failed = timeline.map(t => t.failed_logins || 0);
-    const aiReqs = timeline.map(t => t.ai_requests || 0);
+  const labels = timeline.map(t => t.date_str);
+  const logins = timeline.map(t => t.logins || 0);
+  const failed = timeline.map(t => t.failed_logins || 0);
+  const aiReqs = timeline.map(t => t.ai_requests || 0);
 
-    securityTimelineChartInstance = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: labels.length ? labels : ['วันนี้'],
-            datasets: [
-                {
-                    label: 'การคุยกับ AI',
-                    data: aiReqs.length ? aiReqs : [0],
-                    borderColor: '#6366f1',
-                    backgroundColor: 'rgba(99, 102, 241, 0.1)',
-                    fill: true,
-                    tension: 0.35,
-                    borderWidth: 3
-                },
-                {
-                    label: 'เข้าสู่ระบบสำเร็จ',
-                    data: logins.length ? logins : [0],
-                    borderColor: '#10b981',
-                    borderWidth: 2,
-                    tension: 0.35
-                },
-                {
-                    label: 'ล็อกอินผิดพลาด',
-                    data: failed.length ? failed : [0],
-                    borderColor: '#ef4444',
-                    borderWidth: 2,
-                    tension: 0.35
-                }
-            ]
+  securityTimelineChartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels.length ? labels : ['วันนี้'],
+      datasets: [
+        {
+          label: 'การคุยกับ AI',
+          data: aiReqs.length ? aiReqs : [0],
+          borderColor: '#6366f1',
+          backgroundColor: 'rgba(99, 102, 241, 0.1)',
+          fill: true,
+          tension: 0.35,
+          borderWidth: 3
         },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } }
-            },
-            scales: {
-                y: { beginAtZero: true, grid: { color: 'rgba(148, 163, 184, 0.1)' } },
-                x: { grid: { display: false } }
-            }
+        {
+          label: 'เข้าสู่ระบบสำเร็จ',
+          data: logins.length ? logins : [0],
+          borderColor: '#10b981',
+          borderWidth: 2,
+          tension: 0.35
+        },
+        {
+          label: 'ล็อกอินผิดพลาด',
+          data: failed.length ? failed : [0],
+          borderColor: '#ef4444',
+          borderWidth: 2,
+          tension: 0.35
         }
-    });
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } }
+      },
+      scales: {
+        y: { beginAtZero: true, grid: { color: 'rgba(148, 163, 184, 0.1)' } },
+        x: { grid: { display: false } }
+      }
+    }
+  });
 }
 
 async function loadAuditLogsTable(search = '', eventType = '') {
-    const tbody = $('securityAuditLogTableBody');
-    if (!tbody) return;
+  const tbody = $('securityAuditLogTableBody');
+  if (!tbody) return;
 
-    try {
-        let url = '/api/admin/security/audit-logs?limit=100';
-        if (search) url += `&search=${encodeURIComponent(search)}`;
-        if (eventType) url += `&event_type=${encodeURIComponent(eventType)}`;
+  try {
+    let url = '/api/admin/security/audit-logs?limit=100';
+    if (search) url += `&search=${encodeURIComponent(search)}`;
+    if (eventType) url += `&event_type=${encodeURIComponent(eventType)}`;
 
-        const res = await fetch(url);
-        const data = await res.json();
-        if (!data.ok) {
-            tbody.innerHTML = '<tr><td colspan="8" class="text-center py-6 text-red-500">ไม่สามารถโหลด Audit Logs ได้</td></tr>';
-            return;
-        }
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!data.ok) {
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center py-6 text-red-500">ไม่สามารถโหลด Audit Logs ได้</td></tr>';
+      return;
+    }
 
-        const logs = data.logs || [];
-        if (logs.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-surface-400">ไม่พบประวัติกิจกรรมในเงื่อนไขนี้</td></tr>';
-            return;
-        }
+    const logs = data.logs || [];
+    if (logs.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-surface-400">ไม่พบประวัติกิจกรรมในเงื่อนไขนี้</td></tr>';
+      return;
+    }
 
-        tbody.innerHTML = logs.map(row => {
-            let statusBadge = '<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50">Success 🟢</span>';
-            if (row.status === 'warning') statusBadge = '<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-600 dark:bg-amber-950/50">Warning 🟡</span>';
-            if (row.status === 'failed') statusBadge = '<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-600 dark:bg-rose-950/50">Failed 🔴</span>';
+    tbody.innerHTML = logs.map(row => {
+      let statusBadge = '<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50">Success 🟢</span>';
+      if (row.status === 'warning') statusBadge = '<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-600 dark:bg-amber-950/50">Warning 🟡</span>';
+      if (row.status === 'failed') statusBadge = '<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-600 dark:bg-rose-950/50">Failed 🔴</span>';
 
-            let eventName = row.event_type;
-            if (row.event_type === 'login_success') eventName = '🔑 เข้าสู่ระบบสำเร็จ';
-            if (row.event_type === 'login_failed') eventName = '⚠️ ล็อกอินผิดพลาด';
-            if (row.event_type === 'account_lockout') eventName = '🚨 ระงับบัญชีชั่วคราว';
-            if (row.event_type === 'ai_chat') eventName = '🤖 AI Query';
-            if (row.event_type === 'ai_rag_query') eventName = '📚 RAG Knowledge Query';
+      let eventName = row.event_type;
+      if (row.event_type === 'login_success') eventName = '🔑 เข้าสู่ระบบสำเร็จ';
+      if (row.event_type === 'login_failed') eventName = '⚠️ ล็อกอินผิดพลาด';
+      if (row.event_type === 'account_lockout') eventName = '🚨 ระงับบัญชีชั่วคราว';
+      if (row.event_type === 'ai_chat') eventName = '🤖 AI Query';
+      if (row.event_type === 'ai_rag_query') eventName = '📚 RAG Knowledge Query';
 
-            const userAgentShort = (row.user_agent || '-').substring(0, 30);
+      const userAgentShort = (row.user_agent || '-').substring(0, 30);
 
-            return `
+      return `
                 <tr class="hover:bg-surface-50 dark:hover:bg-surface-800/50 transition-colors">
                     <td class="p-3 text-surface-400 whitespace-nowrap">${row.timestamp || '-'}</td>
                     <td class="p-3 font-bold text-surface-900 dark:text-white whitespace-nowrap">${escapeHTML(row.username || 'Anonymous')}</td>
@@ -21437,22 +21419,22 @@ async function loadAuditLogsTable(search = '', eventType = '') {
                     <td class="p-3 text-surface-400 text-[11px] whitespace-nowrap">${escapeHTML(row.ai_model || userAgentShort)}</td>
                 </tr>
             `;
-        }).join('');
+    }).join('');
 
-        if (typeof lucide !== 'undefined') lucide.createIcons();
-    } catch (err) {
-        console.error('[Audit Logs] Error:', err);
-    }
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  } catch (err) {
+    console.error('[Audit Logs] Error:', err);
+  }
 }
 
 function filterAuditLogs() {
-    const search = $('auditSearchInput') ? $('auditSearchInput').value : '';
-    const eventType = $('auditEventFilter') ? $('auditEventFilter').value : '';
-    loadAuditLogsTable(search, eventType);
+  const search = $('auditSearchInput') ? $('auditSearchInput').value : '';
+  const eventType = $('auditEventFilter') ? $('auditEventFilter').value : '';
+  loadAuditLogsTable(search, eventType);
 }
 
 function exportAuditLogsCSV() {
-    window.location.href = '/api/admin/security/export-csv';
+  window.location.href = '/api/admin/security/export-csv';
 }
 
 window.loadSecurityAuditDashboard = loadSecurityAuditDashboard;
@@ -21464,113 +21446,113 @@ window.exportAuditLogsCSV = exportAuditLogsCSV;
 const CUSTOM_UI_KEY = 'orgchat_custom_ui_settings';
 
 function getCustomUISettings() {
-    try {
-        const stored = localStorage.getItem(CUSTOM_UI_KEY);
-        if (stored) return JSON.parse(stored);
-    } catch (e) {}
-    return { font: 'Sarabun', fontSize: 'normal', accent: 'blue' };
+  try {
+    const stored = localStorage.getItem(CUSTOM_UI_KEY);
+    if (stored) return JSON.parse(stored);
+  } catch (e) { }
+  return { font: 'Sarabun', fontSize: 'normal', accent: 'blue' };
 }
 
 function saveCustomUISettings(settings) {
-    try {
-        localStorage.setItem(CUSTOM_UI_KEY, JSON.stringify(settings));
-    } catch (e) {}
+  try {
+    localStorage.setItem(CUSTOM_UI_KEY, JSON.stringify(settings));
+  } catch (e) { }
 }
 
 function applyCustomUI(settings) {
-    const s = settings || getCustomUISettings();
+  const s = settings || getCustomUISettings();
 
-    // 1. Apply Font Family — use global FONT_MAP for all fonts
-    const targetFont = FONT_MAP[s.font] || FONT_MAP['Sarabun'];
-    document.documentElement.style.setProperty('--user-custom-font', targetFont);
-    document.body.style.fontFamily = targetFont;
+  // 1. Apply Font Family — use global FONT_MAP for all fonts
+  const targetFont = FONT_MAP[s.font] || FONT_MAP['Sarabun'];
+  document.documentElement.style.setProperty('--user-custom-font', targetFont);
+  document.body.style.fontFamily = targetFont;
 
-    // Highlight Font Button
-    document.querySelectorAll('.custom-font-btn').forEach(btn => {
-        btn.classList.remove('border-indigo-500', 'bg-indigo-50/50', 'dark:bg-indigo-900/20');
-        btn.classList.add('border-surface-200', 'dark:border-surface-700');
-    });
-    const activeFontBtn = document.getElementById(`fontBtn-${s.font}`);
-    if (activeFontBtn) {
-        activeFontBtn.classList.remove('border-surface-200', 'dark:border-surface-700');
-        activeFontBtn.classList.add('border-indigo-500', 'bg-indigo-50/50', 'dark:bg-indigo-900/20');
-    }
+  // Highlight Font Button
+  document.querySelectorAll('.custom-font-btn').forEach(btn => {
+    btn.classList.remove('border-indigo-500', 'bg-indigo-50/50', 'dark:bg-indigo-900/20');
+    btn.classList.add('border-surface-200', 'dark:border-surface-700');
+  });
+  const activeFontBtn = document.getElementById(`fontBtn-${s.font}`);
+  if (activeFontBtn) {
+    activeFontBtn.classList.remove('border-surface-200', 'dark:border-surface-700');
+    activeFontBtn.classList.add('border-indigo-500', 'bg-indigo-50/50', 'dark:bg-indigo-900/20');
+  }
 
-    // 2. Apply Font Size
-    const fontSizes = {
-        'small': { root: '13px', label: 'เล็ก (13px)' },
-        'normal': { root: '14.5px', label: 'ปกติ (14.5px)' },
-        'large': { root: '16px', label: 'ใหญ่ (16px)' },
-        'xl': { root: '17.5px', label: 'ใหญ่มาก (17.5px)' }
-    };
-    const sizeConfig = fontSizes[s.fontSize] || fontSizes['normal'];
-    document.documentElement.style.fontSize = sizeConfig.root;
-    
-    const sizeLabelEl = document.getElementById('fontSizeDisplay');
-    if (sizeLabelEl) sizeLabelEl.textContent = sizeConfig.label;
+  // 2. Apply Font Size
+  const fontSizes = {
+    'small': { root: '13px', label: 'เล็ก (13px)' },
+    'normal': { root: '14.5px', label: 'ปกติ (14.5px)' },
+    'large': { root: '16px', label: 'ใหญ่ (16px)' },
+    'xl': { root: '17.5px', label: 'ใหญ่มาก (17.5px)' }
+  };
+  const sizeConfig = fontSizes[s.fontSize] || fontSizes['normal'];
+  document.documentElement.style.fontSize = sizeConfig.root;
 
-    // Highlight Size Button
-    document.querySelectorAll('.custom-size-btn').forEach(btn => {
-        btn.classList.remove('bg-indigo-600', 'text-white', 'border-indigo-600');
-        btn.classList.add('border-surface-200', 'dark:border-surface-700', 'text-surface-700', 'dark:text-surface-300');
-    });
-    const activeSizeBtn = document.getElementById(`fontSizeBtn-${s.fontSize}`);
-    if (activeSizeBtn) {
-        activeSizeBtn.classList.remove('border-surface-200', 'dark:border-surface-700', 'text-surface-700', 'dark:text-surface-300');
-        activeSizeBtn.classList.add('bg-indigo-600', 'text-white', 'border-indigo-600');
-    }
+  const sizeLabelEl = document.getElementById('fontSizeDisplay');
+  if (sizeLabelEl) sizeLabelEl.textContent = sizeConfig.label;
 
-    // 3. Apply Accent Color
-    const accentColors = {
-        'blue': '#2563eb',
-        'indigo': '#4f46e5',
-        'emerald': '#059669',
-        'amber': '#d97706',
-        'rose': '#e11d48',
-        'purple': '#9333ea'
-    };
-    const targetAccent = accentColors[s.accent] || accentColors['blue'];
-    document.documentElement.style.setProperty('--brand-accent-color', targetAccent);
+  // Highlight Size Button
+  document.querySelectorAll('.custom-size-btn').forEach(btn => {
+    btn.classList.remove('bg-indigo-600', 'text-white', 'border-indigo-600');
+    btn.classList.add('border-surface-200', 'dark:border-surface-700', 'text-surface-700', 'dark:text-surface-300');
+  });
+  const activeSizeBtn = document.getElementById(`fontSizeBtn-${s.fontSize}`);
+  if (activeSizeBtn) {
+    activeSizeBtn.classList.remove('border-surface-200', 'dark:border-surface-700', 'text-surface-700', 'dark:text-surface-300');
+    activeSizeBtn.classList.add('bg-indigo-600', 'text-white', 'border-indigo-600');
+  }
 
-    // Highlight Accent Checkmarks
-    document.querySelectorAll('.custom-accent-btn').forEach(btn => {
-        const check = btn.querySelector('.accent-check');
-        if (check) check.classList.add('hidden');
-        btn.classList.remove('ring-4', 'ring-indigo-300', 'dark:ring-indigo-800');
-    });
-    const activeAccentBtn = document.getElementById(`accentBtn-${s.accent}`);
-    if (activeAccentBtn) {
-        const check = activeAccentBtn.querySelector('.accent-check');
-        if (check) check.classList.remove('hidden');
-        activeAccentBtn.classList.add('ring-4', 'ring-indigo-300', 'dark:ring-indigo-800');
-    }
+  // 3. Apply Accent Color
+  const accentColors = {
+    'blue': '#2563eb',
+    'indigo': '#4f46e5',
+    'emerald': '#059669',
+    'amber': '#d97706',
+    'rose': '#e11d48',
+    'purple': '#9333ea'
+  };
+  const targetAccent = accentColors[s.accent] || accentColors['blue'];
+  document.documentElement.style.setProperty('--brand-accent-color', targetAccent);
+
+  // Highlight Accent Checkmarks
+  document.querySelectorAll('.custom-accent-btn').forEach(btn => {
+    const check = btn.querySelector('.accent-check');
+    if (check) check.classList.add('hidden');
+    btn.classList.remove('ring-4', 'ring-indigo-300', 'dark:ring-indigo-800');
+  });
+  const activeAccentBtn = document.getElementById(`accentBtn-${s.accent}`);
+  if (activeAccentBtn) {
+    const check = activeAccentBtn.querySelector('.accent-check');
+    if (check) check.classList.remove('hidden');
+    activeAccentBtn.classList.add('ring-4', 'ring-indigo-300', 'dark:ring-indigo-800');
+  }
 }
 
 function setCustomFont(fontName) {
-    const s = getCustomUISettings();
-    s.font = fontName;
-    saveCustomUISettings(s);
-    applyCustomUI(s);
+  const s = getCustomUISettings();
+  s.font = fontName;
+  saveCustomUISettings(s);
+  applyCustomUI(s);
 }
 
 function setCustomFontSize(sizeKey) {
-    const s = getCustomUISettings();
-    s.fontSize = sizeKey;
-    saveCustomUISettings(s);
-    applyCustomUI(s);
+  const s = getCustomUISettings();
+  s.fontSize = sizeKey;
+  saveCustomUISettings(s);
+  applyCustomUI(s);
 }
 
 function setCustomAccent(colorKey) {
-    const s = getCustomUISettings();
-    s.accent = colorKey;
-    saveCustomUISettings(s);
-    applyCustomUI(s);
+  const s = getCustomUISettings();
+  s.accent = colorKey;
+  saveCustomUISettings(s);
+  applyCustomUI(s);
 }
 
 function resetCustomUISettings() {
-    const defaults = { font: 'Sarabun', fontSize: 'normal', accent: 'blue' };
-    saveCustomUISettings(defaults);
-    applyCustomUI(defaults);
+  const defaults = { font: 'Sarabun', fontSize: 'normal', accent: 'blue' };
+  saveCustomUISettings(defaults);
+  applyCustomUI(defaults);
 }
 
 window.setCustomFont = setCustomFont;
@@ -21586,279 +21568,279 @@ let current2FAMethod = 'authenticator';
 let currentUserEmail = '';
 
 async function check2FAStatus() {
-    // U0-2: Skip if user not logged in
-    if (typeof state === 'undefined' || !state.user) return;
-    try {
-        const res = await fetch('/api/2fa/status');
-        const data = await res.json();
-        if (data.ok) {
-            currentUserEmail = data.email || '';
-            const badge = document.getElementById('totpStatusBadge');
-            const disabledDiv = document.getElementById('totpDisabledActions');
-            const enabledDiv = document.getElementById('totpEnabledActions');
-            
-            if (data.enabled) {
-                if (badge) {
-                    const typeText = data.type === 'email' ? 'เปิดใช้งาน (Gmail OTP)' : 'เปิดใช้งาน (Authenticator App)';
-                    badge.textContent = typeText;
-                    badge.className = 'px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400';
-                }
-                if (disabledDiv) disabledDiv.classList.add('hidden');
-                if (enabledDiv) enabledDiv.classList.remove('hidden');
-            } else {
-                if (badge) {
-                    badge.textContent = 'ปิดใช้งาน';
-                    badge.className = 'px-2 py-0.5 rounded-full text-[9px] font-bold bg-surface-100 text-surface-500 dark:bg-surface-800';
-                }
-                if (disabledDiv) disabledDiv.classList.remove('hidden');
-                if (enabledDiv) enabledDiv.classList.add('hidden');
-            }
+  // U0-2: Skip if user not logged in
+  if (typeof state === 'undefined' || !state.user) return;
+  try {
+    const res = await fetch('/api/2fa/status');
+    const data = await res.json();
+    if (data.ok) {
+      currentUserEmail = data.email || '';
+      const badge = document.getElementById('totpStatusBadge');
+      const disabledDiv = document.getElementById('totpDisabledActions');
+      const enabledDiv = document.getElementById('totpEnabledActions');
+
+      if (data.enabled) {
+        if (badge) {
+          const typeText = data.type === 'email' ? 'เปิดใช้งาน (Gmail OTP)' : 'เปิดใช้งาน (Authenticator App)';
+          badge.textContent = typeText;
+          badge.className = 'px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400';
         }
-    } catch (e) {
-        console.warn('[2FA Status] error:', e);
+        if (disabledDiv) disabledDiv.classList.add('hidden');
+        if (enabledDiv) enabledDiv.classList.remove('hidden');
+      } else {
+        if (badge) {
+          badge.textContent = 'ปิดใช้งาน';
+          badge.className = 'px-2 py-0.5 rounded-full text-[9px] font-bold bg-surface-100 text-surface-500 dark:bg-surface-800';
+        }
+        if (disabledDiv) disabledDiv.classList.remove('hidden');
+        if (enabledDiv) enabledDiv.classList.add('hidden');
+      }
     }
+  } catch (e) {
+    console.warn('[2FA Status] error:', e);
+  }
 }
 
 async function start2FASetup() {
-    try {
-        const res = await fetch('/api/2fa/setup', { method: 'POST' });
-        const data = await res.json();
-        if (!data.ok) {
-            showToast(data.error || 'ไม่สามารถตั้งค่า 2FA ได้', 'error');
-            return;
-        }
-        
-        currentUserEmail = data.email || '';
-        document.getElementById('totpQrImage').src = data.qr_code;
-        document.getElementById('totpSecretText').textContent = 'Secret: ' + data.secret;
-        document.getElementById('totpSetupCodeInput').value = '';
-        document.getElementById('emailOtpSetupCodeInput').value = '';
-        document.getElementById('totpBackupCodesContainer').classList.add('hidden');
-        document.getElementById('totpEnableBtn').classList.remove('hidden');
-        
-        const targetText = document.getElementById('text2FAEmailTarget');
-        if (targetText) {
-            if (currentUserEmail) {
-                targetText.textContent = `ระบบจะส่งรหัส OTP 6 หลักไปยังอีเมล ${currentUserEmail}`;
-            } else {
-                targetText.textContent = `⚠️ บัญชีของคุณยังไม่ได้ตั้งค่าอีเมลในโปรไฟล์ กรุณาระบุอีเมลในโปรไฟล์ก่อนใช้งานวิธีกรอก OTP`;
-            }
-        }
-        
-        switch2FAMethod('authenticator');
-        document.getElementById('totpSetupModal').classList.remove('hidden');
-    } catch (e) {
-        showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
+  try {
+    const res = await fetch('/api/2fa/setup', { method: 'POST' });
+    const data = await res.json();
+    if (!data.ok) {
+      showToast(data.error || 'ไม่สามารถตั้งค่า 2FA ได้', 'error');
+      return;
     }
+
+    currentUserEmail = data.email || '';
+    document.getElementById('totpQrImage').src = data.qr_code;
+    document.getElementById('totpSecretText').textContent = 'Secret: ' + data.secret;
+    document.getElementById('totpSetupCodeInput').value = '';
+    document.getElementById('emailOtpSetupCodeInput').value = '';
+    document.getElementById('totpBackupCodesContainer').classList.add('hidden');
+    document.getElementById('totpEnableBtn').classList.remove('hidden');
+
+    const targetText = document.getElementById('text2FAEmailTarget');
+    if (targetText) {
+      if (currentUserEmail) {
+        targetText.textContent = `ระบบจะส่งรหัส OTP 6 หลักไปยังอีเมล ${currentUserEmail}`;
+      } else {
+        targetText.textContent = `⚠️ บัญชีของคุณยังไม่ได้ตั้งค่าอีเมลในโปรไฟล์ กรุณาระบุอีเมลในโปรไฟล์ก่อนใช้งานวิธีกรอก OTP`;
+      }
+    }
+
+    switch2FAMethod('authenticator');
+    document.getElementById('totpSetupModal').classList.remove('hidden');
+  } catch (e) {
+    showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
+  }
 }
 
 function switch2FAMethod(method) {
-    current2FAMethod = method;
-    const btnAuth = document.getElementById('btn2FAMethodAuth');
-    const btnEmail = document.getElementById('btn2FAMethodEmail');
-    const secAuth = document.getElementById('section2FAAuth');
-    const secEmail = document.getElementById('section2FAEmail');
-    
-    if (method === 'email') {
-        if (btnEmail) btnEmail.className = 'flex-1 py-2.5 px-3 text-xs font-bold rounded-xl transition-all text-center flex items-center justify-center gap-1.5 bg-white dark:bg-surface-700 text-emerald-600 dark:text-white shadow-sm';
-        if (btnAuth) btnAuth.className = 'flex-1 py-2.5 px-3 text-xs font-bold rounded-xl transition-all text-center flex items-center justify-center gap-1.5 text-surface-500 dark:text-surface-400 hover:text-surface-800 dark:hover:text-surface-200';
-        if (secEmail) secEmail.classList.remove('hidden');
-        if (secAuth) secAuth.classList.add('hidden');
-    } else {
-        if (btnAuth) btnAuth.className = 'flex-1 py-2.5 px-3 text-xs font-bold rounded-xl transition-all text-center flex items-center justify-center gap-1.5 bg-white dark:bg-surface-700 text-emerald-600 dark:text-white shadow-sm';
-        if (btnEmail) btnEmail.className = 'flex-1 py-2.5 px-3 text-xs font-bold rounded-xl transition-all text-center flex items-center justify-center gap-1.5 text-surface-500 dark:text-surface-400 hover:text-surface-800 dark:hover:text-surface-200';
-        if (secAuth) secAuth.classList.remove('hidden');
-        if (secEmail) secEmail.classList.add('hidden');
-    }
+  current2FAMethod = method;
+  const btnAuth = document.getElementById('btn2FAMethodAuth');
+  const btnEmail = document.getElementById('btn2FAMethodEmail');
+  const secAuth = document.getElementById('section2FAAuth');
+  const secEmail = document.getElementById('section2FAEmail');
+
+  if (method === 'email') {
+    if (btnEmail) btnEmail.className = 'flex-1 py-2.5 px-3 text-xs font-bold rounded-xl transition-all text-center flex items-center justify-center gap-1.5 bg-white dark:bg-surface-700 text-emerald-600 dark:text-white shadow-sm';
+    if (btnAuth) btnAuth.className = 'flex-1 py-2.5 px-3 text-xs font-bold rounded-xl transition-all text-center flex items-center justify-center gap-1.5 text-surface-500 dark:text-surface-400 hover:text-surface-800 dark:hover:text-surface-200';
+    if (secEmail) secEmail.classList.remove('hidden');
+    if (secAuth) secAuth.classList.add('hidden');
+  } else {
+    if (btnAuth) btnAuth.className = 'flex-1 py-2.5 px-3 text-xs font-bold rounded-xl transition-all text-center flex items-center justify-center gap-1.5 bg-white dark:bg-surface-700 text-emerald-600 dark:text-white shadow-sm';
+    if (btnEmail) btnEmail.className = 'flex-1 py-2.5 px-3 text-xs font-bold rounded-xl transition-all text-center flex items-center justify-center gap-1.5 text-surface-500 dark:text-surface-400 hover:text-surface-800 dark:hover:text-surface-200';
+    if (secAuth) secAuth.classList.remove('hidden');
+    if (secEmail) secEmail.classList.add('hidden');
+  }
 }
 
 async function send2FAEmailOTP(isLoginVerify = false) {
-    const btn = document.getElementById('btnVerifyResendEmailOTP');
-    const hint = document.getElementById('totpVerifyHint');
-    const err = document.getElementById('totpVerifyError');
-    if (isLoginVerify && btn) { if (btn.disabled) return; btn.disabled = true; }
-    try {
-        const payload = isLoginVerify ? { pre_auth_token: currentPreAuthToken } : {};
-        const res = await fetch('/api/2fa/send-email-otp', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!data.ok) {
-            const msg = data.error || 'ส่ง OTP ล้มเหลว';
-            showToast(msg, 'error');
-            if (isLoginVerify && err) { err.textContent = msg; err.classList.remove('hidden'); }
-            if (isLoginVerify && btn) btn.disabled = false;
-            return;
-        }
-        showToast(data.message || 'ส่ง OTP สำเร็จ กรุณาเช็คกล่องจดหมายใน Gmail', 'success');
-        if (isLoginVerify) {
-            if (err) err.classList.add('hidden');
-            if (hint) hint.textContent = (data.message || 'ส่งรหัส OTP ไปที่อีเมลแล้ว') + ' (รหัสมีอายุ 5 นาที) กรอกรหัส 6 หลักด้านล่าง';
-            const input = document.getElementById('totpVerifyCodeInput');
-            if (input) input.focus();
-            // กันกดซ้ำรัว ๆ: ให้ขอใหม่ได้อีกครั้งหลัง 30 วินาที
-            let left = 30;
-            const lbl = document.getElementById('btnVerifyResendEmailOTPLabel');
-            const base = 'ส่งรหัสอีกครั้ง';
-            const t = setInterval(() => {
-                left -= 1;
-                if (lbl) lbl.textContent = left > 0 ? `${base} (รอ ${left} วินาที)` : base;
-                if (left <= 0) { clearInterval(t); if (btn) btn.disabled = false; }
-            }, 1000);
-            if (lbl) lbl.textContent = `${base} (รอ ${left} วินาที)`;
-        }
-    } catch (e) {
-        showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
-        if (isLoginVerify && btn) btn.disabled = false;
+  const btn = document.getElementById('btnVerifyResendEmailOTP');
+  const hint = document.getElementById('totpVerifyHint');
+  const err = document.getElementById('totpVerifyError');
+  if (isLoginVerify && btn) { if (btn.disabled) return; btn.disabled = true; }
+  try {
+    const payload = isLoginVerify ? { pre_auth_token: currentPreAuthToken } : {};
+    const res = await fetch('/api/2fa/send-email-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!data.ok) {
+      const msg = data.error || 'ส่ง OTP ล้มเหลว';
+      showToast(msg, 'error');
+      if (isLoginVerify && err) { err.textContent = msg; err.classList.remove('hidden'); }
+      if (isLoginVerify && btn) btn.disabled = false;
+      return;
     }
+    showToast(data.message || 'ส่ง OTP สำเร็จ กรุณาเช็คกล่องจดหมายใน Gmail', 'success');
+    if (isLoginVerify) {
+      if (err) err.classList.add('hidden');
+      if (hint) hint.textContent = (data.message || 'ส่งรหัส OTP ไปที่อีเมลแล้ว') + ' (รหัสมีอายุ 5 นาที) กรอกรหัส 6 หลักด้านล่าง';
+      const input = document.getElementById('totpVerifyCodeInput');
+      if (input) input.focus();
+      // กันกดซ้ำรัว ๆ: ให้ขอใหม่ได้อีกครั้งหลัง 30 วินาที
+      let left = 30;
+      const lbl = document.getElementById('btnVerifyResendEmailOTPLabel');
+      const base = 'ส่งรหัสอีกครั้ง';
+      const t = setInterval(() => {
+        left -= 1;
+        if (lbl) lbl.textContent = left > 0 ? `${base} (รอ ${left} วินาที)` : base;
+        if (left <= 0) { clearInterval(t); if (btn) btn.disabled = false; }
+      }, 1000);
+      if (lbl) lbl.textContent = `${base} (รอ ${left} วินาที)`;
+    }
+  } catch (e) {
+    showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
+    if (isLoginVerify && btn) btn.disabled = false;
+  }
 }
 
 async function confirmEnable2FA() {
-    let code = '';
-    if (current2FAMethod === 'email') {
-        code = document.getElementById('emailOtpSetupCodeInput').value.trim();
-        if (!code) {
-            showToast('กรุณาใส่รหัส OTP 6 หลักที่ส่งไปยัง Gmail', 'error');
-            return;
-        }
+  let code = '';
+  if (current2FAMethod === 'email') {
+    code = document.getElementById('emailOtpSetupCodeInput').value.trim();
+    if (!code) {
+      showToast('กรุณาใส่รหัส OTP 6 หลักที่ส่งไปยัง Gmail', 'error');
+      return;
+    }
+  } else {
+    code = document.getElementById('totpSetupCodeInput').value.trim();
+    if (!code) {
+      showToast('กรุณาใส่รหัส 6 หลักจาก Authenticator App', 'error');
+      return;
+    }
+  }
+
+  try {
+    const res = await fetch('/api/2fa/enable', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, type: current2FAMethod })
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      showToast(data.error || 'รหัสไม่ถูกต้อง', 'error');
+      return;
+    }
+
+    showToast(data.message || 'เปิดใช้งาน 2FA เรียบร้อยแล้ว', 'success');
+
+    // Show backup codes
+    if (data.backup_codes && data.backup_codes.length > 0) {
+      const listDiv = document.getElementById('totpBackupCodesList');
+      listDiv.innerHTML = data.backup_codes.map(c => `<div class="p-1 text-center bg-surface-100 dark:bg-surface-800 rounded-lg select-all">${c}</div>`).join('');
+      document.getElementById('totpBackupCodesContainer').classList.remove('hidden');
+      document.getElementById('totpEnableBtn').classList.add('hidden');
     } else {
-        code = document.getElementById('totpSetupCodeInput').value.trim();
-        if (!code) {
-            showToast('กรุณาใส่รหัส 6 หลักจาก Authenticator App', 'error');
-            return;
-        }
+      close2FAModal();
     }
-    
-    try {
-        const res = await fetch('/api/2fa/enable', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code, type: current2FAMethod })
-        });
-        const data = await res.json();
-        if (!data.ok) {
-            showToast(data.error || 'รหัสไม่ถูกต้อง', 'error');
-            return;
-        }
-        
-        showToast(data.message || 'เปิดใช้งาน 2FA เรียบร้อยแล้ว', 'success');
-        
-        // Show backup codes
-        if (data.backup_codes && data.backup_codes.length > 0) {
-            const listDiv = document.getElementById('totpBackupCodesList');
-            listDiv.innerHTML = data.backup_codes.map(c => `<div class="p-1 text-center bg-surface-100 dark:bg-surface-800 rounded-lg select-all">${c}</div>`).join('');
-            document.getElementById('totpBackupCodesContainer').classList.remove('hidden');
-            document.getElementById('totpEnableBtn').classList.add('hidden');
-        } else {
-            close2FAModal();
-        }
-        check2FAStatus();
-    } catch (e) {
-        showToast('เกิดข้อผิดพลาดในการเปิดใช้งาน 2FA', 'error');
-    }
+    check2FAStatus();
+  } catch (e) {
+    showToast('เกิดข้อผิดพลาดในการเปิดใช้งาน 2FA', 'error');
+  }
 }
 
 function close2FAModal() {
-    document.getElementById('totpSetupModal').classList.add('hidden');
-    check2FAStatus();
+  document.getElementById('totpSetupModal').classList.add('hidden');
+  check2FAStatus();
 }
 
 async function disable2FA() {
-    const confirmChoice = confirm('คุณต้องการยกเลิกการยืนยันตัวตนสองชั้น (2FA) ใช่หรือไม่?');
-    if (!confirmChoice) return;
-    
-    const password = prompt('กรุณายืนยันรหัสผ่านบัญชีผู้ใช้เพื่อยกเลิก 2FA:');
-    if (password === null) return; // กด Cancel
-    
-    try {
-        const res = await fetch('/api/2fa/disable', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ password })
-        });
-        const data = await res.json();
-        if (!data.ok) {
-            showToast(data.error || 'ไม่สามารถยกเลิก 2FA ได้', 'error');
-            return;
-        }
-        showToast(data.message || 'ยกเลิกการยืนยันตัวตนสองชั้นเรียบร้อยแล้ว', 'success');
-        check2FAStatus();
-    } catch (e) {
-        showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
+  const confirmChoice = confirm('คุณต้องการยกเลิกการยืนยันตัวตนสองชั้น (2FA) ใช่หรือไม่?');
+  if (!confirmChoice) return;
+
+  const password = prompt('กรุณายืนยันรหัสผ่านบัญชีผู้ใช้เพื่อยกเลิก 2FA:');
+  if (password === null) return; // กด Cancel
+
+  try {
+    const res = await fetch('/api/2fa/disable', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password })
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      showToast(data.error || 'ไม่สามารถยกเลิก 2FA ได้', 'error');
+      return;
     }
+    showToast(data.message || 'ยกเลิกการยืนยันตัวตนสองชั้นเรียบร้อยแล้ว', 'success');
+    check2FAStatus();
+  } catch (e) {
+    showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
+  }
 }
 
 function handle2FAChallenge(preAuthToken, totpType, opts) {
-    currentPreAuthToken = preAuthToken;
-    opts = opts || {};
-    const modal = document.getElementById('totpVerifyModal');
-    const input = document.getElementById('totpVerifyCodeInput');
-    const err = document.getElementById('totpVerifyError');
-    const hint = document.getElementById('totpVerifyHint');
-    const btnResend = document.getElementById('btnSendVerifyEmailOTPContainer');
-    const isEmail = totpType === 'email';
-    const hasEmail = isEmail || !!opts.hasEmail;
-    window._2faEmailMasked = opts.emailMasked || '';
-    if (input) input.value = '';
-    if (err) err.classList.add('hidden');
-    // ให้เลือกได้ 2 ทาง: กรอกรหัสจากแอป Authenticator หรือกดส่งรหัส OTP ไปที่อีเมล
-    if (hint) {
-        hint.textContent = isEmail
-            ? 'กดปุ่มด้านล่างเพื่อส่งรหัส OTP ไปที่อีเมลของคุณ แล้วนำรหัส 6 หลักมากรอกที่นี่'
-            : (hasEmail
-                ? 'เปิดแอป Authenticator แล้วกรอกรหัส 6 หลัก หรือกดส่งรหัส OTP ไปที่อีเมลแทน'
-                : 'เปิดแอป Authenticator แล้วกรอกรหัส 6 หลัก หรือใช้ Backup Code');
-    }
-    if (btnResend) btnResend.classList.toggle('hidden', !hasEmail);
-    const lbl = document.getElementById('btnVerifyResendEmailOTPLabel');
-    if (lbl) lbl.textContent = 'ส่งรหัส OTP ไปที่อีเมล' + (window._2faEmailMasked ? ' (' + window._2faEmailMasked + ')' : '');
-    if (modal) {
-        // ย้ายไปไว้ที่ <body> เพื่อให้อยู่เหนือหน้าล็อกอิน (z-index 200) เสมอ
-        if (modal.parentElement !== document.body) document.body.appendChild(modal);
-        modal.style.zIndex = '300';
-        modal.classList.remove('hidden');
-    }
-    if (input) {
-        input.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); submit2FAVerify(); } };
-        setTimeout(() => input.focus(), 50);
-    }
-    // บัญชีที่เลือก 2FA แบบอีเมลอย่างเดียว: ส่ง OTP ให้ทันที
-    if (isEmail) { try { send2FAEmailOTP(true); } catch (e) { /* ignore */ } }
+  currentPreAuthToken = preAuthToken;
+  opts = opts || {};
+  const modal = document.getElementById('totpVerifyModal');
+  const input = document.getElementById('totpVerifyCodeInput');
+  const err = document.getElementById('totpVerifyError');
+  const hint = document.getElementById('totpVerifyHint');
+  const btnResend = document.getElementById('btnSendVerifyEmailOTPContainer');
+  const isEmail = totpType === 'email';
+  const hasEmail = isEmail || !!opts.hasEmail;
+  window._2faEmailMasked = opts.emailMasked || '';
+  if (input) input.value = '';
+  if (err) err.classList.add('hidden');
+  // ให้เลือกได้ 2 ทาง: กรอกรหัสจากแอป Authenticator หรือกดส่งรหัส OTP ไปที่อีเมล
+  if (hint) {
+    hint.textContent = isEmail
+      ? 'กดปุ่มด้านล่างเพื่อส่งรหัส OTP ไปที่อีเมลของคุณ แล้วนำรหัส 6 หลักมากรอกที่นี่'
+      : (hasEmail
+        ? 'เปิดแอป Authenticator แล้วกรอกรหัส 6 หลัก หรือกดส่งรหัส OTP ไปที่อีเมลแทน'
+        : 'เปิดแอป Authenticator แล้วกรอกรหัส 6 หลัก หรือใช้ Backup Code');
+  }
+  if (btnResend) btnResend.classList.toggle('hidden', !hasEmail);
+  const lbl = document.getElementById('btnVerifyResendEmailOTPLabel');
+  if (lbl) lbl.textContent = 'ส่งรหัส OTP ไปที่อีเมล' + (window._2faEmailMasked ? ' (' + window._2faEmailMasked + ')' : '');
+  if (modal) {
+    // ย้ายไปไว้ที่ <body> เพื่อให้อยู่เหนือหน้าล็อกอิน (z-index 200) เสมอ
+    if (modal.parentElement !== document.body) document.body.appendChild(modal);
+    modal.style.zIndex = '300';
+    modal.classList.remove('hidden');
+  }
+  if (input) {
+    input.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); submit2FAVerify(); } };
+    setTimeout(() => input.focus(), 50);
+  }
+  // บัญชีที่เลือก 2FA แบบอีเมลอย่างเดียว: ส่ง OTP ให้ทันที
+  if (isEmail) { try { send2FAEmailOTP(true); } catch (e) { /* ignore */ } }
 }
 
 async function submit2FAVerify() {
-    const code = document.getElementById('totpVerifyCodeInput').value.trim();
-    const err = document.getElementById('totpVerifyError');
-    if (!code) {
-        if (err) { err.textContent = 'กรุณากรอกรหัส 2FA หรือ OTP'; err.classList.remove('hidden'); }
-        return;
+  const code = document.getElementById('totpVerifyCodeInput').value.trim();
+  const err = document.getElementById('totpVerifyError');
+  if (!code) {
+    if (err) { err.textContent = 'กรุณากรอกรหัส 2FA หรือ OTP'; err.classList.remove('hidden'); }
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/2fa/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pre_auth_token: currentPreAuthToken, code })
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      if (err) { err.textContent = data.error || 'รหัสไม่ถูกต้อง'; err.classList.remove('hidden'); }
+      return;
     }
-    
-    try {
-        const res = await fetch('/api/2fa/verify', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pre_auth_token: currentPreAuthToken, code })
-        });
-        const data = await res.json();
-        if (!data.ok) {
-            if (err) { err.textContent = data.error || 'รหัสไม่ถูกต้อง'; err.classList.remove('hidden'); }
-            return;
-        }
-        
-        document.getElementById('totpVerifyModal').classList.add('hidden');
-        showToast('เข้าสู่ระบบสำเร็จ!', 'success');
-        window.location.reload();
-    } catch (e) {
-        if (err) { err.textContent = 'เกิดข้อผิดพลาดในการเชื่อมต่อ'; err.classList.remove('hidden'); }
-    }
+
+    document.getElementById('totpVerifyModal').classList.add('hidden');
+    showToast('เข้าสู่ระบบสำเร็จ!', 'success');
+    window.location.reload();
+  } catch (e) {
+    if (err) { err.textContent = 'เกิดข้อผิดพลาดในการเชื่อมต่อ'; err.classList.remove('hidden'); }
+  }
 }
 
 function cancel2FAVerify() {
-    currentPreAuthToken = null;
-    document.getElementById('totpVerifyModal').classList.add('hidden');
+  currentPreAuthToken = null;
+  document.getElementById('totpVerifyModal').classList.add('hidden');
 }
 
 window.check2FAStatus = check2FAStatus;
