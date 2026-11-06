@@ -1934,6 +1934,7 @@ function appendMessage(role, html, sources = [], scroll = true, msgId = null) {
     </div>`;
 
   const userImages = isUser ? (sources || []).filter(s => s.type === 'image') : [];
+  const userLocations = isUser ? (sources || []).filter(s => s.type === 'location' || (s.latitude != null && s.longitude != null)) : [];
   const botSources = !isUser ? (sources || []) : [];
   const hasText = html && typeof html === 'string' && html.trim().length > 0 && html !== '<span class="typing-dots">...</span>';
   const isTyping = html === '<span class="typing-dots">...</span>';
@@ -1952,8 +1953,66 @@ function appendMessage(role, html, sources = [], scroll = true, msgId = null) {
         `).join('')}
       </div>` : '';
 
-    // 2. User text bubble (Rendered below the image, or standalone if text only)
-    const textBubbleHtml = (hasText || isTyping || userImages.length === 0) ? `
+    // 📍 User Google Maps location card in AI chat
+    const locationCardsHtml = userLocations.length > 0 ? `
+      <div class="flex flex-wrap justify-end gap-2 mb-2 w-full">
+        ${userLocations.map(loc => {
+          const lName = loc.name || 'พิกัด Google Maps';
+          const hasCoords = loc.latitude != null && loc.longitude != null && !isNaN(loc.latitude) && !isNaN(loc.longitude);
+          const mapUrl = hasCoords
+            ? `https://www.google.com/maps?q=${loc.latitude},${loc.longitude}`
+            : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(lName)}`;
+          const dirUrl = hasCoords
+            ? `https://www.google.com/maps/dir/?api=1&destination=${loc.latitude},${loc.longitude}`
+            : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(lName)}`;
+          const embedUrl = hasCoords
+            ? `https://maps.google.com/maps?q=${loc.latitude},${loc.longitude}&hl=th&z=15&output=embed`
+            : `https://maps.google.com/maps?q=${encodeURIComponent(lName)}&hl=th&z=15&output=embed`;
+          const coordsStr = hasCoords ? `(${Number(loc.latitude).toFixed(4)}, ${Number(loc.longitude).toFixed(4)})` : '';
+          return `
+            <div class="w-[280px] sm:w-[320px] max-w-full rounded-2xl overflow-hidden border border-rose-200/90 dark:border-rose-900/50 bg-gradient-to-br from-rose-50/50 via-white to-amber-50/30 dark:from-rose-950/30 dark:via-surface-900 dark:to-surface-900 shadow-sm text-left">
+              <div class="p-3 border-b border-rose-100 dark:border-rose-900/30 flex items-start justify-between gap-2">
+                <div class="flex items-start gap-2.5 min-w-0">
+                  <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-rose-500 to-amber-500 text-white flex items-center justify-center flex-shrink-0 shadow-xs mt-0.5">
+                    <i data-lucide="map-pin" class="w-4 h-4"></i>
+                  </div>
+                  <div class="min-w-0">
+                    <div class="text-[10px] font-extrabold uppercase tracking-wider text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                      <span>Google Maps พิกัด</span>
+                      ${coordsStr ? `<span class="text-surface-400 font-normal font-mono text-[9px]">${coordsStr}</span>` : ''}
+                    </div>
+                    <div class="text-xs font-bold text-surface-900 dark:text-white truncate">${escapeHtml(lName)}</div>
+                    ${loc.address ? `<div class="text-[10px] text-surface-500 dark:text-surface-400 truncate mt-0.5">${escapeHtml(loc.address)}</div>` : ''}
+                  </div>
+                </div>
+              </div>
+              ${hasCoords ? `
+                <div class="w-full h-32 bg-surface-100 dark:bg-surface-800 relative">
+                  <iframe src="${embedUrl}" class="w-full h-full border-0 pointer-events-none" loading="lazy"></iframe>
+                  <a href="${mapUrl}" target="_blank" rel="noopener noreferrer" class="absolute inset-0 z-10" title="คลิกเพื่อเปิดแผนที่"></a>
+                </div>
+              ` : ''}
+              <div class="p-2 bg-surface-50/70 dark:bg-surface-800/60 border-t border-rose-100 dark:border-rose-900/30 flex items-center justify-end gap-1.5">
+                <a href="${dirUrl}" target="_blank" rel="noopener noreferrer"
+                  class="px-2.5 py-1 rounded-lg bg-gradient-to-r from-rose-500 to-amber-500 hover:from-rose-600 hover:to-amber-600 text-white text-[11px] font-bold flex items-center gap-1 transition shadow-xs hover:scale-105"
+                  title="เปิดโหมดนำทาง GPS ทันที">
+                  <i data-lucide="navigation" class="w-3 h-3"></i>
+                  <span>นำทาง</span>
+                </a>
+                <a href="${mapUrl}" target="_blank" rel="noopener noreferrer"
+                  class="px-2.5 py-1 rounded-lg bg-white dark:bg-surface-700 hover:bg-rose-50 dark:hover:bg-rose-900/40 text-rose-600 dark:text-rose-300 border border-surface-200 dark:border-surface-600 text-[11px] font-bold flex items-center gap-1 transition shadow-2xs hover:scale-105"
+                  title="เปิดดูตำแหน่งบน Google Maps">
+                  <span>เปิดแผนที่</span>
+                  <i data-lucide="external-link" class="w-3 h-3"></i>
+                </a>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>` : '';
+
+    // 2. User text bubble (Rendered below image/location, or standalone if text only)
+    const textBubbleHtml = (hasText || isTyping || (userImages.length === 0 && userLocations.length === 0)) ? `
       <div class="${bubbleClass} chat-bubble relative group/msg ml-auto max-w-prose">
         <div class="prose dark:prose-invert prose-sm max-w-none text-left">${html}</div>
         ${feedbackPanel}
@@ -1963,6 +2022,7 @@ function appendMessage(role, html, sources = [], scroll = true, msgId = null) {
       <div class="flex flex-col items-end w-full">
         <span class="text-[9px] font-bold text-surface-400 tracking-widest uppercase mb-1 px-1">${name}</span>
         ${imagesHtml}
+        ${locationCardsHtml}
         ${textBubbleHtml}
       </div>`;
   } else {
@@ -2272,7 +2332,7 @@ if (removeChatImage) {
 }
 
 async function sendMessage(text) {
-  if (state.sending || (!text.trim() && !state.pendingImage)) return;
+  if (state.sending || (!text.trim() && !state.pendingImage && !state.pendingLocation)) return;
   if (!state.apiKeySet) { showApiModal(); return; }
 
   const welcome = $('welcomeScreen');
@@ -2283,13 +2343,22 @@ async function sendMessage(text) {
   sendBtn.disabled = true;
   msgInput.disabled = true;
 
-  // Add visual indication of image in chat bubble if present
+  // Add visual indication of image or location in chat bubble if present
   let displayContext = [];
   if (state.pendingImage) {
     displayContext.push({
       type: 'image',
       url: state.pendingImage,
       name: 'Image for analysis'
+    });
+  }
+  if (state.pendingLocation) {
+    displayContext.push({
+      type: 'location',
+      name: state.pendingLocation.name,
+      address: state.pendingLocation.address,
+      latitude: state.pendingLocation.latitude,
+      longitude: state.pendingLocation.longitude
     });
   }
 
@@ -2310,11 +2379,13 @@ async function sendMessage(text) {
       history: state.history,
       persona_id: state.activePersona ? state.activePersona.id : null,
       image_data: state.pendingImage,
-      mime_type: state.pendingMime
+      mime_type: state.pendingMime,
+      location: state.pendingLocation
     };
 
-    // Reset pending image UI immediately
+    // Reset pending image & location UI immediately
     if (removeChatImage) removeChatImage.click();
+    clearMainChatLocation();
 
     const response = await fetch('/api/chat', {
       method: 'POST',
@@ -4014,6 +4085,9 @@ function renderPosts(posts) {
         const mapUrl = hasCoords
           ? `https://www.google.com/maps?q=${p.latitude},${p.longitude}`
           : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locName)}`;
+        const dirUrl = hasCoords
+          ? `https://www.google.com/maps/dir/?api=1&destination=${p.latitude},${p.longitude}`
+          : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(locName)}`;
         const embedUrl = hasCoords
           ? `https://maps.google.com/maps?q=${p.latitude},${p.longitude}&hl=th&z=15&output=embed`
           : `https://maps.google.com/maps?q=${encodeURIComponent(locName)}&hl=th&z=15&output=embed`;
@@ -4033,12 +4107,20 @@ function renderPosts(posts) {
                   <div class="text-xs font-bold text-surface-900 dark:text-white truncate">${escapeHtml(locName)}</div>
                 </div>
               </div>
-              <a href="${mapUrl}" target="_blank" rel="noopener noreferrer"
-                 class="px-2.5 py-1.5 rounded-xl bg-white dark:bg-surface-800 hover:bg-rose-50 dark:hover:bg-rose-900/30 border border-surface-200 dark:border-surface-700 text-rose-600 dark:text-rose-400 text-xs font-semibold flex items-center gap-1.5 flex-shrink-0 transition shadow-2xs hover:scale-105"
-                 title="เปิดดูตำแหน่งบน Google Maps">
-                <span>เปิดใน Google Maps</span>
-                <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
-              </a>
+              <div class="flex items-center gap-1.5 flex-shrink-0">
+                <a href="${dirUrl}" target="_blank" rel="noopener noreferrer"
+                   class="px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-rose-500 to-amber-500 hover:from-rose-600 hover:to-amber-600 text-white text-xs font-bold flex items-center gap-1 flex-shrink-0 transition shadow-xs hover:scale-105"
+                   title="เปิด Google Maps โหมดนำทาง GPS ทันที">
+                  <i data-lucide="navigation" class="w-3.5 h-3.5"></i>
+                  <span>นำทาง</span>
+                </a>
+                <a href="${mapUrl}" target="_blank" rel="noopener noreferrer"
+                   class="px-2.5 py-1.5 rounded-xl bg-white dark:bg-surface-800 hover:bg-rose-50 dark:hover:bg-rose-900/30 border border-surface-200 dark:border-surface-700 text-rose-600 dark:text-rose-400 text-xs font-semibold flex items-center gap-1.5 flex-shrink-0 transition shadow-2xs hover:scale-105"
+                   title="เปิดดูตำแหน่งบน Google Maps">
+                  <span>เปิดแผนที่</span>
+                  <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+                </a>
+              </div>
             </div>
             <div class="w-full h-44 sm:h-52 bg-surface-100 dark:bg-surface-800 relative">
               <iframe src="${embedUrl}" class="w-full h-full border-0" loading="lazy" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe>
@@ -4454,6 +4536,18 @@ window.openGoogleMapPickerModal = function(target = 'composer') {
       startLng = parseFloat(lngVal);
       initialName = nameVal;
     }
+  } else if (target === 'groupChat') {
+    if (state.groupChat && state.groupChat.pendingLocation) {
+      startLat = parseFloat(state.groupChat.pendingLocation.latitude);
+      startLng = parseFloat(state.groupChat.pendingLocation.longitude);
+      initialName = state.groupChat.pendingLocation.name || '';
+    }
+  } else if (target === 'mainChat') {
+    if (state.pendingLocation) {
+      startLat = parseFloat(state.pendingLocation.latitude);
+      startLng = parseFloat(state.pendingLocation.longitude);
+      initialName = state.pendingLocation.name || '';
+    }
   }
 
   // Clear search results & input
@@ -4777,9 +4871,51 @@ window.confirmGoogleMapLocation = function() {
     const coordsText = $('editPostCoordsText');
     if (coordsText) coordsText.textContent = `พิกัด: ${lat}, ${lng}`;
     toast(`อัปเดตพิกัด "${chosenName}" แล้ว`, 'success');
+  } else if (_mapPickerTarget === 'groupChat') {
+    if (!state.groupChat) state.groupChat = {};
+    state.groupChat.pendingLocation = {
+      name: chosenName,
+      address,
+      latitude: lat,
+      longitude: lng
+    };
+    renderChatAttachmentPreview();
+    toast(`แนบพิกัด Google Maps "${chosenName}" ในแชทแล้ว`, 'success');
+  } else if (_mapPickerTarget === 'mainChat') {
+    state.pendingLocation = {
+      name: chosenName,
+      address,
+      latitude: lat,
+      longitude: lng
+    };
+    const prev = $('mainChatLocationPreview');
+    if (prev) {
+      prev.classList.remove('hidden');
+      prev.classList.add('flex');
+    }
+    const nameEl = $('mainChatLocationName');
+    if (nameEl) nameEl.textContent = chosenName;
+    const coordsEl = $('mainChatLocationCoords');
+    if (coordsEl) coordsEl.textContent = `${lat}, ${lng} • ${address}`;
+    toast(`แนบพิกัด Google Maps "${chosenName}" สำหรับถาม AI แล้ว`, 'success');
   }
 
   closeGoogleMapPickerModal();
+  if (window.lucide) lucide.createIcons();
+};
+
+window.clearMainChatLocation = function() {
+  state.pendingLocation = null;
+  const prev = $('mainChatLocationPreview');
+  if (prev) {
+    prev.classList.add('hidden');
+    prev.classList.remove('flex');
+  }
+};
+
+window.clearGroupChatLocation = function() {
+  if (state.groupChat) state.groupChat.pendingLocation = null;
+  renderChatAttachmentPreview();
   if (window.lucide) lucide.createIcons();
 };
 
@@ -8187,10 +8323,12 @@ function renderChatMessages(shouldScroll = false) {
 
     const imageAttachments = m.attachments ? m.attachments.filter(a => a.type === 'image' || (a.name && (a.name.endsWith('.png') || a.name.endsWith('.jpg') || a.name.endsWith('.jpeg') || a.name.endsWith('.gif')))) : [];
     const audioAttachments = m.attachments ? m.attachments.filter(a => a.type === 'audio' || (a.name && (a.name.startsWith('voice_') || a.name.endsWith('.mp3') || a.name.endsWith('.wav') || a.name.endsWith('.m4a') || a.name.endsWith('.webm')))) : [];
+    const locationAttachments = m.attachments ? m.attachments.filter(a => a.type === 'location' || (a.latitude != null && a.longitude != null)) : [];
     const fileAttachments = m.attachments ? m.attachments.filter(a => {
       const isImg = a.type === 'image' || (a.name && (a.name.endsWith('.png') || a.name.endsWith('.jpg') || a.name.endsWith('.jpeg') || a.name.endsWith('.gif')));
       const isAudio = a.type === 'audio' || (a.name && (a.name.startsWith('voice_') || a.name.endsWith('.mp3') || a.name.endsWith('.wav') || a.name.endsWith('.m4a') || a.name.endsWith('.webm')));
-      return !isImg && !isAudio;
+      const isLoc = a.type === 'location' || (a.latitude != null && a.longitude != null);
+      return !isImg && !isAudio && !isLoc;
     }) : [];
 
     const imagesHtml = imageAttachments.length > 0 ? `
@@ -8200,6 +8338,64 @@ function renderChatMessages(shouldScroll = false) {
             <img src="${img.url}" class="w-full h-full object-cover" loading="lazy" onerror="this.onerror=null;this.src='${img.url}'">
           </div>
         `).join('')}
+      </div>
+    ` : '';
+
+    const locationHtml = locationAttachments.length > 0 ? `
+      <div class="chat-attachment-container ${isMe ? 'justify-end' : ''} mt-2 flex flex-col gap-2">
+        ${locationAttachments.map(loc => {
+          const lName = loc.name || 'พิกัด Google Maps';
+          const hasCoords = loc.latitude != null && loc.longitude != null && !isNaN(loc.latitude) && !isNaN(loc.longitude);
+          const mapUrl = hasCoords
+            ? `https://www.google.com/maps?q=${loc.latitude},${loc.longitude}`
+            : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(lName)}`;
+          const dirUrl = hasCoords
+            ? `https://www.google.com/maps/dir/?api=1&destination=${loc.latitude},${loc.longitude}`
+            : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(lName)}`;
+          const embedUrl = hasCoords
+            ? `https://maps.google.com/maps?q=${loc.latitude},${loc.longitude}&hl=th&z=15&output=embed`
+            : `https://maps.google.com/maps?q=${encodeURIComponent(lName)}&hl=th&z=15&output=embed`;
+          const coordsStr = hasCoords ? `(${Number(loc.latitude).toFixed(4)}, ${Number(loc.longitude).toFixed(4)})` : '';
+          return `
+            <div class="w-[280px] sm:w-[320px] max-w-full rounded-2xl overflow-hidden border border-rose-200/90 dark:border-rose-900/50 bg-gradient-to-br from-rose-50/50 via-white to-amber-50/30 dark:from-rose-950/30 dark:via-surface-900 dark:to-surface-900 shadow-sm text-left">
+              <div class="p-3 border-b border-rose-100 dark:border-rose-900/30 flex items-start justify-between gap-2">
+                <div class="flex items-start gap-2.5 min-w-0">
+                  <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-rose-500 to-amber-500 text-white flex items-center justify-center flex-shrink-0 shadow-xs mt-0.5">
+                    <i data-lucide="map-pin" class="w-4 h-4"></i>
+                  </div>
+                  <div class="min-w-0">
+                    <div class="text-[10px] font-extrabold uppercase tracking-wider text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                      <span>Google Maps พิกัด</span>
+                      ${coordsStr ? `<span class="text-surface-400 font-normal font-mono text-[9px]">${coordsStr}</span>` : ''}
+                    </div>
+                    <div class="text-xs font-bold text-surface-900 dark:text-white truncate">${escapeHtml(lName)}</div>
+                    ${loc.address ? `<div class="text-[10px] text-surface-500 dark:text-surface-400 truncate mt-0.5">${escapeHtml(loc.address)}</div>` : ''}
+                  </div>
+                </div>
+              </div>
+              ${hasCoords ? `
+                <div class="w-full h-32 bg-surface-100 dark:bg-surface-800 relative">
+                  <iframe src="${embedUrl}" class="w-full h-full border-0 pointer-events-none" loading="lazy"></iframe>
+                  <a href="${mapUrl}" target="_blank" rel="noopener noreferrer" class="absolute inset-0 z-10" title="คลิกเพื่อเปิดแผนที่"></a>
+                </div>
+              ` : ''}
+              <div class="p-2 bg-surface-50/70 dark:bg-surface-800/60 border-t border-rose-100 dark:border-rose-900/30 flex items-center justify-end gap-1.5">
+                <a href="${dirUrl}" target="_blank" rel="noopener noreferrer"
+                  class="px-2.5 py-1 rounded-lg bg-gradient-to-r from-rose-500 to-amber-500 hover:from-rose-600 hover:to-amber-600 text-white text-[11px] font-bold flex items-center gap-1 transition shadow-xs hover:scale-105"
+                  title="เปิดโหมดนำทาง GPS ทันที">
+                  <i data-lucide="navigation" class="w-3 h-3"></i>
+                  <span>นำทาง</span>
+                </a>
+                <a href="${mapUrl}" target="_blank" rel="noopener noreferrer"
+                  class="px-2.5 py-1 rounded-lg bg-white dark:bg-surface-700 hover:bg-rose-50 dark:hover:bg-rose-900/40 text-rose-600 dark:text-rose-300 border border-surface-200 dark:border-surface-600 text-[11px] font-bold flex items-center gap-1 transition shadow-2xs hover:scale-105"
+                  title="เปิดดูตำแหน่งบน Google Maps">
+                  <span>เปิดแผนที่</span>
+                  <i data-lucide="external-link" class="w-3 h-3"></i>
+                </a>
+              </div>
+            </div>
+          `;
+        }).join('')}
       </div>
     ` : '';
 
@@ -8279,6 +8475,7 @@ function renderChatMessages(shouldScroll = false) {
             
             ${imagesHtml}
             ${audioHtml}
+            ${locationHtml}
             ${filesHtml}
             ${readAvatarsHtml}
             <div class="action-panel hidden w-full max-w-sm mt-3 overflow-hidden rounded-3xl shadow-xl"></div>
@@ -8705,13 +8902,35 @@ function closeLightbox() {
 
 function renderChatAttachmentPreview() {
   if (!chatAttachmentPreview) return;
-  if (state.groupChat.pendingFiles.length === 0) {
+  const hasFiles = state.groupChat && state.groupChat.pendingFiles && state.groupChat.pendingFiles.length > 0;
+  const hasLoc = Boolean(state.groupChat && state.groupChat.pendingLocation);
+  if (!hasFiles && !hasLoc) {
     chatAttachmentPreview.classList.add('hidden');
+    chatAttachmentPreview.innerHTML = '';
     return;
   }
 
   chatAttachmentPreview.classList.remove('hidden');
-  chatAttachmentPreview.innerHTML = state.groupChat.pendingFiles.map((f, idx) => {
+  let locHtml = '';
+  if (hasLoc) {
+    const loc = state.groupChat.pendingLocation;
+    locHtml = `
+      <div class="flex items-center gap-2 bg-gradient-to-r from-rose-50 to-orange-50/50 dark:from-rose-950/50 dark:to-surface-800 border border-rose-200/90 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 px-3 py-1.5 rounded-xl text-xs font-semibold shadow-2xs animate-in zoom-in-95 duration-150">
+        <div class="w-6 h-6 rounded-lg bg-rose-500/15 text-rose-600 dark:text-rose-400 flex items-center justify-center flex-shrink-0">
+          <i data-lucide="map-pin" class="w-3.5 h-3.5"></i>
+        </div>
+        <div class="min-w-0">
+          <span class="max-w-[180px] sm:max-w-[240px] truncate block font-bold text-surface-900 dark:text-white">${escapeHtml(loc.name || 'พิกัด Google Maps')}</span>
+          <span class="text-[9px] text-surface-400 font-mono block">${loc.latitude}, ${loc.longitude}</span>
+        </div>
+        <button type="button" onclick="clearGroupChatLocation()" class="p-1 text-surface-400 hover:text-red-500 hover:bg-rose-100/50 rounded-lg transition-colors ml-1" title="ยกเลิกพิกัด">
+          <i data-lucide="x" class="w-3.5 h-3.5"></i>
+        </button>
+      </div>
+    `;
+  }
+
+  const filesHtml = hasFiles ? state.groupChat.pendingFiles.map((f, idx) => {
     const isImg = f.type.startsWith('image/');
     return `
       <div class="attachment-preview-item">
@@ -8719,7 +8938,9 @@ function renderChatAttachmentPreview() {
         <div class="attachment-remove-btn" onclick="removeChatAttachment(${idx})">×</div>
       </div>
     `;
-  }).join('');
+  }).join('') : '';
+
+  chatAttachmentPreview.innerHTML = locHtml + filesHtml;
   initIcons();
 }
 
@@ -8730,14 +8951,17 @@ function removeChatAttachment(idx) {
 
 async function sendUnifiedMessage() {
   const text = groupChatInput.value.trim();
-  const fileCount = state.groupChat.pendingFiles.length;
+  const fileCount = (state.groupChat.pendingFiles || []).length;
+  const hasLoc = Boolean(state.groupChat && state.groupChat.pendingLocation);
 
-  if (!text && fileCount === 0) return;
+  if (!text && fileCount === 0 && !hasLoc) return;
 
   sendGroupChatBtn.disabled = true;
   const originalFiles = [...state.groupChat.pendingFiles];
+  const originalLoc = state.groupChat.pendingLocation;
   groupChatInput.value = '';
   state.groupChat.pendingFiles = [];
+  state.groupChat.pendingLocation = null;
   renderChatAttachmentPreview();
 
   try {
@@ -8767,6 +8991,9 @@ async function sendUnifiedMessage() {
     if (state.groupChat.replyTo) {
       formData.append('reply_to_id', state.groupChat.replyTo.id);
     }
+    if (originalLoc) {
+      formData.append('location_data', JSON.stringify(originalLoc));
+    }
     originalFiles.forEach(f => {
       // 🎙️ EXTRA CHECK: If file is from our recorder (named voice_*.webm), mark as audio blobl property
       // though f.type is usually correct, we can also use a custom property if needed.
@@ -8787,6 +9014,7 @@ async function sendUnifiedMessage() {
     toast('ส่งข้อความไม่สำเร็จ: ' + e.message, 'error');
     groupChatInput.value = text;
     state.groupChat.pendingFiles = originalFiles;
+    state.groupChat.pendingLocation = originalLoc;
     renderChatAttachmentPreview();
   } finally {
     sendGroupChatBtn.disabled = false;

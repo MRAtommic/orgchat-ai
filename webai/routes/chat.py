@@ -54,6 +54,7 @@ LINE_CONFIG_FILE = "line_config.json"
 _kb_filenames_cache = {}
 
 from routes.shared import (
+    platform_admin_required,
     VERSION, socketio, _limiter, login_required, admin_required,
     PENDING_LINE_LINKS, _OAUTH_STATES, _store_oauth_state, _pop_oauth_state,
     send_push_notification, batch_send_push_notification,
@@ -570,7 +571,7 @@ def export_chat():
 
 
 @chat_bp.route("/api/logs")
-@admin_required
+@platform_admin_required
 def get_logs():
     return jsonify({"logs": database.get_events()})
 
@@ -901,6 +902,24 @@ def send_unified_message():
     files = request.files.getlist("files")
     
     attachments = []
+    
+    # 📍 Support Google Maps Location Attachment in Chat
+    loc_raw = request.form.get("location_data")
+    if loc_raw:
+        try:
+            loc_obj = json.loads(loc_raw)
+            if isinstance(loc_obj, dict) and loc_obj.get("latitude") and loc_obj.get("longitude"):
+                attachments.append({
+                    "type": "location",
+                    "name": loc_obj.get("name") or "พิกัด Google Maps",
+                    "address": loc_obj.get("address") or "",
+                    "latitude": loc_obj.get("latitude"),
+                    "longitude": loc_obj.get("longitude"),
+                    "url": f"https://www.google.com/maps?q={loc_obj.get('latitude')},{loc_obj.get('longitude')}"
+                })
+        except Exception as e:
+            logger.error(f"[chat-location] {e}")
+
     if files:
         upload_subdir = "uploads/group_chat" if ctype == "room" else "uploads/dm_chat"
         Path(upload_subdir).mkdir(parents=True, exist_ok=True)
@@ -971,6 +990,12 @@ def send_unified_message():
         threading.Thread(target=handle_room_notifications, args=(mid, user, text, int(cid))).start()
 
         # AI Bot response
+        loc_att = next((a for a in attachments if a.get("type") == "location"), None)
+        bot_prompt_text = text
+        if loc_att:
+            loc_info = f"[📍 พิกัดสถานที่ที่แชร์: {loc_att.get('name')} ({loc_att.get('latitude')}, {loc_att.get('longitude')}) ที่อยู่: {loc_att.get('address')}]"
+            bot_prompt_text = f"{loc_info} {text}".strip()
+
         if text and '@bot' in text.lower():
             # Find the first image in attachments to send to AI
             ai_image = None
@@ -990,7 +1015,7 @@ def send_unified_message():
                     except Exception as e:
                         logger.error(f"⚠️ Error loading image for AI: {e}")
 
-            threading.Thread(target=handle_bot_response, args=(int(cid), text, "room", user, ai_image, ai_mime, get_current_org_id())).start()
+            threading.Thread(target=handle_bot_response, args=(int(cid), bot_prompt_text, "room", user, ai_image, ai_mime, get_current_org_id())).start()
             
     else: # dm
         mid = database.save_dm(user, cid, text, attachments, reply_to_id=reply_to_id, org_id=get_current_org_id())
@@ -1000,7 +1025,9 @@ def send_unified_message():
             
             profile = database.get_user_profile(u)
             display_name = profile.get('display_name', u)
-            preview = (t[:40] + '...') if (t and len(t) > 40) else (t or '(ไฟล์แนบ)')
+            loc_att_item = next((a for a in attachments if a.get("type") == "location"), None)
+            loc_prefix = f"📍 {loc_att_item.get('name')}: " if loc_att_item else ""
+            preview = (loc_prefix + t[:40] + '...') if (t and len(t) > 40) else (loc_prefix + (t or (f"📍 {loc_att_item.get('name')}" if loc_att_item else '(ไฟล์แนบ)')))
             
             # Check for mention in DM
             target_profile = database.get_user_profile(target_id)
@@ -1022,7 +1049,13 @@ def send_unified_message():
         threading.Thread(target=handle_dm_notifications, args=(user, cid, text)).start()
         
         # AI Bot response in DM
-        if cid.lower() == 'ai-assistant' or (text and '@bot' in text.lower()):
+        loc_att = next((a for a in attachments if a.get("type") == "location"), None)
+        bot_prompt_text = text
+        if loc_att:
+            loc_info = f"[📍 พิกัดสถานที่ที่แชร์: {loc_att.get('name')} ({loc_att.get('latitude')}, {loc_att.get('longitude')}) ที่อยู่: {loc_att.get('address')}]"
+            bot_prompt_text = f"{loc_info} {text}".strip()
+
+        if cid.lower() == 'ai-assistant' or (text and '@bot' in text.lower()) or (loc_att and cid.lower() == 'ai-assistant'):
             # Find the first image in attachments to send to AI
             ai_image = None
             ai_mime = "image/jpeg"
@@ -1043,7 +1076,7 @@ def send_unified_message():
                     except Exception as e:
                         logger.error(f"⚠️ Error loading image for AI: {e}")
 
-            threading.Thread(target=handle_bot_response, args=(cid, text, "dm", user, ai_image, ai_mime, get_current_org_id())).start()
+            threading.Thread(target=handle_bot_response, args=(cid, bot_prompt_text, "dm", user, ai_image, ai_mime, get_current_org_id())).start()
             
     # Emit socket signal for real-time update
     socket_room = f"room_{cid}" if ctype == "room" else None
@@ -1523,6 +1556,19 @@ def chat():
         except Exception as e:
             logger.error(f"Error decoding image: {e}")
 
+    # 📍 Location payload support for AI assistant
+    loc_data = data.get("location")
+    if loc_data and isinstance(loc_data, dict) and loc_data.get("latitude") and loc_data.get("longitude"):
+        loc_name = loc_data.get("name") or "พิกัด Google Maps"
+        loc_lat = loc_data.get("latitude")
+        loc_lng = loc_data.get("longitude")
+        loc_addr = loc_data.get("address") or ""
+        loc_ctx = f"[📍 ข้อมูลพิกัดสถานที่ที่แนบมา: {loc_name} (ละติจูด: {loc_lat}, ลองจิจูด: {loc_lng}) ที่อยู่: {loc_addr}]\n"
+        if question:
+            question = f"{loc_ctx}\n{question}"
+        else:
+            question = f"{loc_ctx}\n(ผู้ใช้ได้แชร์พิกัดสถานที่นี้ กรุณาช่วยแนะนำข้อมูล จุดสำคัญ เส้นทาง หรือสอบถามว่าต้องการให้ช่วยเหลือเรื่องใดเกี่ยวกับสถานที่นี้ค่ะ)"
+
     if not question and not image_bytes:
         return jsonify({"ok": False, "error": "กรุณาพิมพ์คำถามหรือส่งรูปภาพค่ะ"}), 400
 
@@ -1833,10 +1879,29 @@ def chat_typing():
     return jsonify({"ok": True})
 
 
+def _user_in_room_of_message(mid) -> bool:
+    """ข้อความห้องแชตนี้อยู่ในห้องที่ผู้ใช้เป็นสมาชิก และห้องนั้นอยู่ในองค์กรของผู้ใช้"""
+    user = session.get("user")
+    org_id = get_current_org_id()
+    if not user:
+        return False
+    conn = database._get_conn()
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM room_messages m JOIN chat_rooms r ON r.id = m.room_id "
+            "JOIN room_members rm ON rm.room_id = r.id "
+            "WHERE m.id = ? AND rm.username = ? COLLATE NOCASE AND (r.organization_id = ? OR r.organization_id IS NULL)",
+            (mid, user, org_id)).fetchone()
+        return bool(row)
+    finally:
+        conn.close()
+
+
 @chat_bp.route("/api/chat/rooms/pin/<int:mid>", methods=["POST"])
 @login_required
 def pin_room_message(mid):
-    # For now, let's allow anyone to pin, or we could restrict to room owners
+    if not _user_in_room_of_message(mid):
+        return jsonify({"ok": False, "error": "ไม่พบข้อความหรือคุณไม่ได้อยู่ในห้องนี้"}), 404
     database.toggle_room_message_pin(mid)
     return jsonify({"ok": True})
 
@@ -1845,6 +1910,8 @@ def pin_room_message(mid):
 @login_required
 def pin_chat_message(ctype, mid):
     if ctype == 'room':
+        if not _user_in_room_of_message(mid):
+            return jsonify({"ok": False, "error": "ไม่พบข้อความหรือคุณไม่ได้อยู่ในห้องนี้"}), 404
         database.toggle_room_message_pin(mid)
     else: # dm
         database.toggle_private_message_pin(mid, org_id=get_current_org_id())
@@ -1935,7 +2002,7 @@ def global_search_route():
 
 
 @chat_bp.route("/api/admin/search-insights")
-@admin_required
+@platform_admin_required
 def search_insights_route():
     insights = database.get_search_insights()
     return jsonify({"ok": True, "insights": insights})
