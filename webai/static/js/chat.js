@@ -4530,10 +4530,10 @@ function renderLocationCard(loc, options = {}) {
   const widthClass = isPost ? 'w-full' : 'w-[290px] sm:w-[330px] max-w-full';
 
   return `
-    <div class="${widthClass} rounded-2xl border border-surface-200/90 dark:border-surface-700 bg-white dark:bg-surface-800 shadow-sm overflow-hidden text-left transition-all my-2">
+    <div class="${widthClass} loc-card-container rounded-2xl border border-surface-200/90 dark:border-surface-700 bg-white dark:bg-surface-800 shadow-sm overflow-hidden text-left transition-all my-2">
       <!-- Location Info Header -->
-      <div class="p-3 sm:p-3.5 flex items-start gap-3 bg-white dark:bg-surface-800 border-b border-surface-100 dark:border-surface-700">
-        <div class="w-9 h-9 rounded-xl bg-red-50 dark:bg-red-950/50 text-[#EA4335] flex items-center justify-center flex-shrink-0 mt-0.5">
+      <div class="loc-card-header p-3 sm:p-3.5 flex items-start gap-3 bg-white dark:bg-surface-800 border-b border-surface-100 dark:border-surface-700">
+        <div class="w-9 h-9 rounded-xl bg-red-50 dark:bg-red-950/60 text-[#EA4335] flex items-center justify-center flex-shrink-0 mt-0.5">
           <i data-lucide="map-pin" class="w-5 h-5 fill-[#EA4335]/20"></i>
         </div>
         <div class="min-w-0 flex-1">
@@ -4541,8 +4541,8 @@ function renderLocationCard(loc, options = {}) {
             <span>Google Maps</span>
             ${hasCoords ? `<span class="font-mono text-[10px] text-surface-400 dark:text-surface-400 font-normal">(${lat}, ${lng})</span>` : ''}
           </div>
-          <div class="text-sm font-semibold text-surface-900 dark:text-white truncate">${escapeHtml(lName)}</div>
-          ${loc.address ? `<div class="text-xs text-surface-500 dark:text-surface-400 truncate mt-0.5">${escapeHtml(loc.address)}</div>` : ''}
+          <div class="loc-card-title text-sm font-semibold text-surface-900 dark:text-white truncate">${escapeHtml(lName)}</div>
+          ${loc.address ? `<div class="loc-card-subtext text-xs text-surface-500 dark:text-surface-400 truncate mt-0.5">${escapeHtml(loc.address)}</div>` : ''}
         </div>
       </div>
 
@@ -4559,15 +4559,15 @@ function renderLocationCard(loc, options = {}) {
       ` : ''}
 
       <!-- Action Buttons -->
-      <div class="p-2.5 sm:p-3 bg-surface-50 dark:bg-surface-850 border-t border-surface-100 dark:border-surface-700 flex items-center justify-end gap-2">
+      <div class="loc-card-footer p-2.5 sm:p-3 bg-surface-50 dark:bg-surface-900 border-t border-surface-100 dark:border-surface-700 flex items-center justify-end gap-2">
         <a href="${mapUrl}" target="_blank" rel="noopener noreferrer"
-          class="px-3 py-1.5 rounded-xl bg-white dark:bg-surface-700 hover:bg-surface-100 dark:hover:bg-surface-600 text-surface-700 dark:text-surface-200 border border-surface-200 dark:border-surface-600 text-xs font-medium flex items-center gap-1.5 transition shadow-2xs"
+          class="px-3 py-1.5 rounded-xl bg-white dark:bg-surface-800 hover:bg-surface-100 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-200 border border-surface-200 dark:border-surface-700 text-xs font-medium flex items-center gap-1.5 transition shadow-2xs"
           title="เปิดดูตำแหน่งบน Google Maps">
-          <i data-lucide="external-link" class="w-3.5 h-3.5 text-surface-400 dark:text-surface-300"></i>
+          <i data-lucide="external-link" class="w-3.5 h-3.5 text-surface-400 dark:text-surface-400"></i>
           <span>เปิดแผนที่</span>
         </a>
         <a href="${dirUrl}" target="_blank" rel="noopener noreferrer"
-          class="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium flex items-center gap-1.5 transition shadow-xs"
+          class="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold flex items-center gap-1.5 transition shadow-xs"
           title="เปิดโหมดนำทาง GPS ทันที">
           <i data-lucide="navigation" class="w-3.5 h-3.5"></i>
           <span>นำทาง</span>

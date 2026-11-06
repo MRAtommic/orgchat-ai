@@ -183,6 +183,43 @@
     .dark .leaflet-container {
       background: #0f172a;
     }
+    /* 🗺️ Location Card Bulletproof Dark/Light Mode */
+    .loc-card-container {
+      background-color: #ffffff;
+      border-color: #e2e8f0;
+    }
+    .dark .loc-card-container {
+      background-color: #1e293b !important;
+      border-color: #334155 !important;
+    }
+    .loc-card-header {
+      background-color: #ffffff;
+      border-color: #f1f5f9;
+    }
+    .dark .loc-card-header {
+      background-color: #1e293b !important;
+      border-color: #334155 !important;
+    }
+    .loc-card-title {
+      color: #0f172a;
+    }
+    .dark .loc-card-title {
+      color: #ffffff !important;
+    }
+    .loc-card-subtext {
+      color: #64748b;
+    }
+    .dark .loc-card-subtext {
+      color: #94a3b8 !important;
+    }
+    .loc-card-footer {
+      background-color: #f8fafc;
+      border-color: #f1f5f9;
+    }
+    .dark .loc-card-footer {
+      background-color: #0f172a !important;
+      border-color: #334155 !important;
+    }
     .settings-nav-btn {
       display: flex;
       align-items: center;
@@ -4808,8 +4845,9 @@
                 </p>
               </div>
 
+              <div id="attPermGuideDynamic"></div>
               <!-- Steps List -->
-              <div
+              <div id="attPermGuideSteps"
                 class="space-y-3 bg-surface-50 dark:bg-surface-800/50 p-4 rounded-2xl border border-surface-100 dark:border-surface-700/50 text-xs">
                 <div class="flex items-start gap-3">
                   <span
@@ -12859,7 +12897,7 @@
   <script src="/static/js/core.js?v=4.4"></script>
   <script src="/static/js/sound-fx.js?v=1.0"></script>
   <script src="/static/js/appearance.js?v=1.0"></script>
-  <script src="/static/js/chat.js?v=9.6"></script>
+  <script src="/static/js/chat.js?v=9.7"></script>
   <script src="/static/js/audit_labels.js?v=1.1"></script>
   <script src="/static/js/ui_polish.js?v=1.0"></script>
   <script src="/static/js/org_tabs_ui.js?v=1.1"></script>
@@ -12870,7 +12908,7 @@
   <script src="/static/js/billing.js?v=4.0"></script>
   <script src="/static/js/kb.js?v=4.2"></script>
   <script src="/static/js/admin.js?v=4.2"></script>
-  <script src="/static/js/attendance.js?v=2.1"></script>
+  <script src="/static/js/attendance.js?v=2.2"></script>
   <script src="/static/js/line-groups-modal.js?v=4.1"></script>
   <script src="/static/js/plans-modal.js?v=4.1"></script>
   <script src="/static/js/sheets-reconcile.js?v=4.2"></script>
