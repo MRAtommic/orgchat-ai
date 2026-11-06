@@ -112,9 +112,20 @@ async function loadAttendanceToday() {
 
     // Render Office Information
     const officeRadiusEl = document.getElementById('attOfficeRadius');
+    const officeSubEl = document.getElementById('attOfficeSub');
     const officeStartTimeEl = document.getElementById('attOfficeStartTime');
     if (officeRadiusEl && data.office) {
-      officeRadiusEl.textContent = `${data.office.radius_meters.toLocaleString()} เมตร`;
+      if (data.office.configured === false) {
+        officeRadiusEl.innerHTML = `
+          <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-sm font-bold bg-purple-500/10 text-purple-600 dark:text-purple-300 border border-purple-500/20">
+            <i data-lucide="shield-check" class="w-4 h-4 text-purple-500"></i> ไม่จำกัดพื้นที่
+          </span>
+        `;
+        if (officeSubEl) officeSubEl.textContent = 'ยังไม่ตั้งพิกัดออฟฟิศ • ลงเวลาได้ทุกสถานที่';
+      } else {
+        officeRadiusEl.textContent = `${data.office.radius_meters.toLocaleString()} เมตร`;
+        if (officeSubEl) officeSubEl.textContent = 'ลงเวลาในเขตสำนักงาน';
+      }
     }
     if (officeStartTimeEl && data.office) {
       officeStartTimeEl.textContent = `${data.office.work_start_time} น.`;
@@ -173,19 +184,19 @@ async function loadAttendanceToday() {
     if (clockBtn && clockBtnText && clockBtnIcon) {
       if (!data.check_in) {
         // Ready to Check-in
-        clockBtn.className = 'w-full py-5 px-6 rounded-3xl font-bold text-white shadow-xl transition-all duration-300 flex items-center justify-center gap-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 hover:shadow-emerald-500/25 active:scale-[0.98] group';
+        clockBtn.className = 'w-full py-4 px-5 rounded-2xl font-bold text-white shadow-lg transition-all duration-300 flex items-center justify-between gap-3.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-600 hover:to-teal-700 hover:shadow-emerald-500/20 active:scale-[0.98] border border-white/15 group';
         clockBtnText.textContent = 'บันทึกเวลาเข้างาน (Check-In)';
         if (clockBtnSub) clockBtnSub.textContent = 'แตะเพื่อแชร์พิกัด GPS และลงเวลาเข้างาน';
         clockBtnIcon.setAttribute('data-lucide', 'log-in');
       } else if (!data.check_out) {
         // Ready to Check-out
-        clockBtn.className = 'w-full py-5 px-6 rounded-3xl font-bold text-white shadow-xl transition-all duration-300 flex items-center justify-center gap-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 hover:shadow-blue-500/25 active:scale-[0.98] group';
+        clockBtn.className = 'w-full py-4 px-5 rounded-2xl font-bold text-white shadow-lg transition-all duration-300 flex items-center justify-between gap-3.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-700 hover:shadow-blue-500/20 active:scale-[0.98] border border-white/15 group';
         clockBtnText.textContent = 'บันทึกเวลาเลิกงาน (Check-Out)';
         if (clockBtnSub) clockBtnSub.textContent = 'แตะเพื่อแชร์พิกัด GPS และลงเวลาเลิกงาน';
         clockBtnIcon.setAttribute('data-lucide', 'log-out');
       } else {
         // Already checked out, can update
-        clockBtn.className = 'w-full py-5 px-6 rounded-3xl font-bold text-white shadow-xl transition-all duration-300 flex items-center justify-center gap-4 bg-gradient-to-r from-slate-700 to-surface-800 hover:from-slate-800 hover:to-surface-900 active:scale-[0.98] group';
+        clockBtn.className = 'w-full py-4 px-5 rounded-2xl font-bold text-white shadow-lg transition-all duration-300 flex items-center justify-between gap-3.5 bg-gradient-to-r from-slate-700 via-surface-800 to-slate-800 hover:from-slate-800 hover:to-surface-900 active:scale-[0.98] border border-white/15 group';
         clockBtnText.textContent = 'บันทึกเวลาครบแล้ว (อัปเดตเลิกงาน)';
         if (clockBtnSub) clockBtnSub.textContent = `เลิกงานล่าสุด: ${data.check_out.check_time.substring(0, 5)} น. (แตะเพื่ออัปเดตใหม่)`;
         clockBtnIcon.setAttribute('data-lucide', 'check-circle-2');
@@ -235,6 +246,26 @@ let _isAttendanceClocking = false;
 /**
  * Handle Clock-in / Clock-out Action Button
  */
+/**
+ * ขอพิกัดแบบทนทาน: ลองความแม่นยำสูงก่อน (8 วิ) ถ้าไม่ทัน/ไม่ได้ (ในอาคาร สัญญาณอ่อน) ค่อยถอยไปใช้พิกัดจาก Wi-Fi/เสาสัญญาณ
+ * เดิมใช้ความแม่นยำสูงอย่างเดียวและหมดเวลาใน 12 วินาที ทำให้พนักงานในตึกเช็คชื่อไม่ได้เลย
+ */
+function _getPositionOrSkip(onOk, onErr) {
+  // องค์กรที่ยังไม่ตั้งพิกัดสำนักงาน ไม่ต้องใช้ GPS เลย (เช็คชื่อได้ทันที ไม่ต้องขอสิทธิ์ตำแหน่ง)
+  if (attendanceOfficeConfig && attendanceOfficeConfig.configured === false) {
+    onOk({ coords: { latitude: null, longitude: null, accuracy: null } });
+    return;
+  }
+  _getPositionWithFallback(onOk, onErr);
+}
+
+function _getPositionWithFallback(onOk, onErr) {
+  navigator.geolocation.getCurrentPosition(onOk, (err) => {
+    if (err && err.code === err.PERMISSION_DENIED) { onErr(err); return; }
+    navigator.geolocation.getCurrentPosition(onOk, onErr, { enableHighAccuracy: false, timeout: 10000, maximumAge: 120000 });
+  }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 15000 });
+}
+
 async function handleClockAction() {
   if (_isAttendanceClocking) return;
   _isAttendanceClocking = true;
@@ -254,13 +285,12 @@ async function handleClockAction() {
   if (clockBtnText) clockBtnText.textContent = 'กำลังดึงพิกัดดาวเทียม GPS...';
   if (clockBtnSub) clockBtnSub.textContent = 'กรุณารอสักครู่ ระบบกำลังคำนวณตำแหน่งและระยะห่าง';
 
-  navigator.geolocation.getCurrentPosition(
+  _getPositionOrSkip(
     async (pos) => {
       const lat = pos.coords.latitude;
       const lng = pos.coords.longitude;
-      userCurrentCoords = { lat, lng };
-
-      updateGpsDisplay(lat, lng);
+      const hasGps = lat != null && lng != null;
+      if (hasGps) { userCurrentCoords = { lat, lng }; updateGpsDisplay(lat, lng); }
 
       try {
         if (clockBtnText) clockBtnText.textContent = 'กำลังบันทึกเวลาทำงาน...';
@@ -276,7 +306,8 @@ async function handleClockAction() {
           body: JSON.stringify({
             latitude: lat,
             longitude: lng,
-            address: `Web GPS (${lat.toFixed(4)}, ${lng.toFixed(4)})`
+            address: hasGps ? `Web GPS (${lat.toFixed(4)}, ${lng.toFixed(4)})` : 'เช็คชื่อผ่านเว็บ (ไม่ใช้ GPS)',
+            accuracy: pos.coords.accuracy
           })
         });
 
@@ -314,13 +345,7 @@ async function handleClockAction() {
         msg = 'หมดเวลาในการค้นหาพิกัด GPS กรุณาลองใหม่อีกครั้งค่ะ';
       }
       showToast(msg, 'error');
-    },
-    {
-      enableHighAccuracy: true,
-      timeout: 12000,
-      maximumAge: 0
-    }
-  );
+    });
 }
 
 /**
@@ -335,17 +360,23 @@ function updateGpsDisplay(lat, lng) {
     gpsCoordEl.textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
   }
 
-  if (attendanceOfficeConfig) {
+  if (attendanceOfficeConfig && attendanceOfficeConfig.configured === false) {
+    if (gpsDistEl) gpsDistEl.textContent = '-';
+    if (gpsStatusEl) {
+      gpsStatusEl.className = 'px-2.5 py-1 rounded-xl text-[11px] font-semibold bg-white/10 text-surface-200 border border-white/10';
+      gpsStatusEl.textContent = 'องค์กรยังไม่ตั้งพิกัดสำนักงาน';
+    }
+  } else if (attendanceOfficeConfig) {
     const dist = calculateDistance(lat, lng, attendanceOfficeConfig.latitude, attendanceOfficeConfig.longitude);
     if (gpsDistEl) {
       gpsDistEl.textContent = `${dist.toLocaleString()} ม.`;
     }
     if (gpsStatusEl) {
       if (dist <= attendanceOfficeConfig.radius_meters) {
-        gpsStatusEl.className = 'px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800';
+        gpsStatusEl.className = 'px-2.5 py-1 rounded-xl text-[11px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
         gpsStatusEl.textContent = 'อยู่ในพื้นที่ลงเวลา';
       } else {
-        gpsStatusEl.className = 'px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800';
+        gpsStatusEl.className = 'px-2.5 py-1 rounded-xl text-[11px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30';
         gpsStatusEl.textContent = `อยู่นอกพื้นที่ (${dist.toLocaleString()} ม.)`;
       }
     }
@@ -480,8 +511,34 @@ function closeAttendanceSuccessModal() {
   }
 }
 
-function showLocationPermissionGuideModal() {
+async function showLocationPermissionGuideModal() {
   const modal = document.getElementById('attPermissionGuideModal');
+  const dyn = document.getElementById('attPermGuideDynamic');
+  const steps = document.getElementById('attPermGuideSteps');
+  // เช็คสถานะจริงของสิทธิ์ แล้วบอกทางแก้ที่ตรงกับสถานการณ์ (ไม่ใช่คำแนะนำเดียวใช้กับทุกกรณี)
+  let state = 'unknown';
+  try { if (navigator.permissions && navigator.permissions.query) state = (await navigator.permissions.query({ name: 'geolocation' })).state; } catch (e) { /* ignore */ }
+  if (dyn) {
+    if (state === 'granted') {
+      dyn.innerHTML = `
+        <div class="p-4 rounded-2xl bg-sky-500/10 border border-sky-500/30 text-xs text-sky-800 dark:text-sky-200 space-y-2">
+          <div class="font-black text-sm">✅ เบราว์เซอร์อนุญาตแล้ว — แต่เครื่องยังไม่ส่งตำแหน่งมาให้</div>
+          <div>ลองตามนี้ทีละข้อ (ส่วนใหญ่ข้อ 1 แก้ได้):</div>
+          <ol class="list-decimal pl-5 space-y-1.5">
+            <li><b>กดปุ่ม F5</b> เพื่อโหลดหน้าเว็บใหม่ 1 ครั้ง แล้วกดเช็คชื่ออีกครั้ง (ระบบเพิ่งปรับให้ใช้ตำแหน่งได้ ต้องโหลดหน้าใหม่ถึงจะมีผล)</li>
+            <li>ถ้าใช้ <b>คอมพิวเตอร์ Windows</b>: กดปุ่ม <b>Windows</b> บนคีย์บอร์ด พิมพ์คำว่า <b>ตำแหน่ง</b> แล้วเลือก "การตั้งค่าความเป็นส่วนตัวของตำแหน่ง" → เปิด <b>"บริการตำแหน่ง"</b> ให้เป็น เปิด</li>
+            <li>ถ้าใช้ <b>มือถือ</b>: ปัดแถบด้านบนลงมา แล้วเปิด <b>"ตำแหน่ง / GPS"</b></li>
+          </ol>
+        </div>`;
+      if (steps) steps.classList.add('hidden');
+    } else if (state === 'prompt') {
+      dyn.innerHTML = `<div class="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-800 dark:text-emerald-200"><div class="font-black text-sm">กดปุ่ม "ลองอนุญาตพิกัดอีกครั้ง" ด้านล่าง แล้วเลือก <u>อนุญาต</u> ในกล่องที่เบราว์เซอร์เด้งขึ้นมา</div></div>`;
+      if (steps) steps.classList.add('hidden');
+    } else {
+      dyn.innerHTML = '';
+      if (steps) steps.classList.remove('hidden');
+    }
+  }
   if (modal) {
     modal.classList.remove('hidden');
     modal.classList.add('flex');
@@ -617,20 +674,34 @@ async function loadAttendanceOrgSummary() {
       } else {
         let mHtml = '';
         data.records.forEach(r => {
-          const typeTh = r.check_type === 'check_in' ? 'เข้างาน' : 'เลิกงาน';
-          const typeBadge = r.check_type === 'check_in' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700';
+          const isCheckIn = r.check_type === 'check_in';
+          const typeTh = isCheckIn ? 'เข้างาน' : 'เลิกงาน';
+          const typeBadge = isCheckIn
+            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border dark:border-emerald-800/60'
+            : 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 dark:border dark:border-blue-800/60';
           mHtml += `
-            <div class="flex items-center justify-between p-3 rounded-2xl bg-surface-50 dark:bg-surface-800/50 border border-surface-100 dark:border-surface-700/60">
+            <div class="flex items-center justify-between p-3 rounded-xl bg-surface-50/80 dark:bg-surface-800/60 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors border border-surface-200/60 dark:border-surface-700/60">
               <div class="flex items-center gap-3">
-                <div class="w-8 h-8 rounded-full bg-brand-100 dark:bg-brand-900/40 text-brand-600 flex items-center justify-center font-bold text-xs">
-                  ${(r.username || 'U').substring(0, 1).toUpperCase()}
+                <div class="w-9 h-9 rounded-xl bg-brand-100 dark:bg-brand-900/40 text-brand-600 dark:text-brand-300 flex items-center justify-center font-bold text-xs ring-1 ring-brand-500/20">
+                  ${(r.username || 'U').substring(0, 2).toUpperCase()}
                 </div>
                 <div>
-                  <p class="text-xs font-bold text-surface-900 dark:text-white">${r.username}</p>
-                  <p class="text-[11px] text-surface-400">${r.check_time.substring(0, 5)} น. (${Math.round(r.distance_meters || 0)} ม.)</p>
+                  <p class="text-xs font-semibold text-surface-900 dark:text-white flex items-center gap-1.5">
+                    <span>${escapeHtml(r.username)}</span>
+                    ${r.is_late ? '<span class="text-[9px] px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-500 font-medium">สาย</span>' : ''}
+                  </p>
+                  <p class="text-[11px] text-surface-500 dark:text-surface-400 mt-0.5 flex items-center gap-1">
+                    <i data-lucide="clock" class="w-3 h-3 opacity-60"></i>
+                    <span>${r.check_time.substring(0, 5)} น.</span>
+                    <span class="opacity-40">•</span>
+                    <span class="font-mono text-[10px]">${Math.round(r.distance_meters || 0)} ม.</span>
+                  </p>
                 </div>
               </div>
-              <span class="text-[10px] font-bold px-2 py-0.5 rounded ${typeBadge}">${typeTh}</span>
+              <span class="text-[10px] font-semibold px-2.5 py-1 rounded-lg ${typeBadge} flex items-center gap-1 shadow-2xs">
+                <span class="w-1.5 h-1.5 rounded-full ${isCheckIn ? 'bg-emerald-500' : 'bg-blue-500'}"></span>
+                <span>${typeTh}</span>
+              </span>
             </div>
           `;
         });
