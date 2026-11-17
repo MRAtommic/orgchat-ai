@@ -589,6 +589,18 @@ def get_org_attendance(org_id, date_from=None, date_to=None, username=None, limi
     conn.close()
     return rows
 
+
+def get_attendance_records(start_date=None, end_date=None, org_id=None, username=None, limit=100):
+    """Alias for get_org_attendance providing parameter name compatibility (start_date/end_date)
+    and field compatibility for clock_in_time and location_name."""
+    records = get_org_attendance(org_id=org_id, date_from=start_date, date_to=end_date, username=username, limit=limit)
+    for r in records:
+        if "clock_in_time" not in r:
+            r["clock_in_time"] = r.get("check_time")
+        if "location_name" not in r:
+            r["location_name"] = r.get("address")
+    return records
+
 def get_daily_org_attendance(org_id: int, target_date: str = None, department: str = None, search: str = None):
     """
     Retrieves full daily attendance status for ALL active members in the organization on a given date.
@@ -806,7 +818,7 @@ def add_leave_request(line_user_id, username, leave_type, start_date, end_date, 
     # If org_id is not supplied, lookup from line_group_mappings or organization_members
     if not org_id:
         try:
-            r = cursor.execute("SELECT organization_id FROM line_group_mappings WHERE line_group_id = ? LIMIT 1", (line_user_id,)).fetchone()
+            r = cursor.execute("SELECT org_id FROM line_group_mappings WHERE group_id = ? LIMIT 1", (line_user_id,)).fetchone()
             if r and r[0]:
                 org_id = r[0]
             else:

@@ -27,6 +27,9 @@ class TestP2DBIntegrity(unittest.TestCase):
     def setUpClass(cls):
         os.environ["TESTING"] = "1"
         os.environ["FLASK_SECRET_KEY"] = "test-secret-key-for-p2-db-integrity-32b"
+        # สร้างตารางเอง (เดิมพึ่งไฟล์ทดสอบอื่นรันก่อน → รันไฟล์นี้ลำพังแล้วล้มด้วย "no such table"). DB_PATH เป็นฐานข้อมูลชั่วคราวจาก conftest.py
+        assert "orgchat_tests_" in os.environ.get("DB_PATH", ""), "refusing to init a non-temporary database"
+        database.init_db()
 
     # ─── P2-1: AST check for zero duplicate functions in db/ ─────────────────
     def test_p2_1_no_duplicate_function_declarations_in_db_layer(self):

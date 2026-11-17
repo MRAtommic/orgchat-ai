@@ -57,7 +57,25 @@
     }
     /* Critical Global Utility Overrides */
     .hidden {
+      display: none;
+    }
+    .hidden:not([class*='sm:']):not([class*='md:']):not([class*='lg:']):not([class*='xl:']) {
       display: none !important;
+    }
+    @media (max-width: 639.98px) {
+      .hidden[class*="sm:"] {
+        display: none !important;
+      }
+    }
+    @media (max-width: 767.98px) {
+      .hidden[class*="md:"] {
+        display: none !important;
+      }
+    }
+    @media (max-width: 1023.98px) {
+      .hidden[class*="lg:"] {
+        display: none !important;
+      }
     }
     .view {
       width: 100% !important;
@@ -350,7 +368,7 @@
 
             /* Badges */
             .plan-badge { display: inline-flex; align-items: center; gap: .25rem;
-                     font-size: .65rem; font-weight: 800; letter-spacing: .07em;
+                     font-size: .75rem; font-weight: 800; letter-spacing: .05em;
                      text-transform: uppercase; padding: .25rem .7rem; border-radius: 9999px; }
             .plan-badge-free     { background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0; }
             .plan-badge-pro      { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
@@ -420,7 +438,7 @@
     }
 
     .admin-role-badge {
-      font-size: 10px;
+      font-size: 11px;
       font-weight: 600;
       letter-spacing: .02em;
       padding: 2px 7px;

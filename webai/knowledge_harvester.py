@@ -6,9 +6,12 @@ from pathlib import Path
 
 # Try to import Gemini/AI provider if available
 try:
-    from .ai_providers import ask_gemini_vision
-except ImportError:
-    ask_gemini_vision = None
+    from ai_providers import ask_gemini_vision
+except (ImportError, ValueError):
+    try:
+        from .ai_providers import ask_gemini_vision
+    except Exception:
+        ask_gemini_vision = None
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +26,12 @@ class KnowledgeHarvester:
         """
         Fetches recent group messages and uses AI to identify knowledge gaps.
         """
-        from .database import _get_conn
-        from .ai_providers import generate_response
+        try:
+            from database import _get_conn
+            from ai_providers import generate_response
+        except (ImportError, ValueError):
+            from .database import _get_conn
+            from .ai_providers import generate_response
 
         conn = _get_conn()
         conn.row_factory = sqlite3.Row
@@ -33,7 +40,7 @@ class KnowledgeHarvester:
         # Get messages from the last 7 days
         cursor.execute("""
             SELECT username, text, timestamp 
-            FROM group_messages 
+            FROM messages 
             WHERE organization_id = ? AND timestamp >= datetime('now', '-7 days')
             ORDER BY timestamp DESC LIMIT ?
         """, (org_id, limit))
@@ -88,7 +95,10 @@ class KnowledgeHarvester:
         """
         Inserts a draft article into the wiki system.
         """
-        from .database import _get_conn
+        try:
+            from database import _get_conn
+        except ImportError:
+            from .database import _get_conn
         conn = _get_conn()
         cursor = conn.cursor()
         try:

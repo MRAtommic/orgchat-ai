@@ -51,9 +51,13 @@ def cleanup():
     # 2. ตรวจสอบไฟล์ใน Disk ที่ไม่มีใน Metadata
     print("📂 กำลังตรวจสอบไฟล์ส่วนเกินใน uploads/...")
     disk_files_removed = 0
+    _uploads_have_files = any(p.is_file() for p in rag_engine.UPLOAD_DIR.iterdir())
+    _skip_disk_delete = (not new_meta) and _uploads_have_files   # รายการไฟล์ว่างแต่มีไฟล์บนดิสก์ = ผิดปกติ ห้ามลบไฟล์ผู้ใช้
+    if _skip_disk_delete:
+        print('⛔ ข้ามการลบไฟล์ส่วนเกิน: file_meta ว่างแต่ uploads มีไฟล์ (ป้องกันลบข้อมูลผู้ใช้โดยพลาด)')
     valid_paths = [Path(info["path"]).resolve() for info in new_meta.values()]
     
-    for item in rag_engine.UPLOAD_DIR.iterdir():
+    for item in ([] if _skip_disk_delete else rag_engine.UPLOAD_DIR.iterdir()):
         if item.is_file():
             # Skip hidden files or system files
             if item.name.startswith('.'): continue

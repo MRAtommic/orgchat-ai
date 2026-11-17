@@ -420,6 +420,7 @@ def init_db(conn=None):
             avatar_url TEXT,
             visibility TEXT DEFAULT 'public', -- public, private, restricted
             created_by TEXT,
+            organization_id INTEGER DEFAULT 1,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -550,6 +551,9 @@ def init_db(conn=None):
             custom_password TEXT,
             notes TEXT,
             line_permissions TEXT DEFAULT 'report,links,reconcile,search,folder,leave',
+            ui_font TEXT DEFAULT NULL,
+            ui_font_size TEXT DEFAULT NULL,
+            ui_accent TEXT DEFAULT NULL,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -560,7 +564,10 @@ def init_db(conn=None):
         ("totp_type", "TEXT DEFAULT 'authenticator'"), 
         ("session_version", "INTEGER DEFAULT 1"),
         ("can_broadcast_line", "INTEGER DEFAULT 0"),
-        ("can_manage_peak", "INTEGER DEFAULT 0")
+        ("can_manage_peak", "INTEGER DEFAULT 0"),
+        ("ui_font", "TEXT DEFAULT NULL"),
+        ("ui_font_size", "TEXT DEFAULT NULL"),
+        ("ui_accent", "TEXT DEFAULT NULL")
     ]:
         try: cursor.execute(f"ALTER TABLE user_settings ADD COLUMN {col} {col_type}")
         except sqlite3.OperationalError: pass
@@ -840,6 +847,9 @@ def init_db(conn=None):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_username ON messages(username)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_room_messages_room_id ON room_messages(room_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_private_messages_participants ON private_messages(sender, recipient)")
+    # รายการแชทเทียบชื่อแบบไม่สนตัวพิมพ์ (COLLATE NOCASE) → ต้องมีดัชนีแบบ NOCASE ไม่งั้นสแกนทั้งตารางทุกครั้งที่โพลล์
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_pm_sender_nc ON private_messages(sender COLLATE NOCASE, id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_pm_recipient_nc ON private_messages(recipient COLLATE NOCASE, id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_private_messages_org_id ON private_messages(organization_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_posts_timestamp ON posts(timestamp)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_schedules_date ON schedules(start_date)")
@@ -1079,12 +1089,54 @@ def init_db(conn=None):
         )
     """)
     # Add organization_id columns to key tables (migrations)
-    for tbl in ("messages", "schedules", "posts", "chat_rooms", "wiki_pages"):
+    for tbl in ("messages", "schedules", "posts", "chat_rooms", "wiki_pages", "kb_categories"):
         try:
             cursor.execute(f"ALTER TABLE {tbl} ADD COLUMN organization_id INTEGER DEFAULT 1")
         except Exception:
             pass
     # Billing: usage tracking per org per month
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS org_attendance_settings (
+            org_id INTEGER PRIMARY KEY,
+            office_lat REAL,
+            office_lng REAL,
+            radius_m REAL DEFAULT 200,
+            work_start_h INTEGER DEFAULT 9,
+            work_start_m INTEGER DEFAULT 0,
+            work_end_h INTEGER DEFAULT 18,
+            work_end_m INTEGER DEFAULT 0,
+            timezone TEXT DEFAULT 'Asia/Bangkok',
+            updated_by TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS login_attempts (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            ip         TEXT    NOT NULL,
+            username   TEXT,
+            success    INTEGER NOT NULL DEFAULT 0,
+            ts         INTEGER NOT NULL
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS password_reset_tokens (
+            token       TEXT PRIMARY KEY,
+            username    TEXT NOT NULL,
+            expires_at  DATETIME NOT NULL,
+            used        INTEGER DEFAULT 0
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS password_reset_otps (
+            email       TEXT PRIMARY KEY,
+            username    TEXT NOT NULL,
+            otp_code    TEXT NOT NULL,
+            expires_at  REAL NOT NULL,
+            created_at  REAL NOT NULL
+        )
+    """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS usage_tracking (
             org_id      INTEGER NOT NULL,
@@ -1409,6 +1461,10 @@ def init_db(conn=None):
     # เพิ่มซ้ำตรงนี้หลังสร้างทุกตารางแล้ว (idempotent: ถ้ามีอยู่แล้วจะข้ามเงียบ ๆ)
     for _tbl, _col, _ddl in (
         ("user_settings", "clearance_level", "TEXT DEFAULT 'employee'"),
+        ("schedules", "reminder_sent", "INTEGER DEFAULT 0"),
+        ("user_settings", "ui_font", "TEXT DEFAULT NULL"),
+        ("user_settings", "ui_font_size", "TEXT DEFAULT NULL"),
+        ("user_settings", "ui_accent", "TEXT DEFAULT NULL"),
     ):
         try:
             _have = {r[1] for r in cursor.execute(f"PRAGMA table_info({_tbl})").fetchall()}

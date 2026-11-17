@@ -33,6 +33,7 @@ import database
 import rag_engine
 import export_service
 import ai_providers
+from db.sanitize import clean_label
 import notification_db
 import billing
 import payment
@@ -54,7 +55,7 @@ from routes.shared import (
     OAUTH2_AVAILABLE, oauth2_service,
     _set_session_org, get_current_org_id,
     _get_gemini_api_key, _configure_gemini,
-    can_edit_knowledge_base, can_view_knowledge_base, can_delete_knowledge_base,
+    can_edit_knowledge_base, can_view_knowledge_base, can_delete_knowledge_base, user_can_access_kb_file,
     is_admin, get_rag_filter,
     safe_thread_target, validate_uploaded_file,
     ALLOWED_EXTENSIONS, _is_safe_url,
@@ -64,6 +65,7 @@ from routes.shared import (
 )
 
 logger = logging.getLogger("OrgChatAI.File_upload")
+_INGEST_SEM = threading.BoundedSemaphore(2)  # ประมวลผลไฟล์เข้าคลังพร้อมกันได้สูงสุด 2 ไฟล์
 
 def strip_think_tags(text: str) -> str:
     """Removes reasoning <think>...</think> tags and unclosed thinking blocks from AI responses."""
@@ -85,7 +87,7 @@ from routes.line_webhook import get_channel_access_token
 
 @file_bp.route("/api/upload", methods=["POST"])
 @login_required
-@_limiter.limit("20 per minute; 60 per hour")
+@_limiter.limit("60 per minute; 300 per hour")
 def upload():
     if not can_edit_knowledge_base():
         return jsonify({"ok": False, "error": "คุณไม่มีสิทธิ์ในการอัปโหลดไฟล์ (ปิดการใช้งานโดยผู้ดูแลระบบ)"}), 403
@@ -123,7 +125,7 @@ def upload():
 
     results = []
     for f in files:
-        orig_name = f.filename or "file"
+        orig_name = clean_label(f.filename or "file", maxlen=120) or "file"
         # Strict security validation
         is_valid, err_msg = validate_uploaded_file(f, orig_name)
         if not is_valid:
@@ -141,9 +143,9 @@ def upload():
 
         # ── ตรวจ duplicate ก่อน spawn thread (synchronous, fast) ──
         try:
-            _fid = rag_engine._file_hash(save_path)
             _meta = rag_engine._load_meta()
-            if _fid in _meta and _meta[_fid].get("status") == "ready":
+            # ซ้ำเฉพาะ "ในองค์กรเดียวกัน" — ไฟล์เนื้อหาเดียวกันขององค์กรอื่นไม่นับ
+            if rag_engine._find_org_duplicate(_meta, save_path, get_current_org_id()):
                 save_path.unlink(missing_ok=True)
                 results.append({"file": orig_name, "status": "duplicate",
                                  "message": "ไฟล์นี้มีในระบบอยู่แล้ว"})
@@ -184,7 +186,10 @@ def upload():
             except Exception as e:
                 logger.error(f"❌ Background Ingest Error: {e}")
 
-        thread = threading.Thread(target=run_ingest, args=(save_path, orig_name, dept, category_id))
+        def _bounded_ingest(*a, _fn=run_ingest):
+            with _INGEST_SEM:   # อัปโหลดหลายไฟล์พร้อมกันจะเข้าคิว ไม่ฝังโมเดลพร้อมกันจน RAM หมด
+                _fn(*a)
+        thread = threading.Thread(target=_bounded_ingest, args=(save_path, orig_name, dept, category_id), daemon=True)
         thread.start()
 
         results.append({"file": orig_name, "status": "processing"})
@@ -267,13 +272,24 @@ def delete_file_route(file_id):
 @login_required
 def update_file_category_route(file_id):
     """Updates category for a specific file in Knowledge Base."""
+    if not can_edit_knowledge_base():
+        return jsonify({"ok": False, "error": "คุณไม่มีสิทธิ์แก้ไขคลังความรู้"}), 403
+    org_id = get_current_org_id()
+    user = session.get("user", "Admin")
+    # ต้องเป็นไฟล์ขององค์กรตัวเองและเข้าถึงได้ (กันย้ายไฟล์ข้ามองค์กร / ย้ายไฟล์ลับไปหมวดสาธารณะ)
+    mine = next((f for f in rag_engine.list_files(org_id=org_id) if f.get("file_id") == file_id), None)
+    if not mine or not user_can_access_kb_file(user, org_id, mine):
+        return jsonify({"ok": False, "error": "ไม่พบไฟล์ที่ระบุ"}), 404
     data = request.json or {}
     category_id = data.get("category_id")
     if category_id is not None and str(category_id).isdigit():
         category_id = int(category_id)
     elif category_id == "unassigned" or not category_id:
         category_id = None
-    
+    if category_id is not None:
+        if not any(int(c["id"]) == category_id for c in database.get_categories(user, org_id=org_id)):
+            return jsonify({"ok": False, "error": "ไม่พบหมวดหมู่นี้ในองค์กรของคุณ"}), 403
+
     ok = rag_engine.update_file_category(file_id, category_id)
     if ok:
         database.update_file_category(file_id, category_id)
@@ -289,7 +305,7 @@ def rename_file_route(file_id):
         return jsonify({"ok": False, "error": "คุณไม่มีสิทธิ์ในการแก้ไขไฟล์ในคลังข้อมูล (ติดต่อผู้ดูแลระบบเพื่อขอสิทธิ์)"}), 403
 
     data = request.json or {}
-    new_name = (data.get("name") or data.get("new_name") or "").strip()
+    new_name = clean_label((data.get("name") or data.get("new_name") or "").strip(), maxlen=120)
     if not new_name:
         return jsonify({"ok": False, "error": "กรุณาระบุชื่อไฟล์ใหม่"}), 400
 
@@ -357,8 +373,8 @@ def download_file(filename):
         (f for f in org_files if _Path(f.get("path", "")).name == filename),
         None,
     )
-    if file_entry is None:
-        abort(404)  # File not found in user's org → 404
+    if file_entry is None or not user_can_access_kb_file(user, user_org, file_entry):
+        abort(404)  # ไม่พบในองค์กร หรือไม่มีสิทธิ์ในหมวด/แผนกของไฟล์ → 404 (ไม่บอกว่ามีอยู่)
 
     clean_name = file_entry.get("name") or filename
     return send_from_directory(rag_engine.UPLOAD_DIR, filename, as_attachment=True, download_name=clean_name)
@@ -370,7 +386,7 @@ def get_drive_contents():
     folder_id = request.args.get('folder_id') or 'root'
     try:
         username = session.get("user")
-        org_id = session.get("org_id")
+        org_id = get_current_org_id()
         google_manager.set_context(username, org_id)
 
         # Fail fast if there is an active auth/credential error
@@ -405,7 +421,14 @@ def get_drive_contents():
             "folder_name": folder_name
         })
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        err_text = str(e)
+        logger.error(f"Error fetching Google Drive contents: {e}")
+        if "invalid_grant" in err_text.lower() or "expired" in err_text.lower() or "revoked" in err_text.lower() or "refresherror" in err_text.lower():
+            return jsonify({
+                "ok": False,
+                "error": "การเชื่อมต่อ Google Drive หมดอายุหรือถูกเพิกถอน กรุณาเชื่อมต่อใหม่อีกครั้งในการตั้งค่าค่ะ"
+            }), 401
+        return jsonify({"ok": False, "error": f"เกิดข้อผิดพลาดในการเข้าถึง Google Drive: {err_text}"}), 400
 
 
 @file_bp.route('/api/drive/rename', methods=['POST'])
@@ -493,7 +516,7 @@ def web_drive_upload():
         return jsonify({"ok": False, "error": "limit_reached", "message": f"ใช้โควต้าบันทึกบิลครบ {_limit} รายการในเดือนนี้แล้วค่ะ"}), 403
         
     def process_file_item(f):
-        original_name = f.filename or "web_upload"
+        original_name = clean_label(f.filename or "web_upload", maxlen=120) or "web_upload"
         mimetype = f.mimetype or "application/octet-stream"
         
         # Verify file safety before processing

@@ -252,6 +252,16 @@
     }
   </style>
   <script>
+
+    // ── ป้องกัน XSS: ทุกค่าที่ผู้ใช้ตั้งเอง (ชื่อองค์กร/ชื่อผู้ใช้/รายละเอียดบันทึก) ต้องผ่านฟังก์ชันนี้ก่อนใส่ HTML ──
+    function escHtml(v) {
+      if (v === null || v === undefined) return '';
+      return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+    // ใส่ค่าใน onclick="fn('...')" — escape เป็นสตริง JS ก่อน แล้วค่อย escape HTML (ลำดับสำคัญ)
+    function _jsq(v) {
+      return escHtml(String(v == null ? '' : v).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r?\n/g, ' '));
+    }
     (function() {
       function applyTheme(isDark) {
         if (isDark) {
@@ -1190,8 +1200,8 @@ async function loadSecurityConsole() {
           return `
             <div style="padding:8px 12px; border-radius:8px; background:var(--bg); border:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; gap:8px;">
               <div style="min-width:0; flex:1;">
-                <div style="font-weight:700; color:var(--text);">${l.action} <span style="font-weight:400; font-size:10px; color:var(--muted);">(${l.username})</span></div>
-                <div style="font-size:10px; color:var(--muted);">${l.details || '-'} · IP: ${l.ip_address || '-'}</div>
+                <div style="font-weight:700; color:var(--text);">${escHtml(l.action)} <span style="font-weight:400; font-size:10px; color:var(--muted);">(${escHtml(l.username)})</span></div>
+                <div style="font-size:10px; color:var(--muted);">${escHtml(l.details || '-')} · IP: ${escHtml(l.ip_address || '-')}</div>
               </div>
               <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
                 ${verifiedBadge}
@@ -1223,10 +1233,10 @@ async function loadSaBlacklist() {
         container.innerHTML = data.blacklist.map(b => `
           <div style="padding:6px 10px; border-radius:6px; background:var(--bg); border:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
             <div>
-              <span class="mono" style="font-weight:700; color:#f87171;">${b.ip_address}</span>
-              <span style="color:var(--muted); font-size:10px; margin-left:6px;">${b.reason} (${b.violation_count} ครั้ง)</span>
+              <span class="mono" style="font-weight:700; color:#f87171;">${escHtml(b.ip_address)}</span>
+              <span style="color:var(--muted); font-size:10px; margin-left:6px;">${escHtml(b.reason)} (${b.violation_count} ครั้ง)</span>
             </div>
-            <button class="btn btn-xs btn-danger" onclick="unblockSaIp('${b.ip_address}')" style="padding:2px 8px; font-size:10px;">ปลดบล็อค</button>
+            <button class="btn btn-xs btn-danger" onclick="unblockSaIp('${escHtml(b.ip_address)}')" style="padding:2px 8px; font-size:10px;">ปลดบล็อค</button>
           </div>
         `).join('');
       }
@@ -1272,7 +1282,7 @@ async function runSaFimScan() {
       if (issues.length === 0) {
         box.innerHTML = `<span style="color:#34d399; font-weight:700;">การตรวจสอบสมบูรณ์:</span> ตรวจสอบไฟล์ระบบและคลังความรู้ทั้งหมด ${data.total_scanned} ไฟล์ ทั้งหมดผ่านการตรวจสอบ SHA-256 ไม่พบการดัดแปลง`;
       } else {
-        box.innerHTML = `<span style="color:#f87171; font-weight:700;">ตรวจพบความผิดปกติ (${issues.length} ไฟล์):</span><br>` + issues.map(f => `${f.file}: ${f.status}`).join('<br>');
+        box.innerHTML = `<span style="color:#f87171; font-weight:700;">ตรวจพบความผิดปกติ (${issues.length} ไฟล์):</span><br>` + issues.map(f => `${f.file}: ${escHtml(f.status)}`).join('<br>');
       }
     } else {
       box.innerText = 'สแกนล้มเหลว: ' + (data.error || 'Server error');
@@ -1355,7 +1365,7 @@ async function loadSaThreatIntel() {
     const data = await res.json();
     if (data.ok) {
       const threatIps = (data.active_threat_ips || []).map(t => `<span class="badge badge-suspended">${t.ip} (${t.incidents} ครั้ง)</span>`).join(' ') || '<span style="color:#34d399;">ไม่มี IP ผิดปกติใน 24h</span>';
-      const actions = (data.top_flagged_actions || []).map(a => `<span class="badge">${a.action}: ${a.count}</span>`).join(' ') || '<span style="color:var(--muted);">ไม่มี Alert</span>';
+      const actions = (data.top_flagged_actions || []).map(a => `<span class="badge">${escHtml(a.action)}: ${a.count}</span>`).join(' ') || '<span style="color:var(--muted);">ไม่มี Alert</span>';
       
       box.innerHTML = `
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; padding-bottom:6px; border-bottom:1px solid var(--border);">
@@ -1448,10 +1458,10 @@ function fmtUptime(s) {
 function planBadge(p) {
   const cls = p==='pro'?'badge-pro':p==='business'?'badge-business':'badge-free';
   const lbl = p==='business'?'Ultra':(p||'free');
-  return `<span class="badge ${cls}">${lbl}</span>`;
+  return `<span class="badge ${cls}">${escHtml(lbl)}</span>`;
 }
 function roleBadge(r) {
-  return `<span class="badge ${r==='admin'?'badge-admin':'badge-user'}">${r||'user'}</span>`;
+  return `<span class="badge ${r==='admin'?'badge-admin':'badge-user'}">${escHtml(r||'user')}</span>`;
 }
 function statusBadge(active) {
   return active
@@ -1460,8 +1470,8 @@ function statusBadge(active) {
 }
 function avatar(u, size=32) {
   const sz = `width:${size}px;height:${size}px;`;
-  if (u.avatar_url) return `<img src="${u.avatar_url}" style="${sz}border-radius:${size>24?10:6}px;object-fit:cover;flex-shrink:0;">`;
-  const letter = (u.username||u.name||'?')[0].toUpperCase();
+  if (u.avatar_url && /^(https?:\/\/|\/(?!\/))/i.test(String(u.avatar_url))) return `<img src="${escHtml(u.avatar_url)}" style="${sz}border-radius:${size>24?10:6}px;object-fit:cover;flex-shrink:0;">`;
+  const letter = escHtml((u.username||u.name||'?')[0].toUpperCase());
   return `<div style="${sz}border-radius:${size>24?10:6}px;background:#1e1b4b;border:1px solid #312e81;display:flex;align-items:center;justify-content:center;font-size:${size>24?12:9}px;font-weight:800;color:#818cf8;flex-shrink:0;">${letter}</div>`;
 }
 function statRow(label, value, color='#94a3b8') {
@@ -1604,7 +1614,7 @@ async function loadBilling() {
   document.getElementById('paying-tbody').innerHTML = paying.length
     ? paying.map(o => `<tr>
         <td>
-          <div style="font-weight:700;color:white;font-size:13px;">${o.name}</div>
+          <div style="font-weight:700;color:white;font-size:13px;">${escHtml(o.name)}</div>
           <div style="font-size:10px;color:#475569;">ID: ${o.id}</div>
         </td>
         <td>${planBadge(o.plan)}</td>
@@ -1629,7 +1639,7 @@ async function loadAnalytics() {
   document.getElementById('top-orgs-ai').innerHTML = topAI.map(o => `
     <div>
       <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
-        <span style="font-size:12px;color:#94a3b8;font-weight:600;">${o.name}</span>
+        <span style="font-size:12px;color:#94a3b8;font-weight:600;">${escHtml(o.name)}</span>
         <span style="font-size:11px;color:#818cf8;font-weight:700;">${(o.ai_query_count||0).toLocaleString()}</span>
       </div>
       <div class="prog-track"><div class="prog-fill" style="width:${Math.round((o.ai_query_count||0)/maxAI*100)}%;background:#6366f1;"></div></div>
@@ -1641,7 +1651,7 @@ async function loadAnalytics() {
   document.getElementById('top-orgs-member').innerHTML = topMem.map(o => `
     <div>
       <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
-        <span style="font-size:12px;color:#94a3b8;font-weight:600;">${o.name}</span>
+        <span style="font-size:12px;color:#94a3b8;font-weight:600;">${escHtml(o.name)}</span>
         <span style="font-size:11px;color:#60a5fa;font-weight:700;">${o.member_count||0} คน</span>
       </div>
       <div class="prog-track"><div class="prog-fill" style="width:${Math.round((o.member_count||0)/maxMem*100)}%;background:#3b82f6;"></div></div>
@@ -1712,7 +1722,7 @@ function renderOrgs(list) {
     return `<tr>
       <td style="color:var(--muted);" class="mono" style="font-size:11px;">${o.id}</td>
       <td>
-        <div style="font-weight:700;color:var(--text);font-size:13px;">${o.name}</div>
+        <div style="font-weight:700;color:var(--text);font-size:13px;">${escHtml(o.name)}</div>
         <div style="font-size:10px;color:var(--muted);" class="mono">${o.slug||''}</div>
       </td>
       <td>
@@ -1726,7 +1736,7 @@ function renderOrgs(list) {
       <td class="r">
         <div style="display:flex;gap:4px;justify-content:flex-end;">
           <button class="btn btn-info btn-xs" onclick="openOrgModal(${o.id})">จัดการ</button>
-          ${o.id!==1?`<button class="btn btn-danger btn-xs" onclick="confirmDeleteOrg(${o.id},'${o.name.replace(/'/g,"\\'")}')">ลบ</button>`:''}
+          ${o.id!==1?`<button class="btn btn-danger btn-xs" onclick="confirmDeleteOrg(${Number(o.id)},'${_jsq(o.name)}')">ลบ</button>`:''}
         </div>
       </td>
     </tr>`;
@@ -1747,14 +1757,14 @@ async function openOrgModal(orgId) {
       <div style="display:flex;align-items:center;gap:8px;">
         ${avatar(m, 26)}
         <div>
-          <span style="font-size:13px;color: var(--text);font-weight:600;">${m.display_name||m.username}</span>
-          <span style="font-size:10px;color: var(--muted);margin-left:4px;">@${m.username}</span>
+          <span style="font-size:13px;color: var(--text);font-weight:600;">${escHtml(m.display_name||m.username)}</span>
+          <span style="font-size:10px;color: var(--muted);margin-left:4px;">@${escHtml(m.username)}</span>
         </div>
       </div>
       ${roleBadge(m.org_role||m.role)}
     </div>`).join('') || '<p style="color: var(--muted);font-size:12px;padding:8px 0;">ไม่มีสมาชิก</p>';
 
-  showModal(`องค์กร: ${org.name}`,`
+  showModal(`องค์กร: ${escHtml(org.name)}`,`
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
       ${planBadge(ep)}
       <span style="font-size:11px;color: var(--muted);" class="mono">ID: ${org.id} · ${org.slug||'—'}</span>
@@ -1894,7 +1904,7 @@ function renderUsers(list) {
   tbody.innerHTML = list.map(u => {
     const isActive = u.is_active !== 0;
     const orgTags = (u.orgs||[]).slice(0,2).map(o=>
-      `<span style="font-size:10px;background: var(--surface2);border:1px solid var(--border);color: var(--muted);padding:1px 6px;border-radius:5px;">${o.name}</span>`
+      `<span style="font-size:10px;background: var(--surface2);border:1px solid var(--border);color: var(--muted);padding:1px 6px;border-radius:5px;">${escHtml(o.name)}</span>`
     ).join('');
     const moreOrgs = (u.orgs||[]).length > 2 ? `<span style="font-size:10px;color: var(--muted);">+${(u.orgs||[]).length-2}</span>` : '';
     return `<tr>
@@ -1902,18 +1912,18 @@ function renderUsers(list) {
         <div style="display:flex;align-items:center;gap:10px;">
           ${avatar(u, 32)}
           <div>
-            <div style="font-weight:700;color: var(--text);font-size:13px;">${u.display_name||u.username}</div>
-            <div style="font-size:10px;color: var(--muted);" class="mono">@${u.username}</div>
+            <div style="font-weight:700;color: var(--text);font-size:13px;">${escHtml(u.display_name||u.username)}</div>
+            <div style="font-size:10px;color: var(--muted);" class="mono">@${escHtml(u.username)}</div>
           </div>
         </div>
       </td>
       <td>${roleBadge(u.role)}</td>
       <td>${statusBadge(isActive)}</td>
       <td><div style="display:flex;gap:3px;flex-wrap:wrap;">${orgTags||'<span style="color: var(--muted);font-size:11px;">—</span>'}${moreOrgs}</div></td>
-      <td style="font-size:12px;color: var(--text);">${u.department||'—'}</td>
+      <td style="font-size:12px;color: var(--text);">${escHtml(u.department||'—')}</td>
       <td class="r" style="font-size:11px;color: var(--muted);">${fmtDate(u.profile_created||u.created_at)}</td>
       <td class="r">
-        <button class="btn btn-info btn-xs" onclick="openUserModal('${u.username.replace(/'/g,"\\'")}')">จัดการ</button>
+        <button class="btn btn-info btn-xs" onclick="openUserModal('${_jsq(u.username)}')">จัดการ</button>
       </td>
     </tr>`;
   }).join('');
@@ -1925,7 +1935,7 @@ function openUserModal(username) {
   const isActive = u.is_active !== 0;
   const orgLines = (u.orgs||[]).map(o =>
     `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border2);">
-      <span style="font-size:12px;color: var(--text);">${o.name}</span>
+      <span style="font-size:12px;color: var(--text);">${escHtml(o.name)}</span>
       <div style="display:flex;gap:4px;">${roleBadge(o.role||'member')} ${planBadge(o.plan)}</div>
     </div>`
   ).join('') || '<p style="color: var(--muted);font-size:12px;margin:8px 0;">ไม่ได้อยู่ใน org ใด</p>';
@@ -1935,14 +1945,14 @@ function openUserModal(username) {
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
       ${avatar(u, 44)}
       <div style="flex:1;">
-        <div style="font-weight:800;color: var(--text);font-size:15px;">${u.display_name||u.username}</div>
-        <div style="font-size:11px;color: var(--muted);" class="mono">@${u.username}</div>
+        <div style="font-weight:800;color: var(--text);font-size:15px;">${escHtml(u.display_name||u.username)}</div>
+        <div style="font-size:11px;color: var(--muted);" class="mono">@${escHtml(u.username)}</div>
         <div style="margin-top:4px;display:flex;gap:4px;">${roleBadge(u.role)} ${statusBadge(isActive)}</div>
       </div>
       <div style="text-align:right;">
         <div style="font-size:10px;color: var(--muted);">สมัครเมื่อ</div>
         <div style="font-size:11px;color: var(--text);">${fmtDate(u.profile_created||u.created_at)}</div>
-        ${u.department?`<div style="font-size:10px;color: var(--muted);margin-top:2px;">แผนก: ${u.department}</div>`:''}
+        ${u.department?`<div style="font-size:10px;color: var(--muted);margin-top:2px;">แผนก: ${escHtml(u.department)}</div>`:''}
       </div>
     </div>
 
@@ -1951,7 +1961,7 @@ function openUserModal(username) {
       <button class="btn ${isActive?'btn-warning':'btn-success'} btn-xs" onclick="toggleActive('${username}',${isActive})">
         ${isActive?'⏸ ระงับบัญชี':'▶ เปิดบัญชี'}
       </button>
-      <button class="btn btn-info btn-xs" onclick="changeRole('${username}','${u.role}')">
+      <button class="btn btn-info btn-xs" onclick="changeRole('${username}','${escHtml(u.role)}')">
         ${u.role==='admin'?'↓ เปลี่ยนเป็น User':'↑ เปลี่ยนเป็น Admin'}
       </button>
       <button class="btn btn-ghost btn-xs" onclick="resetPw('${username}')">
@@ -2099,11 +2109,11 @@ async function loadBroadcasts() {
   el.innerHTML = d.broadcasts.map(b => `
     <div style="padding:14px 16px;border-bottom:1px solid var(--border2);">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
-        <span style="font-size:13px;font-weight:700;color: var(--text);">${b.title||'ประกาศ'}</span>
+        <span style="font-size:13px;font-weight:700;color: var(--text);">${escHtml(b.title||'ประกาศ')}</span>
         <span style="font-size:10px;color: var(--muted);" class="mono">${(b.time||'').substring(0,16).replace('T',' ')}</span>
       </div>
-      <p style="font-size:12px;color: var(--text);opacity:0.9;margin:0;line-height:1.5;">${b.message}</p>
-      <div style="margin-top:6px;font-size:10px;color: var(--muted);">โดย: ${b.user||'—'}</div>
+      <p style="font-size:12px;color: var(--text);opacity:0.9;margin:0;line-height:1.5;">${escHtml(b.message)}</p>
+      <div style="margin-top:6px;font-size:10px;color: var(--muted);">โดย: ${escHtml(b.user||'—')}</div>
     </div>`).join('');
 }
 
@@ -2148,7 +2158,7 @@ async function loadLogs() {
     const r = await fetch(`/api/superadmin/logs?limit=${limit}`);
     if (!r.ok) {
       const text = await r.text();
-      throw new Error(text || `HTTP error ${r.status}`);
+      throw new Error(text || `HTTP error ${escHtml(r.status)}`);
     }
     const d = await r.json();
     _logs = d.ok ? d.events : [];
@@ -2158,7 +2168,7 @@ async function loadLogs() {
     toast("เกิดข้อผิดพลาดในการโหลด Logs: " + e.message, "error");
     const wrap = document.getElementById('logs-wrap');
     if (wrap) {
-      wrap.innerHTML = `<div style="padding:40px;text-align:center;color:#ef4444;font-size:13px;">⚠️ เกิดข้อผิดพลาดในการโหลด Event Logs: ${e.message}</div>`;
+      wrap.innerHTML = `<div style="padding:40px;text-align:center;color:#ef4444;font-size:13px;">⚠️ เกิดข้อผิดพลาดในการโหลด Event Logs: ${escHtml(e.message)}</div>`;
     }
   }
 }
@@ -2187,7 +2197,7 @@ function renderLogs(list) {
     const isBC = text.includes('[BROADCAST]');
     return `<div class="log-row">
       <span class="log-time">${(e.time||e.timestamp||'').substring(0,16).replace('T',' ')}</span>
-      <span class="log-user">${e.user||'—'}</span>
+      <span class="log-user">${escHtml(e.user||'—')}</span>
       <span class="log-text ${isSA?'super':isBC?'broadcast':''}">${text}</span>
     </div>`;
   }).join('');
@@ -2253,7 +2263,7 @@ async function sendBroadcast() {
   const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
   const d = await r.json();
   if (d.ok) {
-    const who = targetType==='all'?'ทุกคน':targetType==='plan'?`plan ${body.plan}`:`org #${body.org_id}`;
+    const who = targetType==='all'?'ทุกคน':targetType==='plan'?`plan ${escHtml(body.plan)}`:`org #${body.org_id}`;
     toast(`ส่งประกาศถึง ${who} ${d.notified!=null?'('+d.notified+' คน)':''} สำเร็จ`,'success');
     document.getElementById('bc-msg').value = '';
     loadBroadcasts();
@@ -2322,7 +2332,7 @@ async function loadBackups() {
   el.innerHTML = d.backups.map(b => `
     <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
       <div>
-        <div style="font-size:11px;font-weight:700;color:var(--text);" class="mono">${b.name}</div>
+        <div style="font-size:11px;font-weight:700;color:var(--text);" class="mono">${escHtml(b.name)}</div>
         <div style="font-size:10px;color:var(--muted);">${fmtBytes(b.size_bytes)} · ${(b.modified||'').substring(0,16).replace('T',' ')}</div>
       </div>
       <span class="badge badge-info">backup</span>
@@ -2395,8 +2405,8 @@ async function loadDbTables() {
   el.innerHTML = d.tables.map(t => {
     const isSelected = dbState.currentTable === t.name;
     return `
-      <button class="nav-item ${isSelected?'active':''}" onclick="selectDbTable('${t.name}')" style="justify-content:space-between; width:100%; padding:6px 10px;">
-        <span class="mono text-xs" style="color:${isSelected?'#a5b4fc':'#94a3b8'}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${t.name}</span>
+      <button class="nav-item ${isSelected?'active':''}" onclick="selectDbTable('${escHtml(t.name)}')" style="justify-content:space-between; width:100%; padding:6px 10px;">
+        <span class="mono text-xs" style="color:${isSelected?'#a5b4fc':'#94a3b8'}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escHtml(t.name)}</span>
         <span class="nav-badge" style="font-size:9px; background:${isSelected?'#312e81':'#111827'};">${t.count}</span>
       </button>
     `;
@@ -2456,7 +2466,7 @@ function renderCurrentTable() {
   // Header HTML (Columns + Action head)
   let headersHtml = dbState.columns.map(c => `
     <th class="mono" style="font-size:10px; color:${c.pk?'#fbbf24':'var(--muted)'};">
-      ${c.name} ${c.pk?'(PK)':''}
+      ${escHtml(c.name)} ${c.pk?'(PK)':''}
       <span style="display:block; font-size:8px; font-weight:normal; text-transform:lowercase; color:var(--muted); opacity:0.7;">${c.type}</span>
     </th>
   `).join('');
@@ -2522,14 +2532,14 @@ function nextTablePage() {
 function openAddRowModal() {
   const inputsHtml = dbState.columns.map(c => {
     const isPK = c.pk === 1;
-    const placeholder = isPK ? 'Primary Key (ระบบจะสร้างอัตโนมัติหากปล่อยว่าง)' : `กรอกข้อมูล ${c.name}`;
+    const placeholder = isPK ? 'Primary Key (ระบบจะสร้างอัตโนมัติหากปล่อยว่าง)' : `กรอกข้อมูล ${escHtml(c.name)}`;
     const inputType = c.type.toLowerCase().includes('int') ? 'number' : 'text';
     return `
       <div style="margin-bottom:12px;">
         <label class="mono" style="font-size:11px; font-weight:700; color:${isPK?'#fbbf24':'var(--text)'}; display:block; margin-bottom:4px;">
-          ${c.name} <span style="font-size:9px; font-weight:normal; color:var(--muted);">(${c.type})</span> ${isPK?'🔑':''}
+          ${escHtml(c.name)} <span style="font-size:9px; font-weight:normal; color:var(--muted);">(${c.type})</span> ${isPK?'🔑':''}
         </label>
-        <input class="inp" id="db-field-${c.name}" type="${inputType}" placeholder="${placeholder}">
+        <input class="inp" id="db-field-${escHtml(c.name)}" type="${inputType}" placeholder="${placeholder}">
       </div>
     `;
   }).join('');
@@ -2545,7 +2555,7 @@ function openAddRowModal() {
 async function submitAddRow() {
   const data = {};
   dbState.columns.forEach(c => {
-    const val = document.getElementById(`db-field-${c.name}`).value.trim();
+    const val = document.getElementById(`db-field-${escHtml(c.name)}`).value.trim();
     if (val !== '') {
       data[c.name] = c.type.toLowerCase().includes('int') ? parseInt(val, 10) : val;
     }
@@ -2577,9 +2587,9 @@ function openEditRowModal(rowEscaped) {
     return `
       <div style="margin-bottom:12px;">
         <label class="mono" style="font-size:11px; font-weight:700; color:${isPK?'#fbbf24':'var(--text)'}; display:block; margin-bottom:4px;">
-          ${c.name} <span style="font-size:9px; font-weight:normal; color:var(--muted);">(${c.type})</span> ${isPK?'🔑':''}
+          ${escHtml(c.name)} <span style="font-size:9px; font-weight:normal; color:var(--muted);">(${c.type})</span> ${isPK?'🔑':''}
         </label>
-        <input class="inp" id="db-field-${c.name}" type="${inputType}" value="${val.replace(/"/g, '&quot;')}" ${isPK?'disabled style="opacity:0.6;cursor:not-allowed;"':''}>
+        <input class="inp" id="db-field-${escHtml(c.name)}" type="${inputType}" value="${val.replace(/"/g, '&quot;')}" ${isPK?'disabled style="opacity:0.6;cursor:not-allowed;"':''}>
       </div>
     `;
   }).join('');
@@ -2598,7 +2608,7 @@ async function submitEditRow(rowEscaped) {
   const fields = {};
   
   dbState.columns.forEach(c => {
-    const inputEl = document.getElementById(`db-field-${c.name}`);
+    const inputEl = document.getElementById(`db-field-${escHtml(c.name)}`);
     const val = inputEl.value.trim();
     const typedVal = c.type.toLowerCase().includes('int') ? (val === '' ? null : parseInt(val, 10)) : val;
     

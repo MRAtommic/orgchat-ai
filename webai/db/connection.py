@@ -55,14 +55,13 @@ if not DB_PATH.is_absolute():
 
 def _resolve_db_path() -> Path:
     """Resolve active database path, honoring runtime overrides from os.environ or test fixtures."""
-    if _IMMUTABLE_CUSTOM_DB_PATH:
+    env_override = os.environ.get("DB_PATH")
+    if env_override:
+        p = Path(env_override)
+    elif _IMMUTABLE_CUSTOM_DB_PATH:
         p = Path(_IMMUTABLE_CUSTOM_DB_PATH)
     else:
-        env_override = os.environ.get("DB_PATH")
-        if env_override:
-            p = Path(env_override)
-        else:
-            p = DB_PATH
+        p = DB_PATH
     if not p.is_absolute():
         base = Path(__file__).parent.absolute()
         if base.name == "db":
@@ -456,11 +455,18 @@ def _get_conn(timeout: int = 30):
                 logger.warning(f"⚠️ Failed to get connection from Postgres pool: {e}. Falling back to SQLite...")
                 
     conn = sqlite3.connect(str(_resolve_db_path()), timeout=timeout)
-    conn.execute("PRAGMA busy_timeout=60000")
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute("PRAGMA cache_size=-32000")
-    conn.execute("PRAGMA temp_store=MEMORY")
+    busy_timeout_ms = int(os.environ.get("SQLITE_BUSY_TIMEOUT", "2000" if os.environ.get("ORGCHAT_FUZZ_MODE") == "1" else "60000"))
+    conn.execute(f"PRAGMA busy_timeout={busy_timeout_ms}")
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA cache_size=-32000")
+        conn.execute("PRAGMA temp_store=MEMORY")
+    except sqlite3.OperationalError:
+        pass
     return DynamicConnectionWrapper(conn, is_postgres=False)
 
 

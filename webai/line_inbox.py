@@ -26,9 +26,14 @@ MAX_ATTEMPTS = 2
 MAX_AGE_SECONDS = 600
 RETAIN_DONE_DAYS = 7
 _lock = threading.Lock()
+_WORKERS = threading.BoundedSemaphore(8)
+_ensured = False
 
 
 def _ensure(conn):
+    global _ensured
+    if _ensured:
+        return
     conn.execute("""
         CREATE TABLE IF NOT EXISTS line_event_inbox (
             event_id TEXT PRIMARY KEY,
@@ -42,6 +47,7 @@ def _ensure(conn):
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_line_inbox_status ON line_event_inbox(status, received_at)")
+    _ensured = True
 
 
 def event_key(event: dict) -> str:
@@ -98,7 +104,8 @@ def run(eid: str, event: dict, processor) -> bool:
     if not _claim(eid):
         return False
     try:
-        processor(event)
+        with _WORKERS:   # จำกัดจำนวนที่ประมวลผลพร้อมกัน — ข้อความท่วมจะรอคิว ไม่บวม CPU/RAM
+            processor(event)
         _finish(eid)
     except Exception as e:  # processor ปกติจับ error เอง; ถ้าหลุดมาให้บันทึกไว้
         logger.error(f"[inbox] event {eid} failed: {e}")

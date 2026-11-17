@@ -453,7 +453,48 @@ function hideGlobalLoading() {
 }
 
 // ─── API Helpers ──────────────────────────────
-async function apiFetch(url, options = {}) {
+// ── GET ที่ซ้ำกันและกำลังโหลดอยู่ → ใช้คำขอเดียวร่วมกัน (เปิดหน้าแรกเดิมยิง API ซ้ำ 2 รอบหลายตัว)
+const _apiInflight = new Map();
+function apiFetch(url, options = {}) {
+  const method = String(options.method || 'GET').toUpperCase();
+  if (method !== 'GET' || options.body || options.signal || typeof url !== 'string') return _apiFetchRaw(url, options);
+  let p = _apiInflight.get(url);
+  if (!p) {
+    p = _apiFetchRaw(url, options).finally(() => _apiInflight.delete(url));
+    _apiInflight.set(url, p);
+  }
+  return p.then(r => {
+    if (r && typeof r === 'object' && typeof structuredClone === 'function') { try { return structuredClone(r); } catch (e) { } }
+    return r;
+  });
+}
+
+// GET แบบจำผลสั้นๆ สำหรับข้อมูล "อ่านอย่างเดียว" ของหน้าแรก (สรุปประจำวัน/ประกาศ/แดชบอร์ด) ที่ถูกโหลดซ้ำจากโค้ดสองทาง
+const _apiGetCacheStore = new Map();
+function apiGetCached(url, ttlMs = 15000) {
+  const e = _apiGetCacheStore.get(url);
+  if (e && Date.now() - e.t < ttlMs) return e.p.then(r => (r && typeof r === 'object' && typeof structuredClone === 'function') ? structuredClone(r) : r);
+  const p = apiFetch(url);
+  _apiGetCacheStore.set(url, { t: Date.now(), p });
+  p.catch(() => _apiGetCacheStore.delete(url));
+  return p;
+}
+window.apiGetCached = apiGetCached;
+
+// fetch แบบจำผลลัพธ์ชั่วคราว (ใช้กับข้อมูลภายนอกที่เปลี่ยนช้า เช่น สภาพอากาศ) — คืน Response ที่ clone แล้ว
+const _cachedFetchStore = new Map();
+function cachedFetch(url, ttlMs = 600000) {
+  const now = Date.now();
+  let e = _cachedFetchStore.get(url);
+  if (!e || now - e.t > ttlMs) {
+    e = { t: now, p: fetch(url) };
+    e.p.then(r => { if (!r.ok) _cachedFetchStore.delete(url); }, () => _cachedFetchStore.delete(url));
+    _cachedFetchStore.set(url, e);
+  }
+  return e.p.then(r => r.clone());
+}
+
+async function _apiFetchRaw(url, options = {}) {
   // Ensure Content-Type is set for POST/PUT/PATCH if body is present, UNLESS it's FormData.
   if (options.body && !(options.body instanceof FormData)) {
     if (!options.headers) {
@@ -697,7 +738,7 @@ async function fetchWeather() {
     const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=13.75&longitude=100.51&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,uv_index&hourly=temperature_2m,precipitation_probability,weather_code,uv_index&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max&timezone=Asia%2FBangkok&forecast_days=7`;
     const aqUrl = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=13.75&longitude=100.51&current=pm2_5&timezone=Asia%2FBangkok`;
 
-    const [weatherRes, aqRes] = await Promise.all([fetch(weatherUrl), fetch(aqUrl)]);
+    const [weatherRes, aqRes] = await Promise.all([cachedFetch(weatherUrl), cachedFetch(aqUrl)]);
     const weatherData = await weatherRes.json();
     const aqData = await aqRes.json();
 
@@ -1248,7 +1289,7 @@ function renderCatUserList(query = '') {
           ${u.username.charAt(0).toUpperCase()}
         </div>
         <div class="flex-1 min-w-0">
-          <div class="text-[11px] font-bold ${isSelected ? 'text-brand-600' : ''}">${u.display_name || u.username}</div>
+          <div class="text-[11px] font-bold ${isSelected ? 'text-brand-600' : ''}">${escHtml(u.display_name || u.username)}</div>
           <div class="text-[9px] text-surface-400 leading-none">@${u.username}</div>
         </div>
         <div class="w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors ${isSelected ? 'bg-brand-600 border-brand-600 text-white' : 'border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800'}">
@@ -1449,7 +1490,7 @@ window.showConfirm = function (title, message, options = {}) {
     }
 
     iconEl.innerHTML = iconSvg;
-    iconBg.className = `w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${bgClass} text-${type === 'warning' ? 'amber-500' : type === 'danger' ? 'rose-600' : type === 'success' ? 'emerald-600' : 'blue-600'}`;
+    iconBg.className = `w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${bgClass} ${type === 'warning' ? 'text-amber-500' : type === 'danger' ? 'text-rose-600' : type === 'success' ? 'text-emerald-600' : 'text-blue-600'}`;
 
     // Animate Show
     container.classList.remove('hidden');
@@ -1523,7 +1564,7 @@ window.showAlert = function (title, message, options = {}) {
     }
 
     iconEl.innerHTML = iconSvg;
-    iconBg.className = `w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${bgClass} text-${type === 'danger' ? 'rose-600' : type === 'success' ? 'emerald-600' : 'blue-600'}`;
+    iconBg.className = `w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${bgClass} ${type === 'danger' ? 'text-rose-600' : type === 'success' ? 'text-emerald-600' : 'text-blue-600'}`;
 
     container.classList.remove('hidden');
     setTimeout(() => {
@@ -1737,12 +1778,12 @@ window.loadSecurityDashboard = async function () {
           return `
             <div class="p-2.5 rounded-xl bg-surface-50 dark:bg-surface-800/40 border border-surface-200 dark:border-surface-700/60 flex items-center justify-between gap-2">
               <div class="min-w-0">
-                <div class="font-bold text-surface-900 dark:text-white truncate">${l.action} <span class="text-[10px] text-surface-400 font-normal">(${l.username})</span></div>
-                <div class="text-[10px] text-surface-500 truncate">${l.details || '-'} · IP: ${l.ip_address || '-'}</div>
+                <div class="font-bold text-surface-900 dark:text-white truncate">${escHtml(l.action)} <span class="text-[10px] text-surface-400 font-normal">(${escHtml(l.username)})</span></div>
+                <div class="text-[10px] text-surface-500 truncate">${escHtml(l.details || '-')} · IP: ${escHtml(l.ip_address || '-')}</div>
               </div>
               <div class="flex items-center gap-2 flex-shrink-0">
                 ${verifiedBadge}
-                <span class="text-[9px] text-surface-400">${(l.timestamp || '').split(' ')[1] || ''}</span>
+                <span class="text-[9px] text-surface-400">${escHtml((l.timestamp || '').split(' ')[1] || '')}</span>
               </div>
             </div>
           `;
@@ -1774,10 +1815,10 @@ window.loadSecurityBlacklist = async function () {
         container.innerHTML = data.blacklist.map(b => `
           <div class="p-2.5 rounded-xl bg-white dark:bg-surface-900 border border-rose-100 dark:border-rose-900/30 flex items-center justify-between">
             <div>
-              <div class="font-bold text-rose-600 font-mono text-[11px]">${b.ip_address}</div>
-              <div class="text-[10px] text-surface-500">${b.reason} (พบการโจมตี ${b.violation_count} ครั้ง)</div>
+              <div class="font-bold text-rose-600 font-mono text-[11px]">${escHtml(b.ip_address)}</div>
+              <div class="text-[10px] text-surface-500">${escHtml(b.reason)} (พบการโจมตี ${b.violation_count} ครั้ง)</div>
             </div>
-            <button type="button" onclick="unblockSecurityIp('${b.ip_address}')" class="px-2.5 py-1 bg-rose-100 hover:bg-rose-200 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 rounded-lg text-[10px] font-bold transition">
+            <button type="button" onclick="unblockSecurityIp('${_jsq(b.ip_address)}')" class="px-2.5 py-1 bg-rose-100 hover:bg-rose-200 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 rounded-lg text-[10px] font-bold transition">
               ปลดบล็อค
             </button>
           </div>

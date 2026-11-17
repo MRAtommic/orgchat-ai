@@ -52,6 +52,7 @@
     const wrapped = function (tab) {
       const r = orig.apply(this, arguments);
       try { build(); paint(tab); } catch (e) { /* ไม่ให้กระทบการสลับแท็บเดิม */ }
+      try { if (tab === 'attendance' && window.loadAttendanceSettingsCard) { const _both = async () => { await window.loadAttendanceSettingsCard(); if (window.loadAttendanceSummaryCard) await window.loadAttendanceSummaryCard(); }; _both(); setTimeout(_both, 1800); /* กันแท็บเดิมเรนเดอร์ทับ */ } } catch (e) { /* ignore */ }
       return r;
     };
     wrapped._grouped = true;

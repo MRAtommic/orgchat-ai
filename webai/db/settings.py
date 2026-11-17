@@ -200,9 +200,11 @@ def get_executive_summary_data(org_id=1):
 
 
 
-def get_user_setting(username):
-    """Get user_settings for a user, returns defaults if not set. Case-insensitive."""
+def get_user_setting(username, default=True):
+    """Get user_settings for a user, returns defaults if not set and default=True. Case-insensitive."""
     if not username:
+        if not default:
+            return None
         return {"username_original": "", "role": "user", "is_active": 1, "custom_password": None, "notes": "", "can_view_kb": False, "can_edit_kb": False, "can_delete_kb": False, "can_view_financial": False, "totp_enabled": False, "totp_secret": "", "totp_backup_codes": "", "can_manage_leave": False, "can_broadcast_line": False, "can_manage_peak": False, "can_use_ai": True, "can_claim_expense": True}
     conn = _get_conn()
     cursor = conn.cursor()
@@ -237,6 +239,9 @@ def get_user_setting(username):
             "can_claim_expense": bool(row[17]) if row[17] is not None else True,
             "totp_type": (row[18] or "authenticator"),
         }
+
+    if not default:
+        return None
 
     # Defaults
     if username.lower() == "admin":
@@ -755,6 +760,34 @@ def line_link_delete(token: str):
     conn.close()
 
 
+_LINK_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"      # ตัดตัวที่สับสนง่าย: I O 0 1
+
+
+def normalize_link_code(text: str) -> str:
+    """รหัสผูกบัญชีสั้น: ตัดช่องว่าง/ขีด แปลงเป็นตัวพิมพ์ใหญ่ (ผู้ใช้พิมพ์ 'abcd-2345' หรือ 'ABCD 2345' ก็ได้)"""
+    return re.sub(r"[^A-Za-z0-9]", "", text or "").upper()
+
+
+def line_link_new_code(line_user_id: str, length: int = 8) -> str:
+    """สร้างรหัสผูกบัญชีสั้น (ใช้ครั้งเดียว อายุ 10 นาที) ผูกกับ LINE ของผู้ขอ — ให้ผู้ใช้ที่ล็อกอินเว็บอยู่กรอกในหน้าตั้งค่า
+    ใช้ตัวอักษร 8 ตัว (32^8 ≈ 1 ล้านล้านแบบ) เดายากแม้ลองซ้ำๆ"""
+    import secrets as _secrets
+    for _ in range(20):
+        code = "".join(_secrets.choice(_LINK_CODE_ALPHABET) for _ in range(length))
+        if not line_link_get(code):
+            line_link_create(code, line_user_id)
+            return code
+    raise RuntimeError("cannot allocate a unique link code")
+
+
+def line_link_delete_for_line_user(line_user_id: str):
+    """ลบโทเค็น/รหัสที่ค้างอยู่ทั้งหมดของ LINE นี้ (ใช้หลังผูกสำเร็จ กันใช้ซ้ำ)"""
+    conn = _get_conn()
+    conn.execute("DELETE FROM pending_line_links WHERE line_user_id = ?", (line_user_id,))
+    conn.commit()
+    conn.close()
+
+
 def _line_link_cleanup():
     try:
         conn = _get_conn()
@@ -875,7 +908,82 @@ def update_kb_category_access_level(category_id: int, access_level: str) -> bool
 
 
 # ══════════════════════════════════════════════════════
-# Custom Expense Categories & AI Rules CRUD
+# User UI Preferences (Font, Size, Accent Color)
 # ══════════════════════════════════════════════════════
+
+ALLOWED_UI_FONTS = {
+    'Inter', 'Anuphan', 'IBM Plex Sans Thai', 'Prompt', 'Kanit',
+    'Noto Sans Thai', 'Krub', 'K2D', 'Fahkwang', 'Mitr',
+    'Athiti', 'Bai Jamjuree', 'Pridi', 'Chakra Petch',
+    'Sarabun', 'Niramit', 'Mali'
+}
+
+ALLOWED_UI_FONT_SIZES = {'small', 'normal', 'large', 'xl'}
+
+ALLOWED_UI_ACCENTS = {'blue', 'indigo', 'emerald', 'amber', 'rose', 'purple'}
+
+
+def get_user_ui_prefs(username: str) -> dict:
+    """Retrieve UI preferences (font, font size, accent color) for a user."""
+    if not username:
+        return {"font": None, "size": None, "accent": None}
+    conn = _get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT ui_font, ui_font_size, ui_accent FROM user_settings WHERE username = ? COLLATE NOCASE", (username,))
+        row = cursor.fetchone()
+        if row:
+            font = row[0] if row[0] in ALLOWED_UI_FONTS else None
+            size = row[1] if row[1] in ALLOWED_UI_FONT_SIZES else None
+            accent = row[2] if row[2] in ALLOWED_UI_ACCENTS else None
+            return {"font": font, "size": size, "accent": accent}
+        return {"font": None, "size": None, "accent": None}
+    finally:
+        conn.close()
+
+
+def set_user_ui_prefs(username: str, font: str = None, size: str = None, accent: str = None) -> tuple[bool, str]:
+    """Update UI preferences with strict allowlist validation."""
+    if not username:
+        return False, "Username is required"
+
+    updates = []
+    params = []
+
+    if font is not None:
+        if font not in ALLOWED_UI_FONTS:
+            return False, f"Invalid font: {font}"
+        updates.append("ui_font = ?")
+        params.append(font)
+
+    if size is not None:
+        if size not in ALLOWED_UI_FONT_SIZES:
+            return False, f"Invalid font size: {size}"
+        updates.append("ui_font_size = ?")
+        params.append(size)
+
+    if accent is not None:
+        if accent not in ALLOWED_UI_ACCENTS:
+            return False, f"Invalid accent color: {accent}"
+        updates.append("ui_accent = ?")
+        params.append(accent)
+
+    if not updates:
+        return True, "No changes requested"
+
+    params.append(username)
+    conn = _get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("INSERT OR IGNORE INTO user_settings (username) VALUES (?)", (username,))
+        cursor.execute(f"UPDATE user_settings SET {', '.join(updates)} WHERE username = ? COLLATE NOCASE", tuple(params))
+        conn.commit()
+        return True, "Updated successfully"
+    except Exception as e:
+        logger.error(f"Failed to update UI prefs for {username}: {e}")
+        return False, str(e)
+    finally:
+        conn.close()
+
 
 

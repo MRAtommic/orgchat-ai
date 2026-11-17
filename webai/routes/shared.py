@@ -86,8 +86,50 @@ def _build_cors_origins() -> list | str:
 
 _cors_origins = _build_cors_origins()
 socketio = SocketIO(cors_allowed_origins=_cors_origins, async_mode='threading', max_http_payload_size=2*1024*1024)
+def get_client_ip() -> str:
+    """Extracts client IP address safely.
+    If the immediate connection (remote_addr) is from a trusted proxy / loopback
+    (e.g. 127.0.0.1, ::1, or private IPv4/IPv6 networks like Cloudflare Tunnel / Docker),
+    we inspect the 'CF-Connecting-IP' header or the first address in 'X-Forwarded-For'.
+    Otherwise, if the connection comes directly from an untrusted / public IP,
+    we return remote_addr to prevent header spoofing.
+    """
+    try:
+        remote_addr = (request.remote_addr or "").strip()
+    except Exception:
+        remote_addr = ""
+    if not remote_addr:
+        return "127.0.0.1"
+
+    try:
+        remote_ip = ipaddress.ip_address(remote_addr)
+        is_trusted_proxy = remote_ip.is_loopback or remote_ip.is_private
+    except ValueError:
+        return remote_addr
+
+    if is_trusted_proxy:
+        try:
+            cf_ip = request.headers.get("CF-Connecting-IP", "").strip()
+            if cf_ip:
+                ipaddress.ip_address(cf_ip)
+                return cf_ip
+        except Exception:
+            pass
+
+        try:
+            xff = request.headers.get("X-Forwarded-For", "").strip()
+            if xff:
+                first_ip = xff.split(",")[0].strip()
+                ipaddress.ip_address(first_ip)
+                return first_ip
+        except Exception:
+            pass
+
+    return remote_addr
+
+
 _limiter_storage = os.environ.get("REDIS_URL", "memory://")
-_limiter = Limiter(key_func=get_remote_address, storage_uri=_limiter_storage)
+_limiter = Limiter(key_func=get_client_ip, storage_uri=_limiter_storage)
 
 # ─── Online Users Registry ───────────────────────────────────
 online_users_registry = {}  # sid -> username
@@ -192,11 +234,12 @@ if not VAPID_PUBLIC_KEY or not VAPID_PRIVATE_KEY:
 # Push Notifications
 # ═══════════════════════════════════════════════════════════════
 
-def send_push_notification(username, title, message, url='/', tag=None):
-    """Send a real-time push notification to a user's device via VAPID."""
+def send_push_notification(username, title, message, url='/', tag=None, extra=None):
+    """Send a real-time push notification to a user's device via VAPID.
+    คืนจำนวนอุปกรณ์ที่รับแจ้งเตือนสำเร็จ (0 = ผู้ใช้ไม่ได้เปิดรับแจ้งเตือน/ส่งไม่ได้) — extra = ฟิลด์เพิ่มใน payload เช่น {"call": True}"""
     subscriptions = database.get_push_subscriptions(username)
     if not subscriptions:
-        return
+        return 0
 
     payload_data = {
         "title": title,
@@ -205,9 +248,12 @@ def send_push_notification(username, title, message, url='/', tag=None):
     }
     if tag:
         payload_data["tag"] = tag
+    if extra:
+        payload_data.update(extra)
         
     payload = json.dumps(payload_data)
 
+    delivered = 0
     for sub_json in subscriptions:
         try:
             subscription_info = json.loads(sub_json)
@@ -217,12 +263,14 @@ def send_push_notification(username, title, message, url='/', tag=None):
                 vapid_private_key=VAPID_PRIVATE_KEY,
                 vapid_claims=VAPID_CLAIMS.copy()
             )
+            delivered += 1
         except WebPushException as ex:
             logger.error(f"WebPush error for {username}: {ex}")
             if ex.response is not None and ex.response.status_code in [404, 410]:
                 database.remove_push_subscription(username, sub_json)
         except Exception as e:
             logger.error(f"General Push error for {username}: {e}")
+    return delivered
 
 def batch_send_push_notification(usernames, title, message, url='/'):
     """Send push notifications to multiple users in parallel."""
@@ -319,6 +367,34 @@ def is_superadmin_user(username):
             return True
         
     return False
+
+def qint(name, default, lo=1, hi=500):
+    """อ่านเลขจาก query string แบบปลอดภัย: ไม่ใช่ตัวเลข → ค่าเริ่มต้น, เกินช่วง → ตัดเข้าช่วง (กัน limit=999999999 และ 500 จาก int('abc'))"""
+    try:
+        v = int(request.args.get(name, default))
+    except (TypeError, ValueError):
+        v = default
+    return max(lo, min(hi, v))
+
+
+def platform_admin_required(f):
+    """เฉพาะผู้ดูแล 'แพลตฟอร์ม' (SUPERADMIN_USERS หรือ role=superadmin) เท่านั้น
+    ใช้กับเส้นทางที่กระทบทุกองค์กร (ล้าง/ซิงก์คลังความรู้ทั้งระบบ, อ่าน/ลบแชตทุกองค์กร, ปิดบัญชีผู้ใช้ใดก็ได้,
+    ตั้งคีย์ AI กลาง, สำรอง/ปรับแต่งฐานข้อมูล, อ่านล็อกเซิร์ฟเวอร์)
+    เหตุผล: ผู้สร้างองค์กรทุกคน (สมัครได้สาธารณะ) ถูกตั้ง role=admin ใน user_settings จึงผ่าน admin_required
+    ซึ่งหมายถึง 'แอดมินขององค์กรตัวเอง' ไม่ใช่ 'แอดมินของทั้งแพลตฟอร์ม'"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        user = session.get("user")
+        if not user:
+            return jsonify({"ok": False, "error": "กรุณาเข้าสู่ระบบก่อนใช้งาน"}), 401
+        st = database.get_user_setting(user) or {}
+        if not (is_superadmin_user(user) or st.get("role") == "superadmin"):
+            return jsonify({"ok": False, "error": "เฉพาะผู้ดูแลแพลตฟอร์มเท่านั้น"}), 403
+        return f(*args, **kwargs)
+    decorated_function._platform_admin = True
+    return decorated_function
+
 
 def superadmin_required(f):
     @wraps(f)
@@ -417,29 +493,53 @@ def get_current_org_id():
 def can_edit_knowledge_base():
     user = session.get("user")
     if not user: return False
+    org_id = get_current_org_id()
+    if org_id and database.is_org_admin(org_id, user):
+        return True
     settings = database.get_user_setting(user)
-    if settings.get("role") == "admin":
+    if settings.get("role") in ("admin", "superadmin"):   # superadmin (ผู้ดูแลระบบสูงสุด) ต้องมีสิทธิ์อย่างน้อยเท่าแอดมิน — เดิมถูกปฏิเสธ 403
         return True
     return bool(settings.get("can_edit_kb", False))
 
 def can_view_knowledge_base():
     user = session.get("user")
     if not user: return False
+    org_id = get_current_org_id()
+    if org_id and database.is_org_admin(org_id, user):
+        return True
     settings = database.get_user_setting(user)
-    if settings.get("role") == "admin":
+    if settings.get("role") in ("admin", "superadmin"):   # superadmin (ผู้ดูแลระบบสูงสุด) ต้องมีสิทธิ์อย่างน้อยเท่าแอดมิน — เดิมถูกปฏิเสธ 403
         return True
     return bool(settings.get("can_view_kb", False))
+
+def user_can_access_kb_file(user, org_id, file_info) -> bool:
+    """สิทธิ์เข้าถึงไฟล์ในคลังความรู้ = เห็นหมวดของไฟล์นั้น (รวมสิทธิ์ตามแผนก)
+    ไฟล์ที่ไม่มีหมวด = ทุกคนในองค์กรเห็น, แอดมินระบบ/แอดมินองค์กรเห็นทุกไฟล์
+    ใช้กับทุกเส้นทางที่ส่งเนื้อหาไฟล์ตรงๆ (ดู/ดาวน์โหลด/พรีวิว/CSV/TXT) ไม่ใช่แค่ตอนค้นหา RAG"""
+    if not user or not file_info:
+        return False
+    cat = str(file_info.get("category_id") or "").strip()
+    if not cat:
+        return True
+    try:
+        if session.get("role") == "admin" or database.is_org_admin(org_id, user):
+            return True
+        visible = {str(c["id"]) for c in database.get_categories(user, org_id=org_id)}
+        return cat in visible
+    except Exception:
+        return False  # ตรวจไม่ได้ → ปฏิเสธไว้ก่อน
+
 
 def can_delete_knowledge_base():
     user = session.get("user")
     if not user: return False
     settings = database.get_user_setting(user)
-    if settings.get("role") == "admin":
+    if settings.get("role") in ("admin", "superadmin"):   # superadmin (ผู้ดูแลระบบสูงสุด) ต้องมีสิทธิ์อย่างน้อยเท่าแอดมิน — เดิมถูกปฏิเสธ 403
         return True
     return bool(settings.get("can_delete_kb", False))
 
 def is_admin():
-    return "user" in session and session.get("role") == "admin"
+    return "user" in session and session.get("role") in ("admin", "superadmin")
 
 def get_rag_filter(username, org_id=None):
     """Constructs a ChromaDB filter to restrict AI search based on category permissions and org.
@@ -521,7 +621,7 @@ def validate_uploaded_file(file_stream, filename) -> tuple[bool, str]:
     except Exception as e:
         return False, f"ไม่สามารถอ่านข้อมูลโครงสร้างไฟล์ได้: {e}"
 
-    if not header and ext not in ['.txt', '.md', '.csv']:
+    if not header:
         return False, "ไฟล์ว่างเปล่า (0 Bytes)"
 
     # 🛡️ Global Executable & Script Signature Blocker (even if renamed to allowed extension)

@@ -309,8 +309,13 @@ async function loadGoogleFoldersForGroupRegister() {
   const select = document.getElementById('lg-group-folder');
   if (!select) return;
   try {
-    const res = await fetch('/api/google/folders');
-    const data = await res.json();
+    // เปิดหน้า LINE กลุ่มหนึ่งครั้งเรียกฟังก์ชันนี้ 3–4 รอบ (เมนู/showView/แท็บ) → ใช้ผลเดิมภายใน 60 วินาที
+    if (!window._driveFoldersP || Date.now() - window._driveFoldersT > 60000) {
+      window._driveFoldersT = Date.now();
+      window._driveFoldersP = fetch('/api/google/folders').then(r => r.json()).catch(e => { window._driveFoldersP = null; throw e; });
+    }
+    const data = await window._driveFoldersP;
+    if (data && !data.ok) window._driveFoldersP = null;
     if (data.ok && Array.isArray(data.folders)) {
       _orgDriveFoldersCache = data.folders;
       select.innerHTML = '<option value="">-- ถามเลือกโฟลเดอร์บน LINE ทุกครั้ง --</option>';
@@ -377,7 +382,7 @@ async function loadLineGroups(force = false) {
               ${displayName}${nameSource}
             </p>
             ${g.line_real_name && g.group_name && g.line_real_name !== g.group_name
-              ? `<p class="text-[10px] text-surface-400 mt-0.5">ชื่อที่ตั้งเอง: ${g.group_name}</p>`
+              ? `<p class="text-[10px] text-surface-400 mt-0.5">ชื่อที่ตั้งเอง: ${escHtml(g.group_name)}</p>`
               : ''}
             <p class="text-[10px] font-mono text-surface-400 mt-0.5 truncate">${g.group_id}</p>
             ${folderTag}

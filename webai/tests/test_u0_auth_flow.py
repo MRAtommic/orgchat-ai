@@ -112,8 +112,8 @@ class TestU0AuthFlow(BaseTestCase):
         self.assertEqual(claims.get("email"), "mxmm2547@gmail.com")
         self.assertEqual(claims.get("sub"), "U1234567890")
 
-    def test_line_login_matches_existing_account_by_email(self):
-        """Verify LINE login callback matches existing user account by email and binds new line_user_id."""
+    def test_line_login_does_not_autolink_existing_account_by_email(self):
+        """LINE login must NOT auto-link/log in to an existing account just because the LINE email matches."""
         from unittest.mock import patch, MagicMock
         from routes.auth import _store_oauth_state
         import base64
@@ -164,16 +164,15 @@ class TestU0AuthFlow(BaseTestCase):
             mock_http_fn.return_value = mock_session
 
             res = self.client.get(f"/api/line/login-callback?code=mock_code&state={state_key}")
-            self.assertEqual(res.status_code, 302)
+            # นโยบายใหม่: ห้ามผูก LINE กับบัญชีเดิมอัตโนมัติด้วยอีเมล (กันสวมสิทธิ์ เช่นอีเมลของ superadmin)
+            self.assertEqual(res.status_code, 403)
 
-            # 4. Assert session is logged into the existing account
+            # 4. Assert NO session was created for the existing account
             with self.client.session_transaction() as sess:
-                self.assertEqual(sess.get("user"), uname)
-                self.assertEqual(sess.get("role"), "superadmin")
+                self.assertIsNone(sess.get("user"))
 
-            # 5. Assert database linked the LINE ID to existing account
-            linked_user = database.get_username_by_line_id(newline_id)
-            self.assertEqual(linked_user, uname)
+            # 5. Assert database did NOT link the LINE ID to the existing account
+            self.assertIsNone(database.get_username_by_line_id(newline_id))
 
 
     def test_login_with_username_or_email_accesses_same_account(self):

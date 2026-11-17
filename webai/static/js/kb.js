@@ -640,7 +640,7 @@ function renderSearchList(results) {
         </div>
         <div class="flex-1 min-w-0">
           <div class="font-bold text-xs truncate uppercase tracking-tight">${highlightText(r.file_name || r.source, searchTerms)}</div>
-          <div class="text-[9px] text-surface-400 font-bold uppercase">${r.location || 'Document'} • SCORE: ${(r.score * 100).toFixed(0)}%</div>
+          <div class="text-[9px] text-surface-400 font-bold uppercase">${escHtml(r.location || 'Document')} • SCORE: ${(r.score * 100).toFixed(0)}%</div>
         </div>
       </div>
       <div class="text-[13px] text-surface-600 dark:text-surface-300 leading-relaxed bg-surface-50 dark:bg-surface-800/50 p-3 rounded-xl border border-surface-100 dark:border-surface-700 italic">
@@ -763,7 +763,7 @@ function _injectGhostCards(files) {
             : `<i data-lucide="${icon}" class="w-6 h-6 text-brand-400"></i>`}
         </div>
         <div class="min-w-0 flex-1 pt-0.5">
-          <h4 class="font-black text-sm text-surface-900 dark:text-white truncate tracking-tight mb-1" title="${f.name}">${f.name}</h4>
+          <h4 class="font-black text-sm text-surface-900 dark:text-white truncate tracking-tight mb-1" title="${escHtml(f.name)}">${escHtml(f.name)}</h4>
           <span class="text-[9px] font-bold text-brand-400">${formatSize(f.size)}</span>
         </div>
       </div>
@@ -792,14 +792,28 @@ function _xhrUpload(form, onProgress) {
       if (e.lengthComputable) onProgress(Math.round(e.loaded / e.total * 85));
     };
     xhr.onload = () => {
+      let resJson = null;
+      try { resJson = JSON.parse(xhr.responseText); } catch (_) {}
       if (xhr.status >= 200 && xhr.status < 300) {
-        try { resolve(JSON.parse(xhr.responseText)); }
-        catch { reject(new Error('Invalid JSON')); }
+        if (resJson) resolve(resJson);
+        else reject(new Error('รูปแบบการตอบกลับจากเซิร์ฟเวอร์ไม่ถูกต้อง'));
       } else {
-        reject(new Error(`HTTP ${xhr.status}`));
+        let msg = '';
+        if (xhr.status === 429) {
+          msg = 'อัปโหลดไฟล์ถี่เกินไป กรุณารอ 1 นาทีแล้วลองใหม่อีกครั้ง (Rate limit)';
+        } else if (resJson && (resJson.message || resJson.error)) {
+          msg = resJson.message || resJson.error;
+        } else if (xhr.status === 413) {
+          msg = 'ขนาดไฟล์รวมใหญ่เกินกำหนด (จำกัดสูงสุด 50MB)';
+        } else if (xhr.status === 403) {
+          msg = 'คุณไม่มีสิทธิ์ในการอัปโหลดไฟล์ หรือโควต้าไฟล์คลังความรู้เต็ม';
+        } else {
+          msg = `อัปโหลดไม่สำเร็จ (รหัส HTTP ${xhr.status})`;
+        }
+        reject(new Error(msg));
       }
     };
-    xhr.onerror = () => reject(new Error('Network error'));
+    xhr.onerror = () => reject(new Error('เกิดข้อผิดพลาดในการเชื่อมต่อเครือข่าย กรุณาตรวจสอบสัญญาณเน็ต'));
     // ส่ง CSRF/session cookie อัตโนมัติ (same-origin XHR)
     xhr.withCredentials = true;
     if (window._csrfToken) {
@@ -811,9 +825,9 @@ function _xhrUpload(form, onProgress) {
 
 async function handleFiles(files) {
   if (!files.length) return;
-  const allowed = ['pdf', 'csv', 'txt', 'md', 'png', 'jpg', 'jpeg', 'bmp', 'webp', 'docx', 'xlsx'];
+  const allowed = ['pdf', 'csv', 'txt', 'md', 'png', 'jpg', 'jpeg', 'bmp', 'webp', 'docx', 'xlsx', 'pptx', 'ppt'];
   const valid = files.filter(f => allowed.includes(f.name.split('.').pop().toLowerCase()));
-  if (!valid.length) { toast('รูปแบบไฟล์ไม่ถูกต้อง (รองรับ PDF, Excel, Word, Text, รูปภาพ)', 'error'); return; }
+  if (!valid.length) { toast('รูปแบบไฟล์ไม่ถูกต้อง (รองรับ PDF, Excel, Word, PowerPoint, Text, รูปภาพ)', 'error'); return; }
 
   const MAX_SIZE = 50 * 1024 * 1024;
   const oversize = valid.filter(f => f.size > MAX_SIZE);
@@ -861,8 +875,12 @@ async function handleFiles(files) {
 
       if (duplicates.length > 0) {
         toast(`⚠️ ไฟล์ซ้ำ ${duplicates.length} ไฟล์: ${duplicates.map(r => r.file).join(', ')}`, 'warning');
-        // remove ghost ของไฟล์ซ้ำทันที
-        duplicates.forEach((_, i) => ghosts[i] && ghosts[i].el.remove());
+        // remove ghost ของไฟล์ซ้ำ โดยเทียบชื่อไฟล์
+        const dupNames = new Set(duplicates.map(d => d.file));
+        ghosts.forEach(g => {
+          const cardName = g.el.querySelector('h4')?.textContent?.trim();
+          if (dupNames.has(cardName)) g.el.remove();
+        });
       }
       if (failures.length > 0) {
         toast(`❌ ผิดพลาด ${failures.length} ไฟล์: ${failures[0].error || failures[0].file}`, 'error');
@@ -881,7 +899,7 @@ async function handleFiles(files) {
     }
   } catch (e) {
     _removeGhosts(ghosts);
-    toast('ข้อผิดพลาดในการเชื่อมต่อ', 'error');
+    toast(e.message || 'ข้อผิดพลาดในการเชื่อมต่อ', 'error');
   } finally {
     updateProgress(100, 'เสร็จสมบูรณ์');
     setTimeout(() => {
@@ -895,7 +913,7 @@ async function handleFiles(files) {
 // ─── File List ────────────────────────────────
 const FILE_LUCIDE = {
   pdf: 'file-text', csv: 'table-2', txt: 'file-code', md: 'file-code',
-  docx: 'file-text', xlsx: 'table-2',
+  docx: 'file-text', xlsx: 'table-2', pptx: 'presentation', ppt: 'presentation',
   png: 'image', jpg: 'image', jpeg: 'image', bmp: 'image', webp: 'image',
   web: 'globe', url: 'globe', html: 'globe',
 };
@@ -906,13 +924,31 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-async function loadFiles() {
+let _kbPollTimer = null;
+let _kbPollCount = 0;
+
+async function loadFiles(isPoll = false) {
   try {
     const data = await apiFetch('/api/files');
     state.files = data.files || []; // Useful for filtering
     renderFileList(state.files);
     await loadCategories();
     if (typeof initDataViz === 'function') initDataViz();
+
+    // ── Auto-poll: หากมีไฟล์ใดกำลังประมวลผล (processing) ให้วนดึงข้อมูลใหม่ทุก 3 วินาที ──
+    const hasProcessing = state.files.some(f => f.status === 'processing');
+    clearTimeout(_kbPollTimer);
+    if (hasProcessing) {
+      _kbPollCount++;
+      if (_kbPollCount < 40) { // วนเช็คสูงสุด ~2 นาที (40 ครั้ง x 3 วินาที)
+        _kbPollTimer = setTimeout(() => loadFiles(true), 3000);
+      }
+    } else {
+      if (isPoll && _kbPollCount > 0) {
+        toast('🎉 ไฟล์ในคลังข้อมูลประมวลผลเสร็จสมบูรณ์ พร้อมใช้งานแล้ว', 'success');
+      }
+      _kbPollCount = 0;
+    }
   } catch (e) {
     console.error(e);
   }
@@ -987,7 +1023,7 @@ async function loadCategories() {
       if (subCat) {
         subCat.innerHTML = '<option value="all">📚 ทุกหมวดหมู่</option>' +
           '<option value="unassigned">❔ ยังไม่ได้ระบุ</option>' +
-          state.kbCategories.map(c => `<option value="${c.id}">📁 ${c.name}</option>`).join('');
+          state.kbCategories.map(c => `<option value="${c.id}">📁 ${escHtml(c.name)}</option>`).join('');
       }
 
       // Populate bulk move dropdown from categories
@@ -995,7 +1031,7 @@ async function loadCategories() {
       if (bulkMove) {
         bulkMove.innerHTML = '<option value="">ย้ายหมวดหมู่...</option>' +
           '<option value="unassigned">❔ ยังไม่ได้ระบุ</option>' +
-          state.kbCategories.map(c => `<option value="${c.id}">📁 ${c.name}</option>`).join('');
+          state.kbCategories.map(c => `<option value="${c.id}">📁 ${escHtml(c.name)}</option>`).join('');
       }
     }
   } catch (e) { console.error('Failed to load categories:', e); }
@@ -1022,9 +1058,9 @@ function renderCategoryUI() {
     <div class="h-5 w-px bg-surface-200 dark:bg-surface-800 md:hidden my-auto shrink-0 mx-0.5"></div>
     ${state.kbCategories.map(c => `
       <div class="kb-cat-row group flex items-center justify-between drop-zone shrink-0 w-full min-w-0 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800/60 transition-all relative overflow-hidden" data-id="${c.id}">
-        <button class="kb-cat-item flex-1 min-w-0 pr-1 text-left" data-id="${c.id}" title="${c.name}">
+        <button class="kb-cat-item flex-1 min-w-0 pr-1 text-left" data-id="${c.id}" title="${escHtml(c.name)}">
           <i data-lucide="${c.visibility === 'private' ? 'lock' : (c.visibility === 'restricted' ? 'users' : 'folder')}" class="w-3.5 h-3.5 shrink-0 ${c.visibility === 'private' ? 'text-amber-500' : (c.visibility === 'restricted' ? 'text-brand-500' : '')}"></i>
-          <span class="truncate block flex-1 min-w-0 text-ellipsis">${c.name}</span>
+          <span class="truncate block flex-1 min-w-0 text-ellipsis">${escHtml(c.name)}</span>
         </button>
         <div class="kb-cat-actions flex items-center shrink-0 ml-auto pr-1.5 opacity-85 group-hover:opacity-100 transition-opacity z-10 gap-0.5">
           ${(state.isAdmin || state.isOrgAdmin || state.isSuperAdmin || (typeof canEditKB === 'function' && canEditKB()) || c.created_by === state.user) ? `
@@ -1385,8 +1421,11 @@ function renderFileList(files) {
               ` : ''}
             </div>
             <div class="flex items-center gap-2">
-               <span class="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-purple-50 dark:bg-purple-900/20 text-purple-600 uppercase">${f.department || 'General'}</span>
+               <span class="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-purple-50 dark:bg-purple-900/20 text-purple-600 uppercase">${escHtml(f.department || 'General')}</span>
                <span class="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 uppercase truncate max-w-[80px]">${catName}</span>
+               ${f.has_placeholders ? `
+                 <span class="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/40 text-amber-600 border border-amber-200 dark:border-amber-800 uppercase" title="ตรวจพบข้อความตัวอย่าง เช่น 02-XXX-XXXX หรือ [ใส่ข้อมูล]">⚠️ มีข้อความตัวอย่าง</span>
+               ` : ''}
             </div>
           </div>
         </div>
@@ -1704,10 +1743,10 @@ function renderSearchResults(results, query = '') {
                   </div>
                   <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2 mb-1">
-                      <span class="text-[10px] font-bold text-surface-500 uppercase">${r.author || ''}</span>
+                      <span class="text-[10px] font-bold text-surface-500 uppercase">${escHtml(r.author || '')}</span>
                       <span class="text-[10px] text-surface-300">•</span>
                       <span class="text-[10px] text-surface-400">${(r.timestamp || '').substring(0, 16)}</span>
-                      ${r.category ? `<span class="text-[9px] font-bold px-1.5 py-0.5 bg-surface-100 dark:bg-surface-800 rounded text-surface-500 uppercase">${r.category}</span>` : ''}
+                      ${r.category ? `<span class="text-[9px] font-bold px-1.5 py-0.5 bg-surface-100 dark:bg-surface-800 rounded text-surface-500 uppercase">${escHtml(r.category)}</span>` : ''}
                     </div>
                     <div class="text-sm text-surface-700 dark:text-surface-300 leading-relaxed line-clamp-2">
                       ${highlight(r.text || '')}
@@ -1812,7 +1851,7 @@ function loadCrawlerCategories() {
   if (!sel) return;
   const cats = state.categories || [];
   sel.innerHTML = '<option value="">หมวดหมู่ทั่วไป (Default)</option>' +
-    cats.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    cats.map(c => `<option value="${c.id}">${escHtml(c.name)}</option>`).join('');
 }
 
 async function handleCrawlerPreview() {
@@ -1982,8 +2021,8 @@ async function loadCrawledWebsitesList() {
           </div>
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-2">
-              <h5 class="text-xs font-bold text-surface-900 dark:text-white truncate" title="${f.name}">${f.name}</h5>
-              <span class="px-2 py-0.5 rounded-md bg-purple-50 dark:bg-purple-900/20 text-purple-600 text-[9px] font-black uppercase">${f.department || 'General'}</span>
+              <h5 class="text-xs font-bold text-surface-900 dark:text-white truncate" title="${escHtml(f.name)}">${escHtml(f.name)}</h5>
+              <span class="px-2 py-0.5 rounded-md bg-purple-50 dark:bg-purple-900/20 text-purple-600 text-[9px] font-black uppercase">${escHtml(f.department || 'General')}</span>
               <span class="px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 text-[9px] font-black uppercase">${catName}</span>
             </div>
             <a href="${f.url || f.path}" target="_blank" class="text-[11px] text-brand-600 hover:underline flex items-center gap-1 mt-0.5 truncate">
@@ -2005,7 +2044,7 @@ async function loadCrawledWebsitesList() {
             class="px-3 py-1.5 rounded-xl bg-surface-50 dark:bg-surface-800 hover:bg-brand-50 hover:text-brand-600 text-surface-600 dark:text-surface-300 text-[11px] font-bold border border-surface-200 dark:border-surface-700 transition flex items-center gap-1.5">
             <i data-lucide="refresh-cw" class="w-3 h-3"></i> อัปเดตข้อมูล
           </button>
-          <button onclick="handleDeleteCrawledWebsite('${f.file_id}', '${f.name}')"
+          <button onclick="handleDeleteCrawledWebsite('${_jsq(f.file_id)}', '${_jsq(f.name)}')"
             class="p-1.5 rounded-xl hover:bg-rose-50 text-surface-400 hover:text-rose-600 transition">
             <i data-lucide="trash-2" class="w-4 h-4"></i>
           </button>

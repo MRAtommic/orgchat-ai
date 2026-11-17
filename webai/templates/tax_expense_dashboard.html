@@ -1019,6 +1019,48 @@
     </div>
 
     <script>
+        // ─── Thai Tax ID (13-Digit Checksum) Validation ───────
+        function isValidThaiTaxId(idStr) {
+            if (!idStr || typeof idStr !== 'string') return false;
+            const clean = idStr.replace(/\D/g, '');
+            if (clean.length !== 13) return false;
+            let sum = 0;
+            for (let i = 0; i < 12; i++) {
+                sum += parseInt(clean.charAt(i), 10) * (13 - i);
+            }
+            const checkDigit = (11 - (sum % 11)) % 10;
+            return checkDigit === parseInt(clean.charAt(12), 10);
+        }
+
+        function validateTaxIdLive(val) {
+            const badge = document.getElementById('taxIdBadge');
+            if (!badge) return;
+            const clean = (val || '').replace(/\D/g, '');
+            if (!clean) {
+                badge.classList.add('hidden');
+                badge.textContent = '';
+                return;
+            }
+            badge.classList.remove('hidden');
+            if (clean.length < 13) {
+                badge.className = 'mt-1.5 text-[10px] font-semibold text-amber-500';
+                badge.textContent = `ระบุแล้ว ${clean.length}/13 หลัก`;
+            } else if (clean.length === 13) {
+                if (isValidThaiTaxId(clean)) {
+                    badge.className = 'mt-1.5 text-[10px] font-semibold text-emerald-600';
+                    badge.textContent = '✓ เลขประจำตัวผู้เสียภาษีถูกต้อง';
+                } else {
+                    badge.className = 'mt-1.5 text-[10px] font-semibold text-rose-500';
+                    badge.textContent = '✗ เลขประจำตัวผู้เสียภาษีไม่ถูกต้อง (Check digit ไม่ผ่าน)';
+                }
+            } else {
+                badge.className = 'mt-1.5 text-[10px] font-semibold text-rose-500';
+                badge.textContent = '✗ เกิน 13 หลัก';
+            }
+        }
+        window.validateTaxIdLive = validateTaxIdLive;
+        window.isValidThaiTaxId = isValidThaiTaxId;
+
         // ─── State ───────────────────────────────────────────
         let globalSheetsList = [];
         let unclearRows = [];

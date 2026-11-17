@@ -57,3 +57,7 @@ class BaseTestCase(unittest.TestCase):
 
     def setUp(self):
         pass
+
+    def test_isolated_db_environment(self):
+        """Smoke test verifying that the isolated temporary database exists and initialized."""
+        self.assertTrue(os.path.exists(self.temp_db_path))

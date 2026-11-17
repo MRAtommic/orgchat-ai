@@ -148,7 +148,7 @@
                           <div class="flex-1">
                               <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">แพลนปัจจุบัน</p>
                               <div class="flex items-center gap-2 flex-wrap">
-                                  <span class="text-3xl font-black text-slate-900 dark:text-white">${cfg.label}</span>
+                                  <span class="text-3xl font-black text-slate-900 dark:text-white">${escHtml(cfg.label)}</span>
                                   <span class="plan-badge ${cfg.badge}">${cfg.labelTh}</span>
                                   ${expiredBadge}
                               </div>
@@ -273,7 +273,7 @@
                   if (d.is_org_admin) {
                       const btnClass = key === 'business' ? 'plan-btn-indigo' : 'plan-btn-green';
                       btnHtml = `<button class="plan-btn ${btnClass} justify-center w-full" onclick="planOpenPayModal('${key}')">
-                          <i data-lucide="zap" class="w-4 h-4"></i> อัปเกรดเป็น ${cfg.label}
+                          <i data-lucide="zap" class="w-4 h-4"></i> อัปเกรดเป็น ${escHtml(cfg.label)}
                       </button>`;
                   } else {
                       btnHtml = `<div class="plan-btn plan-btn-gray justify-center w-full pointer-events-none opacity-50 text-xs">
@@ -294,7 +294,7 @@
                   <div>
                       <div class="flex items-center gap-2 mb-1 flex-wrap">
                           <i data-lucide="${cfg.icon}" class="w-5 h-5" style="color:${cfg.color}"></i>
-                          <span class="font-extrabold text-slate-900 dark:text-white text-lg">${cfg.label}</span>
+                          <span class="font-extrabold text-slate-900 dark:text-white text-lg">${escHtml(cfg.label)}</span>
                           ${curBadge}
                           ${popularTag}
                       </div>
@@ -365,7 +365,7 @@
               <div class="bg-slate-50 dark:bg-surface-950 border border-slate-100 dark:border-surface-800/80 rounded-2xl p-4 mb-2">
                   <div class="flex items-center gap-3 mb-1">
                       <i data-lucide="${cfg.icon}" class="w-5 h-5" style="color:${cfg.color}"></i>
-                      <span class="font-extrabold text-slate-900 dark:text-white text-lg">อัปเกรดเป็น ${cfg.label}</span>
+                      <span class="font-extrabold text-slate-900 dark:text-white text-lg">อัปเกรดเป็น ${escHtml(cfg.label)}</span>
                   </div>
                   <p class="text-2xl font-black text-slate-900 dark:text-white">
                       ฿${cfg.price.toLocaleString()}

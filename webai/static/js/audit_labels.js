@@ -29,10 +29,27 @@
     danger: 'bg-rose-500/10 text-rose-600 border border-rose-500/20',
     none: 'bg-surface-100 text-surface-700 dark:bg-surface-800 dark:text-surface-300',
   };
+  // บันทึกจริงส่วนใหญ่เป็นประโยคอังกฤษอิสระ (ไม่ใช่รหัส) → แปลตามรูปแบบประโยค
+  const PATTERNS = [
+    [/^logged in via line login sso|^simulated line login/i, ['🔑', 'เข้าสู่ระบบด้วย LINE', 'ok']],
+    [/^user_login|^login successful|^logged in/i, ['🔑', 'เข้าสู่ระบบ', 'ok']],
+    [/^new post created/i, ['📝', 'สร้างโพสต์ในฟีด', 'info']],
+    [/^post deleted/i, ['🗑️', 'ลบโพสต์', 'warn']],
+    [/^reprocessed file/i, ['🔄', 'ประมวลผลไฟล์ในคลังความรู้ใหม่', 'info']],
+    [/^created department/i, ['🏢', 'สร้างแผนก', 'info']],
+    [/^updated department/i, ['🏢', 'แก้ไขแผนก', 'info']],
+    [/^deleted department/i, ['🏢', 'ลบแผนก', 'danger']],
+    [/^permissions updated/i, ['🔐', 'ปรับสิทธิ์ผู้ใช้', 'purple']],
+    [/^updated kb category/i, ['🏷️', 'แก้ไขหมวดหมู่คลังความรู้', 'purple']],
+    [/^updated schedule/i, ['📅', 'แก้ไขนัดหมาย', 'info']],
+    [/^\[superadmin\] deleted user/i, ['🗑️', 'ผู้ดูแลแพลตฟอร์มลบผู้ใช้', 'danger']],
+    [/^automated master qc/i, ['🧪', 'การตรวจคุณภาพอัตโนมัติ', 'none']],
+  ];
   // คืน {text, cls}  (text ปลอดภัยสำหรับ textContent; ถ้าใส่ innerHTML ต้อง esc เอง)
   window.auditActionInfo = function (code) {
     const c = String(code || '');
-    const m = MAP[c];
+    let m = MAP[c];
+    if (!m) { for (const [rx, v] of PATTERNS) { if (rx.test(c)) { m = v; break; } } }
     if (m) return { text: m[0] + ' ' + m[1], cls: TONE[m[2]] };
     let tone = 'none';
     if (/DELETE|OFFBOARD|BLOCK|ATTACK|INJECTION/.test(c)) tone = 'danger';

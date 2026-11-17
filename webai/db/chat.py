@@ -113,15 +113,51 @@ def get_user_status(username):
         print(f"[ERROR] get_user_status: {e}")
         return {"username": username, "is_online": False}
 
-def get_online_users():
-    """Get list of all online users."""
+PRESENCE_TTL_SECONDS = 90   # ไม่มี heartbeat เกินนี้ = ถือว่าออฟไลน์ (แก้ปัญหาค้างออนไลน์หลังปิดแท็บ/เน็ตหลุด/เซิร์ฟเวอร์รีสตาร์ต)
+
+
+def touch_user(username, room=None):
+    """Heartbeat: refresh last_activity (and mark online). Cheap single UPDATE."""
     try:
         conn = _get_conn()
-        cursor = conn.cursor()
-        cursor.execute("SELECT username, current_room, typing_in_room FROM user_status WHERE is_online = 1")
-        rows = cursor.fetchall()
-        conn.close()
-        
+        try:
+            cur = conn.execute("UPDATE user_status SET is_online = 1, last_activity = CURRENT_TIMESTAMP WHERE username = ?", (username,))
+            if cur.rowcount == 0:
+                conn.execute("INSERT OR REPLACE INTO user_status (username, is_online, current_room, last_activity, updated_at) "
+                             "VALUES (?, 1, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)", (username, room))
+            conn.commit()
+        finally:
+            conn.close()
+        return True
+    except Exception as e:
+        print(f"[ERROR] touch_user: {e}")
+        return False
+
+
+def reset_all_offline():
+    """Called at startup: nobody can be connected to a freshly started server."""
+    try:
+        conn = _get_conn()
+        try:
+            conn.execute("UPDATE user_status SET is_online = 0 WHERE is_online = 1")
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"[ERROR] reset_all_offline: {e}")
+
+
+def get_online_users():
+    """Users that are online AND had a heartbeat within PRESENCE_TTL_SECONDS."""
+    try:
+        conn = _get_conn()
+        try:
+            rows = conn.execute(
+                "SELECT username, current_room, typing_in_room FROM user_status "
+                "WHERE is_online = 1 AND last_activity >= datetime('now', ?)",
+                (f"-{PRESENCE_TTL_SECONDS} seconds",)).fetchall()
+        finally:
+            conn.close()
         return [{"username": r[0], "current_room": r[1], "typing_in_room": r[2]} for r in rows]
     except Exception as e:
         print(f"[ERROR] get_online_users: {e}")
@@ -490,11 +526,15 @@ def save_feedback(username="Admin", feedback_val=0):
     conn.commit()
     conn.close()
 
-def update_schedule_status(sched_id, status, username="Admin"):
-    """Update the status of a schedule item for Kanban."""
+def update_schedule_status(sched_id, status, username="Admin", org_id=None):
+    """Update the status of a schedule item for Kanban (จำกัดเฉพาะองค์กรของผู้ใช้ — กันแก้งานสาธารณะของอีกองค์กร)."""
     conn = _get_conn()
     cursor = conn.cursor()
-    cursor.execute("UPDATE schedules SET status = ? WHERE id = ? AND (username = ? OR is_public = 1)", (status, sched_id, username))
+    if org_id is not None:
+        cursor.execute("UPDATE schedules SET status = ? WHERE id = ? AND (username = ? OR is_public = 1) AND (organization_id = ? OR organization_id IS NULL)",
+                       (status, sched_id, username, org_id))
+    else:
+        cursor.execute("UPDATE schedules SET status = ? WHERE id = ? AND (username = ? OR is_public = 1)", (status, sched_id, username))
     ok = cursor.rowcount > 0
     conn.commit()
     conn.close()
@@ -722,6 +762,8 @@ def get_dm_history(user1, user2, limit=50, org_id=None):
     } for r in rows]
 
 def create_room(name, owner, members=None, org_id=1):
+    from db.sanitize import clean_label
+    name = clean_label(name, 80) or "ห้องแชท"
     conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("INSERT INTO chat_rooms (name, owner, organization_id) VALUES (?, ?, ?)", (name, owner, org_id))
@@ -807,6 +849,8 @@ def link_line_user(username, line_user_id, is_login=False):
         print(f"Error linking LINE user: {e}")
         return False
 
+link_user_line_id = link_line_user
+
 def unlink_line_user(username):
     """Unlink LINE user IDs from an OrgChat username."""
     try:
@@ -839,18 +883,25 @@ def get_line_id_by_username(username):
         print(f"Error getting LINE ID for {username}: {e}")
         return None
 
-def get_username_by_line_id(line_user_id):
+def get_username_by_line_id(line_user_id, include_inactive=False):
     """Get the OrgChat username for a specific LINE user ID (matches bot or login ID)."""
     try:
         conn = _get_conn()
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT up.username 
-            FROM user_profiles up
-            LEFT JOIN user_settings s ON up.username = s.username
-            WHERE (up.line_user_id = ? OR up.line_login_id = ?) 
-              AND COALESCE(s.is_active, 1) = 1
-        """, (line_user_id, line_user_id))
+        if include_inactive:
+            cursor.execute("""
+                SELECT up.username 
+                FROM user_profiles up
+                WHERE up.line_user_id = ? OR up.line_login_id = ?
+            """, (line_user_id, line_user_id))
+        else:
+            cursor.execute("""
+                SELECT up.username 
+                FROM user_profiles up
+                LEFT JOIN user_settings s ON up.username = s.username
+                WHERE (up.line_user_id = ? OR up.line_login_id = ?) 
+                  AND COALESCE(s.is_active, 1) = 1
+            """, (line_user_id, line_user_id))
         row = cursor.fetchone()
         conn.close()
         return row[0] if row else None
@@ -908,6 +959,8 @@ def update_group_profile(room_id, name=None, avatar_url=None):
     conn = _get_conn()
     cursor = conn.cursor()
     if name:
+        from db.sanitize import clean_label
+        name = clean_label(name, 80) or "ห้องแชท"
         cursor.execute("UPDATE chat_rooms SET name = ? WHERE id = ?", (name, room_id))
     if avatar_url:
         cursor.execute("UPDATE chat_rooms SET avatar_url = ? WHERE id = ?", (avatar_url, room_id))
@@ -1022,6 +1075,46 @@ def format_chat_message_preview(text: str, attachments_raw=None) -> str:
             
     return ""
 
+def is_room_member(room_id, username, org_id=None) -> bool:
+    """สมาชิกห้องนี้ไหม (เร็ว: 1 คำสั่ง ใช้ดัชนี) — เดิมเช็คด้วย get_rooms_for_user ซึ่งสแกนข้อความทั้งระบบ (ส่งข้อความในห้องช้า 630ms ที่ 100k ข้อความ)"""
+    conn = _get_conn()
+    try:
+        r = conn.execute(
+            "SELECT 1 FROM room_members rm JOIN chat_rooms r ON r.id = rm.room_id "
+            "WHERE rm.room_id = ? AND rm.username = ? COLLATE NOCASE AND (r.organization_id = ? OR r.organization_id IS NULL) LIMIT 1",
+            (int(room_id), username, org_id)).fetchone()
+        return bool(r)
+    finally:
+        conn.close()
+
+
+def is_room_member_any(room_id, username) -> bool:
+    """เป็นสมาชิกห้องนี้ไหม (ไม่สนองค์กร) — ใช้ตรวจสิทธิ์ก่อนให้ซ็อกเก็ตเข้าห้องเรียลไทม์"""
+    conn = _get_conn()
+    try:
+        return bool(conn.execute("SELECT 1 FROM room_members WHERE room_id = ? AND username = ? COLLATE NOCASE LIMIT 1", (int(room_id), username)).fetchone())
+    finally:
+        conn.close()
+
+
+def get_room_ids_for_user(username):
+    """รหัสห้องทั้งหมดที่ผู้ใช้เป็นสมาชิก (ใช้ให้ซ็อกเก็ตเข้าห้องเรียลไทม์ครบตั้งแต่เปิดแอป)"""
+    conn = _get_conn()
+    try:
+        return [r[0] for r in conn.execute("SELECT room_id FROM room_members WHERE username = ? COLLATE NOCASE", (username,)).fetchall()]
+    finally:
+        conn.close()
+
+
+def get_room_name(room_id):
+    conn = _get_conn()
+    try:
+        r = conn.execute("SELECT name FROM chat_rooms WHERE id = ?", (int(room_id),)).fetchone()
+        return r[0] if r else None
+    finally:
+        conn.close()
+
+
 def get_rooms_for_user(username, org_id=1):
     conn = _get_conn()
     cursor = conn.cursor()
@@ -1033,11 +1126,7 @@ def get_rooms_for_user(username, org_id=1):
                m.attachments as last_attachments
         FROM chat_rooms r
         JOIN room_members rm ON r.id = rm.room_id
-        LEFT JOIN (
-            SELECT room_id, text, attachments, timestamp, username,
-                   ROW_NUMBER() OVER (PARTITION BY room_id ORDER BY id DESC) as rn
-            FROM room_messages
-        ) m ON r.id = m.room_id AND m.rn = 1
+        LEFT JOIN room_messages m ON m.id = (SELECT MAX(id) FROM room_messages WHERE room_id = r.id)
         WHERE rm.username = ? COLLATE NOCASE
           AND (r.organization_id = ? OR r.organization_id IS NULL)
         ORDER BY COALESCE(m.timestamp, '1970-01-01') DESC
@@ -1053,16 +1142,16 @@ def get_rooms_for_user(username, org_id=1):
     
     # Recent DM contacts with their last message
     cursor.execute("""
-        SELECT contact, text as last_msg, timestamp as last_time, sender as last_sender, attachments as last_attachments
+        SELECT pm.contact, pmx.text as last_msg, pmx.timestamp as last_time, pmx.sender as last_sender, pmx.attachments as last_attachments
         FROM (
-            SELECT CASE WHEN sender = ? COLLATE NOCASE THEN recipient ELSE sender END as contact,
-                   text, attachments, timestamp, sender,
-                   ROW_NUMBER() OVER (PARTITION BY CASE WHEN sender = ? COLLATE NOCASE THEN recipient ELSE sender END ORDER BY id DESC) as rn
-            FROM private_messages
-            WHERE sender = ? COLLATE NOCASE OR recipient = ? COLLATE NOCASE
+            SELECT contact, MAX(mid) AS mid FROM (
+                SELECT recipient AS contact, id AS mid FROM private_messages WHERE sender = ? COLLATE NOCASE
+                UNION ALL
+                SELECT sender AS contact, id AS mid FROM private_messages WHERE recipient = ? COLLATE NOCASE
+            ) GROUP BY contact
         ) pm
-        WHERE rn = 1
-          AND (
+        JOIN private_messages pmx ON pmx.id = pm.mid
+        WHERE (
               pm.contact = 'AI-Assistant'
               OR EXISTS (
                   SELECT 1 FROM organization_members om1
@@ -1072,8 +1161,8 @@ def get_rooms_for_user(username, org_id=1):
                     AND om1.organization_id = ?
               )
           )
-        ORDER BY timestamp DESC
-    """, (username, username, username, username, username, org_id))
+        ORDER BY pmx.timestamp DESC
+    """, (username, username, username, org_id))
     
     contacts = []
     for c in cursor.fetchall():

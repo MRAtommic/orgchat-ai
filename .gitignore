@@ -102,3 +102,8 @@ webai/tools/healthcheck_state.json
 webai/chroma_db_fallback.*.json
 webai/chroma_db_fallback.json
 webai/chroma_db_fallback.corrupted*
+ 
+webai/chroma_db_fallback*.json*
+webai/test การทำงาน/
+webai/เอกสาร โปรจบ/
+*.stale

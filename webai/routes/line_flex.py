@@ -32,7 +32,7 @@ def clean_flex_payload(obj):
     else:
         return obj
 
-def create_magic_link_flex_bubble(magic_link_url):
+def create_magic_link_flex_bubble(magic_link_url, code=None):
     """Creates a high-fidelity luxury minimal LINE Flex Message for Magic Link account linking in a clean minimalist light style."""
     bubble = {
         "type": "bubble",
@@ -91,6 +91,19 @@ def create_magic_link_flex_bubble(magic_link_url):
                         }
                     ]
                 },
+                *([{
+                    "type": "box",
+                    "layout": "vertical",
+                    "margin": "lg",
+                    "paddingAll": "12px",
+                    "backgroundColor": "#F1F5F9",
+                    "cornerRadius": "8px",
+                    "contents": [
+                        {"type": "text", "text": "หรือพิมพ์รหัสนี้ในเว็บ", "size": "xs", "color": "#64748B", "align": "center"},
+                        {"type": "text", "text": code, "weight": "bold", "size": "xl", "align": "center", "color": "#0F172A", "margin": "sm"},
+                        {"type": "text", "text": "ตั้งค่า > การเชื่อมต่อ > เชื่อมต่อ LINE ส่วนตัว (ใช้ได้ 10 นาที)", "size": "xxs", "color": "#94A3B8", "align": "center", "wrap": True, "margin": "sm"},
+                    ],
+                }] if code else []),
                 {
                     "type": "text",
                     "text": "หมายเหตุ: ลิงก์นี้มีความปลอดภัยสูงและจะหมดอายุภายใน 10 นาทีค่ะ",
@@ -498,9 +511,22 @@ def create_morning_briefing_flex_bubble(org_name, date_str, meetings, leaves_tod
     }
     return clean_flex_payload(bubble)
 
-def create_onboarding_guide_flex_bubble(base_url, link_magic_url=None):
+def create_onboarding_guide_flex_bubble(base_url, link_magic_url=None, code=None):
     """Creates a welcome & onboarding guide Flex Bubble for newly joined users in LINE."""
     actions = []
+    if code:
+        actions.append({
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#EEF2FF",
+            "cornerRadius": "md",
+            "paddingAll": "10px",
+            "alignItems": "center",
+            "contents": [
+                {"type": "text", "text": "รหัสผูกบัญชีของคุณ (สำหรับกรอกบนเว็บ)", "size": "xxs", "color": "#6366F1", "weight": "bold"},
+                {"type": "text", "text": str(code), "size": "xl", "color": "#4338CA", "weight": "bold", "margin": "xs"}
+            ]
+        })
     if link_magic_url:
         actions.append({
             "type": "button",

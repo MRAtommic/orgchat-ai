@@ -1598,9 +1598,10 @@ def get_reactions(pid):
 @_limiter.limit("20 per minute; 60 per hour")
 def summarize_post_route(pid):
     post = database.get_post_by_id(pid)
-    if not post:
+    my_org = get_current_org_id()
+    if not post or (post.get("organization_id") is not None and my_org is not None and int(post["organization_id"]) != int(my_org)):
         return jsonify({"ok": False, "error": "Post not found"}), 404
-    
+
     content = post["content"]
     system_prompt = "ช่วยสรุปเนื้อหาสำคัญของโพสต์นี้ให้เป็นข้อความสั้นๆ ประมาณ 1-2 ประโยค ด้วยภาษาไทยที่กระชับและเข้าใจง่ายที่สุดค่ะ"
     

@@ -39,7 +39,7 @@ from routes.shared import (
     GOOGLE_AUTH_AVAILABLE, id_token, google_requests,
     _set_session_org, get_current_org_id,
     _get_gemini_api_key, _configure_gemini,
-    USERS,
+    USERS, get_client_ip,
 )
 
 logger = logging.getLogger("OrgChatAI.Auth")
@@ -443,17 +443,24 @@ def auth_google_callback():
     username = state_data.get("username") or session.get("user")
     if not username:
         return "<h1>กรุณาเข้าสู่ระบบก่อน</h1><p><a href='/'>กลับหน้าหลัก</a></p>", 401
+    if not database.user_exists(username):
+        return "<h1>ไม่พบผู้ใช้นี้ในระบบ</h1><p><a href='/'>กลับหน้าหลัก</a></p>", 404
 
     # Ensure session is restored/persisted so the user does not get logged out or blocked by loginOverlay
     session["user"] = username
-    user_info = database.get_user(username) or {}
-    session["role"] = user_info.get("role", "staff")
-    effective_org_id = state_data.get("org_id") or user_info.get("org_id") or 1
-    session["org_id"] = effective_org_id
-    if database.is_org_admin(effective_org_id, username):
-        session["org_role"] = "admin"
+    # (เดิมเรียก database.get_user ซึ่งไม่มีอยู่จริง → AttributeError ทุกครั้ง → ผู้ใช้เห็น JSON "internal_error" หลังกดอนุญาตที่ Google)
+    user_info = database.get_user_setting(username) or {}
+    session["role"] = user_info.get("role", "user")
+    effective_org_id = state_data.get("org_id") or session.get("org_id")
+    if not effective_org_id:
+        _set_session_org(username)               # หา org จริงของผู้ใช้ ไม่ใช้ org 1 เป็นค่าเริ่มต้น (กันข้ามตรวจโควตา/whitelist)
+        effective_org_id = session.get("org_id")
     else:
-        session["org_role"] = user_info.get("org_role", "member")
+        session["org_id"] = effective_org_id
+    if effective_org_id and database.is_org_admin(effective_org_id, username):
+        session["org_role"] = "admin"
+    elif effective_org_id:
+        session["org_role"] = session.get("org_role") or "member"
     try:
         session["session_version"] = database.get_user_session_version(username)
     except Exception:
@@ -519,6 +526,10 @@ def auth_google_callback():
             scope_label = "ส่วนตัว"
 
         GoogleWorkspaceManager.invalidate_user_cache(username)
+        if org_id:
+            GoogleWorkspaceManager.invalidate_org_cache(org_id)
+            google_manager.clear_auth_error(org_id)
+        google_manager.clear_auth_error()
 
         return_url = f"/?google_connected=1{target_hash}"
 
@@ -638,10 +649,14 @@ def auth_google_disconnect():
     scope = request.args.get("scope", "personal")
 
     if scope == "org":
+        # superadmin / admin ระดับระบบ / เจ้าหรือแอดมินขององค์กร ยกเลิกได้ (เดิมตรวจ role == "admin" เท่านั้น → superadmin และเจ้าขององค์กรถูกปฏิเสธ)
+        org_id = get_current_org_id() or session.get("org_id")
         user_role = session.get("role", "user")
-        if user_role != "admin":
+        is_allowed = user_role in ("admin", "superadmin") or bool(org_id and database.is_org_admin(org_id, username))
+        if not is_allowed:
             return jsonify({"ok": False, "error": "เฉพาะ Admin เท่านั้นที่ยกเลิกการเชื่อมต่อระดับบริษัทได้"}), 403
-        org_id = session.get("org_id", 1)
+        if not org_id:
+            return jsonify({"ok": False, "error": "ไม่พบองค์กรของคุณ"}), 400
         oauth2_service.disconnect_org(org_id)
         google_manager.set_context(username=None, org_id=org_id)
         return jsonify({"ok": True, "message": "ยกเลิกการเชื่อมต่อ Google ระดับบริษัทสำเร็จ"})
@@ -932,8 +947,61 @@ def render_success_page(username):
     """
 
 
+_MAGIC_GOOGLE_HTML = '''
+            <div id="gBtnWrap" style="display:flex;justify-content:center;margin:4px 0 6px;"></div>
+            <div id="gMsg" style="min-height:18px;text-align:center;font-size:13px;color:#fca5a5;margin-bottom:6px;"></div>
+            <div style="display:flex;align-items:center;gap:10px;margin:10px 0 14px;color:rgba(255,255,255,.35);font-size:12px;">
+              <span style="flex:1;height:1px;background:rgba(255,255,255,.12)"></span>หรือกรอกชื่อผู้ใช้/รหัสผ่าน<span style="flex:1;height:1px;background:rgba(255,255,255,.12)"></span>
+            </div>
+            <script src="https://accounts.google.com/gsi/client" async defer></script>
+            <script>
+            (function(){
+              var TOKEN = __TOKEN__, CID = __CID__, moved = false;
+              function post(cred){
+                var msg = document.getElementById('gMsg'); msg.style.color = '#fca5a5'; msg.textContent = '';
+                fetch('/line/link_magic/google', {method:'POST', headers:{'Content-Type':'application/json'},
+                  body: JSON.stringify({token: TOKEN, credential: cred, confirm_move: moved})})
+                .then(function(r){ return r.json().then(function(j){ return {s:r.status, j:j}; }); })
+                .then(function(x){
+                  if (x.j.ok) { document.open(); document.write(x.j.html); document.close(); return; }
+                  if (x.s === 409 && x.j.needs_confirm) {
+                    if (confirm('LINE นี้ผูกกับบัญชี "' + x.j.owner + '" อยู่แล้ว\\nต้องการย้ายมาผูกกับบัญชีนี้หรือไม่?\\n(บัญชีเดิมจะล็อกอินด้วย LINE นี้ไม่ได้อีก)')) { moved = true; post(cred); }
+                    return;
+                  }
+                  msg.textContent = x.j.error || 'ผูกบัญชีไม่สำเร็จ';
+                }).catch(function(){ msg.textContent = 'เกิดข้อผิดพลาด ลองใหม่อีกครั้ง'; });
+              }
+              function init(){
+                if (!window.google || !google.accounts) { return setTimeout(init, 300); }
+                google.accounts.id.initialize({client_id: CID, callback: function(r){ post(r.credential); }});
+                google.accounts.id.renderButton(document.getElementById('gBtnWrap'), {theme:'filled_black', size:'large', text:'continue_with', shape:'pill', width:300, locale:'th'});
+              }
+              init();
+            })();
+            </script>
+'''
+
+
 def render_login_page(token, error=None):
     error_html = f'<div class="error-msg">&#9888; {error}</div>' if error else ''
+    # ปุ่ม Google: ผู้ใช้ที่สมัครด้วย Google/LINE ไม่มีรหัสผ่านให้กรอก จึงต้องมีทางพิสูจน์ตัวตนอีกทาง (ตรวจ ID token ฝั่งเซิร์ฟเวอร์)
+    _gcid = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
+    google_html = ""
+    if _gcid and GOOGLE_AUTH_AVAILABLE:
+        google_html = _MAGIC_GOOGLE_HTML.replace("__TOKEN__", json.dumps(token or "")).replace("__CID__", json.dumps(_gcid))
+    
+    # ปุ่ม LINE Login สำหรับผู้ใช้งานที่สะดวกผ่าน LINE SSO
+    _line_cfg = _get_line_login_config()
+    line_html = ""
+    if _line_cfg and _line_cfg.get("channel_id") and _line_cfg.get("channel_id") != "2000000000":
+        line_html = f'''
+        <div style="margin-bottom: 14px;">
+            <a href="/login/line?link_token={token}" style="display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; background: #06C755; color: #FFFFFF; font-weight: 700; font-size: 14px; padding: 12px; border-radius: 12px; text-decoration: none; box-shadow: 0 4px 12px rgba(6, 199, 85, 0.25); transition: all 0.2s;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="#FFFFFF"><path d="M24 10.304c0-5.369-5.383-9.738-12-9.738-6.616 0-12 4.369-12 9.738 0 4.814 4.269 8.846 10.019 9.585.39.084.922.258 1.058.592.121.303.079.778.039 1.085l-.171 1.027c-.053.303-.242 1.186 1.039.645 1.281-.54 6.911-4.069 9.428-6.967 1.739-1.891 2.588-3.775 2.588-5.967z"/></svg>
+                <span>เข้าสู่ระบบด้วย LINE เพื่อผูกบัญชี</span>
+            </a>
+        </div>
+        '''
     return f"""
     <!DOCTYPE html>
     <html lang="th">
@@ -1090,7 +1158,11 @@ def render_login_page(token, error=None):
             <p>กรุณาลงชื่อเข้าใช้ด้วยบัญชี OrgChat AI ของคุณเพื่อผูกบัญชี LINE Bot และเข้าถึงระบบจัดเก็บเอกสารอัตโนมัติค่ะ</p>
             
             {error_html}
-            
+
+            {line_html}
+
+            {google_html}
+
             <form method="POST" action="/line/link_magic?token={token}">
                 <div class="form-group">
                     <label for="username">ชื่อผู้ใช้ (Username)</label>
@@ -1115,6 +1187,61 @@ def render_login_page(token, error=None):
     </body>
     </html>
     """
+
+
+@auth_bp.route("/line/link_magic/google", methods=["POST"])
+@_limiter.limit("10 per minute; 30 per hour")
+def line_link_magic_google():
+    """ผูก LINE บอท (จากโทเค็นในลิงก์) กับบัญชีที่พิสูจน์ตัวตนด้วย Google — สำหรับผู้ที่ไม่มีรหัสผ่านเว็บ จับคู่เฉพาะบัญชีที่มีอยู่แล้ว ไม่สร้างบัญชีใหม่"""
+    data = request.get_json(silent=True) or {}
+    token = (data.get("token") or "").strip()
+    credential = (data.get("credential") or "").strip()
+    confirm_move = bool(data.get("confirm_move"))
+    if not token or not credential:
+        return jsonify({"ok": False, "error": "ข้อมูลไม่ครบ"}), 400
+    link_data = database.line_link_get(token)
+    if link_data and time.time() > link_data.get("expires_at", 0):
+        database.line_link_delete(token)
+        link_data = None
+    if not link_data:
+        _mem = PENDING_LINE_LINKS.get(token)
+        if _mem and time.time() - _mem.get("timestamp", 0) <= 600:
+            link_data = {"line_user_id": _mem["line_user_id"]}
+    if not link_data:
+        return jsonify({"ok": False, "error": "ลิงก์หมดอายุหรือไม่ถูกต้อง กรุณาส่ง /link ให้บอทใหม่ค่ะ"}), 400
+    client_id = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
+    if not client_id or not GOOGLE_AUTH_AVAILABLE:
+        return jsonify({"ok": False, "error": "ระบบยังไม่เปิดใช้ล็อกอินด้วย Google"}), 503
+    try:
+        idinfo = id_token.verify_oauth2_token(credential, google_requests.Request(), client_id, clock_skew_in_seconds=60)
+    except Exception:
+        return jsonify({"ok": False, "error": "ตรวจสอบบัญชี Google ไม่สำเร็จ กรุณาลองใหม่"}), 400
+    email = (idinfo.get("email") or "").strip()
+    if not email or idinfo.get("email_verified") is False:
+        return jsonify({"ok": False, "error": "บัญชี Google นี้ไม่มีอีเมลที่ยืนยันแล้ว"}), 400
+    acc = database.get_user_by_email(email)
+    username = (acc or {}).get("username")
+    if not username:
+        return jsonify({"ok": False, "error": f"ไม่พบบัญชี OrgChat ที่ใช้อีเมล {email} — หากยังไม่มีบัญชี กดปุ่ม 'สมัครสมาชิกใหม่' ด้านล่างได้เลยค่ะ"}), 404
+    st = database.get_user_setting(username) or {}
+    if not st.get("is_active", 1):
+        return jsonify({"ok": False, "error": "บัญชีนี้ถูกระงับการใช้งาน"}), 403
+    m_ok, m_err = org_security.login_method_allowed(username, "google")
+    if not m_ok:
+        return jsonify({"ok": False, "error": m_err}), 403
+    line_user_id = link_data["line_user_id"]
+    other = _line_owner_conflict(username, line_user_id)
+    if other and not confirm_move:
+        return jsonify({"ok": False, "needs_confirm": True, "owner": other,
+                        "error": f"LINE นี้ผูกกับบัญชี {other} อยู่แล้ว"}), 409
+    if other:
+        database.log_event(f"Moved LINE account from '{other}' to '{username}' (confirmed via Google)", user=username, org_id=1)
+    if not database.link_line_user(username, line_user_id):
+        return jsonify({"ok": False, "error": "บันทึกไม่สำเร็จ"}), 500
+    database.line_link_delete_for_line_user(line_user_id)
+    PENDING_LINE_LINKS.pop(token, None)
+    database.log_event(f"Bound LINE bot ID via Google proof ({email})", user=username, org_id=1)
+    return jsonify({"ok": True, "html": render_success_page(username)})
 
 
 @auth_bp.route("/line/link_magic", methods=['GET', 'POST'])
@@ -1190,8 +1317,8 @@ def line_link_magic():
 @_limiter.limit("5 per minute; 20 per hour")
 def api_login():
     data = request.json or {}
-    username_raw = data.get("username", "").strip()
-    password = data.get("password", "")
+    username_raw = (data.get("username") or "").strip()
+    password = data.get("password") or ""
 
     if not username_raw or not password:
         return jsonify({"ok": False, "error": "กรุณากรอกชื่อผู้ใช้และรหัสผ่าน"}), 400
@@ -1224,7 +1351,7 @@ def api_login():
         }), 429
 
     # ตรวจสอบ IP จาก SQLite (persist ข้าม restart — ป้องกัน brute-force)
-    client_ip = request.remote_addr or "unknown"
+    client_ip = get_client_ip()
     if database.count_failed_attempts(client_ip) >= database._LOGIN_ATTEMPT_LIMIT:
         database.block_ip(client_ip, reason="Exceeded failed login attempts (Brute-Force Protection)", duration_minutes=60)
         return jsonify({"ok": False, "error": "IP นี้ถูกล็อคชั่วคราวเนื่องจากพยายามเข้าสู่ระบบผิดพลาดหลายครั้ง กรุณาลองใหม่ใน 1 ชั่วโมง"}), 429
@@ -1552,7 +1679,8 @@ def send_2fa_email_otp_api():
     
     ok, msg = send_2fa_email_otp(email, otp_code)
     if not ok:
-        return jsonify({"ok": False, "error": "ส่งอีเมลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง หรือกรอกรหัสจากแอป Authenticator / Backup Code แทน"}), 500
+        err_msg = f"ส่งอีเมลไม่สำเร็จ ({msg})" if msg else "ส่งอีเมลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง หรือกรอกรหัสจากแอป Authenticator / Backup Code แทน"
+        return jsonify({"ok": False, "error": err_msg}), 400
         
     masked_email = email[:2] + "***@" + email.split("@")[-1] if "@" in email else email
     return jsonify({"ok": True, "message": f"ส่งรหัส OTP ไปที่ {masked_email} เรียบร้อยแล้ว"})
@@ -1738,7 +1866,7 @@ def verify_2fa():
             
     if not valid:
         RedisManager.set_json(_att_key, _att + 1, expire=300)
-        database.record_login_attempt(request.remote_addr or "unknown", username, success=False)
+        database.record_login_attempt(get_client_ip(), username, success=False)
         return jsonify({"ok": False, "error": "รหัส 2FA หรือ Backup Code ไม่ถูกต้อง"}), 400
 
     # Clear pre-auth token
@@ -1746,7 +1874,7 @@ def verify_2fa():
     RedisManager.delete(_att_key)
     
     # Issue actual login session
-    client_ip = request.remote_addr or "unknown"
+    client_ip = get_client_ip()
     database.reset_failed_login(username)
     session.clear()
     session.permanent = True
@@ -2051,6 +2179,7 @@ def api_me():
         org_role = session.get("org_role")
         from routes.shared import is_superadmin_user
         is_sa = bool(is_superadmin_user(user) or (user_settings and user_settings.get("role") == "superadmin"))
+        ui_prefs = database.get_user_ui_prefs(user)
         return jsonify({
             "ok": True,
             "user": user,
@@ -2058,6 +2187,7 @@ def api_me():
             "org_id": org_id,
             "org_role": org_role,
             "is_superadmin": is_sa,
+            "ui_prefs": ui_prefs,
             "profile": {
                 **profile,
                 "role": user_settings.get("role"),
@@ -2066,7 +2196,8 @@ def api_me():
                 "is_active": user_settings.get("is_active", 1),
                 "active_plan": active_plan,
                 "plan_name": plan_name,
-                "org_name": org_name
+                "org_name": org_name,
+                "ui_prefs": ui_prefs
             }
         })
     return jsonify({"ok": False, "error": "Unauthorized"}), 401
@@ -2214,31 +2345,17 @@ def api_forgot_password():
     # Generate 6-digit OTP
     otp_code = database.create_reset_otp(target_email or f"{username}@orgchat.ai", username)
 
-    # Priority 1: Send via Email if target_email is available
+    # ส่ง "OTP ตัวเดียวกัน" ไปทุกช่องทางที่ใช้ได้ (อีเมล และ LINE ที่ผูกไว้) — เดิมส่งแยกกันและบางทางสร้างรหัสคนละตัว
+    # ผู้ใช้เลยสับสนว่าต้องใช้รหัสไหน ตอนนี้ทุกช่องทางได้รหัสเดียวกัน และรหัสเก่าของบัญชีเดียวกันถูกยกเลิกเสมอ
+    sent_channels = []
+
     if target_email:
         email_sent, email_err = send_reset_password_email(target_email, otp_code, reset_url)
         if email_sent:
-            return jsonify({
-                "ok": True,
-                "step": "otp_sent",
-                "email": target_email,
-                "message": f"ระบบได้ส่งรหัส OTP 6 หลักไปยังอีเมล {target_email} เรียบร้อยแล้วค่ะ"
-            })
-        logger.warning(f"[ForgotPassword] Email send failed: {email_err}")
+            sent_channels.append(f"อีเมล {target_email}")
+        else:
+            logger.warning(f"[ForgotPassword] Email send failed: {email_err}")
 
-    # Dev / Localhost fallback: allow testing password reset without SMTP blocking
-    host_check = request.host.lower()
-    is_local = "localhost" in host_check or "127.0.0.1" in host_check or os.environ.get("FLASK_ENV") == "development"
-    if is_local:
-        return jsonify({
-            "ok": True,
-            "step": "otp_sent",
-            "email": target_email or username,
-            "message": f"โหมดทดสอบระบบ (Local Dev): รหัส OTP คือ {otp_code} (หมดอายุใน 10 นาที)",
-            "dev_otp": otp_code
-        })
-
-    # Priority 2: Try to send via LINE DM if linked
     line_user_id = database.get_line_user_id_for_username(username)
     if line_user_id:
         try:
@@ -2256,16 +2373,33 @@ def api_forgot_password():
                 timeout=10,
             )
             if resp.status_code == 200:
-                return jsonify({
-                    "ok": True,
-                    "step": "otp_sent",
-                    "email": username,
-                    "message": "ระบบได้ส่งรหัส OTP 6 หลักไปยัง LINE ส่วนตัวของคุณเรียบร้อยแล้วค่ะ กรุณาตรวจสอบข้อความใน LINE"
-                })
+                sent_channels.append("LINE ส่วนตัว")
             else:
                 logger.error(f"[ForgotPassword] LINE push returned {resp.status_code}: {resp.text}")
         except Exception as _e:
             logger.warning(f"[ForgotPassword] LINE push failed: {_e}")
+
+    if sent_channels:
+        return jsonify({
+            "ok": True,
+            "step": "otp_sent",
+            "email": target_email or username,
+            "channels": sent_channels,
+            "message": "ระบบส่งรหัส OTP 6 หลักไปทาง " + " และ ".join(sent_channels)
+                       + (" (ทุกช่องทางเป็นรหัสเดียวกัน ใช้อันไหนก็ได้)" if len(sent_channels) > 1 else "") + " เรียบร้อยแล้วค่ะ"
+        })
+
+    # Dev / Localhost fallback: allow testing password reset without SMTP blocking
+    host_check = request.host.lower()
+    is_local = "localhost" in host_check or "127.0.0.1" in host_check or os.environ.get("FLASK_ENV") == "development"
+    if is_local:
+        return jsonify({
+            "ok": True,
+            "step": "otp_sent",
+            "email": target_email or username,
+            "message": f"โหมดทดสอบระบบ (Local Dev): รหัส OTP คือ {otp_code} (หมดอายุใน 10 นาที)",
+            "dev_otp": otp_code
+        })
 
     # Secure fallback: Never disclose OTP in response JSON
     return jsonify({
@@ -2533,12 +2667,12 @@ def create_org_for_user():
 @auth_bp.route("/api/org/signup", methods=["POST"])
 @_limiter.limit("5 per minute; 20 per hour")
 def org_signup():
-    data = request.get_json(force=True)
-    org_name = data.get("org_name", "").strip()
-    display_name = data.get("display_name", "").strip()
-    username = data.get("username", "").strip().lower()
-    password = data.get("password", "")
-    confirm_password = data.get("confirm_password", "")
+    data = request.get_json(silent=True) or {}
+    org_name = (data.get("org_name") or "").strip()
+    display_name = (data.get("display_name") or "").strip()
+    username = (data.get("username") or "").strip().lower()
+    password = data.get("password") or ""
+    confirm_password = data.get("confirm_password") or ""
 
     # Reserved usernames — ห้ามใช้เพื่อป้องกันความสับสนกับ system accounts
     _RESERVED = frozenset({
@@ -2730,9 +2864,9 @@ def invite_org_member():
         return jsonify({"ok": False, "error": "คุณยังไม่ได้อยู่ในองค์กร"}), 403
     if not database.is_org_admin(org_id, me):
         return jsonify({"ok": False, "error": "เฉพาะ Admin องค์กรเท่านั้นที่เชิญสมาชิกได้"}), 403
-    data = request.get_json(force=True)
-    invite_username = data.get("username", "").strip().lower()
-    role = data.get("role", "member")
+    data = request.get_json(silent=True) or {}
+    invite_username = (data.get("username") or "").strip().lower()
+    role = data.get("role") or "member"
     if not invite_username:
         return jsonify({"ok": False, "error": "กรุณาระบุชื่อผู้ใช้ที่ต้องการเชิญ"}), 400
     if role not in ("admin", "member"):
@@ -3142,12 +3276,13 @@ def update_org_member_permissions(username):
     data = request.get_json(force=True)
     
     update_kwargs = {}
+    from db.sanitize import clean_label
     if "display_name" in data:
-        update_kwargs["display_name"] = data["display_name"]
+        update_kwargs["display_name"] = clean_label(data["display_name"], 60)
     if "department" in data:
-        update_kwargs["department"] = data["department"]
+        update_kwargs["department"] = clean_label(data["department"], 60)
     if "position" in data:
-        update_kwargs["position"] = data["position"]
+        update_kwargs["position"] = clean_label(data["position"], 60)
     # is_active is system-admin-only — org admin cannot globally disable accounts
     if "is_active" in data:
         if session.get("role") == "admin":
@@ -3271,7 +3406,7 @@ def transfer_org_ownership_route():
             username=me,
             action="ORG_OWNERSHIP_TRANSFERRED",
             details=f"Owner role transferred from {me} to {new_owner}",
-            ip_address=request.remote_addr or "127.0.0.1"
+            ip_address=get_client_ip()
         )
         return jsonify({"ok": True, "message": msg, "new_owner": new_owner})
     return jsonify({"ok": False, "error": msg}), 400
@@ -3664,6 +3799,29 @@ def update_my_profile():
     return jsonify({"ok": True, "profile": profile})
 
 
+@auth_bp.route("/api/profile/ui-prefs", methods=["GET", "POST"])
+@login_required
+def profile_ui_prefs():
+    """Retrieve or update user-specific UI preferences (font, font size, accent color)."""
+    username = session.get("user")
+    if request.method == "GET":
+        prefs = database.get_user_ui_prefs(username)
+        return jsonify({"ok": True, "ui_prefs": prefs})
+
+    data = request.get_json(silent=True) or {}
+    font = data.get("font")
+    size = data.get("size")
+    accent = data.get("accent")
+
+    ok, err = database.set_user_ui_prefs(username, font=font, size=size, accent=accent)
+    if not ok:
+        return jsonify({"ok": False, "error": err}), 400
+
+    prefs = database.get_user_ui_prefs(username)
+    return jsonify({"ok": True, "ui_prefs": prefs})
+
+
+
 @auth_bp.route("/api/user/my-settings", methods=["GET"])
 @login_required
 def get_my_settings():
@@ -3810,31 +3968,54 @@ def user_unbind_line_route():
 
 @auth_bp.route("/api/user/bind-line-direct", methods=["POST"])
 @login_required
+@_limiter.limit("10 per minute; 60 per hour")
 def user_bind_line_direct():
-    """Directly link LINE account using a token or LINE User ID for currently logged in user."""
+    """ผูก LINE บอทกับบัญชีที่ล็อกอินอยู่ ด้วยรหัสสั้น/โทเค็นที่บอทออกให้เท่านั้น
+    (เดิมรับ "LINE User ID" ตรงๆ ด้วย → ใครก็ผูกไอดี LINE ของคนอื่นเข้าบัญชีตัวเองได้โดยไม่ต้องพิสูจน์ว่าเป็นเจ้าของ จึงเอาออก)"""
     username = session.get("user")
     data = request.get_json(force=True) or {}
-    token = (data.get("token") or "").strip()
-    line_user_id = (data.get("line_user_id") or "").strip()
-    
-    if token:
-        # Check DB first
-        link_data = database.line_link_get(token)
-        if not link_data:
-            _mem = PENDING_LINE_LINKS.get(token)
-            if _mem:
-                link_data = {"line_user_id": _mem["line_user_id"]}
-        if not link_data:
-            return jsonify({"ok": False, "error": "รหัสเชื่อมต่อ (Token) ไม่ถูกต้องหรือหมดอายุแล้วค่ะ"}), 400
-        line_user_id = link_data["line_user_id"]
-        database.line_link_delete(token)
-        PENDING_LINE_LINKS.pop(token, None)
-        
-    if not line_user_id:
-        return jsonify({"ok": False, "error": "กรุณาระบุรหัสเชื่อมต่อ (Token) หรือ LINE User ID"}), 400
-        
+    raw = (data.get("token") or data.get("code") or "").strip()
+    confirm_move = bool(data.get("confirm_move"))
+
+    if data.get("line_user_id") and not raw:
+        return jsonify({"ok": False, "error": "ไม่รองรับการกรอก LINE User ID โดยตรง กรุณาส่งคำว่า /link ให้บอท แล้วนำรหัสที่ได้มากรอกค่ะ"}), 400
+    if not raw:
+        return jsonify({"ok": False, "error": "กรุณากรอกรหัสเชื่อมต่อที่บอทส่งให้ (พิมพ์ /link ใน LINE)"}), 400
+
+    def _lookup(key):
+        d = database.line_link_get(key)
+        if d and time.time() > d.get("expires_at", 0):
+            database.line_link_delete(key)          # หมดอายุแล้ว
+            return None
+        if not d:
+            _mem = PENDING_LINE_LINKS.get(key)
+            if _mem and time.time() - _mem.get("timestamp", 0) <= 600:
+                d = {"line_user_id": _mem["line_user_id"]}
+        return d
+
+    token = raw
+    link_data = _lookup(token)
+    if not link_data and len(raw) <= 24:
+        code = database.normalize_link_code(raw)          # รหัสสั้น: ไม่สนตัวพิมพ์เล็ก/ใหญ่ และขีด/ช่องว่าง
+        if code:
+            token = code
+            link_data = _lookup(code)
+    if not link_data:
+        return jsonify({"ok": False, "error": "รหัสเชื่อมต่อไม่ถูกต้องหรือหมดอายุแล้ว (ใช้ได้ 10 นาที) กรุณาส่ง /link ให้บอทใหม่ค่ะ"}), 400
+    line_user_id = link_data["line_user_id"]
+
+    # LINE นี้ผูกกับบัญชีอื่นอยู่ → ต้องให้ผู้ใช้ยืนยันก่อนย้าย (ยังไม่ใช้รหัสทิ้ง เพื่อให้ยืนยันแล้วส่งซ้ำได้)
+    _other = _line_owner_conflict(username, line_user_id)
+    if _other and not confirm_move:
+        return jsonify({"ok": False, "needs_confirm": True, "owner": _other,
+                        "error": f"LINE นี้ผูกกับบัญชี {_other} อยู่แล้ว ต้องการย้ายมาบัญชีนี้หรือไม่?"}), 409
+    if _other:
+        database.log_event(f"Moved LINE account from '{_other}' to '{username}' (confirmed)", user=username, org_id=get_current_org_id())
+
     if database.link_line_user(username, line_user_id):
-        database.log_event(f"Bound LINE user ID {line_user_id}", user=username, org_id=get_current_org_id())
+        database.line_link_delete_for_line_user(line_user_id)       # ล้างโทเค็น/รหัสทั้งหมดของ LINE นี้
+        PENDING_LINE_LINKS.pop(token, None)
+        database.log_event(f"Bound LINE bot ID {line_user_id}", user=username, org_id=get_current_org_id())
         return jsonify({"ok": True, "message": "เชื่อมต่อบัญชี LINE สำเร็จเรียบร้อยแล้วค่ะ", "line_user_id": line_user_id})
     return jsonify({"ok": False, "error": "ไม่สามารถบันทึกข้อมูลเชื่อมต่อ LINE ได้"}), 500
 
@@ -3947,19 +4128,23 @@ def line_login_init():
         
     import secrets
     state = secrets.token_hex(16)
+    link_token = (request.args.get("link_token") or "").strip()
     
     # Store state in shared DB (not just session cookie) to prevent Cloudflare Tunnel & cross-domain cookie loss
     state_payload = {
         "username": username,
         "mode": "link" if username else "login",
         "origin_host": request.host_url.rstrip('/'),
-        "created_at": time.time()
+        "created_at": time.time(),
+        "link_token": link_token
     }
     _store_oauth_state(f"line_{state}", state_payload)
     
     session["line_login_state"] = state
     session["line_login_username"] = username
     session["line_login_mode"] = "link" if username else "login"
+    if link_token:
+        session["pending_magic_token"] = link_token
     
     webhook_url = os.environ.get("ACTIVE_PUBLIC_URL")
     base_url = ""
@@ -3984,7 +4169,9 @@ def line_login_init():
         "client_id": channel_id,
         "redirect_uri": redirect_uri,
         "state": state,
-        "scope": "profile openid email"
+        # ขอ email ได้ก็ต่อเมื่อ LINE อนุมัติสิทธิ์ "Email address permission" ให้ channel แล้วเท่านั้น
+        # ถ้าขอทั้งที่ยังไม่ได้รับอนุมัติ หน้า LINE จะตอบ "400 Bad Request" → ค่าเริ่มต้นไม่ขอ เปิดด้วย LINE_LOGIN_REQUEST_EMAIL=1
+        "scope": "profile openid email" if str(database.get_app_setting("LINE_LOGIN_REQUEST_EMAIL") or os.environ.get("LINE_LOGIN_REQUEST_EMAIL", "")).strip().lower() in ("1", "true", "yes", "on") else "profile openid"
     }
     auth_url = f"https://access.line.me/oauth2/v2.1/authorize?{urllib.parse.urlencode(params)}"
     return redirect(auth_url)
@@ -4037,13 +4224,90 @@ def _decode_jwt_payload_unverified(token: str) -> dict:
         return {}
 
 
+def _line_owner_conflict(username, line_user_id):
+    """คืนชื่อบัญชีอื่นที่ผูก LINE ID นี้อยู่แล้ว (ถ้าไม่มี/เป็นบัญชีเดียวกัน คืน None)."""
+    try:
+        owner = database.get_username_by_line_id(line_user_id)
+    except Exception:
+        owner = None
+    if owner and str(owner).lower() != str(username or "").lower():
+        return owner
+    return None
+
+
+def render_line_move_confirm(token, from_user, to_user):
+    """หน้ายืนยันก่อนย้าย LINE จากบัญชีเดิมมาบัญชีนี้ (ไม่ย้ายจนกว่าจะกดยืนยัน)."""
+    tok_js = json.dumps(token).replace("</", "<\\/")
+    return f"""<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>ยืนยันการย้าย LINE - OrgChat AI</title>
+<style>body{{font-family:'Sarabun',sans-serif;background:#0d0d0d;color:#f3f4f6;min-height:100vh;display:flex;align-items:center;justify-content:center;margin:0;padding:16px}}
+.c{{max-width:440px;width:100%;background:#191919;border:1px solid #333;border-radius:20px;padding:28px;text-align:center}}
+h1{{font-size:20px;margin:0 0 12px}}p{{color:#9ca3af;line-height:1.6;margin:0 0 18px}}b{{color:#f3f4f6}}
+button,a.b{{display:block;width:100%;padding:12px;border-radius:12px;border:0;font-size:15px;font-weight:700;cursor:pointer;text-decoration:none;box-sizing:border-box;margin-top:10px}}
+#ok{{background:#06C755;color:#fff}}a.b{{background:#2a2a2a;color:#f3f4f6}}#m{{margin-top:12px;font-size:14px}}</style></head><body><div class="c">
+<h1>LINE นี้ผูกกับบัญชีอื่นอยู่แล้ว</h1>
+<p>LINE นี้ถูกผูกกับบัญชี <b>{_html_escape(from_user)}</b> อยู่<br>ต้องการย้ายมาผูกกับบัญชี <b>{_html_escape(to_user)}</b> หรือไม่?<br>
+<small>หลังย้าย บัญชี {_html_escape(from_user)} จะล็อกอินด้วย LINE นี้ไม่ได้อีก</small></p>
+<button id="ok" type="button">ยืนยัน ย้ายมาบัญชีนี้</button>
+<a class="b" href="/">ยกเลิก</a><div id="m"></div></div>
+<script>
+document.getElementById('ok').addEventListener('click', async function() {{
+  var b=this, m=document.getElementById('m'); b.disabled=true;
+  try {{
+    var r=await fetch('/api/line/confirm-move',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{token:{tok_js}}})}});
+    var j=await r.json();
+    if(j.ok){{ m.style.color='#10b981'; m.textContent='ย้ายเรียบร้อยแล้ว กำลังกลับหน้าหลัก...'; setTimeout(function(){{location.href='/';}},1200); }}
+    else {{ m.style.color='#f87171'; m.textContent=j.error||'ย้ายไม่สำเร็จ'; b.disabled=false; }}
+  }} catch(e) {{ m.style.color='#f87171'; m.textContent='เกิดข้อผิดพลาด ลองใหม่อีกครั้ง'; b.disabled=false; }}
+}});
+</script></body></html>"""
+
+
+@auth_bp.route("/api/line/confirm-move", methods=["POST"])
+def line_confirm_move():
+    """ยืนยันการย้าย LINE ID จากบัญชีเดิมมาบัญชีที่กำลังผูก — โทเค็นใช้ได้ครั้งเดียว อายุ 5 นาที."""
+    data = request.get_json(silent=True) or {}
+    token = str(data.get("token") or "").strip()
+    if not token:
+        return jsonify({"ok": False, "error": "ไม่พบรหัสยืนยัน"}), 400
+    try:
+        payload = database.oauth_state_pop(f"linemove_{token}")
+    except Exception:
+        payload = None
+    try:
+        database.oauth_state_delete(f"linemove_{token}")      # ใช้ได้ครั้งเดียว (oauth_state_pop ไม่ลบเอง)
+    except Exception:
+        pass
+    if not payload or time.time() > float(payload.get("expires_at", 0)):
+        return jsonify({"ok": False, "error": "รหัสยืนยันหมดอายุหรือถูกใช้ไปแล้ว กรุณาเริ่มเชื่อม LINE ใหม่"}), 400
+    to_user = payload.get("username")
+    line_id = payload.get("line_user_id")
+    if not to_user or not line_id:
+        return jsonify({"ok": False, "error": "ข้อมูลไม่ครบ"}), 400
+    sess_user = session.get("user")
+    if sess_user and str(sess_user).lower() != str(to_user).lower():
+        return jsonify({"ok": False, "error": "รหัสนี้ไม่ใช่ของบัญชีที่ล็อกอินอยู่"}), 403
+    old_owner = database.get_username_by_line_id(line_id)
+    if not database.link_line_user(to_user, line_id, is_login=True):
+        return jsonify({"ok": False, "error": "บันทึกไม่สำเร็จ"}), 500
+    try:
+        database.log_event(f"Moved LINE account from '{old_owner}' to '{to_user}' (confirmed)", user=to_user, org_id=get_current_org_id())
+    except Exception:
+        pass
+    return jsonify({"ok": True})
+
+
 @auth_bp.route("/api/line/login-callback", methods=["GET"])
 def line_login_callback():
     start_time = time.time()
     try:
         """Callback for LINE Login OAuth flow to finalize profile link or guest login."""
         # If session is already logged in, seamlessly redirect to home
-        if session.get("user"):
+        # ยกเว้นกรณี "เชื่อมต่อ LINE Login" จากหน้าตั้งค่า (state โหมด link) — ต้องไปทำการผูกจริง ห้าม redirect ข้าม
+        # (เดิม redirect ทันทีทุกกรณี ทำให้กดเชื่อมแล้วไม่ถูกบันทึก line_login_id เลย)
+        _peek = database.oauth_state_pop(f"line_{request.args.get('state')}") if request.args.get("state") else None
+        _is_link_flow = bool(_peek and _peek.get("mode") == "link" and _peek.get("username"))
+        if session.get("user") and not _is_link_flow:
             logger.info(f"ℹ️ [LINE_LOGIN_CALLBACK] Session already logged in as '{session.get('user')}', redirecting.")
             return redirect("/?login_success=line")
             
@@ -4195,43 +4459,19 @@ def line_login_callback():
             if not matched_user and line_email:
                 existing_acc = database.get_user_by_email(line_email)
                 if existing_acc and existing_acc.get("username"):
-                    matched_user = existing_acc["username"]
-                    database.link_line_user(matched_user, line_user_id, is_login=True)
-                    logger.info(f"🔗 [LINE_LOGIN_CALLBACK] Matched existing account '{matched_user}' via email '{line_email}' and linked LINE Login ID {line_user_id}")
+                    # ห้ามผูก LINE เข้ากับบัญชีเดิมอัตโนมัติด้วยอีเมล (เสี่ยงถูกสวมสิทธิ์ถ้าตั้งอีเมลใน LINE ให้ตรงกับคนอื่น)
+                    # และห้ามสร้างบัญชีซ้ำอีเมลเดิม → ให้เจ้าของล็อกอินด้วยวิธีเดิมก่อน แล้วกดเชื่อม LINE เอง
+                    logger.warning(f"🚫 [LINE_LOGIN_CALLBACK] LINE email matches existing account '{existing_acc['username']}' but LINE is not linked — auto-link refused")
+                    return render_link_error("ยังไม่พบบัญชีที่เชื่อม LINE นี้ค่ะ กรุณาล็อกอินด้วยวิธีเดิม (เช่น Google หรือรหัสผ่าน) ก่อน แล้วกดเชื่อม LINE ในหน้าตั้งค่าบัญชี", is_login=True), 403
 
             if not matched_user:
-                # Auto-provision new account linked to this LINE user
-                line_disp = prof_data.get("displayName") or "LINE User"
-                clean_name = re.sub(r'[^a-zA-Z0-9_]', '', line_disp.lower())[:15]
-                if not clean_name:
-                    clean_name = f"line_{line_user_id[-6:].lower()}"
-                matched_user = clean_name
-                idx = 1
-                # NOTE: database.get_user_setting() คืน dict ค่าเริ่มต้น (truthy) แม้ไม่มีผู้ใช้
-                # จึงห้ามใช้เช็คว่า "มีผู้ใช้อยู่แล้วไหม" (เคยทำให้ลูป while ไม่จบ → LINE Login ค้างจน timeout)
-                while _username_taken(matched_user) and idx < 1000:
-                    matched_user = f"{clean_name}_{idx}"
-                    idx += 1
-                
-                import secrets
-                random_pw = secrets.token_urlsafe(16)
-                ok = database.admin_create_user(
-                    username=matched_user,
-                    password=random_pw,
-                    role="user",
-                    display_name=line_disp,
-                    can_view_kb=True,
-                    department="General",
-                    email=line_email
-                )
-                if ok:
-                    database.link_line_user(matched_user, line_user_id, is_login=True)
-                    if prof_data.get("pictureUrl"):
-                        database.update_user_profile(matched_user, avatar_url=prof_data.get("pictureUrl"))
-                    logger.info(f"🆕 [LINE_LOGIN_CALLBACK] Successfully created user '{matched_user}' for LINE '{line_disp}'")
-                else:
-                    logger.error(f"❌ [LINE_LOGIN_CALLBACK] Failed to create user '{matched_user}': failed")
-                    matched_user = "few" if _username_taken("few") else "Admin"
+                # ไม่อนุญาตให้สร้างบัญชีเปล่าอัตโนมัติ (จะกลายเป็นผู้ใช้ไร้องค์กร)
+                # ผู้ใช้ต้องเข้าสู่ระบบด้วยวิธีเดิม (Google / รหัสผ่าน) แล้วกดเชื่อมต่อ LINE ในหน้าตั้งค่าบัญชี
+                logger.info(f"ℹ️ [LINE_LOGIN_CALLBACK] LINE user '{line_user_id}' not linked to any existing account — refusing auto-provisioning of empty accounts")
+                return render_link_error(
+                    "ยังไม่พบบัญชีที่เชื่อมต่อกับ LINE นี้ในระบบค่ะ กรุณาเข้าสู่ระบบด้วยวิธีเดิม (เช่น Google หรือรหัสผ่าน) ก่อน แล้วกดเชื่อมต่อ LINE ในหน้า 'ตั้งค่าบัญชี'",
+                    is_login=True
+                ), 403
     
             _m_ok, _m_err = org_security.login_method_allowed(matched_user, "line")
             if not _m_ok:
@@ -4257,7 +4497,11 @@ def line_login_callback():
                 logger.info(f"🚀 [LINE_LOGIN_CALLBACK] Step 4: Login complete in {total_elapsed}s! Redirecting to localhost exchange.")
                 return resp
                 
-            resp = redirect("/?login_success=line")
+            magic_tok = (db_state or {}).get("link_token") or session.pop("pending_magic_token", None)
+            if magic_tok:
+                resp = redirect(f"/line/link_magic?token={magic_tok}")
+            else:
+                resp = redirect("/?login_success=line")
             if code and state:
                 _RECENT_LINE_CALLBACK_CACHE[cache_key] = (resp, time.time())
             total_elapsed = round(time.time() - start_time, 3)
@@ -4265,6 +4509,13 @@ def line_login_callback():
             return resp
         else:
             # ── Link existing authenticated user with LINE ID ──
+            _other = _line_owner_conflict(username, line_user_id)
+            if _other:
+                # LINE นี้ผูกกับบัญชีอื่นอยู่ → ถามก่อนย้าย ไม่ย้ายเงียบๆ
+                _tok = _sec.token_urlsafe(24)
+                database.oauth_state_store(f"linemove_{_tok}", {"username": username, "line_user_id": line_user_id,
+                                                               "from": _other, "expires_at": time.time() + 300})
+                return render_line_move_confirm(_tok, _other, username)
             if database.link_line_user(username, line_user_id, is_login=True):
                 database.log_event("Linked LINE account via LINE Login web flow", user=username, org_id=get_current_org_id())
                 return render_success_page(username)

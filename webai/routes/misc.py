@@ -27,6 +27,7 @@ import notification_db
 import billing
 
 from routes.shared import (
+    platform_admin_required,
     VERSION, socketio, _limiter, login_required, admin_required, superadmin_required,
     send_push_notification, batch_send_push_notification,
     get_weather_context, THAI_HOLIDAYS_2026, get_current_time,
@@ -34,6 +35,7 @@ from routes.shared import (
     get_current_org_id, _get_gemini_api_key, is_superadmin_user,
     get_or_create_csrf_token,
     generate_file_token, verify_file_token,
+    get_client_ip,
 )
 
 logger = logging.getLogger("OrgChatAI.Misc")
@@ -42,7 +44,7 @@ misc_bp = Blueprint('misc', __name__)
 
 @misc_bp.route("/api/debug/routes")
 @login_required
-@admin_required
+@platform_admin_required
 def list_routes():
     import urllib.parse
     output = []
@@ -168,6 +170,8 @@ def serve_group_profile_uploads(filename):
 @misc_bp.route("/")
 @misc_bp.route("/login")
 def index():
+    if request.path == "/login" and session.get("user"):
+        return redirect("/")
     from flask import make_response
     google_client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
     user = session.get("user")
@@ -499,7 +503,7 @@ def unblock_security_ip():
 
     success = database.unblock_ip(ip_to_unblock)
     if success:
-        database.log_audit_event(user, "SECURITY_IP_UNBLOCKED", f"Unblocked IP: {ip_to_unblock}", request.remote_addr or "unknown", get_current_org_id() or 1)
+        database.log_audit_event(user, "SECURITY_IP_UNBLOCKED", f"Unblocked IP: {ip_to_unblock}", get_client_ip(), get_current_org_id() or 1)
         return jsonify({"ok": True, "message": f"ปลดบล็อค IP {ip_to_unblock} เรียบร้อยแล้ว"})
     return jsonify({"ok": False, "error": "not_found", "message": "ไม่พบ IP นี้ในรายการที่ถูกบล็อค"}), 404
 
@@ -535,7 +539,7 @@ def analyze_user_behavior_endpoint():
     """Analyze behavioral risk score for a specific user and IP."""
     data = request.json or {}
     target_user = data.get("username", session.get("user", "Anonymous"))
-    target_ip = data.get("ip_address", request.remote_addr or "127.0.0.1")
+    target_ip = data.get("ip_address", get_client_ip())
     analysis = database.analyze_user_threat_behavior(
         username=target_user,
         client_ip=target_ip,

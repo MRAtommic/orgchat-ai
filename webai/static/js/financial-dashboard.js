@@ -310,7 +310,7 @@ function renderQuotations() {
 
   el.innerHTML = list.map(q => {
     const isInvoice = q.type === 'invoice';
-    const st = STAGE_META[q.status] || { label: q.status, badge: 'bg-surface-100 text-surface-500', dot: 'bg-surface-400' };
+    const st = STAGE_META[q.status] || { label: escHtml(q.status), badge: 'bg-surface-100 text-surface-500', dot: 'bg-surface-400' };
     const itemsCount = Array.isArray(q.items) ? q.items.length : 0;
     const totalVal = Math.max(0, Number(q.total || 0));
 
@@ -329,7 +329,7 @@ function renderQuotations() {
                 ${isInvoice ? 'INVOICE' : 'QUOTATION'}
               </span>
             </div>
-            <h3 class="font-black text-surface-900 dark:text-white text-base tracking-tight font-mono">${q.quotation_no || ('QT-' + q.id)}</h3>
+            <h3 class="font-black text-surface-900 dark:text-white text-base tracking-tight font-mono">${escHtml(q.quotation_no || ('QT-' + q.id))}</h3>
           </div>
 
           <!-- Status Pill -->
@@ -345,11 +345,11 @@ function renderQuotations() {
         <div class="space-y-2 mb-5">
           <div class="flex items-center gap-2 text-surface-800 dark:text-surface-200 font-bold text-xs truncate">
             <i data-lucide="building-2" class="w-4 h-4 text-surface-400 flex-shrink-0"></i>
-            <span class="truncate" title="${q.customer_name || 'ไม่ระบุลูกค้า'}">${q.customer_name || 'ไม่ระบุลูกค้า'}</span>
+            <span class="truncate" title="${escHtml(q.customer_name || 'ไม่ระบุลูกค้า')}">${escHtml(q.customer_name || 'ไม่ระบุลูกค้า')}</span>
           </div>
           ${q.customer_company ? `
           <div class="flex items-center gap-2 text-surface-400 text-[11px] truncate pl-6">
-            <span class="truncate">${q.customer_company}</span>
+            <span class="truncate">${escHtml(q.customer_company)}</span>
           </div>` : ''}
           <div class="flex items-center justify-between text-[11px] text-surface-400 pt-2 border-t border-surface-100 dark:border-surface-800/60">
             <span class="flex items-center gap-1"><i data-lucide="package" class="w-3.5 h-3.5"></i> ${itemsCount} รายการ</span>
@@ -445,7 +445,7 @@ function renderQtItems() {
   if (!el) return;
   el.innerHTML = _qtItems.map((it,i)=>`
     <div class="flex gap-2 items-center">
-      <input type="text" value="${it.name}" onchange="_qtItems[${i}].name=this.value;qtCalc()" placeholder="รายการ" class="flex-1 px-2 py-1.5 text-xs border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-white">
+      <input type="text" value="${escHtml(it.name)}" onchange="_qtItems[${i}].name=this.value;qtCalc()" placeholder="รายการ" class="flex-1 px-2 py-1.5 text-xs border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-white">
       <input type="number" value="${it.qty}" onchange="_qtItems[${i}].qty=+this.value;qtCalc()" min="1" class="w-16 px-2 py-1.5 text-xs border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-white" placeholder="จำนวน">
       <input type="text" value="${it.unit}" onchange="_qtItems[${i}].unit=this.value" placeholder="หน่วย" class="w-16 px-2 py-1.5 text-xs border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-white">
       <input type="number" value="${it.price}" onchange="_qtItems[${i}].price=+this.value;qtCalc()" min="0" class="w-24 px-2 py-1.5 text-xs border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-white" placeholder="ราคา/หน่วย">
@@ -639,9 +639,9 @@ function renderCrmCustomers() {
       <div class="flex items-start gap-3">
         <div class="w-10 h-10 rounded-xl bg-violet-100 dark:bg-violet-900/30 text-violet-600 flex items-center justify-center font-black text-sm flex-shrink-0">${(c.name||'?')[0].toUpperCase()}</div>
         <div class="min-w-0 flex-1">
-          <h3 class="font-black text-sm text-surface-900 dark:text-white truncate">${c.name}</h3>
-          <p class="text-xs text-surface-400 truncate">${c.company||''}</p>
-          ${c.phone?`<p class="text-xs text-surface-400">${c.phone}</p>`:''}
+          <h3 class="font-black text-sm text-surface-900 dark:text-white truncate">${escHtml(c.name)}</h3>
+          <p class="text-xs text-surface-400 truncate">${escHtml(c.company||'')}</p>
+          ${c.phone?`<p class="text-xs text-surface-400">${escHtml(c.phone)}</p>`:''}
         </div>
       </div>
       <div class="flex gap-2 mt-3 pt-3 border-t border-surface-100 dark:border-surface-800">
@@ -661,15 +661,15 @@ async function openCrmCustomerDetail(cid) {
     <div class="bg-white dark:bg-surface-900 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl">
       <div class="p-6 border-b border-surface-200 dark:border-surface-800 flex items-center gap-4">
         <div class="w-14 h-14 rounded-2xl bg-violet-100 dark:bg-violet-900/30 text-violet-600 flex items-center justify-center font-black text-xl">${(c.name||'?')[0].toUpperCase()}</div>
-        <div><h3 class="text-lg font-black text-surface-900 dark:text-white">${c.name}</h3>
-          <p class="text-sm text-surface-400">${c.company||''} ${c.email?'· '+c.email:''} ${c.phone?'· '+c.phone:''}</p></div>
+        <div><h3 class="text-lg font-black text-surface-900 dark:text-white">${escHtml(c.name)}</h3>
+          <p class="text-sm text-surface-400">${escHtml(c.company||'')} ${c.email?'· '+c.email:''} ${c.phone?'· '+c.phone:''}</p></div>
         <button onclick="document.getElementById('crmDetailModal').remove()" class="ml-auto text-surface-400 hover:text-surface-600"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
       </div>
       <div class="p-6 space-y-4">
         <div><h4 class="text-xs font-black text-surface-500 uppercase tracking-wider mb-2">Deals (${deals.length})</h4>
           ${deals.map(d=>`<div class="flex items-center gap-3 p-3 bg-surface-50 dark:bg-surface-800 rounded-xl mb-2">
-            <span class="text-xs font-bold px-2 py-0.5 rounded-lg ${DEAL_COLORS[d.stage]||''}">${DEAL_STAGES[d.stage]||d.stage}</span>
-            <span class="flex-1 text-sm font-bold text-surface-900 dark:text-white">${d.title}</span>
+            <span class="text-xs font-bold px-2 py-0.5 rounded-lg ${DEAL_COLORS[d.stage]||''}">${escHtml(DEAL_STAGES[d.stage]||d.stage)}</span>
+            <span class="flex-1 text-sm font-bold text-surface-900 dark:text-white">${escHtml(d.title)}</span>
             <span class="text-sm font-black text-emerald-600">฿${_fmt(d.value)}</span>
           </div>`).join('')||'<p class="text-xs text-surface-400">ยังไม่มี Deals</p>'}
         </div>
@@ -679,7 +679,7 @@ async function openCrmCustomerDetail(cid) {
             <span class="text-xs text-surface-700 dark:text-surface-300">${a.content}</span>
           </div>`).join('')||'<p class="text-xs text-surface-400">ยังไม่มีกิจกรรม</p>'}
         </div>
-        ${c.notes?`<div><h4 class="text-xs font-black text-surface-500 uppercase tracking-wider mb-1">หมายเหตุ</h4><p class="text-sm text-surface-600 dark:text-surface-300">${c.notes}</p></div>`:''}
+        ${c.notes?`<div><h4 class="text-xs font-black text-surface-500 uppercase tracking-wider mb-1">หมายเหตุ</h4><p class="text-sm text-surface-600 dark:text-surface-300">${escHtml(c.notes)}</p></div>`:''}
       </div>
     </div>
   </div>`;
@@ -697,16 +697,16 @@ function openCrmCustomerModal(cid=null) {
       </div>
       <div class="p-6 space-y-3">
         <div class="grid grid-cols-2 gap-3">
-          <div><label class="text-xs font-bold text-surface-500 block mb-1">ชื่อ *</label><input id="crm-c-name" value="${c?.name||''}" class="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-xl bg-white dark:bg-surface-800 text-surface-900 dark:text-white"></div>
-          <div><label class="text-xs font-bold text-surface-500 block mb-1">บริษัท</label><input id="crm-c-company" value="${c?.company||''}" class="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-xl bg-white dark:bg-surface-800 text-surface-900 dark:text-white"></div>
+          <div><label class="text-xs font-bold text-surface-500 block mb-1">ชื่อ *</label><input id="crm-c-name" value="${escHtml(c?.name||'')}" class="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-xl bg-white dark:bg-surface-800 text-surface-900 dark:text-white"></div>
+          <div><label class="text-xs font-bold text-surface-500 block mb-1">บริษัท</label><input id="crm-c-company" value="${escHtml(c?.company||'')}" class="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-xl bg-white dark:bg-surface-800 text-surface-900 dark:text-white"></div>
         </div>
         <div class="grid grid-cols-2 gap-3">
-          <div><label class="text-xs font-bold text-surface-500 block mb-1">อีเมล</label><input id="crm-c-email" value="${c?.email||''}" type="email" class="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-xl bg-white dark:bg-surface-800 text-surface-900 dark:text-white"></div>
-          <div><label class="text-xs font-bold text-surface-500 block mb-1">โทรศัพท์</label><input id="crm-c-phone" value="${c?.phone||''}" class="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-xl bg-white dark:bg-surface-800 text-surface-900 dark:text-white"></div>
+          <div><label class="text-xs font-bold text-surface-500 block mb-1">อีเมล</label><input id="crm-c-email" value="${escHtml(c?.email||'')}" type="email" class="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-xl bg-white dark:bg-surface-800 text-surface-900 dark:text-white"></div>
+          <div><label class="text-xs font-bold text-surface-500 block mb-1">โทรศัพท์</label><input id="crm-c-phone" value="${escHtml(c?.phone||'')}" class="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-xl bg-white dark:bg-surface-800 text-surface-900 dark:text-white"></div>
         </div>
-        <div><label class="text-xs font-bold text-surface-500 block mb-1">เลขผู้เสียภาษี</label><input id="crm-c-tax" value="${c?.tax_id||''}" class="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-xl bg-white dark:bg-surface-800 text-surface-900 dark:text-white"></div>
-        <div><label class="text-xs font-bold text-surface-500 block mb-1">ที่อยู่</label><textarea id="crm-c-addr" rows="2" class="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-xl bg-white dark:bg-surface-800 text-surface-900 dark:text-white resize-none">${c?.address||''}</textarea></div>
-        <div><label class="text-xs font-bold text-surface-500 block mb-1">หมายเหตุ</label><textarea id="crm-c-notes" rows="2" class="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-xl bg-white dark:bg-surface-800 text-surface-900 dark:text-white resize-none">${c?.notes||''}</textarea></div>
+        <div><label class="text-xs font-bold text-surface-500 block mb-1">เลขผู้เสียภาษี</label><input id="crm-c-tax" value="${escHtml(c?.tax_id||'')}" class="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-xl bg-white dark:bg-surface-800 text-surface-900 dark:text-white"></div>
+        <div><label class="text-xs font-bold text-surface-500 block mb-1">ที่อยู่</label><textarea id="crm-c-addr" rows="2" class="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-xl bg-white dark:bg-surface-800 text-surface-900 dark:text-white resize-none">${escHtml(c?.address||'')}</textarea></div>
+        <div><label class="text-xs font-bold text-surface-500 block mb-1">หมายเหตุ</label><textarea id="crm-c-notes" rows="2" class="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-xl bg-white dark:bg-surface-800 text-surface-900 dark:text-white resize-none">${escHtml(c?.notes||'')}</textarea></div>
       </div>
       <div class="p-6 border-t border-surface-200 dark:border-surface-800 flex gap-3 justify-end">
         <button onclick="document.getElementById('crmCustModal').remove()" class="px-4 py-2 text-sm font-bold text-surface-500 hover:bg-surface-100 rounded-xl transition">ยกเลิก</button>
@@ -759,10 +759,10 @@ function renderCrmDeals() {
     <div class="bg-white dark:bg-surface-900 rounded-2xl border border-surface-200 dark:border-surface-800 p-4 hover:shadow-md transition-all flex items-center gap-4">
       <div class="flex-1 min-w-0">
         <div class="flex items-center gap-2 mb-1">
-          <span class="text-[10px] font-bold px-2 py-0.5 rounded-lg ${DEAL_COLORS[d.stage]||''}">${DEAL_STAGES[d.stage]||d.stage}</span>
-          <h3 class="font-black text-sm text-surface-900 dark:text-white truncate">${d.title}</h3>
+          <span class="text-[10px] font-bold px-2 py-0.5 rounded-lg ${DEAL_COLORS[d.stage]||''}">${escHtml(DEAL_STAGES[d.stage]||d.stage)}</span>
+          <h3 class="font-black text-sm text-surface-900 dark:text-white truncate">${escHtml(d.title)}</h3>
         </div>
-        <p class="text-xs text-surface-400">${d.customer_name||'—'} ${d.customer_company?'('+d.customer_company+')':''}</p>
+        <p class="text-xs text-surface-400">${escHtml(d.customer_name||'—')} ${d.customer_company?'('+escHtml(d.customer_company)+')':''}</p>
         ${d.expected_close?`<p class="text-[10px] text-surface-400 mt-0.5">กำหนดปิด: ${_fmtDate(d.expected_close)}</p>`:''}
       </div>
       <div class="text-right flex-shrink-0">
@@ -782,7 +782,7 @@ function renderCrmDeals() {
 
 function openCrmDealModal(did=null) {
   const deal = did ? _crmDeals.find(x=>x.id===did) : null;
-  const custOpts = _crmCustomers.map(c=>`<option value="${c.id}" ${deal?.customer_id===c.id?'selected':''}>${c.name}</option>`).join('');
+  const custOpts = _crmCustomers.map(c=>`<option value="${c.id}" ${deal?.customer_id===c.id?'selected':''}>${escHtml(c.name)}</option>`).join('');
   const html = `
   <div class="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-md flex items-center justify-center p-4" id="crmDealModal" onclick="if(event.target.id==='crmDealModal')this.remove()">
     <div class="bg-white dark:bg-surface-900 w-full max-w-lg rounded-3xl shadow-2xl">
@@ -791,7 +791,7 @@ function openCrmDealModal(did=null) {
         <button onclick="document.getElementById('crmDealModal').remove()" class="text-surface-400 hover:text-surface-600"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
       </div>
       <div class="p-6 space-y-3">
-        <div><label class="text-xs font-bold text-surface-500 block mb-1">ชื่อ Deal *</label><input id="crm-d-title" value="${deal?.title||''}" class="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-xl bg-white dark:bg-surface-800 text-surface-900 dark:text-white"></div>
+        <div><label class="text-xs font-bold text-surface-500 block mb-1">ชื่อ Deal *</label><input id="crm-d-title" value="${escHtml(deal?.title||'')}" class="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-xl bg-white dark:bg-surface-800 text-surface-900 dark:text-white"></div>
         <div class="grid grid-cols-2 gap-3">
           <div><label class="text-xs font-bold text-surface-500 block mb-1">ลูกค้า</label>
             <select id="crm-d-cid" class="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-xl bg-white dark:bg-surface-800 text-surface-900 dark:text-white">
@@ -807,7 +807,7 @@ function openCrmDealModal(did=null) {
           <div><label class="text-xs font-bold text-surface-500 block mb-1">กำหนดปิด</label><input id="crm-d-close" type="date" value="${deal?.expected_close||''}" class="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-xl bg-white dark:bg-surface-800 text-surface-900 dark:text-white"></div>
         </div>
         <div><label class="text-xs font-bold text-surface-500 block mb-1">ผู้รับผิดชอบ</label><input id="crm-d-assign" value="${deal?.assigned_to||''}" class="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-xl bg-white dark:bg-surface-800 text-surface-900 dark:text-white"></div>
-        <div><label class="text-xs font-bold text-surface-500 block mb-1">หมายเหตุ</label><textarea id="crm-d-notes" rows="2" class="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-xl bg-white dark:bg-surface-800 text-surface-900 dark:text-white resize-none">${deal?.notes||''}</textarea></div>
+        <div><label class="text-xs font-bold text-surface-500 block mb-1">หมายเหตุ</label><textarea id="crm-d-notes" rows="2" class="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-xl bg-white dark:bg-surface-800 text-surface-900 dark:text-white resize-none">${escHtml(deal?.notes||'')}</textarea></div>
       </div>
       <div class="p-6 border-t border-surface-200 dark:border-surface-800 flex gap-3 justify-end">
         <button onclick="document.getElementById('crmDealModal').remove()" class="px-4 py-2 text-sm font-bold text-surface-500 hover:bg-surface-100 rounded-xl transition">ยกเลิก</button>
@@ -945,7 +945,7 @@ async function loadMeetings() {
     <div class="bg-white dark:bg-surface-900 rounded-2xl border border-surface-200 dark:border-surface-800 p-5 hover:shadow-lg transition-all">
       <div class="flex items-start justify-between gap-4 mb-3">
         <div class="flex-1 min-w-0">
-          <h3 class="font-black text-sm text-surface-900 dark:text-white truncate">${m.title}</h3>
+          <h3 class="font-black text-sm text-surface-900 dark:text-white truncate">${escHtml(m.title)}</h3>
           <div class="flex gap-3 mt-1">
             ${m.meeting_date?`<span class="text-xs text-surface-400">${m.meeting_date}</span>`:''}
             ${m.participants?`<span class="text-xs text-surface-400">${m.participants}</span>`:''}
@@ -982,7 +982,7 @@ async function openMeetingDetail(mid) {
   <div class="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-md flex items-center justify-center p-4" id="meetingDetailModal" onclick="if(event.target.id==='meetingDetailModal')this.remove()">
     <div class="bg-white dark:bg-surface-900 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl">
       <div class="p-6 border-b border-surface-200 dark:border-surface-800 flex items-center justify-between">
-        <h3 class="text-lg font-black text-surface-900 dark:text-white">${m.title}</h3>
+        <h3 class="text-lg font-black text-surface-900 dark:text-white">${escHtml(m.title)}</h3>
         <button onclick="document.getElementById('meetingDetailModal').remove()" class="text-surface-400 hover:text-surface-600"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
       </div>
       <div class="p-6 space-y-4">

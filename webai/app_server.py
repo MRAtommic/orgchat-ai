@@ -31,6 +31,9 @@ from pathlib import Path
 BASE_DIR = Path(__file__).parent.absolute()
 _orig_db_path = os.environ.get("DB_PATH")
 load_dotenv(BASE_DIR / ".env", override=True, encoding="utf-8")
+# TZ=Asia/Bangkok ใน .env ทำให้ Python บน Windows เห็นเวลาเป็น UTC (ช้า 7 ชม.) → แปลงเป็นรูปแบบที่ Windows เข้าใจ
+import tz_fix
+tz_fix.apply()
 if _orig_db_path:
     os.environ["DB_PATH"] = _orig_db_path
 
@@ -224,6 +227,7 @@ try:
     database.init_db()
     billing.init_billing_tables()
     database.kanban_init_db()
+    database.reset_all_offline()   # เพิ่งเริ่มเซิร์ฟเวอร์ ไม่มีใครเชื่อมต่ออยู่ → ล้างสถานะออนไลน์ที่ค้าง
 except Exception as _init_e:
     print(f">>> DB init warning: {_init_e}", flush=True)
 
@@ -290,8 +294,10 @@ def schedule_reminder_background_worker():
         except Exception as e:
             logger.error(f"[Reminder Worker Error] {e}")
 
-threading.Thread(target=async_startup_tasks, daemon=True).start()
-threading.Thread(target=schedule_reminder_background_worker, daemon=True).start()
+_skip_bg = (os.environ.get("ORGCHAT_FUZZ_MODE") == "1" or os.environ.get("DISABLE_BACKGROUND_TASKS") == "1")
+if not _skip_bg:
+    threading.Thread(target=async_startup_tasks, daemon=True).start()
+    threading.Thread(target=schedule_reminder_background_worker, daemon=True).start()
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -428,10 +434,28 @@ def create_app():
         ]
         response.headers.setdefault("Content-Security-Policy", "; ".join(csp_parts))
 
+        # 🛡️ Content-Security-Policy-Report-Only mode (Fix 7)
+        if os.environ.get("CSP_REPORT_ONLY", "").strip() in ("1", "true", "yes"):
+            strict_csp = [
+                "default-src 'self'",
+                "script-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com https://accounts.google.com https://apis.google.com https://js.stripe.com https://cdn.socket.io https://static.cloudflareinsights.com https://api.qrserver.com",
+                "style-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://fonts.googleapis.com https://unpkg.com https://accounts.google.com",
+                "img-src 'self' data: blob: https: http:",
+                "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com data:",
+                "connect-src 'self' https://api.open-meteo.com https://air-quality-api.open-meteo.com https://*.open-meteo.com https://api.openweathermap.org https://generativelanguage.googleapis.com https://api.groq.com https://api.openai.com https://accounts.google.com https://js.stripe.com https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://api.qrserver.com https://static.cloudflareinsights.com https://cdn.socket.io wss: ws:",
+                "frame-src 'self' https://accounts.google.com https://js.stripe.com https://drive.google.com https://docs.google.com",
+                "object-src 'none'",
+                "base-uri 'self'",
+                "frame-ancestors 'self'",
+                "form-action 'self' https://accounts.google.com https://access.line.me https://checkout.stripe.com",
+                "report-uri /api/csp-report",
+            ]
+            response.headers["Content-Security-Policy-Report-Only"] = "; ".join(strict_csp)
+
         # 🛡️ Permissions-Policy — restrict browser features from third-party contexts
         response.headers.setdefault(
             "Permissions-Policy",
-            "camera=(self), microphone=(self), geolocation=(), payment=(self), usb=()"
+            "camera=(self), microphone=(self), geolocation=(self), payment=(self), usb=()"  # geolocation=(self): เช็คชื่อ GPS ต้องใช้ตำแหน่ง (เดิม geolocation=() ปิดทุกกรณี ทำให้ขออนุญาตแล้วก็ยังถูกปฏิเสธ)
         )
 
         # HSTS เปิดเฉพาะเมื่อ BASE_URL เป็น https
@@ -444,6 +468,19 @@ def create_app():
     def get_csrf_token_endpoint():
         from routes.shared import get_or_create_csrf_token
         return jsonify({"ok": True, "csrf_token": get_or_create_csrf_token()})
+
+    @app.route("/api/csp-report", methods=["POST"])
+    def csp_report_endpoint():
+        """Receive CSP violation reports in report-only mode (Fix 7)."""
+        try:
+            report_data = request.get_json(silent=True, force=True) or {}
+            violation = report_data.get("csp-report", {})
+            blocked_uri = violation.get("blocked-uri", "unknown")
+            violated_directive = violation.get("violated-directive", "unknown")
+            logger.debug(f"[CSP Violation Report] directive={violated_directive} blocked={blocked_uri}")
+        except Exception:
+            pass
+        return jsonify({"ok": True}), 200
 
     # ─── Real-Time WAF Threat Patterns ──────────────────────
     import re as _waf_re
@@ -494,16 +531,14 @@ def create_app():
 
     def _get_ua_fingerprint(req):
         """U0-1: Stable User-Agent family & OS fingerprint.
-        Resistant to minor browser version updates or navigation/fetch variance,
+        Resistant to browser version updates or navigation/fetch variance,
         while strictly detecting device/OS or browser cross-hijacking.
         """
         ua = req.user_agent
         platform = (ua.platform or "").lower()
         browser = (ua.browser or "").lower()
-        version = ua.version or ""
-        major = version.split('.')[0] if version else ""
         if platform or browser:
-            return f"{platform}:{browser}:{major}"
+            return f"{platform}:{browser}"
         raw = (req.headers.get('User-Agent') or '').lower()
         p = 'win' if 'windows' in raw else ('mac' if 'macintosh' in raw or 'mac os' in raw else ('android' if 'android' in raw else ('ios' if 'iphone' in raw or 'ipad' in raw else 'other')))
         b = 'chrome' if 'chrome' in raw or 'crios' in raw else ('firefox' if 'firefox' in raw else ('safari' if 'safari' in raw else ('edge' if 'edg' in raw else 'other')))
@@ -548,6 +583,7 @@ def create_app():
                 _req.path.startswith('/line/webhook') or 
                 _req.path.startswith('/stripe/webhook') or
                 _req.path.startswith('/api/csrf-token') or
+                _req.path.startswith('/api/line/confirm-move') or   # ใช้โทเค็นครั้งเดียวสุ่มยาว (ผูกกับบัญชี) แทน CSRF header
                 _req.path.startswith('/api/login') or
                 _req.path.startswith('/api/qr/') or
                 _req.path.startswith('/api/auth/google/') or
@@ -574,9 +610,17 @@ def create_app():
         # 🛡️ 4. Session Hijacking Prevention (User-Agent Family Fingerprint)
         ua_fingerprint = _get_ua_fingerprint(_req)
         stored_ua = session.get('_ua_hash')
-        if stored_ua is None:
+        if stored_ua is None or stored_ua == ua_fingerprint:
             session['_ua_hash'] = ua_fingerprint
-        elif stored_ua != ua_fingerprint:
+        elif stored_ua.startswith(ua_fingerprint + ":"):
+            # อัปเกรดเซสชันเดิมที่มีเลข major version ติดอยู่เป็นรูปแบบใหม่ (platform:browser) โดยไม่เตะผู้ใช้ออก
+            session['_ua_hash'] = ua_fingerprint
+        elif os.environ.get("SESSION_UA_CHECK", "1").strip().lower() in ("0", "false", "no", "off"):
+            # ปิดการตรวจ UA ชั่วคราว (ตั้ง SESSION_UA_CHECK=0 ใน .env) เช่นตอนเปิด F12 / จำลองมือถือแล้ว UA เปลี่ยน
+            # ใช้ตอนสาธิต/พัฒนาเท่านั้น — ควรเปิดกลับ (ลบบรรทัดหรือตั้งเป็น 1) ในการใช้งานจริง
+            logger.info(f"ℹ️ UA changed for user={session.get('user')} (stored='{stored_ua}', current='{ua_fingerprint}') — ignored (SESSION_UA_CHECK=0)")
+            session['_ua_hash'] = ua_fingerprint
+        else:
             logger.warning(
                 f"🛡️ Session Hijacking Blocked: UA mismatch for user={session.get('user')} "
                 f"IP={_req.remote_addr} (stored='{stored_ua}', current='{ua_fingerprint}')"
@@ -744,7 +788,8 @@ def create_app():
         if request.path.startswith('/api/') or request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify({
                 "ok": False,
-                "error": "internal_error",
+                "error": msg,
+                "error_code": "internal_error",
                 "message": msg
             }), 500
         return render_template_string(ERROR_TEMPLATE, error_message=msg), 500
@@ -817,6 +862,7 @@ def create_app():
 # Create the App Instance
 # ═══════════════════════════════════════════════════════════════
 
+tz_fix.apply()   # โมดูลอื่นอาจโหลด .env ซ้ำระหว่าง import — ยืนยันอีกครั้งก่อนสร้างแอป
 app = create_app()
 
 # ─── Shared references for backward compatibility ────────────
@@ -827,7 +873,10 @@ from routes.shared import socketio, update_weather_background, batch_send_push_n
 # APScheduler: Weather, Reconciliation, Daily Summary
 # ═══════════════════════════════════════════════════════════════
 
+_scheduler = None
 try:
+    if _skip_bg:
+        raise ImportError("Background scheduler disabled in fuzz/test mode")
     _scheduler = BackgroundScheduler(daemon=True)
     _scheduler.add_job(update_weather_background, 'interval', minutes=30)
     try:
@@ -1027,6 +1076,14 @@ try:
 
     _scheduler.add_job(_scheduled_kb_cleanup, 'interval', minutes=30, id='kb_cleanup')
 
+    def _scheduled_memory_cleanup():
+        try:
+            from routes._memcache import sweep_all_caches
+            sweep_all_caches()
+        except Exception as _mem_e:
+            logger.error(f"[Scheduler] Memory cleanup error: {_mem_e}")
+    _scheduler.add_job(_scheduled_memory_cleanup, 'interval', minutes=5, id='memory_cleanup')
+
     # เช็คและส่ง broadcast ที่ตั้งเวลาไว้ทุก 1 นาที
     def _scheduled_line_broadcasts():
         try:
@@ -1123,7 +1180,8 @@ try:
     _scheduler.add_job(_scheduled_offline_queue_sync, 'interval', minutes=5, id='offline_queue_sync')
 
 except ImportError:
-    logger.info(">>> APScheduler not installed - run: pip install APScheduler")
+    if not _skip_bg:
+        logger.info(">>> APScheduler not installed - run: pip install APScheduler")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -1131,7 +1189,7 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5005))
+    port = int(os.environ.get("TEST_PORT") or os.environ.get("PORT", 5005))
 
     # Optional sync on startup
     if os.environ.get("SKIP_SYNC") != "1":
@@ -1144,9 +1202,9 @@ if __name__ == "__main__":
     else:
         logger.warning(">>> Skipping startup sync as requested.")
 
-    # ล้างไฟล์ค้าง processing จาก session ก่อน restart
+    # ล้างไฟล์ค้าง processing จาก session ก่อน restart ทันที (ไม่ต้องรอ 30 นาที เพราะเพิ่งเปิดใหม่ ไม่มีงานเก่าค้างในแรม)
     try:
-        cleaned = rag_engine.cleanup_stale_processing(max_age_minutes=30)
+        cleaned = rag_engine.cleanup_stale_processing(max_age_minutes=0)
         if cleaned:
             print(f">>> [Startup] Cleaned {cleaned} stale processing files", flush=True)
     except Exception as _ce:

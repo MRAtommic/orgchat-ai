@@ -1,4 +1,4 @@
-const CACHE_NAME = 'orgchat-offline-v13';
+const CACHE_NAME = 'orgchat-offline-ve4d19b';
 const OFFLINE_URL = '/static/offline.html';
 
 const ASSETS_TO_CACHE = [
@@ -97,12 +97,23 @@ self.addEventListener('push', function (event) {
             icon: '/static/icon-192.png',
             badge: '/static/icon-192.png',
             data: {
-                url: data.url || '/'
+                url: data.url || '/',
+                call: !!data.call
             }
         };
+        // แจ้งเตือนซ้อนทับแทนที่จะสะสม (เช่น สายเข้าซ้ำ) และสายเข้าต้องค้างบนหน้าจอ + สั่น จนกว่าจะแตะ
+        if (data.tag) options.tag = data.tag;
+        if (data.renotify) options.renotify = true;
+        if (data.require_interaction) options.requireInteraction = true;
+        if (Array.isArray(data.vibrate)) options.vibrate = data.vibrate;
 
+        // ผู้ใช้กำลังดูแอปอยู่ (หน้าต่างโฟกัส) → ไม่เด้งแจ้งเตือนระบบซ้ำ (ในแอปมีตัวเลข/โทสต์อยู่แล้ว); สายเข้ายังเด้งเสมอ
         event.waitUntil(
-            self.registration.showNotification(data.title || 'OrgChat AI', options)
+            clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
+                const looking = list.some(function (c) { return c.visibilityState === 'visible' && c.focused; });
+                if (looking && !data.call) return;
+                return self.registration.showNotification(data.title || 'OrgChat AI', options);
+            })
         );
     } catch (e) {
         console.error('[SW] Push notification error:', e);
@@ -111,7 +122,19 @@ self.addEventListener('push', function (event) {
 
 self.addEventListener('notificationclick', function (event) {
     event.notification.close();
+    const url = (event.notification.data && event.notification.data.url) || '/';
+    const isCall = !!(event.notification.data && event.notification.data.call);
     event.waitUntil(
-        clients.openWindow(event.notification.data.url || '/')
+        clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
+            // มีหน้าต่างแอปเปิดอยู่แล้ว → โฟกัสอย่างเดียว (สายเข้าจะมาทางซ็อกเก็ตเอง ห้ามรีโหลดจนสายหาย); ไม่มี → เปิดแอป
+            for (const c of list) {
+                if ('focus' in c) {
+                    return c.focus().then(function () {
+                        if (!isCall && 'navigate' in c && url && url !== '/') { try { return c.navigate(url); } catch (e) { } }
+                    });
+                }
+            }
+            return clients.openWindow(url);
+        })
     );
 });

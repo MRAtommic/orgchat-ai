@@ -319,17 +319,30 @@ function showGlobalLoading(msg = 'กำลังประมวลผล กร
 // ─── Typing Signaling Logic ──────────────────
 let lastTypingTime = 0;
 
-async function sendTypingSignal(cid, ctype) {
+// ส่งสถานะ "กำลังพิมพ์" ผ่านซ็อกเก็ต (เดิมยิง POST /api/chat/typing ซึ่งเป็นเส้นทางหลอก ไม่ทำอะไร)
+//  • ส่งไม่เกินทุก 2.5 วินาทีขณะพิมพ์ต่อเนื่อง  • ไม่ส่ง "หยุดพิมพ์" ถ้าเงียบ 3.5 วินาที / ส่งข้อความ / ลบจนว่าง / เปลี่ยนแชท
+let _typingStopTimer = null, _typingSentFor = null;
+function sendTypingSignal(cid, ctype) {
+  if (!socket || !socket.connected || !cid || cid === 'ai-assistant') return;
+  const key = ctype + ':' + cid;
   const now = Date.now();
-  if (now - lastTypingTime < 3000) return; // Throttle to 3s
-  lastTypingTime = now;
-  try {
-    await fetch('/api/chat/typing', {
-      method: 'POST',
-      body: JSON.stringify({ id: cid, type: ctype }),
-      headers: { 'Content-Type': 'application/json' }
-    });
-  } catch (e) { }
+  if (_typingSentFor !== key || now - lastTypingTime >= 2500) {
+    lastTypingTime = now;
+    _typingSentFor = key;
+    socket.emit('user_typing', { type: ctype, id: cid });
+  }
+  clearTimeout(_typingStopTimer);
+  _typingStopTimer = setTimeout(stopTypingSignal, 3500);
+}
+function stopTypingSignal() {
+  clearTimeout(_typingStopTimer);
+  _typingStopTimer = null;
+  if (!_typingSentFor) return;
+  const [ctype, ...rest] = _typingSentFor.split(':');
+  const cid = rest.join(':');
+  _typingSentFor = null;
+  lastTypingTime = 0;
+  try { if (socket && socket.connected) socket.emit('user_stopped_typing', { type: ctype, id: cid }); } catch (e) { }
 }
 
 async function pollTypingStatus() {
@@ -368,11 +381,13 @@ async function fetchUserStatusMap() {
   try {
     const res = await apiFetch('/api/users/status');
     if (res.ok && res.users) {
-      if (!state.userStatusMap) state.userStatusMap = {};
+      state.userStatusMap = {};
       res.users.forEach(u => state.userStatusMap[u.username] = u);
+      state.onlineUsers = res.users.filter(u => u.is_online).map(u => u.username);
       renderActiveUsersTray();
       renderChatSidebar();
       updateChatHeaderStatus();
+      try { const ol = $('orgMemberList'); if (ol && ol.offsetParent && typeof filterOrgMembers === 'function') filterOrgMembers(); } catch (e2) { }
     }
   } catch (e) { }
 }
@@ -424,60 +439,93 @@ function renderActiveUsersTray() {
   initIcons();
 }
 
-function updateOnlineUsersList(onlineUsers) {
-  state.onlineUsers = onlineUsers || [];
-  console.log("🟢 Online Users Sync:", state.onlineUsers);
-  fetchUserStatusMap(); // Ensure last seen map is up-to-date
-  renderActiveUsersTray();
-  renderChatSidebar();
-  updateChatHeaderStatus();
+// ── Presence (สถานะออนไลน์) ─────────────────────────────────────────────
+// เซิร์ฟเวอร์เป็นผู้ตัดสิน: "ออนไลน์" = มี heartbeat ภายใน ~90 วินาที (ส่งทุก 30 วินาที)
+// เห็นเฉพาะคนในองค์กรเดียวกัน; event ที่เข้ามาใช้แค่เป็นสัญญาณให้โหลดสถานะใหม่
+let _presenceTimer = null;
+function onPresenceEvent(data) {
+  if (data && data.username) {
+    const set = new Set(state.onlineUsers || []);
+    if (data.status === 'online') set.add(data.username); else set.delete(data.username);
+    state.onlineUsers = [...set];
+    renderChatSidebar();
+    updateChatHeaderStatus();
+  }
+  clearTimeout(_presenceTimer);
+  _presenceTimer = setTimeout(fetchUserStatusMap, 800);
 }
+function updateOnlineUsersList() { fetchUserStatusMap(); }
+function _presencePing() {
+  try {
+    if (typeof socket !== 'undefined' && socket && socket.connected && state.user) {
+      socket.emit('presence_ping', { room: state.currentChat ? state.currentChat.name : 'General' });
+    }
+  } catch (e) { }
+}
+(function startPresenceLoop() {
+  if (window.__presenceLoop) return;
+  window.__presenceLoop = true;
+  setInterval(_presencePing, 30000);
+  setInterval(() => { if (state.user) fetchUserStatusMap(); }, 45000);   // ผู้อื่นปิดแท็บ/เน็ตหลุด → เห็นเป็นออฟไลน์ภายใน ~2 นาที
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { _presencePing(); fetchUserStatusMap(); } });
+  window.addEventListener('online', () => { _presencePing(); fetchUserStatusMap(); });
+  setTimeout(() => { _presencePing(); fetchUserStatusMap(); }, 3000);
+})();
 
 state.typingUsers = state.typingUsers || {};
 
-function showTypingIndicator(username, displayName, roomId) {
-  const typingText = displayName || username;
-  console.log(`✍️ ${typingText} is typing...`);
+// ตัวแสดงสถานะ "กำลังพิมพ์": เก็บผู้พิมพ์ต่อแชท (state.typingUsers[chatId]) พร้อมตัวนับเวลาหมดอายุ 4.5 วินาที (กันค้างถ้าสัญญาณหยุดพิมพ์หาย)
+state.typingNames = state.typingNames || {};
+state._typingTimers = state._typingTimers || {};
 
-  if (roomId) {
-    if (!state.typingUsers) state.typingUsers = {};
-    if (!state.typingUsers[roomId]) state.typingUsers[roomId] = new Set();
-    state.typingUsers[roomId].add(username);
+function showTypingIndicator(username, displayName, chatId) {
+  if (!chatId || !username) return;
+  const me = (typeof state.user === 'object' ? state.user?.username : state.user);
+  if (username === me) return;
+  chatId = String(chatId);
+  state.typingUsers = state.typingUsers || {};
+  if (!state.typingUsers[chatId]) state.typingUsers[chatId] = new Set();
+  state.typingUsers[chatId].add(username);
+  state.typingNames[username] = displayName || username;
 
-    // Auto-clear typing status after 5 seconds to prevent getting stuck
-    setTimeout(() => {
-      if (state.typingUsers && state.typingUsers[roomId]) {
-        state.typingUsers[roomId].delete(username);
-        renderChatSidebar();
-      }
-    }, 5000);
-    renderChatSidebar();
-  }
+  const tkey = chatId + '|' + username;
+  clearTimeout(state._typingTimers[tkey]);
+  state._typingTimers[tkey] = setTimeout(() => hideTypingIndicator(username, chatId), 4500);
 
-  // Optional: Show visual indicator in chat area
-  if (chatArea && roomId && state.currentChat && state.currentChat.id == roomId) {
-    let typingDiv = chatArea.querySelector('.typing-indicator');
-    if (!typingDiv) {
-      typingDiv = document.createElement('div');
-      typingDiv.className = 'typing-indicator text-sm text-surface-400 italic p-2 transition-all';
-      chatArea.appendChild(typingDiv);
-    }
-    typingDiv.innerHTML = `<i data-lucide="pencil" class="inline w-3 h-3 mr-1"></i>${typingText} กำลังพิมพ์...`;
-    initIcons();
-  }
+  renderChatSidebar();
+  renderTypingIndicator();
 }
 
-function hideTypingIndicator(username, roomId) {
-  console.log(`⏹️ ${username} stopped typing`);
-
-  if (roomId && state.typingUsers && state.typingUsers[roomId]) {
-    state.typingUsers[roomId].delete(username);
+function hideTypingIndicator(username, chatId) {
+  if (!chatId || !username) return;
+  chatId = String(chatId);
+  clearTimeout(state._typingTimers[chatId + '|' + username]);
+  if (state.typingUsers && state.typingUsers[chatId]) {
+    state.typingUsers[chatId].delete(username);
     renderChatSidebar();
   }
+  renderTypingIndicator();
+}
 
-  const typingDiv = chatArea?.querySelector('.typing-indicator');
-  if (typingDiv) {
-    typingDiv.remove();
+// วาดแถบ "X กำลังพิมพ์..." เหนือช่องพิมพ์ของแชทที่เปิดอยู่ (ใช้ #unifiedTypingIndicator ที่มีในหน้าเว็บ พร้อมจุดเคลื่อนไหว)
+function renderTypingIndicator() {
+  const box = $('unifiedTypingIndicator'), text = $('unifiedTypingText');
+  if (!box || !text) return;
+  const cur = state.currentChat && state.currentChat.id != null ? String(state.currentChat.id) : null;
+  const set = cur && state.typingUsers ? state.typingUsers[cur] : null;
+  const names = set ? [...set].map(u => state.typingNames[u] || u) : [];
+  if (!names.length) { box.classList.add('hidden'); return; }
+  let label;
+  if (names.length === 1) label = `${names[0]} กำลังพิมพ์...`;
+  else if (names.length === 2) label = `${names[0]} และ ${names[1]} กำลังพิมพ์...`;
+  else label = `${names[0]}, ${names[1]} และอีก ${names.length - 2} คนกำลังพิมพ์...`;
+  text.textContent = label;
+  const wasHidden = box.classList.contains('hidden');
+  box.classList.remove('hidden');
+  // ถ้าผู้ใช้อ่านอยู่ท้ายแชท ให้เลื่อนตามเพื่อไม่ให้แถบนี้ดันข้อความขึ้นจนหลุดสายตา
+  if (wasHidden && typeof groupChatMessages !== 'undefined' && groupChatMessages) {
+    const nearBottom = groupChatMessages.scrollHeight - groupChatMessages.scrollTop - groupChatMessages.clientHeight < 120;
+    if (nearBottom) requestAnimationFrame(() => { groupChatMessages.scrollTop = groupChatMessages.scrollHeight; });
   }
 }
 
@@ -1243,7 +1291,7 @@ async function loadDashboard() {
   const statQueries = $('dashStatQueries');
 
   try {
-    const data = await apiFetch('/api/dashboard/data');
+    const data = await apiGetCached('/api/dashboard/data');
     if (data.ok) {
       // Refresh Weather & System Status
       if (typeof fetchWeather === 'function') fetchWeather();
@@ -1273,7 +1321,7 @@ async function loadDashboard() {
 
       if (summaryEl) {
         summaryEl.textContent = 'กำลังประมวลผลข้อมูลและสรุปภาพรวมกิจกรรมสำหรับวันนี้...';
-        apiFetch('/api/dashboard/briefing').then(briefData => {
+        apiGetCached('/api/dashboard/briefing').then(briefData => {
           if (briefData.ok) summaryEl.textContent = briefData.briefing;
         }).catch(err => {
           summaryEl.textContent = 'ไม่สามารถโหลดข้อมูลสรุปได้ในขณะนี้ครับ';
@@ -1281,7 +1329,7 @@ async function loadDashboard() {
       }
 
       // Fetch latest announcement for dashboard widget
-      apiFetch('/api/org/announcements').then(annData => {
+      apiGetCached('/api/org/announcements').then(annData => {
         const banner = $('dashLatestAnnouncement');
         if (annData.ok && annData.announcements && annData.announcements.length > 0) {
           const latest = annData.announcements[0];
@@ -1340,8 +1388,8 @@ async function loadDashboard() {
                  <span class="text-lg font-extrabold leading-none tabular-nums font-mono">${d[2]}</span>
               </div>
               <div class="flex-1 min-w-0">
-                <div class="text-[11px] font-medium text-surface-500 dark:text-surface-400 mb-0.5">${s.time} • ${s.category}</div>
-                <div class="text-sm font-bold text-surface-900 dark:text-white line-clamp-1">${s.title}</div>
+                <div class="text-[11px] font-medium text-surface-500 dark:text-surface-400 mb-0.5">${escHtml(s.time)} • ${escHtml(s.category)}</div>
+                <div class="text-sm font-bold text-surface-900 dark:text-white line-clamp-1">${escHtml(s.title)}</div>
               </div>
               <div class="w-8 h-8 rounded-xl bg-surface-100 dark:bg-surface-800 flex items-center justify-center text-surface-500 dark:text-surface-400 group-hover:bg-brand-600 group-hover:text-white transition-all flex-shrink-0">
                 <i data-lucide="arrow-right" class="w-4 h-4"></i>
@@ -1361,9 +1409,9 @@ async function loadDashboard() {
             <div class="p-3.5 bg-white dark:bg-surface-900 rounded-xl border border-surface-200/70 dark:border-surface-800/80 shadow-xs flex items-center justify-between hover:border-brand-500/30 transition-all">
               <div class="flex items-center gap-3 min-w-0">
                 <div class="w-2 h-2 rounded-full flex-shrink-0 ${t.status === 'doing' ? 'bg-blue-500 animate-pulse' : 'bg-amber-500'}"></div>
-                <span class="text-xs font-semibold text-surface-900 dark:text-surface-100 line-clamp-1">${t.title}</span>
+                <span class="text-xs font-semibold text-surface-900 dark:text-surface-100 line-clamp-1">${escHtml(t.title)}</span>
               </div>
-              <div class="px-2 py-0.5 rounded-md bg-surface-100 dark:bg-surface-800 text-[10px] font-semibold text-surface-600 dark:text-surface-400 border border-surface-200/60 dark:border-surface-700/50 flex-shrink-0">${t.status}</div>
+              <div class="px-2 py-0.5 rounded-md bg-surface-100 dark:bg-surface-800 text-[10px] font-semibold text-surface-600 dark:text-surface-400 border border-surface-200/60 dark:border-surface-700/50 flex-shrink-0">${escHtml(t.status)}</div>
             </div>
           `).join('');
         }
@@ -1380,7 +1428,7 @@ async function loadDashboard() {
                  <i data-lucide="file" class="w-4 h-4"></i>
                </div>
                <div class="flex-1 min-w-0">
-                 <div class="text-xs font-semibold truncate text-surface-900 dark:text-surface-100">${f.name}</div>
+                 <div class="text-xs font-semibold truncate text-surface-900 dark:text-surface-100">${escHtml(f.name)}</div>
                  <div class="text-[11px] text-surface-500 dark:text-surface-400 font-medium">${f.type} • ${(f.size / 1024).toFixed(0)} KB</div>
                </div>
              </div>
@@ -1417,9 +1465,9 @@ async function loadDashboard() {
                 <i data-lucide="zap" class="w-5 h-5"></i>
               </div>
               <div class="flex-1 min-w-0">
-                <div class="text-xs font-bold truncate text-surface-700 dark:text-surface-200">${log.filename}</div>
+                <div class="text-xs font-bold truncate text-surface-700 dark:text-surface-200">${escHtml(log.filename)}</div>
                 <div class="flex items-center gap-2 mt-0.5">
-                   <span class="text-[9px] font-black text-brand-600 uppercase bg-brand-50 dark:bg-brand-900/40 px-1 rounded">${log.category}</span>
+                   <span class="text-[9px] font-black text-brand-600 uppercase bg-brand-50 dark:bg-brand-900/40 px-1 rounded">${escHtml(log.category)}</span>
                    ${log.amount ? `<span class="text-[9px] font-black text-rose-600">฿${new Intl.NumberFormat().format(log.amount)}</span>` : ''}
                    <span class="text-[8px] text-surface-400 font-bold">${formatRelativeTime(log.created_at)}</span>
                 </div>
@@ -1807,7 +1855,7 @@ function openPdfViewer(fileId, fileName, location = null) {
         loading.classList.add('hidden');
       })
       .catch(err => {
-        csvTarget.innerHTML = `<div class="p-8 text-center text-red-500 font-bold">ไม่สามารถโหลดข้อมูล CSV ได้: ${err.message}</div>`;
+        csvTarget.innerHTML = `<div class="p-8 text-center text-red-500 font-bold">ไม่สามารถโหลดข้อมูล CSV ได้: ${escHtml(err.message || '')}</div>`;
         csvContainer.classList.remove('hidden');
         loading.classList.add('hidden');
       });
@@ -1902,6 +1950,24 @@ function showWelcome() {
         ถามข้อมูลเชิงลึกจากเอกสารทั้งหมดได้ในที่เดียว
       </p>
     </div>`;
+  initIcons();
+}
+
+// แหล่งอ้างอิงมาหลังตอบเสร็จ (เฉพาะไฟล์ที่ใช้ตอบจริง): ใส่ลงในฟองคำตอบที่สร้างไว้แล้ว โดยใช้มาร์กอัปเดียวกับ appendMessage
+function _attachSources(botEl, srcs) {
+  if (!botEl) return;
+  const bubble = botEl.querySelector('.chat-bubble');
+  if (!bubble) return;
+  const old = bubble.querySelector(':scope > .src-block');
+  if (old) old.remove();
+  if (!srcs || !srcs.length) return;
+  const tmp = appendMessage('bot', '', srcs, false, null);
+  const blk = tmp && tmp.querySelector('.chat-bubble > .src-block');
+  if (blk) {
+    const anchor = bubble.querySelector(':scope > .action-panel');
+    bubble.insertBefore(blk, anchor || null);
+  }
+  if (tmp) tmp.remove();
   initIcons();
 }
 
@@ -2017,13 +2083,13 @@ function appendMessage(role, html, sources = [], scroll = true, msgId = null) {
               </div>`).join('');
     // มือถือ: พับทั้งส่วนเหลือบรรทัดเดียว "📎 แหล่งอ้างอิง (N) ▾" แตะแล้วค่อยขยาย / จอใหญ่: แสดงชิปเหมือนเดิม
     const sourcesHtml = botSources.length > 0 ? `
-      <div class="mt-1.5 pt-1.5 sm:mt-3 sm:pt-3 border-t border-surface-200 dark:border-surface-700/50">
+      <div class="src-block mt-1.5 pt-1.5 sm:mt-3 sm:pt-3 border-t border-surface-200 dark:border-surface-700/50">
         <button type="button" class="sm:hidden flex items-center gap-1 text-[10px] font-bold text-surface-400 py-0.5"
-          onclick="const w=this.nextElementSibling; w.classList.toggle('hidden'); this.querySelector('.src-caret').textContent = w.classList.contains('hidden') ? '▾' : '▴'">
+          onclick="const w=this.nextElementSibling; w.classList.toggle('src-open'); this.querySelector('.src-caret').textContent = w.classList.contains('src-open') ? '▴' : '▾'">
           <span>📎 แหล่งอ้างอิง${_srcFiles.length ? ` (${_srcFiles.length})` : ''}</span><span class="src-caret">▾</span>
         </button>
-        <div class="hidden sm:flex flex-wrap items-center gap-1 sm:gap-1.5 mt-1 sm:mt-0">
-          <span class="hidden sm:flex w-full text-[9px] font-black text-surface-400 uppercase tracking-widest mb-1 items-center gap-1">
+        <div class="src-wrap flex-wrap items-center gap-1 sm:gap-1.5 mt-1 sm:mt-0">
+          <span class="src-label w-full text-[9px] font-black text-surface-400 uppercase tracking-widest mb-1 items-center gap-1">
             <i data-lucide="book-open" class="w-2.5 h-2.5"></i> แหล่งข้อมูลอ้างอิง${_srcFiles.length ? ` (${_srcFiles.length})` : ''}
           </span>
           ${_srcFiles.map(_chip).join('')}
@@ -2392,6 +2458,7 @@ async function sendMessage(text) {
           const data = JSON.parse(jsonStr);
           if (data.error) throw new Error(data.error);
           if (data.sources) sources = data.sources;
+          if (data.sources_final) { try { _attachSources(botMsgEl, sources); } catch (e) { console.warn('attach sources failed', e); } }
           if (data.user_id && userMsgEl) {
             userMsgEl.dataset.id = data.user_id;
             const lastMsg = state.history[state.history.length - 1];
@@ -2525,7 +2592,7 @@ function renderCalendarActionUI(msgEl, data) {
       </div>
       <div class="flex-1 min-w-0">
         <div class="text-[10px] font-bold uppercase tracking-widest text-brand-600 dark:text-brand-400 mb-1">AI ตรวจพบนัดหมายในข้อความนี้</div>
-        <div class="text-xs font-bold text-surface-900 dark:text-surface-100">${data.title}</div>
+        <div class="text-xs font-bold text-surface-900 dark:text-surface-100">${escHtml(data.title)}</div>
         <div class="text-[10px] text-surface-500 font-medium flex items-center gap-2 mt-1.5">
            <span class="flex items-center gap-1.5 px-2.5 py-1 bg-white/80 dark:bg-surface-800 rounded-lg border border-brand-100 dark:border-brand-900/40 text-surface-700 dark:text-surface-300">
              <i data-lucide="clock" class="w-3.5 h-3.5 text-brand-500"></i> ${data.date} @ ${data.time}
@@ -2840,14 +2907,7 @@ if (msgInput) {
       // toast('ใช้ @ เพื่อระบุชื่อผู้ใช้', 'info');
     }
 
-    // Send typing indicator
-    if (socket && state.currentChat && val.length > 0) {
-      socket.emit('user_typing', {
-        room_id: state.currentChat.id,
-        display_name: state.username,
-        username: state.username
-      });
-    }
+    // (สถานะ "กำลังพิมพ์" ของแชทคนอื่นส่งจากช่อง groupChatInput — ช่องนี้คือแชท AI ไม่ต้องส่ง)
   });
 }
 
@@ -3030,7 +3090,7 @@ function toggleMobilePersonaList() {
         <div onclick="selectMobilePersona('${p.id}')" class="flex items-center justify-between p-2.5 rounded-xl cursor-pointer ${isSelected ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 font-bold' : 'hover:bg-surface-100 dark:hover:bg-surface-700/50 text-surface-700 dark:text-surface-300'} transition-colors">
           <div class="flex items-center gap-2">
             <i data-lucide="sparkles" class="w-4 h-4 text-purple-500"></i>
-            <span class="text-xs">${p.name}</span>
+            <span class="text-xs">${escHtml(p.name)}</span>
           </div>
           ${isSelected ? '<i data-lucide="check" class="w-3.5 h-3.5 text-purple-600"></i>' : ''}
         </div>
@@ -3425,7 +3485,7 @@ function updateDynamicSuggestions(lastBotText = '', userQuery = '') {
 
   suggestionsBox.innerHTML = chips.map(c => `
     <button class="quick-action-chip animate-in fade-in zoom-in-95 duration-300" data-q="${c.query.replace(/"/g, '&quot;')}">
-      <i data-lucide="${c.icon}" class="w-3.5 h-3.5"></i> ${c.label}
+      <i data-lucide="${c.icon}" class="w-3.5 h-3.5"></i> ${escHtml(c.label)}
     </button>
   `).join('');
 
@@ -3628,7 +3688,7 @@ async function runBrowserTask() {
           <div class="p-3 bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded-xl space-y-2">
             <div class="flex items-center justify-between">
               <a href="${p.url}" target="_blank" rel="noopener noreferrer" class="text-xs font-bold text-emerald-600 hover:underline flex items-center gap-1.5 truncate">
-                <i data-lucide="external-link" class="w-3.5 h-3.5"></i> ${p.title || p.url}
+                <i data-lucide="external-link" class="w-3.5 h-3.5"></i> ${escHtml(p.title || p.url)}
               </a>
             </div>
             ${p.screenshot ? `
@@ -3657,7 +3717,7 @@ async function runBrowserTask() {
   } catch (err) {
     toast('ท่องเว็บไม่สำเร็จ: ' + err.message, 'error');
     if (browserTaskResult) {
-      browserTaskResult.innerHTML = `<div class="p-3 text-xs text-rose-600 bg-rose-50 rounded-xl">${err.message}</div>`;
+      browserTaskResult.innerHTML = `<div class="p-3 text-xs text-rose-600 bg-rose-50 rounded-xl">${escHtml(err.message || '')}</div>`;
       browserTaskResult.classList.remove('hidden');
     }
   } finally {
@@ -4096,12 +4156,12 @@ function renderPosts(posts) {
       <div class="flex justify-between items-start">
         <div class="flex gap-3">
           <div class="w-10 h-10 rounded-full bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center text-brand-600 overflow-hidden ring-2 ring-brand-500/20">
-            ${p.avatar_url ? `<img src="${p.avatar_url}" class="w-full h-full object-cover">` : `<i data-lucide="user" class="w-5 h-5"></i>`}
+            ${p.avatar_url ? `<img src="${_safeUrl(p.avatar_url)}" class="w-full h-full object-cover">` : `<i data-lucide="user" class="w-5 h-5"></i>`}
           </div>
           <div>
             <div class="flex items-center gap-2">
-              <span class="font-bold text-sm select-none">${p.display_name || p.author}</span>
-              <span class="px-2 py-0.5 bg-brand-50 dark:bg-brand-900/30 text-brand-600 text-[10px] font-bold rounded-full uppercase">${p.category}</span>
+              <span class="font-bold text-sm select-none">${escHtml(p.display_name || p.author)}</span>
+              <span class="px-2 py-0.5 bg-brand-50 dark:bg-brand-900/30 text-brand-600 text-[10px] font-bold rounded-full uppercase">${escHtml(p.category)}</span>
             </div>
             <div class="text-[11px] text-surface-500 dark:text-surface-400 font-medium">${new Date(p.timestamp).toLocaleString('th-TH')}</div>
           </div>
@@ -4158,12 +4218,12 @@ function renderPosts(posts) {
                     <div class="absolute inset-y-0 left-0 bg-brand-500/10 rounded-r-none transition-all group-hover/pollopt:bg-brand-500/20" style="width: ${percent}%"></div>
                     <div class="relative flex items-center justify-between p-3.5 text-xs">
                       <div class="flex items-center gap-3">
-                        <span class="font-bold text-surface-700 dark:text-surface-300">${opt.text}</span>
+                        <span class="font-bold text-surface-700 dark:text-surface-300">${escHtml(opt.text)}</span>
                         <!-- Voter Avatars -->
-                        <div class="flex -space-x-1.5 transition-all group-hover/pollopt:translate-x-1" title="${votersTitle}">
+                        <div class="flex -space-x-1.5 transition-all group-hover/pollopt:translate-x-1" title="${escHtml(votersTitle)}">
                           ${topVoters.map(v => v.avatar ?
-          `<img src="${v.avatar}" class="w-5 h-5 rounded-full border-2 border-white dark:border-surface-900 object-cover shadow-sm" title="${v.name}">` :
-          `<div class="w-5 h-5 rounded-full border-2 border-white dark:border-surface-900 bg-brand-500 text-white flex items-center justify-center text-[8px] font-bold shadow-sm" title="${v.name}">${v.name[0]}</div>`
+          `<img src="${_safeUrl(v.avatar)}" class="w-5 h-5 rounded-full border-2 border-white dark:border-surface-900 object-cover shadow-sm" title="${escHtml(v.name)}">` :
+          `<div class="w-5 h-5 rounded-full border-2 border-white dark:border-surface-900 bg-brand-500 text-white flex items-center justify-center text-[8px] font-bold shadow-sm" title="${escHtml(v.name)}">${escHtml(v.name ? v.name[0] : '?')}</div>`
         ).join('')}
                           ${hasMore ? `<div class="w-5 h-5 rounded-full border-2 border-white dark:border-surface-900 bg-surface-200 dark:bg-surface-700 text-surface-600 dark:text-surface-300 flex items-center justify-center text-[7px] font-black">+${opt.votes - 5}</div>` : ''}
                         </div>
@@ -4400,11 +4460,11 @@ function showSeenByModal(pid) {
           <div class="flex items-center justify-between p-3 rounded-2xl bg-surface-50 dark:bg-surface-800/50 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-all group">
             <div class="flex items-center gap-3">
               <div class="w-8 h-8 rounded-full bg-white dark:bg-surface-700 flex items-center justify-center text-brand-600 shadow-sm overflow-hidden ring-2 ring-transparent group-hover:ring-brand-500/20 transition-all">
-                ${v.avatar ? `<img src="${v.avatar}" class="w-full h-full object-cover">` : `<span class="text-[10px] font-black">${v.display_name[0]}</span>`}
+                ${v.avatar ? `<img src="${_safeUrl(v.avatar)}" class="w-full h-full object-cover">` : `<span class="text-[10px] font-black">${escHtml(v.display_name ? v.display_name[0] : '?')}</span>`}
               </div>
               <div>
-                <div class="text-[11px] font-black text-surface-900 dark:text-white">${v.display_name}</div>
-                <div class="text-[9px] text-surface-400 font-bold">@${v.username}</div>
+                <div class="text-[11px] font-black text-surface-900 dark:text-white">${escHtml(v.display_name)}</div>
+                <div class="text-[9px] text-surface-400 font-bold">@${escHtml(v.username)}</div>
               </div>
             </div>
             <div class="text-[9px] font-black text-surface-400 uppercase tracking-tighter">${new Date(v.time).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</div>
@@ -4442,7 +4502,7 @@ async function fetchLinkPreview(pid, url) {
       if (titleEl && data.title) titleEl.textContent = data.title;
       if (descEl && data.description) descEl.textContent = data.description;
       if (imgCont && data.image) {
-        imgCont.innerHTML = `<img src="${data.image}" class="w-full h-full object-cover">`;
+        imgCont.innerHTML = `<img src="${_safeUrl(data.image)}" class="w-full h-full object-cover">`;
         imgCont.classList.remove('hidden', 'animate-pulse');
       }
     }
@@ -5169,7 +5229,7 @@ postFileInput.onchange = () => {
 function renderPostAttachments() {
   postAttachmentPreview.innerHTML = postFiles.map((f, i) => `
     <div class="flex items-center gap-2 bg-surface-100 dark:bg-surface-800 px-3 py-1.5 rounded-full text-xs border border-surface-200">
-      <span class="max-w-[120px] truncate font-medium">${f.name}</span>
+      <span class="max-w-[120px] truncate font-medium">${escHtml(f.name)}</span>
       <button onclick="removePostFile(${i})" class="text-surface-400 hover:text-red-500 transition-colors">
         <i data-lucide="x" class="w-3.5 h-3.5"></i>
       </button>
@@ -5245,6 +5305,7 @@ function editPost(pid) {
   }
 
   editPostModal.classList.remove('hidden');
+  editPostModal.classList.add('flex', 'items-center', 'justify-center');
   initIcons();
   editPostInput.focus();
 }
@@ -5314,11 +5375,11 @@ async function toggleComments(pid) {
           return `
           <div class="bg-surface-50 dark:bg-surface-800/50 p-3 rounded-2xl flex gap-3 group/comment">
             <div class="w-7 h-7 rounded-lg bg-white dark:bg-surface-700 flex items-center justify-center text-brand-600 flex-shrink-0 overflow-hidden ring-1 ring-brand-500/10">
-              ${c.avatar_url ? `<img src="${c.avatar_url}" class="w-full h-full object-cover">` : `<i data-lucide="user" class="w-3.5 h-3.5"></i>`}
+              ${c.avatar_url ? `<img src="${_safeUrl(c.avatar_url)}" class="w-full h-full object-cover">` : `<i data-lucide="user" class="w-3.5 h-3.5"></i>`}
             </div>
             <div class="flex-1 min-w-0">
               <div class="flex justify-between items-center mb-0.5">
-                <span class="text-[10px] font-black text-brand-600 uppercase tracking-tighter">${c.display_name || c.author}</span>
+                <span class="text-[10px] font-black text-brand-600 uppercase tracking-tighter">${escHtml(c.display_name || c.author)}</span>
                 <div class="flex items-center gap-2">
                   <span class="text-[8px] text-surface-400 font-medium">${new Date(c.timestamp).toLocaleString('th-TH')}</span>
                   ${isOwner ? `
@@ -5480,13 +5541,13 @@ function initMentionInput(inputId, userFn = null) {
       if (!users.length) { dropdown.classList.add('hidden'); return; }
 
       dropdown.innerHTML = users.map(u => `
-        <div class="mention-item flex items-center gap-2 px-3 py-2 hover:bg-brand-50 dark:hover:bg-brand-900/20 cursor-pointer transition-all" data-username="${u.username}">
+        <div class="mention-item flex items-center gap-2 px-3 py-2 hover:bg-brand-50 dark:hover:bg-brand-900/20 cursor-pointer transition-all" data-username="${escHtml(u.username)}">
           <div class="w-7 h-7 rounded-full bg-brand-100 dark:bg-brand-900/40 flex items-center justify-center text-brand-600 text-[10px] font-black flex-shrink-0 overflow-hidden">
-            ${u.avatar_url ? `<img src="${u.avatar_url}" class="w-full h-full object-cover">` : u.display_name?.[0] || u.username[0]}
+            ${u.avatar_url ? `<img src="${_safeUrl(u.avatar_url)}" class="w-full h-full object-cover">` : escHtml(u.display_name?.[0] || u.username[0] || '?')}
           </div>
           <div>
-            <div class="text-[11px] font-black text-surface-900 dark:text-white">${u.display_name || u.username}</div>
-            <div class="text-[9px] text-surface-400 font-bold">@${u.username}</div>
+            <div class="text-[11px] font-black text-surface-900 dark:text-white">${escHtml(u.display_name || u.username)}</div>
+            <div class="text-[9px] text-surface-400 font-bold">@${escHtml(u.username)}</div>
           </div>
         </div>
       `).join('');
@@ -5758,7 +5819,7 @@ async function openReactionsModal(pid) {
           ${tabs.map((t, i) => `
             <button onclick="switchReactionTab('${t.key}', this)" 
               class="reaction-tab flex-shrink-0 px-3 py-1.5 rounded-full text-[11px] font-bold transition-all ${i === 0 ? 'bg-brand-600 text-white' : 'bg-surface-100 dark:bg-surface-800 text-surface-500 hover:bg-surface-200'}">
-              ${t.label} <span class="opacity-70">${t.count}</span>
+              ${escHtml(t.label)} <span class="opacity-70">${t.count}</span>
             </button>
           `).join('')}
         </div>
@@ -5787,13 +5848,13 @@ function renderReactionsList(reactions, filterKey) {
       <div class="flex items-center gap-3 p-2 rounded-2xl hover:bg-surface-50 dark:hover:bg-surface-800/50 transition-colors">
         <div class="relative flex-shrink-0">
           <div class="w-10 h-10 rounded-2xl bg-surface-100 dark:bg-surface-800 flex items-center justify-center overflow-hidden">
-            ${r.avatar_url ? `<img src="${r.avatar_url}" class="w-full h-full object-cover">` : `<span class="text-base">👤</span>`}
+            ${_safeUrl(r.avatar_url) ? `<img src="${_safeUrl(r.avatar_url)}" class="w-full h-full object-cover">` : `<span class="text-base">👤</span>`}
           </div>
           <div class="absolute -bottom-1 -right-1 text-sm leading-none">${cfg.emoji}</div>
         </div>
         <div class="flex-1 min-w-0">
-          <div class="font-bold text-sm text-surface-800 dark:text-surface-100 truncate">${r.display_name}</div>
-          <div class="text-[10px] text-surface-400 font-medium">${cfg.label}</div>
+          <div class="font-bold text-sm text-surface-800 dark:text-surface-100 truncate">${escHtml(r.display_name)}</div>
+          <div class="text-[10px] text-surface-400 font-medium">${escHtml(cfg.label)}</div>
         </div>
       </div>
     `;
@@ -5872,6 +5933,10 @@ function initSocket() {
   });
 
   socket.on('new_message', (data) => {
+    try {
+      const _cid = data.type === 'dm' ? data.sender : data.room_id;
+      if (data.sender && _cid != null) hideTypingIndicator(data.sender, _cid);
+    } catch (e) { }
     // Determine if this message is for the currently OPEN and VISIBLE chat
     const isCurrentChat = state.currentChat && state.currentChat.id && (
       (data.type === 'room' && String(data.room_id) === String(state.currentChat.id)) ||
@@ -5881,10 +5946,16 @@ function initSocket() {
     const currentUser = (typeof state.user === 'object' ? state.user?.username : state.user);
 
     if (isVisible) {
-      if (data.sender !== currentUser) {
-        console.log("👀 New message in active chat, refreshing sync...");
-        loadChatMessages(true);
+      const mine = data.sender === currentUser;
+      if (mine) {
+        // ส่งจากอีกแท็บ/อุปกรณ์ของเรา (หรือซ็อกเก็ตมาก่อนคำตอบ POST) → ถอดข้อความ "กำลังส่ง" ที่ซ้ำกันออกก่อน
+        state.groupChat.messages = (state.groupChat.messages || []).filter(x => !(x._pending && x.text === data.text));
       }
+      if (data.id != null && _chatAppendIfNew(_chatMsgFromPayload(data))) {
+        renderChatMessages(true);
+        if (!mine) { try { sendReadSignal(); } catch (e) { } }
+      }
+      _chatScheduleReconcile(mine ? 2500 : 1500);
       loadChatList();
     } else {
       // Message is for another chat or we are not looking at the chat modal
@@ -5903,24 +5974,15 @@ function initSocket() {
   });
 
   // Listen for user status updates (online/offline)
-  socket.on('user_status_updated', (data) => {
-    console.log("👤 User Status Updated:", data);
-    if (data.online_users) {
-      console.log("📊 Online users:", data.online_users);
-      // You can update UI to show online status
-      updateOnlineUsersList(data.online_users);
-    }
-  });
+  socket.on('user_status_updated', (data) => onPresenceEvent(data));
 
   // Listen for typing indicators
   socket.on('user_typing', (data) => {
-    console.log("✍️ User Typing:", data.username, "in room", data.room_id);
-    showTypingIndicator(data.username, data.display_name || data.username, data.room_id);
+    showTypingIndicator(data.username, data.display_name || data.username, data.chat_id ?? data.room_id);
   });
 
   socket.on('user_stopped_typing', (data) => {
-    console.log("⏹️ User Stopped Typing:", data.username);
-    hideTypingIndicator(data.username, data.room_id);
+    hideTypingIndicator(data.username, data.chat_id ?? data.room_id);
   });
 
   // Listen for read receipts
@@ -6164,7 +6226,7 @@ function renderTodoList() {
 
       <!-- Task text / inline edit -->
       <div class="flex-1 min-w-0" id="todo-text-wrap-${t.id}">
-        <span class="text-xs font-medium text-surface-700 dark:text-surface-300 leading-tight break-all ${isDone ? 'line-through text-surface-400' : ''}">${t.title}</span>
+        <span class="text-xs font-medium text-surface-700 dark:text-surface-300 leading-tight break-all ${isDone ? 'line-through text-surface-400' : ''}">${escHtml(t.title)}</span>
       </div>
 
       <!-- Action buttons -->
@@ -6302,12 +6364,223 @@ const THAI_HOLIDAYS_2026 = {
 };
 // Month is 1-indexed (01-12) to match standard date formatting in logic below
 
+// ─── Local Date Helper (Prevents UTC 00:00–07:00 date lag in Thailand) ─────
+function localDateStr(d = new Date()) {
+  const dt = (d instanceof Date) ? d : new Date(d);
+  if (isNaN(dt.getTime())) return '';
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, '0');
+  const day = String(dt.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+// ─── Schedule & Day Detail Modal Helpers (Centering Guarantee) ──────────────
+function openScheduleModal() {
+  if (!scheduleModal) return;
+  scheduleModal.classList.remove('hidden');
+  scheduleModal.classList.add('flex', 'items-center', 'justify-center');
+}
+
+function closeScheduleModalAction() {
+  if (!scheduleModal) return;
+  scheduleModal.classList.add('hidden');
+  scheduleModal.classList.remove('flex', 'items-center', 'justify-center');
+}
+
+let currentDayDetailDateStr = null;
+
+function closeDayDetailModalAction() {
+  const m = $('dayDetailModal');
+  if (m) {
+    m.classList.add('hidden');
+    m.classList.remove('flex', 'items-center', 'justify-center');
+  }
+  currentDayDetailDateStr = null;
+}
+
+function openDayDetailModal(dateStr, highlightId = null) {
+  if (!dateStr) return;
+  currentDayDetailDateStr = dateStr;
+
+  const m = $('dayDetailModal');
+  if (!m) return;
+
+  const dateParts = dateStr.split('-');
+  const dt = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]));
+  const thaiFullDate = dt.toLocaleDateString('th-TH', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  });
+
+  const titleEl = $('dayDetailModalTitle');
+  if (titleEl) titleEl.textContent = thaiFullDate;
+
+  const holidayName = THAI_HOLIDAYS_2026[dateStr];
+  const holidayBadge = $('dayDetailHolidayBadge');
+  if (holidayBadge) {
+    if (holidayName) {
+      holidayBadge.textContent = `วันหยุด: ${holidayName}`;
+      holidayBadge.classList.remove('hidden');
+    } else {
+      holidayBadge.classList.add('hidden');
+    }
+  }
+
+  const addBtn = $('dayDetailAddBtn');
+  if (addBtn) {
+    addBtn.onclick = () => {
+      closeDayDetailModalAction();
+      openAddModal(dateStr);
+    };
+  }
+
+  const closeBtn = $('closeDayDetailModal');
+  if (closeBtn) {
+    closeBtn.onclick = closeDayDetailModalAction;
+  }
+
+  m.onclick = (e) => {
+    if (e.target === m) closeDayDetailModalAction();
+  };
+
+  renderDayDetailContent(dateStr, highlightId);
+
+  m.classList.remove('hidden');
+  m.classList.add('flex', 'items-center', 'justify-center');
+  initIcons();
+}
+
+function renderDayDetailContent(dateStr, highlightId = null) {
+  const listEl = $('dayDetailList');
+  if (!listEl) return;
+
+  const todayStr = localDateStr();
+  const daySchedules = (state.calendar.schedules || [])
+    .filter(s => s.date === dateStr)
+    .sort((a, b) => (a.time || '09:00').localeCompare(b.time || '09:00'));
+
+  const subTitle = $('dayDetailSubTitle');
+  if (subTitle) {
+    subTitle.textContent = `${daySchedules.length} กำหนดการ`;
+  }
+
+  if (daySchedules.length === 0) {
+    listEl.innerHTML = `
+      <div class="py-12 text-center flex flex-col items-center justify-center gap-3">
+        <div class="w-12 h-12 rounded-2xl bg-surface-100 dark:bg-surface-800 flex items-center justify-center text-surface-400">
+          <i data-lucide="calendar" class="w-6 h-6"></i>
+        </div>
+        <p class="text-sm font-semibold text-surface-500">ไม่มีกำหนดการในวันนี้</p>
+        <button type="button" class="mt-1 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
+          onclick="closeDayDetailModalAction(); openAddModal('${escHtml(dateStr)}')">
+          <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+          <span>เพิ่มกิจกรรมใหม่</span>
+        </button>
+      </div>
+    `;
+    initIcons();
+    return;
+  }
+
+  const catColors = {
+    Meeting: { bg: 'bg-indigo-50 dark:bg-indigo-900/30', border: 'border-indigo-500/30', text: 'text-indigo-700 dark:text-indigo-300', icon: 'users' },
+    Event: { bg: 'bg-emerald-50 dark:bg-emerald-900/30', border: 'border-emerald-500/30', text: 'text-emerald-700 dark:text-emerald-300', icon: 'calendar' },
+    Task: { bg: 'bg-amber-50 dark:bg-amber-900/30', border: 'border-amber-500/30', text: 'text-amber-700 dark:text-amber-300', icon: 'check-square' },
+    Holiday: { bg: 'bg-rose-50 dark:bg-rose-900/30', border: 'border-rose-500/30', text: 'text-rose-700 dark:text-rose-300', icon: 'sun' }
+  };
+
+  listEl.innerHTML = daySchedules.map(s => {
+    const isDone = s.status === 'done';
+    const isOverdue = s.date < todayStr && !isDone;
+    const cat = catColors[s.category] || { bg: 'bg-brand-50 dark:bg-brand-900/30', border: 'border-brand-500/30', text: 'text-brand-700 dark:text-brand-300', icon: 'calendar' };
+    const canManage = (s.owner === state.username || state.isAdmin || state.isOrgAdmin);
+    const safeAvatar = s.avatar_url ? _safeUrl(s.avatar_url) : '';
+    const isHighlighted = highlightId && Number(highlightId) === Number(s.id);
+
+    return `
+      <div id="dayScheduleItem-${Number(s.id)}" class="p-4 rounded-2xl border transition-all ${isHighlighted ? 'ring-2 ring-brand-500 shadow-md bg-brand-50/20 dark:bg-brand-950/20' : 'bg-surface-50/60 dark:bg-surface-800/40 hover:bg-surface-100/70 dark:hover:bg-surface-800/80'} border-surface-200/80 dark:border-surface-700/60 flex flex-col gap-3">
+        <!-- Top row: Category, Time, Badges, and Actions -->
+        <div class="flex items-start justify-between gap-2 flex-wrap">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold ${cat.bg} ${cat.text} border ${cat.border}">
+              <i data-lucide="${cat.icon}" class="w-3.5 h-3.5"></i>
+              <span>${escHtml(s.category || 'General')}</span>
+            </span>
+            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-surface-200/60 dark:bg-surface-700 text-surface-700 dark:text-surface-300">
+              <i data-lucide="clock" class="w-3 h-3 text-surface-400"></i>
+              <span>${escHtml(s.time || '09:00')}</span>
+            </span>
+            ${s.is_public ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 uppercase">Shared</span>' : '<span class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-surface-200/50 text-surface-500 uppercase">Private</span>'}
+            ${isDone ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">เสร็จแล้ว</span>' : (isOverdue ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-rose-600 text-white animate-pulse">เกินกำหนด (Overdue)</span>' : '<span class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30">รอดำเนินการ</span>')}
+          </div>
+
+          <!-- Actions -->
+          <div class="flex items-center gap-1.5 flex-shrink-0">
+            <button type="button" class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${isDone ? 'bg-surface-200 dark:bg-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-300' : 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100'}"
+              title="${isDone ? 'ทำเครื่องหมายว่ายังไม่เสร็จ' : 'ทำเครื่องหมายว่าเสร็จแล้ว'}"
+              onclick="toggleScheduleStatus(${Number(s.id)})">
+              <i data-lucide="${isDone ? 'rotate-ccw' : 'check'}" class="w-3.5 h-3.5"></i>
+              <span>${isDone ? 'ทำซ้ำ' : 'เสร็จแล้ว'}</span>
+            </button>
+            ${canManage ? `
+            <button type="button" class="p-1.5 text-surface-400 hover:text-brand-600 rounded-lg hover:bg-surface-200 dark:hover:bg-surface-700 transition-colors"
+              title="แก้ไข" onclick="closeDayDetailModalAction(); editSchedule(${Number(s.id)})">
+              <i data-lucide="edit-3" class="w-4 h-4"></i>
+            </button>
+            <button type="button" class="p-1.5 text-surface-400 hover:text-rose-600 rounded-lg hover:bg-surface-200 dark:hover:bg-surface-700 transition-colors"
+              title="ลบ" onclick="deleteSchedule(${Number(s.id)})">
+              <i data-lucide="trash-2" class="w-4 h-4"></i>
+            </button>` : ''}
+          </div>
+        </div>
+
+        <!-- Title -->
+        <h4 class="text-base font-bold text-surface-900 dark:text-white leading-snug break-words ${isDone ? 'line-through opacity-60' : ''}">
+          ${escHtml(s.title)}
+        </h4>
+
+        <!-- Description (Full with newlines preserved) -->
+        ${s.desc ? `
+        <div class="text-xs text-surface-600 dark:text-surface-300 leading-relaxed whitespace-pre-wrap break-words bg-white/60 dark:bg-surface-900/40 p-3 rounded-xl border border-surface-200/50 dark:border-surface-700/40">
+          ${escHtml(s.desc)}
+        </div>` : '<div class="text-xs text-surface-400 italic">ไม่มีคำอธิบายเพิ่มเติม</div>'}
+
+        <!-- Footer info: Owner -->
+        <div class="flex items-center justify-between text-xs text-surface-400 pt-2 border-t border-surface-200/60 dark:border-surface-700/40">
+          <div class="flex items-center gap-2">
+            <div class="w-5 h-5 rounded-full bg-surface-200 dark:bg-surface-700 flex items-center justify-center overflow-hidden flex-shrink-0 ring-1 ring-surface-300/30">
+              ${safeAvatar ? `<img src="${safeAvatar}" class="w-full h-full object-cover">` : `<i data-lucide="user" class="w-3 h-3 text-surface-400"></i>`}
+            </div>
+            <span class="font-medium text-surface-600 dark:text-surface-400">${escHtml(s.display_name || s.owner || 'ไม่ระบุ')}</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  initIcons();
+
+  if (highlightId) {
+    setTimeout(() => {
+      const item = document.getElementById(`dayScheduleItem-${Number(highlightId)}`);
+      if (item) {
+        item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }, 150);
+  }
+}
+
 async function loadSchedules() {
   try {
     const data = await apiFetch('/api/schedules');
     state.calendar.schedules = data.schedules || [];
     renderCalendar();
     renderUpcoming();
+    if (currentDayDetailDateStr && $('dayDetailModal') && !$('dayDetailModal').classList.contains('hidden')) {
+      renderDayDetailContent(currentDayDetailDateStr);
+    }
   } catch (e) {
     console.error('Failed to load schedules:', e);
   }
@@ -6317,7 +6590,7 @@ function renderCalendar() {
   const date = state.calendar.viewDate;
   const year = date.getFullYear();
   const month = date.getMonth();
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = localDateStr();
 
   calendarMonth.textContent = new Intl.DateTimeFormat('th-TH', { month: 'long', year: 'numeric' }).format(date);
 
@@ -6326,11 +6599,10 @@ function renderCalendar() {
   const cat = state.calendar.categoryFilter || 'all';
 
   const filteredSchedules = state.calendar.schedules.filter(s => {
-    const matchSearch = !q || s.title.toLowerCase().includes(q) || (s.desc || '').toLowerCase().includes(q);
+    const matchSearch = !q || (s.title || '').toLowerCase().includes(q) || (s.desc || '').toLowerCase().includes(q);
     const matchCat = cat === 'all' || s.category === cat;
     return matchSearch && matchCat;
   });
-
 
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -6340,7 +6612,7 @@ function renderCalendar() {
   // Padding for previous month
   for (let i = 0; i < firstDay; i++) {
     const div = document.createElement('div');
-    div.className = 'bg-surface-50/30 dark:bg-surface-900/10 min-h-[80px] p-2';
+    div.className = 'bg-surface-50/30 dark:bg-surface-900/10 min-h-[95px] md:min-h-[125px] lg:min-h-[145px] p-2';
     calendarGrid.appendChild(div);
   }
 
@@ -6349,11 +6621,10 @@ function renderCalendar() {
   for (let day = 1; day <= daysInMonth; day++) {
     const div = document.createElement('div');
     const isToday = today.getDate() === day && today.getMonth() === month && today.getFullYear() === year;
-    // Check if Sunday (0)
     const dayOfWeek = new Date(year, month, day).getDay();
     const isSunday = dayOfWeek === 0;
 
-    div.className = `bg-white dark:bg-surface-900 min-h-[80px] md:min-h-[115px] p-1.5 md:p-2 border-t border-l border-surface-100 dark:border-surface-800 transition-all hover:bg-brand-50/30 dark:hover:bg-brand-900/10 relative ${isToday ? 'ring-1 ring-inset ring-brand-600/50' : ''} ${isSunday ? 'bg-rose-50/50 dark:bg-rose-900/10' : ''}`;
+    div.className = `bg-white dark:bg-surface-900 min-h-[95px] md:min-h-[125px] lg:min-h-[145px] p-1.5 md:p-2 border-t border-l border-surface-100 dark:border-surface-800 transition-all hover:bg-brand-50/30 dark:hover:bg-brand-900/10 relative ${isToday ? 'ring-2 ring-inset ring-brand-600/50' : ''} ${isSunday ? 'bg-rose-50/40 dark:bg-rose-900/10' : ''}`;
 
     let html = `<span class="text-[10px] md:text-xs font-bold ${isToday ? 'bg-brand-600 text-white w-5 h-5 flex items-center justify-center rounded-full' : (isSunday ? 'text-rose-600' : 'text-surface-400')}">${day}</span>`;
 
@@ -6364,11 +6635,10 @@ function renderCalendar() {
 
     const daySchedules = filteredSchedules.filter(s => s.date === dateStr);
 
-
     if (holidayName || daySchedules.length > 0) {
       html += `<div class="mt-1 space-y-1 w-full min-w-0">`;
 
-      // Render Holiday first
+      // Render Holiday first (always on top, does not consume event slots)
       if (holidayName) {
         html += `<div class="text-[7.5px] md:text-[8.5px] px-1.5 py-0.5 md:py-1 mb-1 rounded-md font-black bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 border border-rose-200/30 flex items-center gap-1 w-full" title="${escHtml(holidayName)}">
           <i data-lucide="sun" class="w-2.5 h-2.5 shrink-0 opacity-70"></i>
@@ -6376,7 +6646,12 @@ function renderCalendar() {
         </div>`;
       }
 
-      daySchedules.forEach(s => {
+      // Max visible schedules per day cell (Task 3: show up to 2 items, remaining shown via +N pill)
+      const MAX_VISIBLE_SCHEDULES = 2;
+      const visibleSchedules = daySchedules.slice(0, MAX_VISIBLE_SCHEDULES);
+      const extraCount = daySchedules.length - MAX_VISIBLE_SCHEDULES;
+
+      visibleSchedules.forEach(s => {
         const catColors = {
           Meeting: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 border-indigo-500',
           Event: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 border-emerald-500',
@@ -6384,7 +6659,7 @@ function renderCalendar() {
           Holiday: 'bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300 border-rose-500'
         };
         const isDone = s.status === 'done';
-        const isPast = dateStr < new Date().toISOString().split('T')[0];
+        const isPast = dateStr < todayStr;
         const isOverdue = isPast && !isDone;
 
         const overdueBadge = isOverdue ? '<span class="text-[6px] bg-rose-600 text-white px-1 py-0.5 rounded-[4px] font-black uppercase ml-0.5 shrink-0 shadow-sm shadow-rose-900/10">OVERDUE</span>' : '';
@@ -6393,13 +6668,13 @@ function renderCalendar() {
         const doneIcon = isDone ? '<i data-lucide="check-circle-2" class="w-2.5 h-2.5 inline-block mr-1 text-emerald-600 shrink-0"></i>' : (isOverdue ? '<i data-lucide="alert-circle" class="w-2.5 h-2.5 inline-block mr-1 text-rose-600 shrink-0"></i>' : '');
 
         html += `<div class="group/item relative flex flex-col p-1.5 mb-1 rounded-lg border-l-[3.5px] ${catColors[s.category] || 'bg-surface-100 text-surface-600 border-surface-400'} ${doneClass} cursor-pointer hover:scale-[1.01] transition-transform active:scale-95 duration-200 w-full" 
-                    title="${escHtml(s.title)}" onclick="event.stopPropagation(); editSchedule(${s.id})">
+                    title="${escHtml(s.title)}" onclick="event.stopPropagation(); openDayDetailModal('${escHtml(dateStr)}', ${Number(s.id)})">
           
           <div class="flex flex-col gap-0.5 w-full min-w-0">
             <div class="flex items-center justify-between gap-1 w-full mb-0.5">
               <div class="flex items-center shrink-0 text-[7.5px] md:text-[8.5px] font-black uppercase tracking-tight opacity-75">
                  ${doneIcon}
-                 <span>${s.time || '09:00'}</span>
+                 <span>${escHtml(s.time || '09:00')}</span>
               </div>
               <div class="flex items-center gap-0.5 shrink-0">
                 ${publicBadge}
@@ -6412,48 +6687,44 @@ function renderCalendar() {
             </div>
           </div>
           
-          <div class="hidden group-hover/item:flex items-center gap-1.5 absolute right-1 -top-1 bg-white/95 dark:bg-surface-800/95 shadow-lg px-1.5 py-1 rounded-lg backdrop-blur-sm z-10 border border-surface-200 dark:border-surface-700 animate-in zoom-in duration-200">
+          <div class="hidden group-hover/item:flex items-center gap-1.5 absolute right-1 -top-1 bg-white/95 dark:bg-surface-800/95 shadow-lg px-1.5 py-1 rounded-lg backdrop-blur-sm z-10 border border-surface-200 dark:border-surface-700 animate-in zoom-in duration-200" onclick="event.stopPropagation()">
             <button class="text-emerald-500 hover:text-emerald-700 transition-colors p-0.5" 
                     title="${isDone ? 'Mark as To-Do' : 'Mark as Done'}"
-                    onclick="event.stopPropagation(); toggleScheduleStatus(${s.id})">
+                    onclick="event.stopPropagation(); toggleScheduleStatus(${Number(s.id)})">
               <i data-lucide="${isDone ? 'rotate-ccw' : 'check'}" class="w-3.5 h-3.5"></i>
             </button>
             <button class="text-red-500 hover:text-red-700 transition-colors p-0.5" 
                     title="ลบ"
-                    onclick="event.stopPropagation(); deleteSchedule(${s.id})">
+                    onclick="event.stopPropagation(); deleteSchedule(${Number(s.id)})">
               <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
             </button>
           </div>
         </div>`;
       });
 
+      // Show +N more pill if there are extra schedules for this day
+      if (extraCount > 0) {
+        html += `<button type="button" class="w-full text-left text-[8px] md:text-[9.5px] font-bold text-brand-600 dark:text-brand-400 bg-brand-50/80 dark:bg-brand-900/30 hover:bg-brand-100 dark:hover:bg-brand-900/50 py-1 px-1.5 rounded-md border border-brand-500/20 transition-all flex items-center justify-between shadow-xs mt-0.5"
+          onclick="event.stopPropagation(); openDayDetailModal('${escHtml(dateStr)}')">
+          <span>+${extraCount} เพิ่มเติม</span>
+          <i data-lucide="chevron-right" class="w-3 h-3 opacity-70"></i>
+        </button>`;
+      }
+
       html += `</div>`;
     }
 
     div.innerHTML = html;
 
-    // Aesthetic & UX: Click on day to add schedule
+    // UX: Click on day cell -> if events exist, open full detail modal; if empty, open add modal
     div.classList.add('cursor-pointer');
-    div.onclick = async () => {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const isPast = new Date(dateStr) < today;
-      const schedulesCount = state.calendar.schedules.filter(s => s.date === dateStr).length;
-
-      if (isPast && schedulesCount > 0) {
-        if (confirm(`คุณต้องการเก็บกำหนดการทั้งหมดในวันที่ ${dateStr} นี้เข้ากรุหรือไม่? (${schedulesCount} รายการ)`)) {
-          // Archive past schedules for this day
-          await apiFetch('/api/schedules/archive-past', { method: 'POST' }); // Simplified: archives ALL past of user, but that's fine for now or we could make it per day. 
-          // Let's stick to the prompt's request for "Archiving past"
-          toast('เก็บเข้ากรุเรียบร้อยแล้ว', 'success');
-          await loadSchedules();
-          return;
-        }
+    div.onclick = () => {
+      if (daySchedules.length > 0) {
+        openDayDetailModal(dateStr);
+      } else {
+        openAddModal(dateStr);
       }
-
-      openAddModal(dateStr);
     };
-
 
     calendarGrid.appendChild(div);
   }
@@ -6461,12 +6732,11 @@ function renderCalendar() {
 }
 
 function renderUpcoming() {
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
+  const todayStr = localDateStr();
 
-  const upcoming = state.calendar.schedules
-    .filter(s => new Date(s.date) >= now)
-    .sort((a, b) => new Date(a.date) - new Date(b.date))
+  const upcoming = (state.calendar.schedules || [])
+    .filter(s => s.date >= todayStr)
+    .sort((a, b) => ((a.date || '') + (a.time || '')).localeCompare((b.date || '') + (b.time || '')))
     .slice(0, 8);
 
   if (!upcoming.length) {
@@ -6485,28 +6755,30 @@ function renderUpcoming() {
       Holiday: { icon: 'sun', bg: 'bg-rose-100 dark:bg-rose-900/30', color: 'text-rose-600 dark:text-rose-400' },
     };
     const cat = catIcon[s.category] || { icon: 'calendar', bg: 'bg-brand-100 dark:bg-brand-900/30', color: 'text-brand-600' };
-    const dateStr = new Date(s.date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+    const dateParts = (s.date || '').split('-');
+    const dt = dateParts.length === 3 ? new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2])) : new Date(s.date);
+    const dateStr = dt.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
 
     return `
-    <div class="flex items-start gap-2.5 p-2 rounded-2xl transition hover:bg-surface-50 dark:hover:bg-surface-800/40 group">
+    <div class="flex items-start gap-2.5 p-2 rounded-2xl transition hover:bg-surface-50 dark:hover:bg-surface-800/40 group cursor-pointer" onclick="openDayDetailModal('${escHtml(s.date)}', ${Number(s.id)})">
       <div class="w-8 h-8 rounded-xl ${cat.bg} flex items-center justify-center ${cat.color} flex-shrink-0 mt-0.5 shadow-sm">
         <i data-lucide="${cat.icon}" class="w-4 h-4"></i>
       </div>
       <div class="flex-1 min-w-0">
         <div class="flex items-start justify-between gap-1 leading-tight mb-1">
           <div class="text-xs font-bold text-surface-900 dark:text-surface-100 group-hover:text-brand-600 transition-colors break-words flex-1 leading-snug ${s.status === 'done' ? 'line-through opacity-50' : ''}">
-            ${s.status === 'done' ? '<i data-lucide="check-circle-2" class="w-3 h-3 inline-block mr-1 text-emerald-500"></i>' : (new Date(s.date) < (new Date().setHours(0, 0, 0, 0)) ? '<span class="text-[8px] bg-rose-600 text-white px-1.5 py-0.5 rounded-full uppercase mr-1 inline-block animate-pulse">Overdue</span>' : '')}
-            ${s.title}
+            ${s.status === 'done' ? '<i data-lucide="check-circle-2" class="w-3 h-3 inline-block mr-1 text-emerald-500"></i>' : (s.date < todayStr ? '<span class="text-[8px] bg-rose-600 text-white px-1.5 py-0.5 rounded-full uppercase mr-1 inline-block animate-pulse">Overdue</span>' : '')}
+            ${escHtml(s.title)}
           </div>
 
-          <div class="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0">
-            <button class="p-1 text-surface-300 hover:text-emerald-500 rounded" title="Toggle Status" onclick="toggleScheduleStatus(${s.id})">
+          <div class="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0" onclick="event.stopPropagation()">
+            <button class="p-1 text-surface-300 hover:text-emerald-500 rounded" title="Toggle Status" onclick="event.stopPropagation(); toggleScheduleStatus(${Number(s.id)})">
               <i data-lucide="${s.status === 'done' ? 'rotate-ccw' : 'check'}" class="w-3 h-3"></i>
             </button>
-            <button class="p-1 text-surface-300 hover:text-brand-600 rounded" title="Edit" onclick="editSchedule(${s.id})">
+            <button class="p-1 text-surface-300 hover:text-brand-600 rounded" title="Edit" onclick="event.stopPropagation(); editSchedule(${Number(s.id)})">
               <i data-lucide="edit-3" class="w-3 h-3"></i>
             </button>
-            <button class="p-1 text-surface-300 hover:text-red-500 rounded" title="Delete" onclick="deleteSchedule(${s.id})">
+            <button class="p-1 text-surface-300 hover:text-red-500 rounded" title="Delete" onclick="event.stopPropagation(); deleteSchedule(${Number(s.id)})">
               <i data-lucide="trash-2" class="w-3 h-3"></i>
             </button>
           </div>
@@ -6514,15 +6786,15 @@ function renderUpcoming() {
         
         <div class="flex flex-wrap items-center gap-1.5 mb-1">
           ${s.is_public ? '<span class="text-[8px] font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 px-1.5 py-0.2 rounded uppercase">Shared</span>' : ''}
-          <span class="text-[9px] font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-900/30 px-2 py-0.5 rounded-md border border-brand-500/10">${dateStr} · ${s.time || '09:00'}</span>
+          <span class="text-[9px] font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-900/30 px-2 py-0.5 rounded-md border border-brand-500/10">${escHtml(dateStr)} · ${escHtml(s.time || '09:00')}</span>
         </div>
 
-        <div class="text-[10px] text-surface-400 leading-normal line-clamp-2">${s.desc || 'ไม่มีรายละเอียด'}</div>
+        <div class="text-[10px] text-surface-400 leading-normal line-clamp-2">${escHtml(s.desc) || 'ไม่มีรายละเอียด'}</div>
         <div class="flex items-center gap-1.5 mt-1.5 pt-1.5 border-t border-surface-100 dark:border-surface-800/60">
           <div class="w-4 h-4 rounded-full bg-surface-200 dark:bg-surface-700 flex items-center justify-center overflow-hidden flex-shrink-0 ring-1 ring-surface-300/30">
-            ${s.avatar_url ? `<img src="${s.avatar_url}" class="w-full h-full object-cover">` : `<i data-lucide="user" class="w-2.5 h-2.5 text-surface-400"></i>`}
+            ${_safeUrl(s.avatar_url) ? `<img src="${_safeUrl(s.avatar_url)}" class="w-full h-full object-cover">` : `<i data-lucide="user" class="w-2.5 h-2.5 text-surface-400"></i>`}
           </div>
-          <span class="text-[9px] text-surface-400 font-semibold truncate">${s.display_name || s.owner || 'ไม่ระบุ'}</span>
+          <span class="text-[9px] text-surface-400 font-semibold truncate">${escHtml(s.display_name || s.owner || 'ไม่ระบุ')}</span>
         </div>
       </div>
     </div>
@@ -6537,6 +6809,7 @@ async function deleteSchedule(id) {
     if (res.ok) {
       toast('ลบนัดหมายเรียบร้อยแล้ว', 'info');
       await loadSchedules();
+      if (currentDayDetailDateStr) renderDayDetailContent(currentDayDetailDateStr);
     }
   } catch (e) {
     toast('ล้มเหลว: ' + e.message, 'error');
@@ -6549,6 +6822,7 @@ async function toggleScheduleStatus(id) {
     if (res.ok) {
       toast('อัปเดตสถานะแล้ว', 'success');
       await loadSchedules();
+      if (currentDayDetailDateStr) renderDayDetailContent(currentDayDetailDateStr);
       if (state.currentView === 'kanban') loadKanban();
     }
   } catch (e) {
@@ -6563,6 +6837,7 @@ async function clearPastSchedules() {
     if (res.ok) {
       toast('ลบกิจกรรมที่ผ่านมาเรียบร้อยแล้ว', 'info');
       await loadSchedules();
+      if (currentDayDetailDateStr) renderDayDetailContent(currentDayDetailDateStr);
     }
   } catch (e) {
     toast('ล้มเหลว: ' + e.message, 'error');
@@ -6597,12 +6872,10 @@ function openAddModal(dateStr = null) {
   if (dateStr) {
     scheduleDateInput.value = dateStr;
   } else if (!scheduleDateInput.value) {
-    const now = new Date();
-    scheduleDateInput.value = now.toISOString().split('T')[0];
+    scheduleDateInput.value = localDateStr();
   }
 
-  scheduleModal.classList.remove('hidden');
-  scheduleModal.classList.add('flex', 'items-center', 'justify-center');
+  openScheduleModal();
   initIcons();
   loadScheduleVisibilityData();
   scheduleTitleInput.focus();
@@ -6643,7 +6916,7 @@ function editSchedule(id) {
     }
   }
 
-  scheduleModal.classList.remove('hidden');
+  openScheduleModal();
   document.getElementById('scheduleModalTitle').textContent = 'แก้ไขนัดหมาย';
   saveScheduleBtn.innerHTML = '<i data-lucide="save" class="w-4 h-4"></i> บันทึกการแก้ไข';
   initIcons();
@@ -6750,12 +7023,12 @@ function renderDeptTags(filter = '') {
 
   container.innerHTML = depts.map(dept => {
     const isSelected = _scheduleSelectedDepts.has(dept);
-    return `<button type="button" onclick="toggleDeptTag('${dept}')"
+    return `<button type="button" onclick="toggleDeptTag('${_jsq(dept)}')"
       class="dept-tag px-2.5 py-1 rounded-full text-[10px] font-bold transition-all cursor-pointer border ${isSelected
         ? 'bg-brand-600 text-white border-brand-600 shadow-sm'
         : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 border-surface-200 dark:border-surface-700 hover:border-brand-400 hover:text-brand-600'
       }">
-      ${isSelected ? '✓ ' : ''}${dept}
+      ${isSelected ? '✓ ' : ''}${escHtml(dept)}
     </button>`;
   }).join('');
 
@@ -6782,13 +7055,13 @@ function renderUserTags(filter = '') {
     const display = u.display_name || uname;
     const isSelected = _scheduleSelectedUsers.has(uname);
     const initials = display[0]?.toUpperCase() || '?';
-    return `<button type="button" onclick="toggleUserTag('${uname}', '${display}')"
+    return `<button type="button" onclick="toggleUserTag('${_jsq(uname)}', '${_jsq(display)}')"
       class="user-tag flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all cursor-pointer border ${isSelected
         ? 'bg-brand-600 text-white border-brand-600 shadow-sm'
         : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-300 border-surface-200 dark:border-surface-700 hover:border-brand-400 hover:text-brand-600'
       }">
-      <span class="w-4 h-4 rounded-full bg-${isSelected ? 'white/20' : 'brand-100'} text-[8px] flex items-center justify-center font-black ${isSelected ? 'text-white' : 'text-brand-600'}">${initials}</span>
-      ${isSelected ? '✓ ' : ''}${display}
+      <span class="w-4 h-4 rounded-full bg-${isSelected ? 'white/20' : 'brand-100'} text-[8px] flex items-center justify-center font-black ${isSelected ? 'text-white' : 'text-brand-600'}">${escHtml(initials)}</span>
+      ${isSelected ? '✓ ' : ''}${escHtml(display)}
     </button>`;
   }).join('');
 
@@ -6864,12 +7137,15 @@ addScheduleBtn.onclick = () => openAddModal();
 
 if (archivePastSchedulesBtn) {
   archivePastSchedulesBtn.onclick = async () => {
-    if (!confirm('ยืนยัน: เก็บกำหนดการย้อนหลังทั้งหมดที่ผ่านมาแล้วเข้ากรุ?')) return;
+    const today = localDateStr();
+    const pastCount = (state.calendar.schedules || []).filter(s => s.date < today).length;
+    if (!confirm(`คุณต้องการเก็บกำหนดการย้อนหลังที่ผ่านมาแล้วทั้งหมดเข้ากรุหรือไม่? (พบ ${pastCount} รายการ)`)) return;
     try {
       const res = await apiFetch('/api/schedules/archive-past', { method: 'POST' });
       if (res.ok) {
         toast('เก็บเข้ากรุเรียบร้อยแล้ว', 'success');
         await loadSchedules();
+        if (currentDayDetailDateStr) renderDayDetailContent(currentDayDetailDateStr);
         if (state.currentView === 'home') await loadDashboard();
       }
     } catch (e) {
@@ -6878,12 +7154,13 @@ if (archivePastSchedulesBtn) {
   };
 }
 
+closeScheduleModal.onclick = closeScheduleModalAction;
 
-
-closeScheduleModal.onclick = () => {
-  scheduleModal.classList.add('hidden');
-  scheduleModal.classList.remove('flex', 'items-center', 'justify-center');
-};
+if (scheduleModal) {
+  scheduleModal.onclick = (e) => {
+    if (e.target === scheduleModal) closeScheduleModalAction();
+  };
+}
 
 saveScheduleBtn.onclick = async () => {
   const title = scheduleTitleInput.value.trim();
@@ -6918,11 +7195,12 @@ saveScheduleBtn.onclick = async () => {
     if (res.ok) {
       toast(editingScheduleId ? 'แก้ไขนัดหมายสำเร็จ!' : 'เพิ่มนัดหมายสำเร็จ!', 'success');
       if (res.warning) toast(res.warning, 'warning');
-      scheduleModal.classList.add('hidden');
+      closeScheduleModalAction();
       scheduleTitleInput.value = '';
       scheduleDescInput.value = '';
       editingScheduleId = null;
       await loadSchedules();
+      if (currentDayDetailDateStr) renderDayDetailContent(currentDayDetailDateStr);
       if (state.currentView === 'kanban') loadKanban();
     } else {
       throw new Error(res.error || 'บันทึกล้มเหลว');
@@ -7007,6 +7285,28 @@ function exportToICS() {
   toast('ส่งออกไฟล์ .ics เรียบร้อยแล้ว', 'success');
 }
 
+// ─── Calendar & Detail Modal Global Listeners & Window Exports ─────
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (scheduleModal && !scheduleModal.classList.contains('hidden')) {
+      closeScheduleModalAction();
+    } else if (currentDayDetailDateStr) {
+      closeDayDetailModalAction();
+    }
+  }
+});
+
+window.openDayDetailModal = openDayDetailModal;
+window.closeDayDetailModalAction = closeDayDetailModalAction;
+window.renderDayDetailContent = renderDayDetailContent;
+window.localDateStr = localDateStr;
+window.openScheduleModal = openScheduleModal;
+window.closeScheduleModalAction = closeScheduleModalAction;
+window.editSchedule = editSchedule;
+window.deleteSchedule = deleteSchedule;
+window.toggleScheduleStatus = toggleScheduleStatus;
+window.openAddModal = openAddModal;
+
 // ─── Data Visualization (Charts) ───────────────────────────
 state.viz = {
   mode: 'chart',
@@ -7030,7 +7330,7 @@ async function initViz() {
     const data = await apiFetch('/api/files');
     const csvs = (data.files || []).filter(f => f.type === 'csv');
     vizFileSelect.innerHTML = '<option value="">-- เลือกไฟล์ CSV --</option>' +
-      csvs.map(f => `<option value="${f.file_id}">${f.name}</option>`).join('');
+      csvs.map(f => `<option value="${escHtml(f.file_id)}">${escHtml(f.name)}</option>`).join('');
 
     vizFileSelect.onchange = async () => {
       const fileId = vizFileSelect.value;
@@ -7337,7 +7637,7 @@ async function initCSVExplorer() {
     const data = await apiFetch('/api/files');
     const csvs = (data.files || []).filter(f => f.type === 'csv');
     fileSelect.innerHTML = '<option value="">-- เลือกไฟล์ฐานข้อมูล CSV --</option>' +
-      csvs.map(f => `<option value="${f.file_id}">${f.name}</option>`).join('');
+      csvs.map(f => `<option value="${escHtml(f.file_id)}">${escHtml(f.name)}</option>`).join('');
 
     fileSelect.onchange = async () => {
       const fileId = fileSelect.value;
@@ -7689,6 +7989,9 @@ async function checkAuth() {
       state.orgId = data.org_id ?? null;
       state.isOrgAdmin = data.org_role === 'admin';
       applyProfile(data.profile);
+      if (typeof window.syncUIPrefsFromServer === 'function' && data.ui_prefs !== undefined) {
+        window.syncUIPrefsFromServer(data.ui_prefs);
+      }
       window._sessionExpired = false;
       loginOverlay.classList.add('hidden');
 
@@ -7773,7 +8076,7 @@ loginBtn.onclick = async () => {
       }
 
       setTimeout(() => {
-        if (window.location.pathname === '/onboarding') {
+        if (window.location.pathname === '/onboarding' || window.location.pathname === '/login') {
           window.location.href = '/';
         } else {
           window.location.reload();
@@ -7900,6 +8203,9 @@ async function logout() {
   try {
     localStorage.removeItem('orgchat_was_logged_in');
     window._userAuthed = false;
+    if (typeof window.clearCustomUILocalStorage === 'function') {
+      window.clearCustomUILocalStorage();
+    }
     const res = await fetch('/api/logout', { method: 'POST' });
     if (res.ok) {
       window.location.reload();
@@ -8150,17 +8456,17 @@ function renderChatSidebar() {
     const isTyping = state.typingUsers && state.typingUsers[item.id] && state.typingUsers[item.id].size > 0;
 
     return `
-      <div onclick="switchChat('${item.type}', '${item.id}', '${item.name}', '${item.avatar_url || ''}')" 
+      <div onclick="switchChat('${_jsq(item.type)}', '${_jsq(item.id)}', '${_jsq(item.name)}', '${_jsq(item.avatar_url || '')}')" 
            class="messenger-chat-item ${isActive ? 'active' : ''} ${isUnread ? 'unread' : ''} group">
         <div class="messenger-avatar-container">
           <div class="messenger-avatar relative ${item.type === 'dm' ? dotClass : ''}">
-            ${item.avatar_url ? `<img src="${item.avatar_url}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center bg-brand-600/10 text-brand-600"><i data-lucide="${avatarIcon}" class="w-6 h-6"></i></div>`}
+            ${item.avatar_url ? `<img src="${escHtml(item.avatar_url)}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center bg-brand-600/10 text-brand-600"><i data-lucide="${avatarIcon}" class="w-6 h-6"></i></div>`}
             ${item.type === 'dm' ? `<div class="messenger-online-dot ${dotClass}"></div>` : ''}
           </div>
         </div>
         <div class="messenger-content">
           <div class="flex items-center justify-between">
-            <span class="messenger-name truncate">${item.name}</span>
+            <span class="messenger-name truncate">${escHtml(item.name)}</span>
             <span class="messenger-time shrink-0">${lastTime}</span>
           </div>
           <div class="messenger-preview-row flex items-center justify-between gap-2 mt-0.5">
@@ -8197,7 +8503,9 @@ function cancelReply() {
 }
 
 async function switchChat(type, id, name, avatarUrl) {
+  stopTypingSignal();
   state.currentChat = { type, id, name, avatarUrl };
+  setTimeout(() => { try { renderTypingIndicator(); } catch (e) { } }, 0);
 
   // Update Status in Header immediately
   updateChatHeaderStatus();
@@ -8363,17 +8671,21 @@ async function loadChatMessages(shouldScroll = false, isPeek = false) {
 
 function startChatPolling() {
   stopChatPolling();
-  state.groupChat.pollInterval = setInterval(() => {
+  // Adaptive polling: 30s when real-time WebSocket is active, 8s when disconnected (R4)
+  const getInterval = () => (window.socket && window.socket.connected ? 30000 : 8000);
+  const tick = () => {
     if (state.currentChat.id) {
-      // Background messages poll should use PEEK if modal is hidden
       const isModalVisible = groupChatModal && !groupChatModal.classList.contains('hidden');
       loadChatMessages(false, !isModalVisible);
     }
-  }, 3000);
+    state.groupChat.pollInterval = setTimeout(tick, getInterval());
+  };
+  state.groupChat.pollInterval = setTimeout(tick, getInterval());
 }
 
 function stopChatPolling() {
   if (state.groupChat.pollInterval) {
+    clearTimeout(state.groupChat.pollInterval);
     clearInterval(state.groupChat.pollInterval);
     state.groupChat.pollInterval = null;
   }
@@ -8398,8 +8710,8 @@ function renderChatMessages(shouldScroll = false) {
     pinnedList.innerHTML = pinnedMessages.map(m => `
       <div class="flex items-center gap-2 p-1.5 px-3 bg-white dark:bg-surface-800/80 border border-brand-500/20 rounded-full shadow-sm animate-in zoom-in duration-300 max-w-[90%] w-fit">
         <div class="text-[9px] text-surface-600 dark:text-surface-300 truncate font-bold leading-tight flex items-center gap-2">
-           <span class="text-brand-600 font-black shrink-0">${m.display_name || m.username}:</span>
-           <span class="truncate">${m.text}</span>
+           <span class="text-brand-600 font-black shrink-0">${escHtml(m.display_name || m.username)}:</span>
+           <span class="truncate">${escHtml(m.text)}</span>
         </div>
         ${(state.isAdmin || state.currentChat.type === 'dm') ? `<button onclick="toggleRoomMessagePin(${m.id})" class="text-surface-300 hover:text-red-500 transition-colors ml-1"><i data-lucide="x" class="w-2.5 h-2.5"></i></button>` : ''}
       </div>
@@ -8407,6 +8719,11 @@ function renderChatMessages(shouldScroll = false) {
   } else {
     pinnedContainer?.classList.add('hidden');
   }
+
+  // ข้อความมาจากผู้ใช้คนอื่น → ทำความสะอาด URL ของไฟล์แนบก่อนนำไปใส่ใน HTML/onclick
+  state.groupChat.messages.forEach(m => {
+    if (Array.isArray(m.attachments)) m.attachments.forEach(a => { if (a && a.url != null) a.url = _safeUrl(a.url); });
+  });
 
   const html = state.groupChat.messages.map((m, idx) => {
     const isMe = String(m.username).toLowerCase() === String(state.user || '').toLowerCase();
@@ -8418,6 +8735,7 @@ function renderChatMessages(shouldScroll = false) {
       : (isBot ? 'bubble-bot border-l-2 border-brand-500' : 'bubble-them');
 
     if (m.is_pinned && !isMe) bubbleClass += ' ring-1 ring-brand-500/30 bg-brand-50 dark:bg-brand-900/10';
+    if (m._pending) bubbleClass += ' opacity-60';
 
     // 🏆 Messenger-style Read Avatars Logic
     let readAvatarsHtml = '';
@@ -8429,8 +8747,8 @@ function renderChatMessages(shouldScroll = false) {
         readAvatarsHtml = `
           <div class="read-avatars flex -space-x-1.5 mt-1 border-brand-500">
             ${readers.slice(0, 5).map(r => `
-              <div class="w-3.5 h-3.5 rounded-full border-2 border-white dark:border-surface-900 overflow-hidden shadow-sm hover:scale-110 transition-transform bg-surface-200" title="${r.display_name || r.username}">
-                ${r.avatar_url ? `<img src="${r.avatar_url}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center text-[5px] font-black bg-brand-50 text-brand-600">${r.username[0].toUpperCase()}</div>`}
+              <div class="w-3.5 h-3.5 rounded-full border-2 border-white dark:border-surface-900 overflow-hidden shadow-sm hover:scale-110 transition-transform bg-surface-200" title="${escHtml(r.display_name || r.username)}">
+                ${_safeUrl(r.avatar_url) ? `<img src="${_safeUrl(r.avatar_url)}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center text-[5px] font-black bg-brand-50 text-brand-600">${r.username[0].toUpperCase()}</div>`}
               </div>
             `).join('')}
             ${readers.length > 5 ? `<div class="w-3.5 h-3.5 rounded-full bg-surface-100 dark:bg-surface-800 flex items-center justify-center text-[5px] font-black border-2 border-white dark:border-surface-900 text-surface-500">+${readers.length - 5}</div>` : ''}
@@ -8507,7 +8825,7 @@ function renderChatMessages(shouldScroll = false) {
         ${fileAttachments.map(file => `
           <a href="${file.url}" target="_blank" class="chat-file-attachment flex items-center gap-2 px-3 py-2 rounded-xl text-[10px] font-bold bg-white dark:bg-surface-800 border border-surface-100 dark:border-surface-700">
             <i data-lucide="file" class="w-3 h-3 text-brand-600"></i>
-            <span class="truncate max-w-[120px]">${file.name}</span>
+            <span class="truncate max-w-[120px]">${escHtml(file.name)}</span>
             <i data-lucide="download" class="w-2.5 h-2.5 ml-auto opacity-50"></i>
           </a>
         `).join('')}
@@ -8517,11 +8835,11 @@ function renderChatMessages(shouldScroll = false) {
     return `
       <div class="chat-msg-row group ${isMe ? 'msg-user' : (isBot ? 'msg-bot' : 'msg-them')} ${isLast ? 'animate-in fade-in' : ''}" id="msg-row-${m.id}">
         <div class="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 bg-surface-200 dark:bg-surface-700 border border-surface-100 dark:border-surface-800 shadow-sm relative z-10 transition-transform group-hover:scale-105">
-          ${m.avatar_url ? `<img src="${m.avatar_url}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center text-xs font-black uppercase text-surface-600 dark:text-surface-300 bg-brand-50">${m.username ? m.username[0] : '?'}</div>`}
+          ${_safeUrl(m.avatar_url) ? `<img src="${_safeUrl(m.avatar_url)}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center text-xs font-black uppercase text-surface-600 dark:text-surface-300 bg-brand-50">${escHtml(m.username ? m.username[0] : '?')}</div>`}
         </div>
         <div class="msg-content-wrapper">
           <div class="flex items-center gap-2 mb-1 ${isMe ? 'flex-row-reverse text-right' : ''}">
-            <span class="text-[10px] font-black text-surface-500 truncate max-w-[120px]">${m.display_name || m.username}</span>
+            <span class="text-[10px] font-black text-surface-500 truncate max-w-[120px]">${escHtml(m.display_name || m.username)}</span>
             <div class="flex items-center gap-1.5">
               <span class="text-[8px] text-surface-400 opacity-60 shrink-0">${parseServerDate(m.timestamp).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</span>
             </div>
@@ -8538,7 +8856,7 @@ function renderChatMessages(shouldScroll = false) {
             ${m.reply_to_id ? `
               <div class="reply-bubble mb-1.5 p-2 py-1.5 bg-surface-200/50 dark:bg-surface-800/50 border-l-4 border-brand-500/50 rounded-lg text-[10px] opacity-70 cursor-pointer hover:opacity-100 transition-opacity max-w-[85%]" onclick="scrollToMessage(${m.reply_to_id})">
                  <div class="font-black text-brand-600 uppercase tracking-tighter mb-0.5">${m.reply_sender || 'User'}</div>
-                 <div class="truncate italic max-w-[200px]">${m.reply_text || 'ข้อความถูกลบ'}</div>
+                 <div class="truncate italic max-w-[200px]">${escHtml(m.reply_text) || 'ข้อความถูกลบ'}</div>
               </div>
             ` : ''}
             
@@ -9026,6 +9344,28 @@ function removeChatAttachment(idx) {
   renderChatAttachmentPreview();
 }
 
+// ─── ส่ง/รับข้อความให้เร็ว ────────────────────────────────────────
+// • ส่ง: ข้อความข้อความล้วนขึ้นในหน้าจอทันทีที่กด (optimistic) ไม่รอเซิร์ฟเวอร์ตอบ + ดึงรายการใหม่อีกรอบ (เดิมต้องรอ POST แล้วรอ GET)
+// • รับ: ข้อความจากซ็อกเก็ตถูกเพิ่มเข้าหน้าจอเลยจากข้อมูลที่ส่งมา (เดิมต้องยิง GET ดึงทั้งแชทใหม่) แล้วค่อย "ตรวจซ้ำ" เบาๆ ภายหลัง
+function _chatMsgFromPayload(d) {
+  return {
+    id: d.id, username: d.sender || d.username, text: d.text || '', timestamp: d.timestamp || new Date().toISOString(),
+    display_name: d.display_name || d.sender || d.username, avatar_url: d.avatar_url || null,
+    attachments: (d.attachments && d.attachments.length) ? d.attachments : null,
+    is_pinned: false, reply_to_id: d.reply_to_id || null, reply_text: d.reply_text || null, reply_sender: d.reply_sender || null, read_count: 0
+  };
+}
+function _chatAppendIfNew(m) {
+  const list = state.groupChat.messages || (state.groupChat.messages = []);
+  if (m.id != null && list.some(x => x.id === m.id)) return false;
+  list.push(m);
+  return true;
+}
+function _chatScheduleReconcile(ms = 1500) {
+  clearTimeout(window.__chatReconcile);
+  window.__chatReconcile = setTimeout(() => { try { loadChatMessages(false); } catch (e) { } }, ms);   // ตรวจซ้ำ + ทำเครื่องหมายอ่านแล้ว
+}
+
 async function sendUnifiedMessage() {
   const text = groupChatInput.value.trim();
   const fileCount = (state.groupChat.pendingFiles || []).length;
@@ -9033,6 +9373,8 @@ async function sendUnifiedMessage() {
 
   if (!text && fileCount === 0 && !hasLoc) return;
 
+  stopTypingSignal();
+  let tmpId = null;
   sendGroupChatBtn.disabled = true;
   const originalFiles = [...state.groupChat.pendingFiles];
   const originalLoc = state.groupChat.pendingLocation;
@@ -9077,6 +9419,19 @@ async function sendUnifiedMessage() {
       formData.append('files', f);
     });
 
+    // ข้อความล้วน (ไม่มีไฟล์/พิกัด) และส่งในแชทที่เปิดอยู่ → ขึ้นหน้าจอทันที (สถานะ "กำลังส่ง" จางๆ) แล้วค่อยแทนที่ด้วยของจริง
+    if (!originalFiles.length && !originalLoc && finalType === state.currentChat.type && String(finalId) === String(state.currentChat.id)) {
+      const me = (typeof state.user === 'object' ? state.user?.username : state.user);
+      tmpId = -Date.now();
+      const rt = state.groupChat.replyTo;
+      state.groupChat.messages = (state.groupChat.messages || []).concat([{
+        id: tmpId, username: me, display_name: ($('sidebarDisplayName') && $('sidebarDisplayName').textContent.trim()) || me, avatar_url: null,
+        text: finalMsg, timestamp: new Date().toISOString(), attachments: null, is_pinned: false,
+        reply_to_id: rt ? rt.id : null, reply_text: rt ? rt.text : null, reply_sender: rt ? rt.username : null, read_count: 0, _pending: true
+      }]);
+      renderChatMessages(true);
+    }
+
     const res = await fetch('/api/chat/send', {
       method: 'POST',
       body: formData
@@ -9084,10 +9439,25 @@ async function sendUnifiedMessage() {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error);
 
+    if (tmpId != null) {
+      // แทนที่ข้อความ "กำลังส่ง" ด้วยรหัสจริง (ถ้าซ็อกเก็ตส่งของจริงมาแล้ว ให้แค่ลบอันชั่วคราว)
+      const cur = state.groupChat.messages || [];
+      const tmp = cur.find(x => x.id === tmpId);
+      const haveReal = cur.some(x => x.id === data.message_id);
+      state.groupChat.messages = cur.filter(x => x.id !== tmpId);
+      if (tmp && !haveReal) state.groupChat.messages.push(Object.assign({}, tmp, { id: data.message_id, _pending: false }));
+      tmpId = null;
+      renderChatMessages(true);
+    }
     cancelReply();
     loadChatMessages(true);
     if (state.currentChat.type === 'dm') loadChatList(); // Refresh contacts list if new
   } catch (e) {
+    if (tmpId != null) {                       // ส่งไม่สำเร็จ → เอาข้อความชั่วคราวออก
+      state.groupChat.messages = (state.groupChat.messages || []).filter(x => x.id !== tmpId);
+      tmpId = null;
+      renderChatMessages(false);
+    }
     toast('ส่งข้อความไม่สำเร็จ: ' + e.message, 'error');
     groupChatInput.value = text;
     state.groupChat.pendingFiles = originalFiles;
@@ -9110,12 +9480,12 @@ async function openCreateGroup() {
     if (data && data.ok) {
       memberSelectList.innerHTML = data.users.map(u => `
                 <label class="flex items-center gap-3 p-2 hover:bg-surface-50 dark:hover:bg-surface-800 rounded-xl cursor-pointer">
-                    <input type="checkbox" name="member" value="${u.username}" class="w-4 h-4 rounded border-surface-300 text-brand-600 focus:ring-brand-600">
+                    <input type="checkbox" name="member" value="${escHtml(u.username)}" class="w-4 h-4 rounded border-surface-300 text-brand-600 focus:ring-brand-600">
                     <div class="flex items-center gap-2">
                         <div class="w-8 h-8 rounded-full overflow-hidden bg-surface-200">
                             ${u.avatar_url ? `<img src="${u.avatar_url}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center text-[10px] font-bold">${u.username[0]}</div>`}
                         </div>
-                        <span class="text-xs font-bold">${u.display_name || u.username}</span>
+                        <span class="text-xs font-bold">${escHtml(u.display_name || u.username)}</span>
                     </div>
                 </label>
             `).join('');
@@ -9176,13 +9546,13 @@ async function openAddMemberModal() {
         .filter(u => u.username !== 'AI-Assistant')
         .map(user => `
           <label class="flex items-center gap-3 p-3 hover:bg-surface-50 dark:hover:bg-surface-800 rounded-xl cursor-pointer transition-colors group">
-            <input type="checkbox" name="newMember" value="${user.username}" class="w-4 h-4 rounded border-surface-300 text-brand-600 focus:ring-brand-500">
+            <input type="checkbox" name="newMember" value="${escHtml(user.username)}" class="w-4 h-4 rounded border-surface-300 text-brand-600 focus:ring-brand-500">
             <div class="w-8 h-8 rounded-lg bg-surface-100 dark:bg-surface-800 flex items-center justify-center overflow-hidden">
               ${user.avatar_url ? `<img src="${user.avatar_url}" class="w-full h-full object-cover">` : `<i data-lucide="user" class="w-4 h-4 text-surface-400"></i>`}
             </div>
             <div class="flex-1 min-w-0">
-              <div class="text-xs font-bold truncate dark:text-white">${user.display_name || user.username}</div>
-              <div class="text-[9px] text-surface-400 font-medium">@${user.username}</div>
+              <div class="text-xs font-bold truncate dark:text-white">${escHtml(user.display_name || user.username)}</div>
+              <div class="text-[9px] text-surface-400 font-medium">@${escHtml(user.username)}</div>
             </div>
           </label>
         `).join('');
@@ -9252,14 +9622,14 @@ function renderDmUserList(users) {
   }
 
   dmUserSelectList.innerHTML = users.map(u => `
-        <div onclick="startPrivateChat('${u.username}', '${u.display_name || u.username}')" 
+        <div onclick="startPrivateChat('${_jsq(u.username)}', '${_jsq(u.display_name || u.username)}')" 
              class="flex items-center gap-3 p-3 hover:bg-surface-50 dark:hover:bg-surface-800 rounded-2xl cursor-pointer transition-all group">
             <div class="w-10 h-10 rounded-2xl overflow-hidden bg-surface-100 dark:bg-surface-800 flex-shrink-0">
                 ${u.avatar_url ? `<img src="${u.avatar_url}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center text-xs font-black bg-brand-600/10 text-brand-600">${u.username ? u.username[0].toUpperCase() : '?'}</div>`}
             </div>
             <div class="flex-1 min-w-0">
-                <div class="text-sm font-bold group-hover:text-brand-600 transition-colors truncate">${u.display_name || u.username}</div>
-                <div class="text-[10px] text-surface-400 font-bold uppercase tracking-widest truncate">@${u.username}</div>
+                <div class="text-sm font-bold group-hover:text-brand-600 transition-colors truncate">${escHtml(u.display_name || u.username)}</div>
+                <div class="text-[10px] text-surface-400 font-bold uppercase tracking-widest truncate">@${escHtml(u.username)}</div>
             </div>
             <i data-lucide="message-square" class="w-4 h-4 text-surface-300 group-hover:text-brand-600 transition-colors"></i>
         </div>
@@ -9308,14 +9678,22 @@ async function initAppContent() {
     if (typeof loadProfile === 'function') {
       loadProfile(); // Immediate profile sync on load
     }
-    await loadNotifications();
-    await loadChatList();
-    await loadUnreadCounts();
-    await loadHistory();
-    await loadFiles();
-    await loadSchedules();
-    await loadPersonas();
-    await loadDashboard();
+    // เดิม: await ต่อกันทีละตัว (เปิดแอปช้า = ผลรวมของทุกคำขอ) และถ้าตัวใดล้ม (เช่น ไม่มีสิทธิ์คลังข้อมูล → 403)
+    // ตัวที่เหลือจะไม่ถูกโหลดเลย. ตอนนี้: ยิงพร้อมกัน (ช้าเท่าตัวที่ช้าสุด) และความล้มเหลวของตัวหนึ่งไม่กระทบตัวอื่น
+    const _run = (fn, name) => {
+      try { return Promise.resolve(fn()).catch(e => console.warn('[init] ' + name + ' failed:', e && e.message || e)); }
+      catch (e) { console.warn('[init] ' + name + ' failed:', e && e.message || e); return Promise.resolve(); }
+    };
+    await Promise.all([
+      _run(loadNotifications, 'notifications'),
+      // loadUnreadCounts ใช้รายชื่อห้องจาก state.chatList (ชื่อห้องในแจ้งเตือน) → ต้องรันต่อจาก loadChatList ในสายเดียวกัน
+      _run(async () => { await loadChatList(); await loadUnreadCounts(); }, 'chat'),
+      _run(loadHistory, 'history'),
+      _run(loadFiles, 'files'),
+      _run(loadSchedules, 'schedules'),
+      _run(loadPersonas, 'personas'),
+      _run(loadDashboard, 'dashboard'),
+    ]);
 
     console.log("✅ App Content Loaded.");
 
@@ -9528,6 +9906,12 @@ if (chatFileInput) {
 
 if (sendGroupChatBtn) sendGroupChatBtn.onclick = sendUnifiedMessage;
 if (groupChatInput) {
+  groupChatInput.addEventListener('input', () => {
+    if (!state.currentChat || !state.currentChat.id) return;
+    if (groupChatInput.value.trim().length === 0) stopTypingSignal();
+    else sendTypingSignal(state.currentChat.id, state.currentChat.type);
+  });
+  groupChatInput.addEventListener('blur', () => stopTypingSignal());
   groupChatInput.onkeydown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -9661,11 +10045,11 @@ async function openRoomMembersPanel() {
           ${m.avatar_url ? `<img src="${m.avatar_url}" class="w-full h-full object-cover">` : (m.display_name?.[0] || m.username[0]).toUpperCase()}
         </div>
         <div class="flex-1 min-w-0">
-          <div class="text-xs font-black text-surface-900 dark:text-white truncate">${m.display_name || m.username}</div>
-          <div class="text-[10px] text-surface-400 font-bold">@${m.username}</div>
+          <div class="text-xs font-black text-surface-900 dark:text-white truncate">${escHtml(m.display_name || m.username)}</div>
+          <div class="text-[10px] text-surface-400 font-bold">@${escHtml(m.username)}</div>
         </div>
         ${state.isAdmin ? `
-          <button onclick="removeMemberFromRoom(${id}, '${m.username}', this.closest('div.flex'))"
+          <button onclick="removeMemberFromRoom(${Number(id)}, '${_jsq(m.username)}', this.closest('div.flex'))"
             class="opacity-0 group-hover:opacity-100 transition-all p-1.5 text-surface-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg flex-shrink-0"
             title="ลบออกจากห้อง">
             <i data-lucide="user-minus" class="w-3.5 h-3.5"></i>
@@ -9903,6 +10287,7 @@ async function init() {
   if (authed) {
     await initAppContent();
     requestPushPermission();
+    setTimeout(maybeShowPushBanner, 4000);
 
     // Init @mention autocomplete for always-visible text inputs
     if (postInput) initMentionInput('postInput');  // Social feed: all users
@@ -10028,10 +10413,21 @@ async function init() {
         if (typeof switchView === 'function') switchView('admin');
       }
     } else if (_urlParams.get('google_cancelled') === '1') {
+      toast('ยกเลิกการเชื่อมต่อ Google แล้วค่ะ', 'info');
       if (typeof loadGoogleDriveStatus === 'function') loadGoogleDriveStatus();
       if (typeof loadOrgGoogleStatus === 'function') loadOrgGoogleStatus();
-    } else if (_urlParams.get('google_error') === '1') {
-      toast('เชื่อมต่อ Google ไม่สำเร็จ กรุณาลองใหม่', 'error');
+    } else if (_urlParams.has('google_error')) {
+      const gErr = _urlParams.get('google_error');
+      let msg = 'เชื่อมต่อ Google ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง';
+      if (gErr === 'not_configured') msg = 'ระบบ Google OAuth ยังไม่ได้เปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบค่ะ';
+      else if (gErr === 'login_required') msg = 'กรุณาเข้าสู่ระบบก่อนเชื่อมต่อบัญชี Google ค่ะ';
+      else if (gErr === 'oauth_start_failed') msg = 'ไม่สามารถเริ่มต้นการเชื่อมต่อ Google ได้ กรุณาลองใหม่อีกครั้งค่ะ';
+      else if (gErr === 'invalid_state') msg = 'เซสชันการเชื่อมต่อหมดอายุ กรุณาลองใหม่อีกครั้งค่ะ';
+      else if (gErr === 'callback_failed') msg = 'การยืนยันตัวตนกับ Google ล้มเหลว กรุณาลองใหม่อีกครั้งค่ะ';
+      else if (gErr === 'admin_required') msg = 'เฉพาะ Admin เท่านั้นที่เชื่อมต่อ Google ระดับองค์กรได้ค่ะ';
+      else if (gErr === 'upgrade_required') msg = 'การเชื่อมต่อ Google Sheets ต้องการ Plan Pro ขึ้นไปค่ะ';
+      else if (gErr === 'oauth_denied') msg = 'การเชื่อมต่อถูกปฏิเสธโดย Google ค่ะ';
+      toast(msg, 'error');
       if (typeof loadGoogleDriveStatus === 'function') loadGoogleDriveStatus();
       if (typeof loadOrgGoogleStatus === 'function') loadOrgGoogleStatus();
     }
@@ -10452,7 +10848,7 @@ function renderAdminMsgList(container, msgs, type) {
       <div class="flex-1 min-w-0">
         <div class="flex items-center gap-2 mb-0.5">
           <span class="font-bold text-[10px] text-brand-600">${sender}</span>
-          ${m.role ? `<span class="text-[9px] px-1 py-0.5 rounded ${m.role === 'bot' ? 'bg-brand-100 text-brand-700' : 'bg-surface-200 text-surface-600'}">${m.role}</span>` : ''}
+          ${m.role ? `<span class="text-[9px] px-1 py-0.5 rounded ${m.role === 'bot' ? 'bg-brand-100 text-brand-700' : 'bg-surface-200 text-surface-600'}">${escHtml(m.role)}</span>` : ''}
           <span class="text-[9px] text-surface-400">${ts}</span>
         </div>
         <div class="text-xs text-surface-700 dark:text-surface-300 truncate">${text || '<em class="opacity-50">ไม่มีข้อความ</em>'}</div>
@@ -11687,9 +12083,9 @@ function renderOrgMembers(members, canManage) {
     const isActive = m.is_active !== false;
     const avatarFallback = (m.display_name || m.username).charAt(0).toUpperCase();
     const avatarHtml = m.avatar_url
-      ? `<img src="${m.avatar_url}" class="w-9 h-9 rounded-xl object-cover flex-shrink-0" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
-      + `<div class="w-9 h-9 rounded-xl bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 items-center justify-center text-surface-700 dark:text-surface-200 text-xs font-bold flex-shrink-0" style="display:none">${avatarFallback}</div>`
-      : `<div class="w-9 h-9 rounded-xl bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 flex items-center justify-center text-surface-700 dark:text-surface-200 text-xs font-bold flex-shrink-0">${avatarFallback}</div>`;
+      ? `<img src="${m.avatar_url}" class="w-11 h-11 rounded-full object-cover flex-shrink-0" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+      + `<div class="w-11 h-11 rounded-full bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 items-center justify-center text-surface-700 dark:text-surface-200 text-xs font-bold flex-shrink-0" style="display:none">${avatarFallback}</div>`
+      : `<div class="w-11 h-11 rounded-full bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 flex items-center justify-center text-surface-700 dark:text-surface-200 text-xs font-bold flex-shrink-0">${avatarFallback}</div>`;
 
     // Primary Role Badge (Consistent, clean, non-shouty)
     let roleBadge = `<span class="inline-flex items-center px-2 py-0.5 text-[10px] font-medium text-surface-500 dark:text-surface-400 bg-surface-100 dark:bg-surface-800 border border-surface-200/80 dark:border-surface-700/80 rounded-md">Member</span>`;
@@ -11699,7 +12095,11 @@ function renderOrgMembers(members, canManage) {
       roleBadge = `<span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold text-brand-600 dark:text-brand-400 bg-brand-500/10 border border-brand-500/20 rounded-md"><i data-lucide="shield" class="w-2.5 h-2.5"></i>Admin</span>`;
     }
 
-    const statusDot = `<span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-white dark:ring-surface-900 ${isActive ? 'bg-emerald-500' : 'bg-surface-400'}" title="${isActive ? 'ใช้งานอยู่' : 'ปิดใช้งาน'}"></span>`;
+    // จุดสถานะ = "ออนไลน์อยู่ตอนนี้ไหม" (เขียว) / ออฟไลน์ (เทา) พร้อมเวลาที่เห็นล่าสุด; บัญชีที่ถูกปิดใช้งานเป็นสีแดงจาง
+    const _ps = (state.userStatusMap || {})[m.username];
+    const _online = (state.onlineUsers || []).includes(m.username) || (isMe && !!(typeof socket !== 'undefined' && socket && socket.connected));
+    const _dotTitle = !isActive ? 'ปิดใช้งานบัญชี' : _online ? 'ออนไลน์อยู่' : (_ps && _ps.last_activity ? 'ออฟไลน์ · ใช้งานล่าสุด ' + formatRelativeTime(_ps.last_activity) : 'ออฟไลน์');
+    const statusDot = `<span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-white dark:ring-surface-900 ${!isActive ? 'bg-rose-400' : _online ? 'bg-emerald-500' : 'bg-surface-400'}" title="${_dotTitle}"></span>`;
 
     // Sub-permissions: Muted, cohesive tags (No rainbow neon confetti!)
     const activePerms = [];
@@ -11722,40 +12122,40 @@ function renderOrgMembers(members, canManage) {
       ? `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-medium bg-surface-100 dark:bg-surface-800 border border-surface-200/80 dark:border-surface-700/80 text-surface-600 dark:text-surface-300 rounded" title="เชื่อมต่อ Google: ${m.google_email || ''}"><svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>Google</span>`
       : '';
     const meBadge = isMe ? `<span class="text-[9px] font-semibold text-brand-600 dark:text-brand-400 bg-brand-500/10 border border-brand-500/20 px-1.5 py-0.5 rounded">คุณ</span>` : '';
-    const subInfo = [
-      `@${m.username}`,
-      m.google_email ? m.google_email : (m.email ? m.email : null),
-      m.department ? m.department : null,
-      m.position ? m.position : null,
-    ].filter(Boolean).join(' · ');
+    const subInfo = [`@${m.username}`, m.google_email ? m.google_email : (m.email ? m.email : null)].filter(Boolean).join(' · ');
+    const chip = (icon, txt) => `<span class="org-mchip"><i data-lucide="${icon}" class="w-3 h-3"></i>${escapeHtml(String(txt))}</span>`;
+    const metaChips = [
+      m.department ? chip('building-2', m.department) : '',
+      m.position ? chip('briefcase', m.position) : '',
+    ].join('');
+    const metaHtml = (metaChips || permsHtml || googleBadge) ? `<div class="org-mcard-meta">${metaChips}${permsHtml}${googleBadge}</div>` : '';
     const actions = canManage ? `
-      <div class="flex items-center gap-1.5 ml-auto flex-shrink-0">
-        <button onclick="openOrgMemberEditModal('${m.username}')"
-          class="px-3 py-1.5 text-xs font-semibold rounded-lg border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700/60 transition-colors">
-          <i data-lucide="pencil" class="w-3 h-3 inline mr-1"></i>แก้ไข
+      <div class="org-mcard-actions">
+        <button onclick="openOrgMemberEditModal('${_jsq(m.username)}')" class="org-mbtn" title="แก้ไขข้อมูลและสิทธิ์">
+          <i data-lucide="pencil" class="w-3.5 h-3.5"></i><span>แก้ไข</span>
         </button>
-        ${!isMe && !m.is_owner ? `<button onclick="removeOrgMember('${m.username}')"
-          class="p-1.5 text-surface-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg transition-colors" title="ลบออกจากองค์กร">
+        ${!isMe && !m.is_owner ? `<button onclick="removeOrgMember('${_jsq(m.username)}')" class="org-mbtn org-mbtn-danger" title="ลบออกจากองค์กร">
           <i data-lucide="user-minus" class="w-4 h-4"></i>
         </button>` : ''}
       </div>` : '';
     return `
-      <div class="admin-user-row flex items-center gap-3 p-3 bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl shadow-xs">
-        <div class="relative flex-shrink-0">
-          ${avatarHtml}
-          ${statusDot}
-        </div>
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center gap-1.5 flex-wrap mb-1">
-            <span class="text-xs font-semibold text-surface-900 dark:text-white truncate max-w-[180px]">${m.display_name || m.username}</span>
-            ${meBadge}
-            ${roleBadge}
-            ${permsHtml}
-            ${googleBadge}
+      <div class="org-mcard${isActive ? '' : ' is-off'}">
+        <div class="org-mcard-top">
+          <div class="relative flex-shrink-0">
+            ${avatarHtml}
+            ${statusDot}
           </div>
-          <div class="text-[11px] text-surface-400 truncate">${subInfo}</div>
+          <div class="org-mcard-main">
+            <div class="org-mcard-name">
+              <span class="org-mcard-title">${escapeHtml(m.display_name || m.username)}</span>
+              ${meBadge}
+              ${roleBadge}
+            </div>
+            <div class="org-mcard-sub">${escapeHtml(subInfo)}</div>
+          </div>
+          ${actions}
         </div>
-        ${actions}
+        ${metaHtml}
       </div>`;
   }).join('');
   initIcons();
@@ -12085,7 +12485,7 @@ function _renderMySettings(d) {
       return `<div title="${p.desc}" class="flex items-center gap-2.5 p-2.5 rounded-xl border transition-colors ${on ? 'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/60 dark:bg-emerald-900/10' : 'border-surface-100 dark:border-surface-700 bg-surface-50/70 dark:bg-surface-800/30 opacity-70'}">
         <span class="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black flex-shrink-0 ${on ? 'bg-emerald-500 text-white' : 'bg-surface-200 dark:bg-surface-700 text-surface-400'}">${on ? '✓' : '–'}</span>
         <div class="min-w-0">
-          <div class="text-xs font-bold text-surface-800 dark:text-white truncate">${p.label}</div>
+          <div class="text-xs font-bold text-surface-800 dark:text-white truncate">${escHtml(p.label)}</div>
           <div class="text-[10px] text-surface-400 truncate">${p.desc}</div>
         </div>
       </div>`;
@@ -12123,40 +12523,84 @@ function _renderMySettings(d) {
   }
 
   // LINE Connection Status
-  const myLineStatusText = $('myLineStatusText');
   const myLineStatusBadge = $('myLineStatusBadge');
+  const myLineLoginStatusText = $('myLineLoginStatusText');
+  const myLineBotStatusText = $('myLineBotStatusText');
+  const myLineStatusText = $('myLineStatusText');
   const btnMyBindLine = $('btnMyBindLine');
   const btnMyBindLineWeb = $('btnMyBindLineWeb');
   const btnMyUnbindLine = $('btnMyUnbindLine');
   const myLineInstruction = $('myLineInstruction');
   const myLineBannerAlert = $('myLineBannerAlert');
 
-  if (myLineStatusText) {
-    if (d.line_user_id) {
-      myLineStatusText.textContent = `เชื่อมต่อแล้ว (LINE ID: ${d.line_user_id.substring(0, 10)}...)`;
-      myLineStatusText.className = "text-xs font-bold text-emerald-600 dark:text-emerald-400 font-extrabold";
-      if (myLineStatusBadge) {
-        myLineStatusBadge.className = "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/50";
-        myLineStatusBadge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> ผูกบัญชีแล้ว';
-      }
-      if (btnMyBindLine) btnMyBindLine.classList.add('hidden');
+  const hasBot = !!d.line_user_id;
+  const hasLogin = !!d.line_login_id;
+
+  // Header Status Badge
+  if (myLineStatusBadge) {
+    if (hasBot && hasLogin) {
+      myLineStatusBadge.className = "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/50";
+      myLineStatusBadge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> ผูกครบทั้ง 2 ระบบ';
+    } else if (hasBot) {
+      myLineStatusBadge.className = "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/50";
+      myLineStatusBadge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> ผูกบอทแจ้งเตือนแล้ว';
+    } else if (hasLogin) {
+      myLineStatusBadge.className = "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 border border-blue-200/60 dark:border-blue-800/50";
+      myLineStatusBadge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span> ผูก LINE Login แล้ว';
+    } else {
+      myLineStatusBadge.className = "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-surface-100 text-surface-600 dark:bg-surface-800 dark:text-surface-400";
+      myLineStatusBadge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-surface-400"></span> ยังไม่ผูกบัญชี';
+    }
+  }
+
+  // 1. LINE Login Status (SSO)
+  if (myLineLoginStatusText) {
+    if (hasLogin) {
+      myLineLoginStatusText.textContent = `ผูกแล้ว (ID: ${d.line_login_id.substring(0, 10)}...)`;
+      myLineLoginStatusText.className = "text-xs font-bold text-emerald-600 dark:text-emerald-400";
       if (btnMyBindLineWeb) btnMyBindLineWeb.classList.add('hidden');
+    } else {
+      myLineLoginStatusText.textContent = 'ยังไม่ผูก (ใช้สำหรับล็อกอินผ่านหน้าเว็บ)';
+      myLineLoginStatusText.className = "text-xs font-bold text-surface-500";
+      if (btnMyBindLineWeb) btnMyBindLineWeb.classList.remove('hidden');
+    }
+  }
+
+  // 2. LINE Bot Status (Messaging API)
+  if (myLineBotStatusText) {
+    if (hasBot) {
+      myLineBotStatusText.textContent = `เชื่อมต่อแล้ว (LINE ID: ${d.line_user_id.substring(0, 10)}...)`;
+      myLineBotStatusText.className = "text-xs font-bold text-emerald-600 dark:text-emerald-400 font-extrabold";
+      if (btnMyBindLine) btnMyBindLine.classList.add('hidden');
       if (btnMyUnbindLine) btnMyUnbindLine.classList.remove('hidden');
-      if (myLineInstruction) myLineInstruction.classList.add('hidden');
-      if (myLineBannerAlert) myLineBannerAlert.classList.add('hidden');
+    } else {
+      myLineBotStatusText.textContent = 'ยังไม่ผูกบอท (จำเป็นสำหรับการรับแจ้งเตือน / Morning Brief)';
+      myLineBotStatusText.className = "text-xs font-bold text-amber-600 dark:text-amber-400";
+      if (btnMyBindLine) btnMyBindLine.classList.remove('hidden');
+      if (btnMyUnbindLine) btnMyUnbindLine.classList.add('hidden');
+    }
+  }
+
+  // Legacy fallback element
+  if (myLineStatusText) {
+    if (hasBot) {
+      myLineStatusText.textContent = `เชื่อมต่อบอทแล้ว (LINE ID: ${d.line_user_id.substring(0, 10)}...)`;
+      myLineStatusText.className = "text-xs font-bold text-emerald-600 dark:text-emerald-400 font-extrabold";
+    } else if (hasLogin) {
+      myLineStatusText.textContent = `ผูก LINE Login แล้ว (ยังไม่ได้ผูกบอทแชท)`;
+      myLineStatusText.className = "text-xs font-bold text-blue-600 dark:text-blue-400";
     } else {
       myLineStatusText.textContent = 'ยังไม่ได้เชื่อมต่อบัญชี LINE';
       myLineStatusText.className = "text-xs font-bold text-surface-600 dark:text-surface-300";
-      if (myLineStatusBadge) {
-        myLineStatusBadge.className = "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-surface-100 text-surface-600 dark:bg-surface-800 dark:text-surface-400";
-        myLineStatusBadge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-surface-400"></span> ยังไม่ผูกบัญชี';
-      }
-      if (btnMyBindLine) btnMyBindLine.classList.remove('hidden');
-      if (btnMyBindLineWeb) btnMyBindLineWeb.classList.remove('hidden');
-      if (btnMyUnbindLine) btnMyUnbindLine.classList.add('hidden');
-      if (myLineInstruction) myLineInstruction.classList.remove('hidden');
-      if (myLineBannerAlert) myLineBannerAlert.classList.remove('hidden');
     }
+  }
+
+  if (hasBot || hasLogin) {
+    if (myLineInstruction) myLineInstruction.classList.add('hidden');
+    if (myLineBannerAlert) myLineBannerAlert.classList.add('hidden');
+  } else {
+    if (myLineInstruction) myLineInstruction.classList.remove('hidden');
+    if (myLineBannerAlert) myLineBannerAlert.classList.remove('hidden');
   }
 
   if (window.lucide) window.lucide.createIcons();
@@ -12186,48 +12630,94 @@ async function unbindMyLine() {
   }
 }
 
+function _closeGoogleSignInModal() {
+  const modal = document.getElementById('gisBindModal');
+  if (modal) modal.remove();
+}
+
+function _showGoogleSignInModal(clientId) {
+  _closeGoogleSignInModal();
+  const overlay = document.createElement('div');
+  overlay.id = 'gisBindModal';
+  overlay.className = 'fixed inset-0 z-[500] bg-surface-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200';
+  overlay.onclick = (e) => { if (e.target === overlay) _closeGoogleSignInModal(); };
+
+  const box = document.createElement('div');
+  box.className = 'bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-3xl p-6 max-w-sm w-full text-center shadow-2xl space-y-4';
+  box.innerHTML = `
+    <div class="w-12 h-12 rounded-2xl bg-brand-50 dark:bg-brand-900/30 text-brand-600 flex items-center justify-center mx-auto text-2xl">
+      🔑
+    </div>
+    <div>
+      <h3 class="text-base font-bold text-surface-900 dark:text-white">เชื่อมต่อบัญชี Google</h3>
+      <p class="text-xs text-surface-500 dark:text-surface-400 mt-1">แตะปุ่มด้านล่างเพื่อเลือกบัญชี Google ที่ต้องการใช้เข้าสู่ระบบ</p>
+    </div>
+    <div id="gisBindBtnContainer" class="flex justify-center min-h-[44px]"></div>
+    <div class="pt-2">
+      <button type="button" onclick="_closeGoogleSignInModal()" class="px-4 py-2 text-xs font-semibold text-surface-500 hover:text-surface-800 dark:hover:text-surface-200 transition">
+        ยกเลิก
+      </button>
+    </div>
+  `;
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+
+  if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
+    google.accounts.id.renderButton(
+      document.getElementById('gisBindBtnContainer'),
+      { theme: 'outline', size: 'large', text: 'continue_with', width: 240, shape: 'pill' }
+    );
+  }
+}
+
 async function bindMyGoogleAccount() {
   const clientId = window.GOOGLE_CLIENT_ID;
-  if (typeof google !== 'undefined' && google.accounts && google.accounts.id && clientId && clientId.endsWith('.apps.googleusercontent.com')) {
-    try {
-      google.accounts.id.initialize({
-        client_id: clientId,
-        callback: async function (res) {
-          if (!res || !res.credential) return;
-          try {
-            const resp = await fetch('/api/user/bind-google', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ credential: res.credential })
-            });
-            const data = await resp.json();
-            if (data.ok) {
-              await showAlert('สำเร็จ', data.message, { type: 'success' });
-              if (_mySettingsCache) {
-                _mySettingsCache.google_email = data.google_email;
-                _renderMySettings(_mySettingsCache);
-              }
-            } else {
-              await showAlert('ไม่สำเร็จ', data.error || 'ผูกบัญชีไม่สำเร็จค่ะ', { type: 'danger' });
-            }
-          } catch (e) {
-            await showAlert('เกิดข้อผิดพลาด', `เกิดข้อผิดพลาดในการเชื่อมต่อ: ${e.message}`, { type: 'danger' });
-          }
-        }
-      });
-      google.accounts.id.prompt((notification) => {
-        if (notification.isNotDisplayed() || notification.isSkippedMoment() || notification.isDismissedMoment()) {
-          // Fallback to OAuth redirect flow
-          window.location.href = '/api/auth/google/start?mode=personal';
-        }
-      });
-      return;
-    } catch (err) {
-      console.warn('GIS prompt error, falling back to OAuth redirect:', err);
-    }
+  if (!clientId || !clientId.endsWith('.apps.googleusercontent.com')) {
+    await showAlert('แจ้งเตือน', 'ระบบ Google Client ID ยังไม่ได้ตั้งค่าในเซิร์ฟเวอร์ กรุณาติดต่อผู้ดูแลระบบค่ะ', { type: 'warning' });
+    return;
   }
-  // Standard OAuth redirect fallback
-  window.location.href = '/api/auth/google/start?mode=personal';
+  if (typeof google === 'undefined' || !google.accounts || !google.accounts.id) {
+    await showAlert('แจ้งเตือน', 'ไม่สามารถโหลดระบบ Google Identity Services ได้ กรุณาตรวจสอบอินเทอร์เน็ตหรือปิด AdBlock แล้วลองใหม่อีกครั้งค่ะ', { type: 'warning' });
+    return;
+  }
+
+  try {
+    google.accounts.id.initialize({
+      client_id: clientId,
+      callback: async function (res) {
+        _closeGoogleSignInModal();
+        if (!res || !res.credential) return;
+        try {
+          const resp = await fetch('/api/user/bind-google', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ credential: res.credential })
+          });
+          const data = await resp.json();
+          if (data.ok) {
+            await showAlert('สำเร็จ', data.message, { type: 'success' });
+            if (_mySettingsCache) {
+              _mySettingsCache.google_email = data.google_email;
+              _renderMySettings(_mySettingsCache);
+            }
+          } else {
+            await showAlert('ไม่สำเร็จ', data.error || 'ผูกบัญชีไม่สำเร็จค่ะ', { type: 'danger' });
+          }
+        } catch (e) {
+          await showAlert('เกิดข้อผิดพลาด', `เกิดข้อผิดพลาดในการเชื่อมต่อ: ${e.message}`, { type: 'danger' });
+        }
+      }
+    });
+
+    google.accounts.id.prompt((notification) => {
+      if (notification.isNotDisplayed() || notification.isSkippedMoment() || notification.isDismissedMoment()) {
+        _showGoogleSignInModal(clientId);
+      }
+    });
+  } catch (err) {
+    console.warn('GIS prompt error:', err);
+    _showGoogleSignInModal(clientId);
+  }
 }
 
 async function unbindMyGoogle() {
@@ -12267,22 +12757,39 @@ async function submitDirectLineBind() {
   const btn = $('btnSubmitDirectLine');
   const val = (input?.value || '').trim();
   if (!val) {
-    toast('กรุณาระบุรหัสเชื่อมต่อ (Token) หรือ LINE User ID ค่ะ', 'warning');
+    toast('กรุณากรอกรหัสที่บอทส่งให้ (พิมพ์ /link ใน LINE) ค่ะ', 'warning');
     return;
   }
 
-  const payload = val.startsWith('U') && val.length === 33 ? { line_user_id: val } : { token: val };
+  // รับเฉพาะรหัสที่บอทออกให้ (รหัสสั้น 8 ตัว หรือโทเค็นจากลิงก์) — ไม่รับ LINE User ID ตรงๆ อีกต่อไป (ผูกไอดีของคนอื่นได้โดยไม่ต้องพิสูจน์ตัวตน)
+  const payload = { token: val };
   btn.disabled = true;
   btn.innerHTML = '<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> กำลังเชื่อมต่อ...';
   if (window.lucide) lucide.createIcons();
 
   try {
-    const res = await fetch('/api/user/bind-line-direct', {
+    let res = await fetch('/api/user/bind-line-direct', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    const data = await res.json();
+    let data = await res.json();
+    if (data && data.needs_confirm) {
+      // LINE นี้ผูกกับบัญชีอื่นอยู่ → ถามก่อนย้าย
+      if (confirm(`LINE นี้ผูกกับบัญชี "${data.owner}" อยู่แล้ว
+ต้องการย้ายมาผูกกับบัญชีนี้หรือไม่?
+(บัญชีเดิมจะล็อกอินด้วย LINE นี้ไม่ได้อีก)`)) {
+        res = await fetch('/api/user/bind-line-direct', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(Object.assign({}, payload, { confirm_move: true }))
+        });
+        data = await res.json();
+      } else {
+        toast('ยกเลิกการย้าย LINE', 'info');
+        return;
+      }
+    }
     if (data.ok) {
       toast(data.message || 'เชื่อมต่อบัญชี LINE สำเร็จค่ะ!', 'success');
       $('userLineBindModal')?.classList.add('hidden');
@@ -12676,7 +13183,7 @@ function renderAdminUserList(users) {
     const roleClass = user.role === 'admin' ? 'admin' : 'user';
     const activeColor = user.is_active ? '#10b981' : '#ef4444';
     const avatarContent = user.avatar_url
-      ? `<img src="${user.avatar_url}" style="width:100%;height:100%;object-fit:cover;">`
+      ? `<img src="${_safeUrl(user.avatar_url)}" style="width:100%;height:100%;object-fit:cover;">`
       : `<i data-lucide="user" style="width:18px;height:18px;"></i>`;
 
     return `
@@ -12686,22 +13193,22 @@ function renderAdminUserList(users) {
         </div>
         <div style="flex:1;min-width:0;">
           <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:2px;">
-            <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;" class="dark:text-white">${user.display_name || user.username.charAt(0).toUpperCase() + user.username.slice(1)}</div>
+            <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;" class="dark:text-white">${escHtml(user.display_name || user.username.charAt(0).toUpperCase() + user.username.slice(1))}</div>
             <div class="admin-status-dot" style="background:${activeColor};" title="${user.is_active ? 'ใช้งานปกติ' : 'ถูกระงับ'}"></div>
           </div>
           <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;">
-            <div style="font-size:11px;color:#94a3b8;">@${user.username}</div>
-            <span class="admin-role-badge ${roleClass}">${user.role}</span>
-            ${user.department ? `<span class="text-[10px] bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 px-1.5 py-0.5 rounded font-medium">${user.department.toUpperCase()}</span>` : ''}
+            <div class="text-surface-500 dark:text-surface-400" style="font-size:11px;">@${escHtml(user.username)}</div>
+            <span class="admin-role-badge ${roleClass}">${escHtml(user.role)}</span>
+            ${user.department ? `<span class="text-[10px] bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 px-1.5 py-0.5 rounded font-medium">${escHtml(user.department.toUpperCase())}</span>` : ''}
             ${user.can_edit_kb ? `<span class="text-[10px] bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 px-1.5 py-0.5 rounded font-medium">KB EDIT</span>` : ''}
           </div>
         </div>
         <div class="flex gap-2">
-          <button onclick="openEditUserModal('${user.username}')" style="padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;border:1px solid #e2e8f0;background:transparent;cursor:pointer;color:#475569;" class="dark:border-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors">
+          <button onclick="openEditUserModal('${_jsq(user.username)}')" style="padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;background:transparent;cursor:pointer;" class="border border-surface-200 text-surface-600 dark:border-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors">
             แก้ไข
           </button>
           ${user.username !== 'Admin' ? `
-            <button onclick="deleteAdminUser('${user.username}')" style="padding:8px;border-radius:10px;border:1px solid #fee2e2;background:transparent;cursor:pointer;color:#ef4444;" class="dark:border-red-900/30 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="ลบผู้ใช้">
+            <button onclick="deleteAdminUser('${_jsq(user.username)}')" style="padding:8px;border-radius:10px;border:1px solid #fee2e2;background:transparent;cursor:pointer;color:#ef4444;" class="dark:border-red-900/30 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="ลบผู้ใช้">
               <i data-lucide="trash-2" style="width:16px;height:16px;"></i>
             </button>
           ` : ''}
@@ -13010,7 +13517,7 @@ async function initViz() {
     );
 
     vizFileSelect.innerHTML = '<option value="">— เลือกไฟล์ CSV —</option>' +
-      csvFiles.map(f => `<option value="${f.file_id}">${f.name}</option>`).join('');
+      csvFiles.map(f => `<option value="${f.file_id}">${escHtml(f.name)}</option>`).join('');
 
     // Wire events (set directly to avoid duplicate listeners)
     vizFileSelect.onchange = () => loadVizData(vizFileSelect.value);
@@ -13467,17 +13974,17 @@ function renderKanban(tasks) {
       <div class="p-4 bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-2xl shadow-sm hover:shadow-md transition-all cursor-pointer group relative" 
            onclick="editSchedule(${t.id})" draggable="true" ondragstart="handleKanbanDragStart(event, ${t.id})">
         <div class="flex items-start justify-between mb-2">
-           <span class="px-2 py-0.5 rounded-lg bg-brand-50 dark:bg-brand-900/30 text-brand-600 text-[10px] font-black uppercase tracking-wider border border-brand-100 dark:border-brand-800">${t.category}</span>
+           <span class="px-2 py-0.5 rounded-lg bg-brand-50 dark:bg-brand-900/30 text-brand-600 text-[10px] font-black uppercase tracking-wider border border-brand-100 dark:border-brand-800">${escHtml(t.category)}</span>
            <span class="text-[9px] text-surface-400 font-bold font-mono">${t.time}</span>
         </div>
-        <h4 class="text-sm font-bold text-surface-800 dark:text-surface-100 mb-1 leading-tight group-hover:text-brand-600 transition-colors">${t.title}</h4>
+        <h4 class="text-sm font-bold text-surface-800 dark:text-surface-100 mb-1 leading-tight group-hover:text-brand-600 transition-colors">${escHtml(t.title)}</h4>
         <p class="text-[11px] text-surface-500 line-clamp-2 leading-relaxed mb-3">${t.desc || 'ไม่มีรายละเอียด...'}</p>
         <div class="flex items-center justify-between pt-3 border-t border-surface-50 dark:border-surface-800">
            <div class="flex items-center gap-2">
               <div class="w-6 h-6 rounded-full bg-surface-100 dark:bg-surface-800 flex items-center justify-center overflow-hidden">
                  ${t.avatar_url ? `<img src="${t.avatar_url}" class="w-full h-full object-cover">` : `<i data-lucide="user" class="w-3 h-3 text-surface-400"></i>`}
               </div>
-              <span class="text-[10px] font-bold text-surface-500">${t.display_name}</span>
+              <span class="text-[10px] font-bold text-surface-500">${escHtml(t.display_name)}</span>
            </div>
            <div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
               <button class="p-1 hover:text-brand-600" title="ย้าย"><i data-lucide="move" class="w-3 h-3"></i></button>
@@ -13514,7 +14021,7 @@ async function renderLinkPreview(url, messageId) {
         <a href="${data.url}" target="_blank" class="link-preview-card block w-full group/preview animate-in fade-in duration-300">
           ${data.image ? `<div class="w-full h-36 overflow-hidden bg-surface-100 dark:bg-surface-900 border-b border-surface-100 dark:border-surface-700/30"><img src="${data.image}" class="w-full h-full object-cover transition-transform duration-700 group-hover/preview:scale-110" onerror="this.parentElement.classList.add('hidden')"></div>` : ''}
           <div class="link-preview-meta">
-            <h4 class="text-[12px] font-bold text-surface-900 dark:text-white line-clamp-2 leading-snug mb-1">${data.title || "Link Preview"}</h4>
+            <h4 class="text-[12px] font-bold text-surface-900 dark:text-white line-clamp-2 leading-snug mb-1">${escHtml(data.title || "Link Preview")}</h4>
             <div class="flex items-center gap-1 opacity-50">
                <span class="text-[9px] font-black uppercase tracking-wider truncate">${new URL(data.url).hostname.replace('www.', '').toUpperCase()}</span>
             </div>
@@ -13666,7 +14173,7 @@ async function renderHomeDashboard() {
   if (content) {
     try {
       // เดิมเรียก /api/summary ที่ไม่มีอยู่จริง (404 ทุกครั้ง) → ใช้ briefing ที่มีจริง
-      const _b = await apiFetch('/api/dashboard/briefing');
+      const _b = await apiGetCached('/api/dashboard/briefing');
       const sumData = { summary: _b && _b.ok ? _b.briefing : '' };
       if (sumData && sumData.summary) {
         content.innerHTML = markdownToHtml(sumData.summary);
@@ -14037,7 +14544,7 @@ async function renderLinkPreview(url, messageId) {
         <a href="${data.url}" target="_blank" class="link-preview-card block max-w-[250px] group/preview animate-in fade-in duration-300">
           ${data.image ? `<div class="w-full h-32 overflow-hidden bg-surface-100 dark:bg-surface-900 border-b border-surface-100 dark:border-surface-700/30"><img src="${data.image}" class="w-full h-full object-cover transition-transform duration-700 group-hover/preview:scale-110" onerror="this.parentElement.classList.add('hidden')"></div>` : ''}
           <div class="link-preview-meta">
-            <h4 class="text-[12px] font-bold text-surface-900 dark:text-white line-clamp-2 leading-snug mb-1">${data.title || "Link Preview"}</h4>
+            <h4 class="text-[12px] font-bold text-surface-900 dark:text-white line-clamp-2 leading-snug mb-1">${escHtml(data.title || "Link Preview")}</h4>
             <div class="flex items-center gap-1 opacity-50">
                <span class="text-[9px] font-bold uppercase tracking-wider truncate">${new URL(data.url).hostname.replace('www.', '').toUpperCase()}</span>
             </div>
@@ -14067,8 +14574,8 @@ async function showSearchInsights() {
       html += '<div><h3 class="text-xs font-black uppercase tracking-widest text-surface-400 mb-3">🕒 ค้นหาล่าสุด</h3><div class="space-y-2">';
       recent_searches.forEach(s => {
         html += `<div class="p-3 bg-surface-50 dark:bg-surface-800 rounded-2xl border border-surface-100 dark:border-surface-700 flex justify-between items-center group hover:border-brand-500 transition-all">
-          <span class="text-xs font-bold">${s.query}</span>
-          <span class="text-[9px] text-surface-400">${s.username} • ${new Date(s.timestamp).toLocaleTimeString()}</span>
+          <span class="text-xs font-bold">${escHtml(s.query)}</span>
+          <span class="text-[9px] text-surface-400">${escHtml(s.username)} • ${new Date(s.timestamp).toLocaleTimeString()}</span>
         </div>`;
       });
       html += '</div></div></div>';
@@ -14189,6 +14696,16 @@ function renderKanbanBoard() {
   initKanbanSortable();
 }
 
+// เลือกสีตัวอักษร (ขาว/เข้ม) ให้อ่านออกบนพื้นสีใดก็ได้ที่ผู้ใช้เลือก (เดิมใช้ตัวขาวเสมอ → บนพื้นเหลือง/เขียวอ่อนอ่านไม่ออก)
+function _readableTextOn(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+  if (!m) return '#ffffff';
+  const n = parseInt(m[1], 16), f = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+  const L = 0.2126 * f((n >> 16) & 255) + 0.7152 * f((n >> 8) & 255) + 0.0722 * f(n & 255);
+  const withWhite = 1.05 / (L + 0.05), withDark = (L + 0.05) / 0.0576;   // ความต่างของสีตัวขาว / ตัวเข้ม (#0f172a) บนพื้นนี้
+  return withWhite >= withDark ? '#ffffff' : '#0f172a';
+}
+
 function buildKanbanColumn(col) {
   const div = document.createElement('div');
   div.className = 'kanban-col flex-shrink-0 w-72 flex flex-col bg-surface-50 dark:bg-surface-900 rounded-2xl border border-surface-200 dark:border-surface-800 shadow-sm overflow-hidden select-none';
@@ -14199,7 +14716,7 @@ function buildKanbanColumn(col) {
     <div class="kanban-col-header flex items-center justify-between px-4 py-3 border-b border-surface-200 dark:border-surface-800 select-none" style="border-top: 3px solid ${col.color || '#6366f1'}">
       <div class="flex items-center gap-2 min-w-0">
         <span class="font-black text-sm truncate">${escHtml(col.title || 'ไม่มีชื่อ')}</span>
-        <span class="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full text-white" style="background:${col.color || '#6366f1'}">${cardCount}</span>
+        <span class="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full" style="background:${col.color || '#6366f1'};color:${_readableTextOn(col.color || '#6366f1')}">${cardCount}</span>
       </div>
       <div class="flex items-center gap-1 flex-shrink-0">
         <button onclick="openAddCardModal(${col.id})" title="เพิ่มการ์ด" class="p-1.5 hover:bg-surface-200 dark:hover:bg-surface-700 rounded-lg transition-all text-surface-400 hover:text-brand-600">
@@ -14591,7 +15108,7 @@ function showKanbanCardModal(card = null) {
     const isSelected = card && (card.assignee || '').split(',').map(s => s.trim()).includes(u.username);
     return `
                   <label class="user-select-item flex items-center gap-2 p-2 rounded-xl border border-transparent hover:bg-white dark:hover:bg-surface-800 hover:border-surface-200 dark:hover:border-surface-700 cursor-pointer transition-all ${isSelected ? 'bg-brand-50/50 dark:bg-brand-900/20 border-brand-200 dark:border-brand-800' : ''}" data-username="${u.username.toLowerCase()}" data-display="${u.display_name.toLowerCase()}">
-                    <input type="checkbox" name="assignee" value="${u.username}" ${isSelected ? 'checked' : ''} class="w-3.5 h-3.5 rounded border-surface-300 text-brand-600 focus:ring-brand-500">
+                    <input type="checkbox" name="assignee" value="${escHtml(u.username)}" ${isSelected ? 'checked' : ''} class="w-3.5 h-3.5 rounded border-surface-300 text-brand-600 focus:ring-brand-500">
                     <div class="flex items-center gap-1.5 min-w-0">
                       <div class="w-5 h-5 rounded-full bg-brand-100 dark:bg-brand-900 flex-shrink-0 flex items-center justify-center overflow-hidden">
                         ${u.avatar_url ? `<img src="${u.avatar_url}" class="w-full h-full object-cover">` : `<i data-lucide="user" class="w-2.5 h-2.5 text-brand-600"></i>`}
@@ -14735,7 +15252,7 @@ function renderWikiPagesList() {
     <button onclick="loadWikiPage(${p.id})" 
       class="wiki-page-item w-full text-left px-4 py-3 text-xs font-bold hover:bg-surface-100 dark:hover:bg-surface-800 border-b border-surface-100 dark:border-surface-800 transition-all ${wikiState.currentPage?.id === p.id ? 'bg-brand-50 dark:bg-brand-900/30 text-brand-600' : 'text-surface-700 dark:text-surface-300'}">
       <div class="font-bold truncate">${escHtml(p.title)}</div>
-      <div class="text-[9px] font-bold text-surface-400 uppercase tracking-widest mt-0.5">${p.author} · ${formatRelativeTime(p.updated_at)}</div>
+      <div class="text-[9px] font-bold text-surface-400 uppercase tracking-widest mt-0.5">${escHtml(p.author)} · ${formatRelativeTime(p.updated_at)}</div>
     </button>
   `).join('');
 }
@@ -14886,6 +15403,21 @@ document.addEventListener('DOMContentLoaded', () => {
 function escHtml(str) {
   if (!str) return '';
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// ใส่ค่าลงใน onclick="fn('...')" อย่างปลอดภัย: escape เป็นสตริง JS ก่อน (\ ' ขึ้นบรรทัด) แล้วค่อย escape เป็น HTML attribute
+// (ลำดับสำคัญ: ถ้า escape HTML อย่างเดียว เบราว์เซอร์จะแปลง &#39; กลับเป็น ' ก่อนรัน JS แล้วหลุดออกจากสตริง)
+// URL ที่ปลอดภัยสำหรับใส่ใน src/href/onclick: อนุญาตเฉพาะ http(s)://, พาธในเว็บ (/...), blob:, รูป data: base64 — อย่างอื่น (เช่น javascript:) ถูกทิ้ง
+// และเข้ารหัสอักขระที่หลุดออกจาก attribute ได้ (" ' < > ` \ ช่องว่าง)
+function _safeUrl(u) {
+  const s = String(u == null ? '' : u).trim();
+  if (!/^(https?:\/\/|\/(?!\/)|blob:|data:image\/(png|jpe?g|gif|webp);base64,)/i.test(s)) return '';
+  return s.replace(/["'<>`\\\s]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0'));
+}
+
+function _jsq(v) {
+  const s = String(v == null ? '' : v).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r?\n/g, ' ').replace(/<\/(script)/gi, '<\\/$1');
+  return escHtml(s);
 }
 
 // ─── Kanban/Wiki loaded via switchView above ─────────────────────────────
@@ -15958,6 +16490,22 @@ const ICE_SERVERS = {
   ]
 };
 
+// รายการ STUN/TURN มาจากเซิร์ฟเวอร์ (/api/webrtc/ice) — รหัส TURN ไม่ฝังในหน้าเว็บ; ใช้ ICE_SERVERS ข้างบนเป็นทางสำรองเมื่อดึงไม่ได้
+let _rtcIceCache = null;
+async function getRtcConfig() {
+  const now = Date.now();
+  if (_rtcIceCache && now - _rtcIceCache.t < 20 * 60 * 1000) return _rtcIceCache.cfg;
+  try {
+    const r = await apiFetch('/api/webrtc/ice');
+    if (r && r.ok && Array.isArray(r.iceServers) && r.iceServers.length) {
+      rtcState.turnConfigured = !!r.turn_configured;
+      _rtcIceCache = { t: now, cfg: { iceServers: r.iceServers } };
+      return _rtcIceCache.cfg;
+    }
+  } catch (e) { console.warn('⚠️ ดึง ICE servers ไม่ได้ ใช้ค่าสำรอง:', e && e.message || e); }
+  return ICE_SERVERS;
+}
+
 // ─── Ringtone Engine (Web Audio API) ─────────────────────────
 function startRingtone() {
   try {
@@ -16020,7 +16568,7 @@ async function createPC() {
     rtcState.pc = null;
   }
   console.log('🏗️ Creating RTCPeerConnection with expanded ICE servers...');
-  const pc = new RTCPeerConnection(ICE_SERVERS);
+  const pc = new RTCPeerConnection(await getRtcConfig());
   rtcState.pc = pc;
 
   // Add local tracks to peer connection
@@ -16051,6 +16599,7 @@ async function createPC() {
       remoteAudio.srcObject = stream;
       remoteAudio.muted = false;
       remoteAudio.volume = 1.0;
+      _rtcBuildPlayback(stream, remoteAudio);
       remoteAudio.play()
         .then(() => console.log("🔊 Remote audio playing successfully"))
         .catch(e => {
@@ -16059,9 +16608,19 @@ async function createPC() {
         });
     }
     if (event.track.kind === 'video' && remoteVideo) {
-      remoteVideo.srcObject = stream;
-      remoteVideo.classList.remove('hidden');
-      document.getElementById('remoteAvatarFallback')?.classList.add('hidden');
+      // วิดีโอเล่นแบบ "ปิดเสียง" เสมอ — เสียงเล่นผ่าน remoteAudio (เดิมเล่นซ้ำสองตัว + วิดีโอไม่ปิดเสียงทำให้เบราว์เซอร์บล็อก autoplay)
+      remoteVideo.muted = true;
+      remoteVideo.srcObject = new MediaStream([event.track]);
+      const _showRemoteVideo = (on) => {
+        remoteVideo.classList.toggle('hidden', !on);
+        document.getElementById('remoteAvatarFallback')?.classList.toggle('hidden', !!on);
+      };
+      // สายเสียงมีแทร็กวิดีโอว่างรออยู่ (muted) → แสดงรูปโปรไฟล์จนกว่าจะมีภาพจริงเข้ามา (เปิดกล้อง/แชร์จอ)
+      _showRemoteVideo(!event.track.muted);
+      event.track.onunmute = () => _showRemoteVideo(true);
+      event.track.onmute = () => _showRemoteVideo(false);
+      remoteVideo.onloadedmetadata = () => _showRemoteVideo(true);
+      remoteVideo.oncanplay = () => _showRemoteVideo(true);
       remoteVideo.play().catch(e => console.warn('📹 Remote video play failed:', e));
     }
   };
@@ -16081,12 +16640,25 @@ async function createPC() {
   // Connection state monitoring
   pc.onconnectionstatechange = () => {
     console.log('🔗 Connection state:', pc.connectionState);
+    clearTimeout(rtcState.disconnectTimer);
     if (pc.connectionState === 'connected') {
-      startCallTimer();
+      if (!rtcState.timerStarted) { rtcState.timerStarted = true; startCallTimer(); toast('เชื่อมต่อสำเร็จ!', 'success'); }
       stopRingtone(); // STOP RINGING ON CONNECTION SUCCESS
-      toast('เชื่อมต่อสำเร็จ!', 'success');
-    } else if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) {
-      handleCallEnded('ขาดการเชื่อมต่อ');
+      if (!rtcState.isCamOff && rtcState.localStream && rtcState.localStream.getVideoTracks().some(t => t.enabled)) {
+        _rtcSignalMedia(true);
+      }
+    } else if (pc.connectionState === 'disconnected') {
+      // 'disconnected' มักเป็นแค่สัญญาณสะดุดชั่วคราว (สลับ Wi-Fi/4G, สัญญาณอ่อน) และกลับมาเองได้ — เดิมตัดสายทันที
+      rtcState.disconnectTimer = setTimeout(() => {
+        if (rtcState.pc === pc && pc.connectionState !== 'connected') handleCallEnded('สัญญาณขาดหาย');
+      }, 8000);
+    } else if (pc.connectionState === 'failed') {
+      const hint = rtcState.turnConfigured === false
+        ? 'เชื่อมต่อไม่สำเร็จ — เครือข่ายของสองฝั่งอาจบล็อกการเชื่อมต่อตรง (ผู้ดูแลระบบต้องตั้งค่า TURN server ดูคู่มือ webrtc_ice.py)'
+        : 'เชื่อมต่อไม่สำเร็จ ลองโทรใหม่อีกครั้ง';
+      handleCallEnded(hint);
+    } else if (pc.connectionState === 'closed') {
+      handleCallEnded('');
     }
   };
 
@@ -16094,16 +16666,57 @@ async function createPC() {
     console.log('🧊 ICE state:', pc.iceConnectionState);
   };
 
-  // Flush any pending ICE candidates
-  if (rtcState.pendingIceCandidates.length > 0) {
-    console.log(`📥 Flushing ${rtcState.pendingIceCandidates.length} pending ICE candidates`);
-    for (const candidate of rtcState.pendingIceCandidates) {
-      try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch (e) { }
-    }
-    rtcState.pendingIceCandidates = [];
-  }
-
+  // (ห้าม flush ICE ที่ค้างคิวตรงนี้: ยังไม่มี remoteDescription → addIceCandidate ล้มและตัวเลือกถูกทิ้งหมด. ให้เรียก flushPendingIce() หลัง setRemoteDescription)
   return pc;
+}
+
+// ส่งตัวเลือก ICE ที่มาถึงก่อนเวลา (ก่อนมี remoteDescription) เข้า pc — เรียกหลัง setRemoteDescription ทั้งฝั่งผู้โทรและผู้รับ
+async function flushPendingIce(pc) {
+  const list = rtcState.pendingIceCandidates || [];
+  rtcState.pendingIceCandidates = [];
+  if (list.length) console.log(`📥 Flushing ${list.length} pending ICE candidates`);
+  for (const c of list) {
+    try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch (e) { console.warn('⚠️ addIceCandidate (flush) failed:', e && e.message || e); }
+  }
+}
+
+// บอกอีกฝั่งว่าตอนนี้เรา "ส่งภาพ" อยู่ไหม — เบราว์เซอร์ไม่แจ้งฝั่งรับเมื่อเราหยุดส่ง (ภาพสุดท้ายจะค้างจอ)
+function _rtcSignalMedia(videoOn, isScreen) {
+  try {
+    if (socket && rtcState.remoteUser) {
+      socket.emit('webrtc_signal', { target: rtcState.remoteUser, sender: _rtcMyUsername(), type: 'media', payload: { video: !!videoOn, screen: !!(videoOn && isScreen) } });
+    }
+  } catch (e) { }
+}
+
+// วิธีแสดงภาพของอีกฝั่ง: กล้อง = เต็มจอ (cover, ตัดขอบ) / แชร์หน้าจอ = พอดีทั้งภาพ (contain, มีแถบดำ — ภาพหน้าจอคอม 16:9 บนมือถือแนวตั้งเดิมถูกตัดเหลือแค่แถบกลางจอ)
+// แตะที่ภาพเพื่อสลับโหมดเองได้
+function _rtcSetRemoteFit(isScreen) {
+  const rv = document.getElementById('remoteVideo');
+  if (!rv) return;
+  rv.dataset.screen = isScreen ? '1' : '';
+  delete rv.dataset.fitManual;
+  rv.classList.toggle('object-contain', !!isScreen);
+  rv.classList.toggle('object-cover', !isScreen);
+  rv.classList.toggle('opacity-80', !isScreen);   // ภาพหน้าจอต้องคมเต็มที่ ไม่หรี่
+  if (!rv.dataset.fitTap) {
+    rv.dataset.fitTap = '1';
+    rv.style.cursor = 'pointer';
+    rv.addEventListener('click', () => {
+      const contain = rv.classList.contains('object-contain');
+      rv.dataset.fitManual = '1';
+      rv.classList.toggle('object-contain', !contain);
+      rv.classList.toggle('object-cover', contain);
+    });
+  }
+}
+
+// ตัวส่งวิดีโอของสายนี้ — มีเสมอ (แม้เป็นสายเสียง) เพื่อให้เปิดกล้อง/แชร์จอกลางสายได้ด้วย replaceTrack โดยไม่ต้องเจรจาใหม่
+function _rtcVideoSender() {
+  const pc = rtcState.pc;
+  if (!pc) return null;
+  const tr = pc.getTransceivers().find(x => (x.receiver && x.receiver.track && x.receiver.track.kind === 'video'));
+  return tr ? tr.sender : null;
 }
 
 // ─── Get User Media ───────────────────────────────────────────
@@ -16112,7 +16725,7 @@ async function getLocalMedia(withVideo = false) {
     audio: {
       echoCancellation: true,
       noiseSuppression: true,
-      sampleRate: 44100
+      autoGainControl: true      // ปรับความดังเสียงพูดของเราให้สม่ำเสมอ (ไมค์เบา → อีกฝั่งได้ยินเบา)
     },
     video: withVideo ? {
       width: { ideal: 1280 },
@@ -16121,6 +16734,11 @@ async function getLocalMedia(withVideo = false) {
     } : false
   };
 
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    // เบราว์เซอร์เปิดไมค์/กล้องได้เฉพาะหน้า https:// หรือ localhost — เปิดผ่าน http://192.168.x.x จะใช้ไม่ได้
+    toast('เปิดไมโครโฟน/กล้องไม่ได้: ต้องเข้าเว็บผ่าน https:// (เช่น openchat.sbs) หรือ localhost เท่านั้น', 'error');
+    throw new Error('mediaDevices unavailable (insecure context)');
+  }
   try {
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
     rtcState.localStream = stream;
@@ -16184,12 +16802,13 @@ async function initiateCall(withVideo = false) {
 
     showActiveCallUI(targetUser, withVideo);
     const pc = await createPC();
+    if (!withVideo) pc.addTransceiver('video', { direction: 'sendrecv' });   // ช่องวิดีโอว่าง สำหรับเปิดกล้อง/แชร์จอกลางสาย
     console.log('🏗️ PeerConnection created, creating offer...');
 
     // Create and send offer
     const offer = await pc.createOffer({
       offerToReceiveAudio: true,
-      offerToReceiveVideo: withVideo
+      offerToReceiveVideo: true   /* รับวิดีโอเสมอ แม้เป็นสายเสียง — เพื่อให้อีกฝั่งเปิดกล้อง/แชร์จอกลางสายได้ */
     });
     await pc.setLocalDescription(offer);
 
@@ -16300,6 +16919,13 @@ async function acceptCall() {
     // Set remote description (the offer)
     await pc.setRemoteDescription(new RTCSessionDescription(rtcState.pendingOffer));
     rtcState.pendingOffer = null;
+    // สายเสียง: ให้ช่องวิดีโอเป็น sendrecv ด้วย เพื่อให้ฝั่งนี้เปิดกล้อง/แชร์จอกลางสายได้
+    pc.getTransceivers().forEach(tr => {
+      if (tr.receiver && tr.receiver.track && tr.receiver.track.kind === 'video' && !(tr.sender && tr.sender.track)) {
+        try { tr.direction = 'sendrecv'; } catch (e) { }
+      }
+    });
+    await flushPendingIce(pc);
 
     // Create answer
     const answer = await pc.createAnswer();
@@ -16315,11 +16941,7 @@ async function acceptCall() {
 
     console.log(`✅ Call accepted, answer sent to ${rtcState.remoteUser}`);
 
-    // Flush pending ICE candidates
-    for (const candidate of rtcState.pendingIceCandidates) {
-      try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch (e) { }
-    }
-    rtcState.pendingIceCandidates = [];
+    await flushPendingIce(pc);
 
   } catch (err) {
     console.error('❌ acceptCall error:', err);
@@ -16369,6 +16991,13 @@ function handleCallEnded(reason = '') {
 
 // ─── Cleanup All Call State ───────────────────────────────────
 function cleanupCall() {
+  clearTimeout(rtcState.disconnectTimer);
+  try { rtcState.playSrc && rtcState.playSrc.disconnect(); rtcState.gainNode && rtcState.gainNode.disconnect(); } catch (e) { }
+  rtcState.playSrc = null; rtcState.gainNode = null; rtcState.analyser = null;
+  document.getElementById('callVolumePanel')?.classList.add('hidden');
+  if (rtcState.screenStream) { try { rtcState.screenStream.getTracks().forEach(tr => tr.stop()); } catch (e) { } rtcState.screenStream = null; }
+  rtcState.sharingScreen = false;
+  rtcState.timerStarted = false;
   // Clear timeout
   if (rtcState.callTimeout) {
     clearTimeout(rtcState.callTimeout);
@@ -16469,77 +17098,193 @@ function toggleMic() {
   toast(rtcState.isMicMuted ? 'ปิดไมโครโฟน' : 'เปิดไมโครโฟน', 'info');
 }
 
-function toggleCam() {
-  if (!rtcState.localStream) return;
-  rtcState.isCamOff = !rtcState.isCamOff;
-  rtcState.localStream.getVideoTracks().forEach(t => {
-    t.enabled = !rtcState.isCamOff;
-  });
+async function toggleCam() {
+  if (!rtcState.pc) return;
   const camIcon = document.getElementById('camIcon');
   const toggleCamBtn = document.getElementById('toggleCamBtn');
-  if (camIcon) {
-    camIcon.setAttribute('data-lucide', rtcState.isCamOff ? 'video-off' : 'video');
-    initIcons();
+  const setUi = (off) => {
+    if (camIcon) { camIcon.setAttribute('data-lucide', off ? 'video-off' : 'video'); initIcons(); }
+    if (toggleCamBtn) {
+      toggleCamBtn.querySelector('div').classList.toggle('bg-red-600', off);
+      toggleCamBtn.querySelector('div').classList.toggle('bg-white/10', !off);
+    }
+  };
+  let cam = rtcState.localStream ? rtcState.localStream.getVideoTracks()[0] : null;
+  if (!cam) {
+    // สายเสียงล้วน → เปิดกล้องกลางสาย: ขอกล้อง แล้วส่งผ่านช่องวิดีโอที่เตรียมไว้
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { toast('เปิดกล้องไม่ได้: ต้องเข้าเว็บผ่าน https:// หรือ localhost', 'error'); return; }
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' } });
+      cam = s.getVideoTracks()[0];
+    } catch (e) {
+      toast(e && e.name === 'NotAllowedError' ? 'ไม่ได้อนุญาตให้ใช้กล้อง' : 'ไม่พบกล้อง หรือเปิดกล้องไม่ได้', 'error');
+      return;
+    }
+    const sender = _rtcVideoSender();
+    if (!sender) { cam.stop(); toast('สายนี้เปิดกล้องกลางสายไม่ได้ ลองวางสายแล้วโทรแบบวิดีโอ', 'error'); return; }
+    await sender.replaceTrack(cam);
+    rtcState.localStream.addTrack(cam);
+    rtcState.callType = 'video';
+    rtcState.isCamOff = false;
+    const lv = document.getElementById('localVideo');
+    if (lv) lv.srcObject = rtcState.localStream;
+    document.getElementById('localVideoContainer')?.classList.remove('hidden');
+    setUi(false);
+    _rtcSignalMedia(true);
+    toast('เปิดกล้อง', 'info');
+    return;
   }
-  if (toggleCamBtn) {
-    toggleCamBtn.querySelector('div').classList.toggle('bg-red-600', rtcState.isCamOff);
-    toggleCamBtn.querySelector('div').classList.toggle('bg-white/10', !rtcState.isCamOff);
-  }
+  rtcState.isCamOff = !rtcState.isCamOff;
+  cam.enabled = !rtcState.isCamOff;
+  setUi(rtcState.isCamOff);
+  if (!rtcState.sharingScreen) _rtcSignalMedia(!rtcState.isCamOff);
   toast(rtcState.isCamOff ? 'ปิดกล้อง' : 'เปิดกล้อง', 'info');
 }
 
-function toggleSpeaker() {
+// ─── ความดังเสียงสาย ─────────────────────────────────────────
+// <audio>.volume ขยายเกิน 100% ไม่ได้ (ตั้งแต่ต้นเสียงอีกฝั่งก็เบาอยู่แล้ว) → ส่งเสียงผ่าน Web Audio: ตัวขยาย (gain 100–400%) + ตัวกันเสียงแตก (compressor)
+// สตรีมต้องผูกกับ <audio> ไว้ด้วย (Chrome จะไม่ส่งเสียงสตรีมจาก WebRTC เข้ากราฟถ้าไม่มี element) แต่ปิดเสียง element นั้นเพื่อไม่ให้เล่นซ้ำ
+const _CALL_GAIN_KEY = 'orgchat_call_gain';
+function _rtcLoadGain() {
+  try { const v = parseFloat(localStorage.getItem(_CALL_GAIN_KEY)); if (v >= 1 && v <= 4) return v; } catch (e) { }
+  return 2.0;   // ค่าเริ่มต้นดังกว่าเดิม 2 เท่า (ผู้ใช้แจ้งว่าเสียงสายเบา)
+}
+function _rtcApplyGain() {
+  if (rtcState.gainNode) rtcState.gainNode.gain.value = rtcState.isSpeakerMuted ? 0 : (rtcState.gain || 2.0);
+}
+function _rtcBuildPlayback(stream, audioEl) {
+  try {
+    if (rtcState.gain == null) rtcState.gain = _rtcLoadGain();
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) throw new Error('no AudioContext');
+    if (!rtcState.playCtx || rtcState.playCtx.state === 'closed') rtcState.playCtx = new AC();
+    const ctx = rtcState.playCtx;
+    try { rtcState.playSrc && rtcState.playSrc.disconnect(); rtcState.gainNode && rtcState.gainNode.disconnect(); } catch (e) { }
+    const src = ctx.createMediaStreamSource(stream);
+    const gain = ctx.createGain();
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.value = -20; comp.knee.value = 24; comp.ratio.value = 10; comp.attack.value = 0.003; comp.release.value = 0.2;
+    const analyser = ctx.createAnalyser(); analyser.fftSize = 512;
+    src.connect(gain); gain.connect(comp); comp.connect(analyser); analyser.connect(ctx.destination);
+    rtcState.playSrc = src; rtcState.gainNode = gain; rtcState.analyser = analyser;
+    _rtcApplyGain();
+    audioEl.muted = true;             // เสียงออกทางกราฟ ไม่ใช่ element
+    if (ctx.state === 'suspended') ctx.resume().catch(() => { });
+    if (rtcState.outputId && ctx.setSinkId) ctx.setSinkId(rtcState.outputId).catch(() => { });
+    _rtcSyncVolumePanel();
+  } catch (e) {
+    console.warn('🔈 ขยายเสียงไม่ได้ ใช้การเล่นปกติ:', e && e.message || e);
+    rtcState.gainNode = null;
+    audioEl.muted = !!rtcState.isSpeakerMuted;
+    audioEl.volume = 1.0;
+  }
+}
+function _rtcSyncVolumePanel() {
+  const pct = Math.round((rtcState.gain || _rtcLoadGain()) * 100);
+  const sl = document.getElementById('callGainSlider'), lb = document.getElementById('callGainLabel'), mb = document.getElementById('callMuteBtn');
+  if (sl) sl.value = String(pct);
+  if (lb) lb.textContent = pct + '%';
+  if (mb) mb.textContent = rtcState.isSpeakerMuted ? 'เปิดเสียงอีกฝั่ง' : 'ปิดเสียงอีกฝั่ง';
+  const icon = document.getElementById('speakerIcon');
+  if (icon) { icon.setAttribute('data-lucide', rtcState.isSpeakerMuted ? 'volume-x' : (pct > 200 ? 'volume-2' : 'volume-1')); initIcons(); }
+}
+function setCallGain(pct) {
+  const g = Math.max(1, Math.min(4, Number(pct) / 100 || 1));
+  rtcState.gain = g;
+  try { localStorage.setItem(_CALL_GAIN_KEY, String(g)); } catch (e) { }
+  if (rtcState.isSpeakerMuted) rtcState.isSpeakerMuted = false;
+  _rtcApplyGain();
+  _rtcSyncVolumePanel();
+}
+function muteSpeaker() {
   rtcState.isSpeakerMuted = !rtcState.isSpeakerMuted;
-  const remoteAudio = document.getElementById('remoteAudio');
-  if (remoteAudio) remoteAudio.muted = rtcState.isSpeakerMuted;
-  const speakerIcon = document.getElementById('speakerIcon');
-  const btn = document.getElementById('toggleSpeakerBtn');
-  if (speakerIcon) {
-    speakerIcon.setAttribute('data-lucide', rtcState.isSpeakerMuted ? 'volume-x' : 'volume-2');
-    initIcons();
-  }
-  if (btn) {
-    btn.querySelector('div').classList.toggle('bg-red-600', rtcState.isSpeakerMuted);
-    btn.querySelector('div').classList.toggle('bg-white/10', !rtcState.isSpeakerMuted);
-  }
-  toast(rtcState.isSpeakerMuted ? 'ปิดลำโพง' : 'เปิดลำโพง', 'info');
+  const ra = document.getElementById('remoteAudio');
+  if (!rtcState.gainNode && ra) ra.muted = rtcState.isSpeakerMuted;   // กรณีกราฟไม่ทำงาน (fallback)
+  _rtcApplyGain();
+  _rtcSyncVolumePanel();
+  toast(rtcState.isSpeakerMuted ? 'ปิดเสียงอีกฝั่ง' : 'เปิดเสียงอีกฝั่ง', 'info');
+}
+async function _rtcPopulateOutputs() {
+  const row = document.getElementById('callOutputRow'), sel = document.getElementById('callOutputSelect');
+  if (!row || !sel) return;
+  try {
+    if (!(rtcState.playCtx && rtcState.playCtx.setSinkId) || !navigator.mediaDevices?.enumerateDevices) { row.classList.add('hidden'); return; }
+    const outs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audiooutput');
+    if (outs.length < 2) { row.classList.add('hidden'); return; }
+    sel.innerHTML = outs.map(d => `<option value="${escHtml(d.deviceId)}">${escHtml(d.label || 'ช่องเสียงออก')}</option>`).join('');
+    if (rtcState.outputId) sel.value = rtcState.outputId;
+    row.classList.remove('hidden');
+  } catch (e) { row.classList.add('hidden'); }
+}
+async function setCallOutput(id) {
+  try {
+    rtcState.outputId = id;
+    if (rtcState.playCtx && rtcState.playCtx.setSinkId) await rtcState.playCtx.setSinkId(id);
+  } catch (e) { toast('เปลี่ยนช่องเสียงออกไม่ได้', 'error'); }
+}
+
+function toggleSpeaker() {
+  const panel = document.getElementById('callVolumePanel');
+  if (!panel) { muteSpeaker(); return; }
+  const open = panel.classList.contains('hidden');
+  panel.classList.toggle('hidden', !open);
+  if (open) { _rtcSyncVolumePanel(); _rtcPopulateOutputs(); }
 }
 
 async function shareScreen() {
   if (!rtcState.pc) return;
-  try {
-    const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-    const screenTrack = screenStream.getVideoTracks()[0];
-
-    // Replace video track in peer connection
-    const sender = rtcState.pc.getSenders().find(s => s.track && s.track.kind === 'video');
-    if (sender) {
-      await sender.replaceTrack(screenTrack);
-    } else {
-      rtcState.pc.addTrack(screenTrack, screenStream);
-    }
-
-    // Also show in local video
-    const localVideo = document.getElementById('localVideo');
-    if (localVideo) {
-      localVideo.srcObject = screenStream;
-      document.getElementById('localVideoContainer')?.classList.remove('hidden');
-    }
-
-    // On screen share end, switch back to camera
-    screenTrack.onended = async () => {
-      if (!rtcState.localStream) return;
-      const camTrack = rtcState.localStream.getVideoTracks()[0];
-      if (sender && camTrack) await sender.replaceTrack(camTrack);
-      if (localVideo) localVideo.srcObject = rtcState.localStream;
-      toast('หยุดแชร์หน้าจอแล้ว', 'info');
-    };
-    toast('กำลังแชร์หน้าจอ', 'success');
-  } catch (e) {
-    if (e.name !== 'AbortError' && e.name !== 'NotAllowedError') {
-      toast('ไม่สามารถแชร์หน้าจอได้', 'error');
-    }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+    toast('อุปกรณ์/เบราว์เซอร์นี้ไม่รองรับการแชร์หน้าจอ (มือถือส่วนใหญ่ไม่รองรับ — ใช้คอมพิวเตอร์)', 'error');
+    return;
   }
+  const sender = _rtcVideoSender();
+  if (!sender) { toast('สายนี้แชร์หน้าจอไม่ได้ ลองวางสายแล้วโทรใหม่', 'error'); return; }
+  if (rtcState.sharingScreen) { await rtcState.stopShare(); return; }   // กดซ้ำ = หยุดแชร์
+  let screenStream;
+  try {
+    screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+  } catch (e) {
+    if (e.name === 'NotAllowedError') toast('ไม่ได้เลือกหน้าจอที่จะแชร์ (หรือเบราว์เซอร์ไม่อนุญาต)', 'info');
+    else if (e.name !== 'AbortError') toast('ไม่สามารถแชร์หน้าจอได้: ' + (e.message || e.name), 'error');
+    return;
+  }
+  const screenTrack = screenStream.getVideoTracks()[0];
+  const prevTrack = sender.track || null;           // กล้องเดิม (ถ้ามี) เพื่อสลับกลับเมื่อหยุดแชร์
+  try {
+    await sender.replaceTrack(screenTrack);
+  } catch (e) {
+    screenTrack.stop();
+    toast('ส่งภาพหน้าจอไม่สำเร็จ: ' + (e.message || e.name), 'error');
+    return;
+  }
+  rtcState.sharingScreen = true;
+  rtcState.screenStream = screenStream;
+  _rtcSignalMedia(true, true);
+  const localVideo = document.getElementById('localVideo');
+  if (localVideo) { localVideo.srcObject = screenStream; document.getElementById('localVideoContainer')?.classList.remove('hidden'); }
+  const btn = document.getElementById('shareScreenBtn');
+  btn?.querySelector('div')?.classList.add('bg-emerald-600');
+
+  // หยุดแชร์: เรียกได้ทั้งจากปุ่ม (track.stop() ไม่ยิงอีเวนต์ 'ended' จึงต้องเรียกตรงๆ) และจากแถบ "หยุดแชร์" ของเบราว์เซอร์ (ยิง 'ended')
+  const stopShare = async () => {
+    if (!rtcState.sharingScreen) return;
+    rtcState.sharingScreen = false;
+    try { screenStream.getTracks().forEach(tr => tr.stop()); } catch (e) { }
+    rtcState.screenStream = null;
+    btn?.querySelector('div')?.classList.remove('bg-emerald-600');
+    if (!rtcState.pc) return;
+    const camLive = !!(prevTrack && prevTrack.readyState === 'live');
+    try { await sender.replaceTrack(camLive ? prevTrack : null); } catch (e) { }
+    _rtcSignalMedia(camLive && !rtcState.isCamOff);
+    if (localVideo) {
+      if (camLive && rtcState.localStream) localVideo.srcObject = rtcState.localStream;
+      else document.getElementById('localVideoContainer')?.classList.add('hidden');
+    }
+    toast('หยุดแชร์หน้าจอแล้ว', 'info');
+  };
+  rtcState.stopShare = stopShare;
+  screenTrack.onended = stopShare;
+  toast('กำลังแชร์หน้าจอ (กดปุ่มอีกครั้งเพื่อหยุด)', 'success');
 }
 
 // ─── Socket WebRTC Signal Handler ────────────────────────────
@@ -16578,6 +17323,7 @@ function initWebRTCSignaling() {
           await rtcState.pc.setRemoteDescription(new RTCSessionDescription(payload));
           console.log('✅ Remote answer set.');
           if (rtcState.callTimeout) clearTimeout(rtcState.callTimeout);
+          await flushPendingIce(rtcState.pc);
         } catch (e) {
           console.error('❌ setRemoteDescription (answer) error:', e);
         }
@@ -16608,9 +17354,43 @@ function initWebRTCSignaling() {
       case 'busy':
         handleCallEnded(`${sender} กำลังคุยสายอื่นอยู่`);
         break;
+
+      case 'media': {
+        // อีกฝั่งเปิด/ปิดภาพ → สลับระหว่างวิดีโอ กับรูปโปรไฟล์
+        const on = !!(payload && payload.video);
+        document.getElementById('remoteVideo')?.classList.toggle('hidden', !on);
+        document.getElementById('remoteAvatarFallback')?.classList.toggle('hidden', on);
+        _rtcSetRemoteFit(on && !!(payload && payload.screen));
+        break;
+      }
+
+      case 'ringing_offline': {
+        // ผู้รับยังไม่ได้เปิดแอป: เซิร์ฟเวอร์ส่งแจ้งเตือนสายเข้า (push) ให้แล้วและเก็บสายไว้ — ไม่ตัดสาย รอจนเขาเปิดแอปแล้วรับ (สูงสุด ~45 วินาที)
+        const ttl = (payload && payload.ttl) || 45;
+        const notified = !!(payload && payload.notified), viaLine = !!(payload && payload.line);
+        const reached = notified || viaLine;
+        toast(reached
+          ? `กำลังโทรหา ${sender} — ส่งแจ้งเตือนสายเข้าไปที่เครื่องเขาแล้ว${notified && viaLine ? ' (แจ้งเตือนในเครื่อง + LINE)' : (viaLine ? ' (ทาง LINE)' : '')} รอเขากดรับ...`
+          : `${sender} ยังไม่ได้เปิดแอปและยังไม่ได้เปิดรับแจ้งเตือน — บอกให้เขากดปุ่ม "เปิดการแจ้งเตือน" ในแอป สายจะดังเมื่อเขาเปิดแอป กำลังรอ...`, reached ? 'info' : 'error');
+        ['callDuration', 'callDurationMobile'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = reached ? 'กำลังโทร… ส่งแจ้งเตือนถึงผู้รับแล้ว' : 'ผู้รับยังไม่ได้เปิดรับแจ้งเตือน…'; });
+        if (rtcState.callTimeout) clearTimeout(rtcState.callTimeout);
+        rtcState.callTimeout = setTimeout(() => {
+          if (rtcState.pc && rtcState.pc.connectionState !== 'connected') handleCallEnded('ไม่มีการตอบรับ — ผู้รับจะเห็นเป็นสายที่ไม่ได้รับ');
+        }, (ttl + 5) * 1000);
+        break;
+      }
+
+      case 'unavailable':
+        // ผู้รับไม่ได้เปิดแอปอยู่ (เซิร์ฟเวอร์ส่งแจ้งเตือนให้แล้ว แต่สายนี้ต่อไม่ได้เพราะเขายังไม่ได้ฟังสัญญาณ)
+        handleCallEnded(`${sender} ไม่ได้ออนไลน์อยู่ — ส่งแจ้งเตือนให้แล้ว ลองโทรใหม่เมื่อเขาเปิดแอป`);
+        break;
     }
   });
 
+  // บอกเซิร์ฟเวอร์ว่า "พร้อมรับสายแล้ว" — ทั้งตอนนี้ และทุกครั้งที่เชื่อมต่อใหม่ (สายที่โทรมาตอนยังไม่ได้เปิดแอปจะถูกส่งหลังจุดนี้)
+  const _announceReady = () => { try { socket.emit('webrtc_ready'); } catch (e) { } };
+  if (socket.connected) _announceReady();
+  socket.on('connect', _announceReady);
   console.log('✅ WebRTC signaling handler registered.');
 }
 
@@ -16635,17 +17415,7 @@ if (videoCallBtn) videoCallBtn.addEventListener('click', () => initiateCall(true
     initWebRTCSignaling();
 
     // 🟢 Handle User Status Updates
-    s.on('user_status_updated', (data) => {
-      console.log('👥 User status updated:', data);
-      if (Array.isArray(data)) {
-        state.onlineUsers = data.map(u => u.username);
-      } else {
-        // Fallback if data is different shape
-        state.onlineUsers = [];
-      }
-      renderChatSidebar();
-      updateChatHeaderStatus();
-    });
+    // (ตัวรับ 'user_status_updated' รวมไว้ที่ initSocket แล้ว — ตัวเดิมตรงนี้เคยล้างรายชื่อออนไลน์ทิ้งทุกครั้ง)
 
     // Handle incoming messages to update status if needed
     s.on('new_message', () => {
@@ -16707,7 +17477,7 @@ function updateChatHeaderStatus() {
   if (isOnline) {
     statusContainer.innerHTML = `
       <span class="messenger-header-status-dot online"></span>
-      <p class="text-[8px] text-emerald-600 font-bold uppercase tracking-widest whitespace-nowrap">ออนไลน์</p>
+      <p class="text-[11px] text-emerald-600 font-bold whitespace-nowrap">ออนไลน์</p>
     `;
   } else {
     let lastSeenText = 'ออฟไลน์';
@@ -16717,7 +17487,7 @@ function updateChatHeaderStatus() {
 
     statusContainer.innerHTML = `
       <span class="messenger-header-status-dot offline"></span>
-      <p class="text-[8px] text-surface-400 font-bold uppercase tracking-widest whitespace-nowrap">${lastSeenText}</p>
+      <p class="text-[11px] text-surface-400 font-bold whitespace-nowrap">${lastSeenText}</p>
     `;
   }
 }
@@ -16734,42 +17504,90 @@ function urlB64ToUint8Array(base64String) {
   return outputArray;
 }
 
-async function requestPushPermission() {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+// ─── แจ้งเตือน (push): สายเข้า/ข้อความแม้ไม่ได้เปิดแอป ───────────────────
+// เดิม: ขอสิทธิ์ตอนเปิดแอปโดยผู้ใช้ไม่ได้กดอะไร → Chrome มือถือ/iPhone เมินคำขอ ผู้ใช้เลยไม่เคยเห็นป๊อปอัปให้อนุญาต
+//       และถ้าเบราว์เซอร์เคยสมัครไว้แล้วจะไม่ส่งการสมัครให้เซิร์ฟเวอร์อีก (ล็อกอินคนละบัญชีบนเครื่องเดียวกัน = บัญชีใหม่ไม่ได้รับ push เลย)
+// ตอนนี้: สมัครกับเซิร์ฟเวอร์ใหม่ "ทุกครั้ง" ที่เปิดแอปถ้าได้รับอนุญาตแล้ว และแสดงแถบให้กดเปิดการแจ้งเตือนเอง (การกดคือ user gesture ที่เบราว์เซอร์ยอมรับ)
+function _pushSupported() {
+  return ('serviceWorker' in navigator) && ('PushManager' in window) && ('Notification' in window);
+}
 
-  if (Notification.permission === 'granted') {
-    subscribeUserToPush();
-  } else if (Notification.permission !== 'denied') {
-    const permission = await Notification.requestPermission();
-    if (permission === 'granted') {
-      subscribeUserToPush();
-    }
-  }
+async function requestPushPermission() {
+  if (!_pushSupported()) return;
+  if (Notification.permission === 'granted') subscribeUserToPush();
 }
 
 async function subscribeUserToPush() {
   try {
+    if (!window.VAPID_PUBLIC_KEY) return false;
     const registration = await navigator.serviceWorker.ready;
     let subscription = await registration.pushManager.getSubscription();
-
-    // Only subscribe if VAPID key is provided by the backend (rendered in index.html)
-    if (!subscription && window.VAPID_PUBLIC_KEY) {
-      const applicationServerKey = urlB64ToUint8Array(window.VAPID_PUBLIC_KEY);
+    if (!subscription) {
       subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: applicationServerKey
+        applicationServerKey: urlB64ToUint8Array(window.VAPID_PUBLIC_KEY)
       });
       console.log('🟢 Push Notifications Subscribed');
-
-      await fetch('/api/notifications/subscribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subscription })
-      });
     }
+    // ส่งให้เซิร์ฟเวอร์ทุกครั้ง (บันทึกแบบไม่ซ้ำ): บัญชีนี้ต้องมีอุปกรณ์นี้ในรายการเสมอ
+    const r = await apiFetch('/api/notifications/subscribe', { method: 'POST', body: JSON.stringify({ subscription }) });
+    return !!(r && r.ok);
   } catch (err) {
     console.error('❌ Failed to subscribe to Push Notifications:', err);
+    return false;
   }
+}
+
+async function enablePushNow() {
+  const banner = document.getElementById('pushBanner');
+  try {
+    if (!_pushSupported()) { toast('เบราว์เซอร์นี้ไม่รองรับการแจ้งเตือน (iPhone: เพิ่มเว็บไว้ที่หน้าจอโฮมก่อน)', 'info'); return; }
+    let perm = Notification.permission;
+    if (perm === 'default') perm = await Notification.requestPermission();   // ถูกเรียกจากการกดปุ่ม → เบราว์เซอร์ยอมให้ขึ้นป๊อปอัป
+    if (perm !== 'granted') { toast('ยังไม่ได้อนุญาตการแจ้งเตือน — กดไอคอนแม่กุญแจข้างชื่อเว็บ แล้วเลือก "อนุญาต" การแจ้งเตือน', 'error'); return; }
+    const ok = await subscribeUserToPush();
+    if (ok) {
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        reg.showNotification('เปิดการแจ้งเตือนแล้ว ✅', { body: 'จากนี้จะได้รับสายเข้าและข้อความแม้ไม่ได้เปิดแอป', icon: '/static/icon-192.png', tag: 'push_enabled' });
+      } catch (e) { }
+      toast('เปิดการแจ้งเตือนเรียบร้อย', 'success');
+      banner && banner.remove();
+    } else {
+      toast('สมัครรับแจ้งเตือนไม่สำเร็จ ลองใหม่อีกครั้ง', 'error');
+    }
+  } catch (e) {
+    toast('เปิดการแจ้งเตือนไม่สำเร็จ: ' + (e && e.message || e), 'error');
+  }
+}
+
+async function maybeShowPushBanner() {
+  try {
+    if (document.getElementById('pushBanner') || !state.user) return;
+    const st = await apiFetch('/api/notifications/subscribed');
+    if (!st || !st.ok || !st.server_ready) return;                      // เซิร์ฟเวอร์ยังไม่ตั้งกุญแจ VAPID → ไม่มีอะไรให้เปิด
+    if (_pushSupported() && Notification.permission === 'granted') {
+      if (!st.count) subscribeUserToPush();                               // อนุญาตแล้วแต่เซิร์ฟเวอร์ยังไม่มีรายการ → สมัครเงียบๆ
+      return;
+    }
+    let dismissed = 0;
+    try { dismissed = parseInt(localStorage.getItem('orgchat_push_banner_dismissed') || '0', 10) || 0; } catch (e) { }
+    if (Date.now() - dismissed < 3 * 24 * 3600 * 1000) return;
+    const denied = _pushSupported() && Notification.permission === 'denied';
+    const el = document.createElement('div');
+    el.id = 'pushBanner';
+    el.className = 'fixed left-3 right-3 bottom-20 md:bottom-6 md:left-auto md:right-6 md:w-[26rem] z-[70] flex items-center gap-3 p-3 pr-2 rounded-2xl bg-surface-900 text-white border border-white/10 shadow-2xl';
+    el.innerHTML = `
+      <div class="w-10 h-10 shrink-0 rounded-xl bg-brand-600 flex items-center justify-center"><i data-lucide="bell-ring" class="w-5 h-5"></i></div>
+      <div class="flex-1 min-w-0">
+        <div class="text-xs font-bold">รับสายเข้าและข้อความแม้ไม่ได้เปิดแอป</div>
+        <div class="text-[11px] text-white/60 leading-snug">${denied ? 'เบราว์เซอร์บล็อกการแจ้งเตือนไว้ — กดแม่กุญแจข้างชื่อเว็บ แล้วเลือก "อนุญาต"' : (_pushSupported() ? 'กดเปิดการแจ้งเตือน (เด้งเสียง/สั่นเมื่อมีสายโทรเข้า)' : 'iPhone: เพิ่มเว็บไว้ที่หน้าจอโฮมก่อน แล้วเปิดจากไอคอนนั้น')}</div>
+      </div>
+      ${denied || !_pushSupported() ? '' : '<button type="button" onclick="enablePushNow()" class="px-3 py-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-xs font-bold shrink-0">เปิด</button>'}
+      <button type="button" aria-label="ปิด" onclick="try{localStorage.setItem('orgchat_push_banner_dismissed',String(Date.now()))}catch(e){};this.closest('#pushBanner').remove()" class="p-2 text-white/50 hover:text-white shrink-0"><i data-lucide="x" class="w-4 h-4"></i></button>`;
+    document.body.appendChild(el);
+    initIcons();
+  } catch (e) { }
 }
 
 // ─── Collapsible Security Panel (Desktop & Mobile) ─────
@@ -17354,7 +18172,7 @@ function renderLeaveHistory(leaves) {
                     </div>
                     <div>
                         <p class="font-black text-sm text-surface-900 dark:text-white">${l.type} - ${l.start_date} ถึง ${l.end_date}</p>
-                        <p class="text-[10px] text-surface-400 font-bold uppercase tracking-widest mt-0.5">${l.reason || 'ไม่ระบุเหตุผล'}</p>
+                        <p class="text-[10px] text-surface-400 font-bold uppercase tracking-widest mt-0.5">${escHtml(l.reason || 'ไม่ระบุเหตุผล')}</p>
                     </div>
                 </div>
                 <div class="flex items-center gap-3">
@@ -17879,7 +18697,7 @@ function renderLeaveComments(comments) {
                     ${c.comment}
                 </div>
                 <div class="flex items-center gap-2 px-2">
-                   <span class="text-[9px] font-black uppercase tracking-widest text-surface-400">${c.username}</span>
+                   <span class="text-[9px] font-black uppercase tracking-widest text-surface-400">${escHtml(c.username)}</span>
                    <span class="text-[8px] text-surface-300">${new Date(c.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
             </div>
@@ -18010,6 +18828,14 @@ window.changeTeamCalendarMonth = changeTeamCalendarMonth;
 window.loadTeamLeaveCalendar = loadTeamLeaveCalendar;
 
 async function testMorningBriefing() {
+  if (!_mySettingsCache || !_mySettingsCache.line_user_id) {
+    await showAlert(
+      'ยังไม่ได้ผูกบอท LINE',
+      'คุณยังไม่ได้ผูกบัญชีกับบอท LINE สำหรับรับข้อความแจ้งเตือนค่ะ\n\nการล็อกอินด้วย LINE Login เป็นเพียงการเข้าสู่ระบบ แต่การรับแจ้งเตือน / Morning Brief ต้องเชื่อมต่อกับบอทแชทขององค์กรด้วยค่ะ กรุณากดปุ่ม "วิธีเชื่อมต่อ / ใส่รหัส Token" เพื่อผูกบอทก่อนค่ะ',
+      { type: 'warning' }
+    );
+    return;
+  }
   const btn = $('btnTestBriefing');
   if (btn) {
     btn.disabled = true;
@@ -18017,12 +18843,20 @@ async function testMorningBriefing() {
     if (typeof initIcons === 'function') initIcons();
   }
   try {
-    const res = await fetch('/api/admin/briefing/trigger', { method: 'POST' });
+    const res = await fetch('/api/admin/briefing/trigger', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
     const data = await res.json();
     if (data.ok) {
-      toast('ส่ง Morning Briefing เข้า LINE เรียบร้อยแล้ว', 'success');
+      toast('ส่ง Morning Briefing เข้า LINE เรียบร้อยแล้วค่ะ', 'success');
     } else {
-      toast(data.error || 'เกิดข้อผิดพลาดในการส่ง', 'error');
+      const errMsg = (data.message && data.error === 'internal_error')
+        ? data.message
+        : (data.error === 'internal_error'
+            ? 'เกิดข้อผิดพลาดภายในระบบ กรุณาลองใหม่อีกครั้งค่ะ'
+            : (data.message || data.error || 'เกิดข้อผิดพลาดในการส่งข้อความ LINE ค่ะ'));
+      await showAlert('ส่งไม่สำเร็จ', errMsg, { type: 'danger' });
     }
   } catch (e) {
     console.error(e);
@@ -18586,7 +19420,7 @@ function renderDriveContents(items) {
       }
         </div>
         <div class="space-y-1">
-          <p class="text-[11px] font-bold text-surface-900 dark:text-surface-100 truncate pr-2" title="${item.name}">${item.name}</p>
+          <p class="text-[11px] font-bold text-surface-900 dark:text-surface-100 truncate pr-2" title="${escHtml(item.name)}">${escHtml(item.name)}</p>
           <p class="text-[9px] text-surface-400 font-bold uppercase tracking-tighter truncate">${isFolder ? 'Folder' : item.mimeType.split('/').pop().toUpperCase()}</p>
         </div>
         <div class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -18665,9 +19499,8 @@ function updateSystemStatus(text = 'Live', type = 'success') {
   const c = colors[type] || colors.success;
 
   if (dashBadge && dashText) {
-    dashBadge.className = `hidden md:flex items-center gap-2 px-3 py-1.5 ${c.bg} ${c.text} rounded-full border ${c.border}`;
-    const dot = dashBadge.querySelector('.rounded-full');
-    if (dot) dot.className = `w-2 h-2 ${c.dot} rounded-full animate-pulse`;
+    dashBadge.className = 'hidden';
+    dashBadge.style.display = 'none';
     dashText.textContent = `System ${text}`;
   }
 
@@ -18688,7 +19521,7 @@ async function fetchWeather() {
     const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,uv_index&hourly=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=Asia%2FBangkok&forecast_days=7`;
     const aqUrl = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&current=pm2_5,us_aqi&timezone=Asia%2FBangkok`;
 
-    const [wRes, aqRes] = await Promise.allSettled([fetch(weatherUrl), fetch(aqUrl)]);
+    const [wRes, aqRes] = await Promise.allSettled([cachedFetch(weatherUrl), cachedFetch(aqUrl)]);
 
     let data = null;
     if (wRes.status === 'fulfilled' && wRes.value.ok) {
@@ -18884,8 +19717,8 @@ function renderLunchList() {
              <i data-lucide="utensils" class="w-4 h-4"></i>
           </div>
           <div>
-             <div class="text-xs font-bold text-surface-900 dark:text-white">${p.name}</div>
-             <div class="text-[9px] text-surface-400 uppercase tracking-widest">${p.type || 'ทั่วไป'}</div>
+             <div class="text-xs font-bold text-surface-900 dark:text-white">${escHtml(p.name)}</div>
+             <div class="text-[9px] text-surface-400 uppercase tracking-widest">${escHtml(p.type || 'ทั่วไป')}</div>
           </div>
        </div>
        <button onclick="deleteLunchPlace(${p.id})" class="p-2 text-surface-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
@@ -18920,18 +19753,18 @@ async function rollLunch() {
         // Update Dashboard Elements
         if ($('dashLunchPlaceName')) $('dashLunchPlaceName').textContent = data.place.name;
         if ($('dashLunchPlaceType')) $('dashLunchPlaceType').textContent = data.place.type || 'ร้านอาหารยอดฮิต';
-        if ($('dashLunchPlaceLocation')) $('dashLunchPlaceLocation').innerHTML = `<i data-lucide="map-pin" class="w-3 h-3"></i> ${data.place.location || 'รอบออฟฟิศ'}`;
+        if ($('dashLunchPlaceLocation')) $('dashLunchPlaceLocation').innerHTML = `<i data-lucide="map-pin" class="w-3 h-3"></i> ${escHtml(data.place.location || 'รอบออฟฟิศ')}`;
         if ($('dashLunchQuickPreview')) {
           $('dashLunchQuickPreview').innerHTML = `
              <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-             <span class="text-[10px] font-black text-brand-600">แนะนำ: ${data.place.name}</span>
+             <span class="text-[10px] font-black text-brand-600">แนะนำ: ${escHtml(data.place.name)}</span>
            `;
         }
 
         // Update Modal Elements
         if ($('modalLunchPlaceName')) $('modalLunchPlaceName').textContent = data.place.name;
         if ($('modalLunchPlaceType')) $('modalLunchPlaceType').textContent = data.place.type || 'ร้านอาหารยอดฮิต';
-        if ($('modalLunchPlaceLocation')) $('modalLunchPlaceLocation').innerHTML = `<i data-lucide="map-pin" class="w-3 h-3"></i> ${data.place.location || 'รอบออฟฟิศ'}`;
+        if ($('modalLunchPlaceLocation')) $('modalLunchPlaceLocation').innerHTML = `<i data-lucide="map-pin" class="w-3 h-3"></i> ${escHtml(data.place.location || 'รอบออฟฟิศ')}`;
 
         toast(`สุ่มได้ร้าน: ${data.place.name}`, 'success');
         lucide.createIcons();
@@ -19340,9 +20173,9 @@ function renderAdminPersonaList() {
   }
 
   list.innerHTML = adminPersonas.map(p => `
-    <div onclick="selectAdminPersona('${p.id}')" class="p-3 rounded-2xl border border-surface-100 dark:border-surface-800 hover:border-brand-500 cursor-pointer transition-all bg-white dark:bg-surface-900 group">
+    <div onclick="selectAdminPersona('${_jsq(p.id)}')" class="p-3 rounded-2xl border border-surface-100 dark:border-surface-800 hover:border-brand-500 cursor-pointer transition-all bg-white dark:bg-surface-900 group">
       <div class="flex items-center gap-3">
-        <img src="${p.avatar_url || 'https://cdn-icons-png.flaticon.com/512/1077/1077114.png'}" class="w-8 h-8 rounded-lg object-cover">
+        <img src="${_safeUrl(p.avatar_url) || 'https://cdn-icons-png.flaticon.com/512/1077/1077114.png'}" class="w-8 h-8 rounded-lg object-cover">
         <div class="flex-1 min-w-0">
           <div class="text-xs font-black truncate">${escHtml(p.name)}</div>
           <div class="text-[9px] text-surface-400 truncate uppercase tracking-tighter">${escHtml(p.description || '')}</div>
@@ -20563,7 +21396,7 @@ async function renderOrgTree() {
       ${avatarHtml}
       <div class="flex-1 min-w-0 pr-1 flex flex-col justify-center">
         <div class="flex items-center gap-1.5 mb-0.5">
-          <div class="font-extrabold text-xs text-surface-900 dark:text-white truncate" title="${node.display_name}">${node.display_name}</div>
+          <div class="font-extrabold text-xs text-surface-900 dark:text-white truncate" title="${escHtml(node.display_name)}">${escHtml(node.display_name)}</div>
           ${roleBadge}
         </div>
         <div class="flex items-center gap-1 text-[9px] font-bold text-surface-400 dark:text-surface-500 truncate" title="${posText} (${deptText})">
@@ -21496,7 +22329,12 @@ async function loadAuditLogsTable(search = '', eventType = '') {
       if (row.status === 'warning') statusBadge = '<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-600 dark:bg-amber-950/50">Warning 🟡</span>';
       if (row.status === 'failed') statusBadge = '<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-600 dark:bg-rose-950/50">Failed 🔴</span>';
 
-      let eventName = row.event_type;
+      // ตาราง audit_logs มี 2 รูปแบบคอลัมน์ (event_type/action_detail แบบเดิม, action/details แบบใหม่) → อ่านได้ทั้งคู่ ไม่ขึ้น "undefined"
+      const _ev = row.event_type || row.action || '-';
+      const _detail = row.action_detail || row.details || '';
+      let eventName = _ev;
+      const _evMap = { USER_LOGIN: '🔑 เข้าสู่ระบบสำเร็จ', LOGIN_SUCCESS: '🔑 เข้าสู่ระบบสำเร็จ', LOGIN_FAILED: '⚠️ ล็อกอินผิดพลาด', ACCOUNT_LOCKOUT: '🚨 ระงับบัญชีชั่วคราว' };
+      if (_evMap[String(_ev).toUpperCase()]) eventName = _evMap[String(_ev).toUpperCase()];
       if (row.event_type === 'login_success') eventName = '🔑 เข้าสู่ระบบสำเร็จ';
       if (row.event_type === 'login_failed') eventName = '⚠️ ล็อกอินผิดพลาด';
       if (row.event_type === 'account_lockout') eventName = '🚨 ระงับบัญชีชั่วคราว';
@@ -21510,9 +22348,9 @@ async function loadAuditLogsTable(search = '', eventType = '') {
                     <td class="p-3 text-surface-400 whitespace-nowrap">${row.timestamp || '-'}</td>
                     <td class="p-3 font-bold text-surface-900 dark:text-white whitespace-nowrap">${escapeHTML(row.username || 'Anonymous')}</td>
                     <td class="p-3 text-surface-500 whitespace-nowrap">${escapeHTML(row.department || 'General')}</td>
-                    <td class="p-3 font-semibold text-surface-800 dark:text-surface-200 whitespace-nowrap">${eventName}</td>
+                    <td class="p-3 font-semibold text-surface-800 dark:text-surface-200 whitespace-nowrap">${escapeHTML(String(eventName))}</td>
                     <td class="p-3 whitespace-nowrap">${statusBadge}</td>
-                    <td class="p-3 text-surface-600 dark:text-surface-300 max-w-xs truncate" title="${escapeHTML(row.action_detail || '')}">${escapeHTML(row.action_detail || '-')}</td>
+                    <td class="p-3 text-surface-600 dark:text-surface-300 max-w-xs truncate" title="${escapeHTML(_detail)}">${escapeHTML(_detail || '-')}</td>
                     <td class="p-3 font-mono text-[11px] text-surface-500 whitespace-nowrap">${escapeHTML(row.ip_address || '-')}</td>
                     <td class="p-3 text-surface-400 text-[11px] whitespace-nowrap">${escapeHTML(row.ai_model || userAgentShort)}</td>
                 </tr>
@@ -21579,7 +22417,7 @@ function applyCustomUI(settings) {
   // 2. Apply Font Size
   const fontSizes = {
     'small': { root: '13px', label: 'เล็ก (13px)' },
-    'normal': { root: '14.5px', label: 'ปกติ (14.5px)' },
+    'normal': { root: '15px', label: 'ปกติ (15px)' },
     'large': { root: '16px', label: 'ใหญ่ (16px)' },
     'xl': { root: '17.5px', label: 'ใหญ่มาก (17.5px)' }
   };

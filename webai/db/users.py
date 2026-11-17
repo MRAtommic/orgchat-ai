@@ -21,6 +21,24 @@ from .connection import (
 )
 
 from .settings import get_user_clearance_level
+
+def user_exists(username: str) -> bool:
+    """Check if a user actually exists in user_settings or user_profiles. Case-insensitive."""
+    if not username:
+        return False
+    u = str(username).strip()
+    if not u:
+        return False
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT 1 FROM user_settings WHERE username = ? COLLATE NOCASE LIMIT 1", (u,))
+    row = cursor.fetchone()
+    if not row:
+        cursor.execute("SELECT 1 FROM user_profiles WHERE username = ? COLLATE NOCASE LIMIT 1", (u,))
+        row = cursor.fetchone()
+    conn.close()
+    return bool(row)
+
 # --- User Profile ---
 def get_user_profile(username):
     conn = _get_conn()
@@ -47,6 +65,9 @@ def get_user_profile(username):
     }
 
 def update_user_profile(username, display_name=None, avatar_url=None, background_url=None, department=None):
+    from db.sanitize import clean_label
+    display_name = clean_label(display_name, 60)
+    department = clean_label(department, 60)
     conn = _get_conn()
     cursor = conn.cursor()
     # Check if exists
@@ -290,6 +311,8 @@ def admin_reset_user_password(username, new_password):
 
 def admin_create_user(username, password, role="user", display_name=None, can_view_kb=False, can_edit_kb=False, can_delete_kb=False, department="General", email=None):
     """Admin creates a new user account with profile and settings (password hashed)."""
+    from db.sanitize import clean_label
+    display_name = clean_label(display_name, 60)
     conn = _get_conn()
     cursor = conn.cursor()
     # First, check if user already exists case-insensitively
@@ -539,7 +562,15 @@ def get_categories(username=None, org_id=None):
     user_clearance = get_user_clearance_level(username)
     max_rank = CLEARANCE_MAP.get(user_clearance, 1)
 
-    if username == "Admin" or (username and _is_system_admin(username)):
+    is_org_adm = False
+    if org_id is not None and username:
+        try:
+            from db.orgs import is_org_admin
+            is_org_adm = is_org_admin(org_id, username)
+        except Exception:
+            is_org_adm = False
+
+    if username == "Admin" or (username and _is_system_admin(username)) or is_org_adm:
         if has_org_col and org_id is not None:
             cursor.execute(
                 "SELECT id, name, description, created_by, visibility, created_at, access_level FROM kb_categories "
@@ -549,25 +580,41 @@ def get_categories(username=None, org_id=None):
         else:
             cursor.execute("SELECT id, name, description, created_by, visibility, created_at, access_level FROM kb_categories ORDER BY name ASC")
     elif username:
+        cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='kb_category_departments'")
+        has_kcd = bool(cursor.fetchone())
+        kcd_clause = """
+            OR c.id IN (
+                SELECT kcd.category_id FROM kb_category_departments kcd 
+                JOIN user_profiles up ON LOWER(TRIM(up.department)) = LOWER(TRIM(kcd.department)) 
+                WHERE up.username = ? COLLATE NOCASE
+            )
+        """ if has_kcd else ""
+        where_cond = f"""(c.visibility IN ('public', 'confidential') 
+                         OR c.created_by = ? 
+                         OR (c.visibility = 'restricted' AND uca.username = ?)
+                         {kcd_clause})"""
+        params = [username, username]
+        if has_kcd:
+            params.append(username)
         if has_org_col and org_id is not None:
-            cursor.execute("""
+            sql = f"""
                 SELECT DISTINCT c.id, c.name, c.description, c.created_by, c.visibility, c.created_at, c.access_level
                 FROM kb_categories c
                 LEFT JOIN user_category_access uca ON c.id = uca.category_id
-                WHERE (c.visibility = 'public' OR c.created_by = ? OR (c.visibility = 'restricted' AND uca.username = ?))
+                WHERE {where_cond}
                   AND (c.organization_id = ? OR c.organization_id IS NULL)
                 ORDER BY c.name ASC
-            """, (username, username, org_id))
+            """
+            params.append(org_id)
         else:
-            cursor.execute("""
+            sql = f"""
                 SELECT DISTINCT c.id, c.name, c.description, c.created_by, c.visibility, c.created_at, c.access_level
                 FROM kb_categories c
                 LEFT JOIN user_category_access uca ON c.id = uca.category_id
-                WHERE c.visibility = 'public'
-                   OR c.created_by = ?
-                   OR (c.visibility = 'restricted' AND uca.username = ?)
+                WHERE {where_cond}
                 ORDER BY c.name ASC
-            """, (username, username))
+            """
+        cursor.execute(sql, tuple(params))
     else:
         if has_org_col and org_id is not None:
             cursor.execute(
@@ -664,31 +711,32 @@ def delete_category(cat_id):
     cursor.execute("DELETE FROM kb_categories WHERE id = ?", (cat_id,))
     # Clear associations in user_category_access
     cursor.execute("DELETE FROM user_category_access WHERE category_id = ?", (cat_id,))
-    # Reset category_id in knowledge_base
-    cursor.execute("UPDATE knowledge_base SET category_id = NULL WHERE category_id = ?", (cat_id,))
+    # (เดิมมี UPDATE knowledge_base ซึ่งไม่มีตารางนี้จริง ทำให้ลบหมวดไม่เคยสำเร็จ — หมวดของไฟล์เก็บใน file_meta.json และล้างที่ชั้นเส้นทาง)
     conn.commit()
     conn.close()
 
 def update_file_category(file_id, category_id):
-    """Assigns a file to a category."""
-    conn = _get_conn()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE knowledge_base SET category_id = ? WHERE file_id = ?", (category_id, file_id))
-    conn.commit()
-    conn.close()
+    """Assigns a file to a category (managed via rag_engine metadata)."""
+    try:
+        import rag_engine
+        return rag_engine.update_file_category(str(file_id), category_id)
+    except Exception:
+        return False
 
 def get_files_by_category(category_id=None):
-    """Returns files filtered by category_id. If None, returns unassigned files."""
-    conn = _get_conn()
-    cursor = conn.cursor()
-    if category_id:
-        cursor.execute("SELECT * FROM knowledge_base WHERE category_id = ?", (category_id,))
-    else:
-        cursor.execute("SELECT * FROM knowledge_base WHERE category_id IS NULL")
-    rows = cursor.fetchall()
-    conn.close()
-    # Note: Need to match knowledge_base schema for return dict
-    return rows
+    """Returns files filtered by category_id (from rag_engine metadata)."""
+    try:
+        import rag_engine
+        meta = rag_engine._load_meta()
+        res = []
+        for fid, f in meta.items():
+            if category_id is None and not f.get("category_id"):
+                res.append(f)
+            elif category_id is not None and f.get("category_id") == category_id:
+                res.append(f)
+        return res
+    except Exception:
+        return []
 
 # ─── Leave Management Functions ───────────────────────────
 
@@ -843,8 +891,8 @@ def get_admin_dashboard_stats(org_id=None):
     # File count
     total_files = 0
     try:
-        cursor.execute("SELECT COUNT(*) FROM knowledge_base")
-        total_files = cursor.fetchone()[0]
+        import rag_engine
+        total_files = len(rag_engine._load_meta())
     except Exception:
         pass
 
@@ -974,111 +1022,113 @@ def get_all_personas_v2(org_id=None):
 def global_search(query: str, username: str, limit: int = 30, org_id=None):
     """Search across posts, schedules, and DMs for a given user — filtered by org."""
     conn = _get_conn()
-    cursor = conn.cursor()
-    results = []
-    q = f"%{query}%"
+    try:
+        cursor = conn.cursor()
+        results = []
+        q = f"%{query}%"
 
-    # --- Posts (filtered by org) ---
-    if org_id is not None:
-        cursor.execute("""
-            SELECT p.id, p.content, p.author, p.category, p.timestamp,
-                   COALESCE(up.display_name, p.author) as display_name
-            FROM posts p
-            LEFT JOIN user_profiles up ON p.author = up.username COLLATE NOCASE
-            WHERE (p.content LIKE ? OR p.author LIKE ?) AND p.organization_id = ?
-            ORDER BY p.timestamp DESC LIMIT ?
-        """, (q, q, org_id, limit))
-    else:
-        cursor.execute("""
-            SELECT p.id, p.content, p.author, p.category, p.timestamp,
-                   COALESCE(up.display_name, p.author) as display_name
-            FROM posts p
-            LEFT JOIN user_profiles up ON p.author = up.username COLLATE NOCASE
-            WHERE p.content LIKE ? OR p.author LIKE ?
-            ORDER BY p.timestamp DESC LIMIT ?
-        """, (q, q, limit))
-    for r in cursor.fetchall():
-        results.append({
-            "type": "post", "id": r[0],
-            "text": r[1][:200], "author": r[5],
-            "category": r[3], "timestamp": r[4],
-            "link": "#feed"
-        })
+        # --- Posts (filtered by org) ---
+        if org_id is not None:
+            cursor.execute("""
+                SELECT p.id, p.content, p.author, p.category, p.timestamp,
+                       COALESCE(up.display_name, p.author) as display_name
+                FROM posts p
+                LEFT JOIN user_profiles up ON p.author = up.username COLLATE NOCASE
+                WHERE (p.content LIKE ? OR p.author LIKE ?) AND p.organization_id = ?
+                ORDER BY p.timestamp DESC LIMIT ?
+            """, (q, q, org_id, limit))
+        else:
+            cursor.execute("""
+                SELECT p.id, p.content, p.author, p.category, p.timestamp,
+                       COALESCE(up.display_name, p.author) as display_name
+                FROM posts p
+                LEFT JOIN user_profiles up ON p.author = up.username COLLATE NOCASE
+                WHERE p.content LIKE ? OR p.author LIKE ?
+                ORDER BY p.timestamp DESC LIMIT ?
+            """, (q, q, limit))
+        for r in cursor.fetchall():
+            results.append({
+                "type": "post", "id": r[0],
+                "text": r[1][:200], "author": r[5],
+                "category": r[3], "timestamp": r[4],
+                "link": "#feed"
+            })
 
-    # --- Schedules (filtered by org membership) ---
-    if org_id is not None:
-        cursor.execute("""
-            SELECT s.id, s.title, s.description, s.start_date, s.start_time, s.category, s.username
-            FROM schedules s
-            JOIN organization_members om ON om.username = s.username COLLATE NOCASE AND om.organization_id = ?
-            WHERE (s.title LIKE ? OR s.description LIKE ?) AND (s.username = ? COLLATE NOCASE OR s.is_public = 1)
-            ORDER BY s.start_date ASC LIMIT ?
-        """, (org_id, q, q, username, limit))
-    else:
-        cursor.execute("""
-            SELECT id, title, description, start_date, start_time, category, username
-            FROM schedules
-            WHERE (title LIKE ? OR description LIKE ?) AND (username = ? COLLATE NOCASE OR is_public = 1)
-            ORDER BY start_date ASC LIMIT ?
-        """, (q, q, username, limit))
-    for r in cursor.fetchall():
-        results.append({
-            "type": "schedule", "id": r[0],
-            "text": r[1], "author": r[6],
-            "category": r[5],
-            "timestamp": f"{r[3]} {r[4]}",
-            "link": "#calendar"
-        })
+        # --- Schedules (filtered by org membership) ---
+        if org_id is not None:
+            cursor.execute("""
+                SELECT s.id, s.title, s.description, s.start_date, s.start_time, s.category, s.username
+                FROM schedules s
+                JOIN organization_members om ON om.username = s.username COLLATE NOCASE AND om.organization_id = ?
+                WHERE (s.title LIKE ? OR s.description LIKE ?) AND (s.username = ? COLLATE NOCASE OR s.is_public = 1)
+                ORDER BY s.start_date ASC LIMIT ?
+            """, (org_id, q, q, username, limit))
+        else:
+            cursor.execute("""
+                SELECT id, title, description, start_date, start_time, category, username
+                FROM schedules
+                WHERE (title LIKE ? OR description LIKE ?) AND (username = ? COLLATE NOCASE OR is_public = 1)
+                ORDER BY start_date ASC LIMIT ?
+            """, (q, q, username, limit))
+        for r in cursor.fetchall():
+            results.append({
+                "type": "schedule", "id": r[0],
+                "text": r[1], "author": r[6],
+                "category": r[5],
+                "timestamp": f"{r[3]} {r[4]}",
+                "link": "#calendar"
+            })
 
-    # --- Room Messages (only rooms user is member of, in same org) ---
-    if org_id is not None:
-        cursor.execute("""
-            SELECT m.id, m.text, m.username, m.timestamp, r.name
-            FROM room_messages m
-            JOIN chat_rooms r ON m.room_id = r.id AND r.organization_id = ?
-            JOIN room_members rm ON rm.room_id = m.room_id AND rm.username = ? COLLATE NOCASE
-            WHERE m.text LIKE ?
-            ORDER BY m.timestamp DESC LIMIT ?
-        """, (org_id, username, q, limit))
-    else:
-        cursor.execute("""
-            SELECT m.id, m.text, m.username, m.timestamp, r.name
-            FROM room_messages m
-            JOIN chat_rooms r ON m.room_id = r.id
-            JOIN room_members rm ON rm.room_id = m.room_id AND rm.username = ? COLLATE NOCASE
-            WHERE m.text LIKE ?
-            ORDER BY m.timestamp DESC LIMIT ?
-        """, (username, q, limit))
-    for r in cursor.fetchall():
-        results.append({
-            "type": "message", "id": r[0],
-            "text": r[1][:200], "author": r[2],
-            "category": r[4],
-            "timestamp": r[3],
-            "link": "#chat"
-        })
+        # --- Room Messages (only rooms user is member of, in same org) ---
+        if org_id is not None:
+            cursor.execute("""
+                SELECT m.id, m.text, m.username, m.timestamp, r.name
+                FROM room_messages m
+                JOIN chat_rooms r ON m.room_id = r.id AND r.organization_id = ?
+                JOIN room_members rm ON rm.room_id = m.room_id AND rm.username = ? COLLATE NOCASE
+                WHERE m.text LIKE ?
+                ORDER BY m.timestamp DESC LIMIT ?
+            """, (org_id, username, q, limit))
+        else:
+            cursor.execute("""
+                SELECT m.id, m.text, m.username, m.timestamp, r.name
+                FROM room_messages m
+                JOIN chat_rooms r ON m.room_id = r.id
+                JOIN room_members rm ON rm.room_id = m.room_id AND rm.username = ? COLLATE NOCASE
+                WHERE m.text LIKE ?
+                ORDER BY m.timestamp DESC LIMIT ?
+            """, (username, q, limit))
+        for r in cursor.fetchall():
+            results.append({
+                "type": "message", "id": r[0],
+                "text": r[1][:200], "author": r[2],
+                "category": r[4],
+                "timestamp": r[3],
+                "link": "#chat"
+            })
 
-    # --- DMs (only own — DMs are personal, no org filter needed) ---
-    cursor.execute("""
-        SELECT id, text, sender, recipient, timestamp
-        FROM private_messages
-        WHERE (sender = ? COLLATE NOCASE OR recipient = ? COLLATE NOCASE)
-          AND text LIKE ?
-        ORDER BY timestamp DESC LIMIT ?
-    """, (username, username, q, limit))
-    for r in cursor.fetchall():
-        other = r[3] if r[2].lower() == username.lower() else r[2]
-        results.append({
-            "type": "dm", "id": r[0],
-            "text": r[1][:200], "author": r[2],
-            "category": f"DM กับ {other}",
-            "timestamp": r[4],
-            "link": "#chat"
-        })
+        # --- DMs (only own — DMs are personal, no org filter needed) ---
+        cursor.execute("""
+            SELECT id, text, sender, recipient, timestamp
+            FROM private_messages
+            WHERE (sender = ? COLLATE NOCASE OR recipient = ? COLLATE NOCASE)
+              AND text LIKE ?
+            ORDER BY timestamp DESC LIMIT ?
+        """, (username, username, q, limit))
+        for r in cursor.fetchall():
+            other = r[3] if r[2].lower() == username.lower() else r[2]
+            results.append({
+                "type": "dm", "id": r[0],
+                "text": r[1][:200], "author": r[2],
+                "category": f"DM กับ {other}",
+                "timestamp": r[4],
+                "link": "#chat"
+            })
 
-    conn.close()
-    results.sort(key=lambda x: x.get("timestamp") or "", reverse=True)
-    return results[:limit]
+        results.sort(key=lambda x: x.get("timestamp") or "", reverse=True)
+        return results[:limit]
+    finally:
+        conn.close()
 
 
 # ─── Search Insights ─────────────────────────────
@@ -1247,6 +1297,8 @@ def create_reset_otp(email: str, username: str) -> str:
     now = time.time()
     expires_at = now + 600  # 10 mins
     conn = _get_conn()
+    # หนึ่งบัญชี = OTP ที่ใช้ได้ตัวเดียว (ตารางใช้อีเมลเป็นคีย์ ถ้าขอผ่านชื่อผู้ใช้กับผ่านอีเมลจะได้ 2 แถว คนละรหัส ใช้ได้แค่แถวแรก)
+    conn.execute("DELETE FROM password_reset_otps WHERE username = ? COLLATE NOCASE", (username,))
     conn.execute(
         "INSERT OR REPLACE INTO password_reset_otps (email, username, otp_code, expires_at, created_at) VALUES (?, ?, ?, ?, ?)",
         (email.lower().strip(), username, otp_code, expires_at, now)
@@ -1266,7 +1318,7 @@ def verify_and_consume_reset_otp(email_or_username: str, otp_code: str, new_pass
     clean_otp = (otp_code or "").strip()
 
     row = conn.execute(
-        "SELECT email, username, otp_code, expires_at FROM password_reset_otps WHERE (email = ? COLLATE NOCASE OR username = ? COLLATE NOCASE)",
+        "SELECT email, username, otp_code, expires_at FROM password_reset_otps WHERE (email = ? COLLATE NOCASE OR username = ? COLLATE NOCASE) ORDER BY created_at DESC",
         (clean_target, clean_target)
     ).fetchone()
 

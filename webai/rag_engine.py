@@ -18,6 +18,10 @@ import hashlib
 import json
 import threading
 import re
+try:
+    from citation_filter import SourceRef
+except ImportError:      # เรียกจากแพ็กเกจ
+    from .citation_filter import SourceRef
 import gc
 from pathlib import Path
 from typing import Optional
@@ -29,6 +33,7 @@ import logging
 from datetime import datetime
 
 logger = logging.getLogger("OrgChatAI.RAG")
+from rag_query import build_search_query, is_followup_query
 
 try:
     import fitz # PyMuPDF
@@ -88,6 +93,7 @@ CHROMA_DIR = _DATA_ROOT / "chroma_db"          # โฟลเดอร์ Chroma
 CHROMA_V2_DIR = _DATA_ROOT / "chroma_v2"       # ที่เก็บเวกเตอร์ปัจจุบัน (ChromaDB 1.x)
 CHROMA_DIR.mkdir(exist_ok=True)
 
+FALLBACK_VECTOR_JSON = _DATA_ROOT / "chroma_db_fallback.json"   # ดัชนีเวกเตอร์ — ต้องอยู่ที่เดียวกับ file_meta.json/uploads เสมอ
 META_FILE = _DATA_ROOT / "file_meta.json"
 _META_LOCK = threading.RLock()
 
@@ -136,6 +142,32 @@ def _file_hash(path: Path) -> str:
         for chunk in iter(lambda: f.read(8192), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def _file_id(path: Path, org_id, meta: dict = None) -> str:
+    """รหัสไฟล์ในคลังความรู้ = แฮชเนื้อหา + (ถ้าจำเป็น) ตัวระบุองค์กร
+
+    เดิมใช้แฮชเนื้อหาอย่างเดียวและ file_meta.json เป็นก้อนเดียวทุกองค์กร → ไฟล์เนื้อหาเดียวกันขององค์กร B ถูกมองว่า "ซ้ำ"
+    กับขององค์กร A (และถ้าบังคับอัปโหลดจะเขียนทับ/ลบเวกเตอร์ของ A) ต่อไปนี้องค์กรอื่นได้ id แยกของตัวเอง
+    องค์กร 1 (ค่าเริ่มต้น/ข้อมูลเดิม) ยังใช้แฮชล้วนเหมือนเดิมเพื่อไม่กระทบไฟล์ที่มีอยู่"""
+    base = _file_hash(path)
+    meta = meta if meta is not None else _load_meta()
+    owner = (meta.get(base) or {}).get("organization_id", 1)
+    if org_id in (None, 1) and owner in (None, 1):
+        return base
+    if (meta.get(base) is not None) and owner == org_id:
+        return base      # ไฟล์เดิมขององค์กรนี้ที่เคยบันทึกด้วย id แบบแฮชล้วน
+    return f"{base}_o{org_id}"
+
+
+def _find_org_duplicate(meta: dict, path: Path, org_id):
+    """คืน file_id ของไฟล์เนื้อหาเดียวกันที่ 'องค์กรเดียวกัน' มีพร้อมใช้งานแล้ว (ไม่ใช่ขององค์กรอื่น)"""
+    base = _file_hash(path)
+    oid = 1 if org_id is None else org_id
+    for k, v in meta.items():
+        if k.split("_o")[0] == base and (v.get("organization_id") or 1) == oid and v.get("status") == "ready":
+            return k
+    return None
 
 
 def _chunk_text(text: str, chunk_size: int = 800, overlap: int = 150) -> list[str]:
@@ -188,6 +220,8 @@ def _chunk_text(text: str, chunk_size: int = 800, overlap: int = 150) -> list[st
             start = new_start
             
     return chunks
+
+chunk_text = _chunk_text
 
 
 # ─────────────────────────────────────────────
@@ -421,9 +455,14 @@ class PurePythonVectorStore:
 
     def save(self):
         try:
+            if not self.data and self.persist_path.exists() and self.persist_path.stat().st_size > 16:
+                # กำลังจะเขียนดัชนีว่างทับของที่มีข้อมูล → เก็บสำเนาไว้ก่อนเสมอ
+                import shutil
+                shutil.copy2(self.persist_path, self.persist_path.with_name(self.persist_path.stem + f".before_empty_{int(time.time())}.json"))
+                logger.error("⚠️ vector store is being saved EMPTY — previous file kept as before_empty_*.json")
             tmp_file = self.persist_path.with_suffix(".tmp")
             with open(tmp_file, "w", encoding="utf-8") as f:
-                json.dump(self.data, f, ensure_ascii=False, indent=2)
+                json.dump(self.data, f, ensure_ascii=False, separators=(",", ":"))  # ไม่เยื้อง: ไฟล์เล็กลง ~3 เท่า เขียนเร็วขึ้น
             tmp_file.replace(self.persist_path)
         except Exception as e:
             logger.error(f"⚠️ Error saving fallback vector store: {e}")
@@ -513,11 +552,27 @@ class PurePythonVectorStore:
 
         query_emb = query_embs[0]
 
-        scored = []
-        for item in matched:
-            sim = cosine_similarity(query_emb, item["embedding"])
-            dist = 1.0 - sim
-            scored.append((item, dist))
+        scored = None
+        try:
+            # เร็วกว่าลูป Python หลายสิบเท่า: คลังโตแล้วการถามแต่ละครั้งไม่บล็อกเซิร์ฟเวอร์เธรดเดียว
+            import numpy as _np
+            q = _np.asarray(query_emb, dtype=_np.float32)
+            same = [it for it in matched if len(it["embedding"]) == q.shape[0]]  # ข้ามเวกเตอร์ขนาดไม่ตรง (โมเดลเก่า)
+            if same:
+                mat = _np.asarray([it["embedding"] for it in same], dtype=_np.float32)
+                denom = (_np.linalg.norm(mat, axis=1) * float(_np.linalg.norm(q)))
+                sims = _np.divide(mat @ q, denom, out=_np.zeros(len(same), dtype=_np.float32), where=denom > 0)
+                scored = [(it, float(1.0 - sm)) for it, sm in zip(same, sims)]
+        except Exception as _np_err:
+            logger.debug(f"numpy similarity fallback: {_np_err}")
+            scored = None
+        if scored is None:
+            scored = []
+            for item in matched:
+                if len(item["embedding"]) != len(query_emb):
+                    continue
+                sim = cosine_similarity(query_emb, item["embedding"])
+                scored.append((item, 1.0 - sim))
 
         scored.sort(key=lambda x: x[1])
         top_results = scored[:n_results]
@@ -801,14 +856,14 @@ class KnowledgeBase:
         if chromadb is None:
             print("⚠️ chromadb ไม่ได้ติดตั้ง — บังคับใช้ Pure Python Vector Store แทน", flush=True)
             self._ephemeral = True
-            self.collection = PurePythonVectorStore(ef, BASE_DIR / "chroma_db_fallback.json")
+            self.collection = PurePythonVectorStore(ef, FALLBACK_VECTOR_JSON)
             print("✅ Pure Python Vector Store Fallback ready.", flush=True)
             return
 
         if os.environ.get("VECTOR_BACKEND", "python").strip().lower() != "chroma":
             logger.warning("Vector store: Pure Python (ตั้ง VECTOR_BACKEND=chroma เพื่อใช้ ChromaDB — ใช้หน่วยความจำเพิ่ม ~0.5 GB)")
             self._ephemeral = True
-            self.collection = PurePythonVectorStore(ef, BASE_DIR / "chroma_db_fallback.json")
+            self.collection = PurePythonVectorStore(ef, FALLBACK_VECTOR_JSON)
             return
 
         def _open_store():
@@ -816,7 +871,7 @@ class KnowledgeBase:
             def _run():
                 try:
                     _result[0] = ChromaStore.open(ef, CHROMA_V2_DIR, f"org_knowledge_{self.provider}",
-                                                  seed_json=BASE_DIR / "chroma_db_fallback.json")
+                                                  seed_json=FALLBACK_VECTOR_JSON)
                 except Exception as e:
                     _err[0] = e
             t = threading.Thread(target=_run, daemon=True)
@@ -835,7 +890,7 @@ class KnowledgeBase:
         except Exception as e:
             print(f"⚠️ ChromaDB Error/Timeout detected: {e}. Falling back to Pure Python Vector Store.", flush=True)
             self._ephemeral = True
-            self.collection = PurePythonVectorStore(ef, BASE_DIR / "chroma_db_fallback.json")
+            self.collection = PurePythonVectorStore(ef, FALLBACK_VECTOR_JSON)
             print("✅ Pure Python Vector Store Fallback ready.", flush=True)
 
     def update_api_key(self, api_key: str):
@@ -866,7 +921,7 @@ class KnowledgeBase:
         
         # Fallback if chromadb is None or fails
         self._ephemeral = True
-        self.collection = PurePythonVectorStore(ef, BASE_DIR / "chroma_db_fallback.json")
+        self.collection = PurePythonVectorStore(ef, FALLBACK_VECTOR_JSON)
 
     def is_key_valid(self):
         """Simple check if we have a real key if provider is Gemini."""
@@ -874,8 +929,8 @@ class KnowledgeBase:
             return True # Local providers don't need GEMINI_API_KEY
         return self.api_key and self.api_key != "dummy_key_for_init"
 
-    def add_chunks(self, chunks: list[str], source_name: str, file_id: str, metadatas: list[dict] = None):
-        ids = [f"{file_id}_chunk_{i}" for i in range(len(chunks))]
+    def add_chunks(self, chunks: list[str], source_name: str, file_id: str, metadatas: list[dict] = None, start_idx: int = 0):
+        ids = [f"{file_id}_chunk_{start_idx + i}" for i in range(len(chunks))]
         if metadatas is None:
             metadatas = [{"source": source_name, "file_id": file_id} for _ in chunks]
         else:
@@ -1109,6 +1164,10 @@ class KnowledgeBase:
             all_data = self.collection.get(include=['metadatas'])
             all_metas = all_data.get('metadatas', [])
             all_ids = all_data.get('ids', [])
+            if all_ids and not valid_file_ids:
+                # รายการไฟล์ว่างแต่ดัชนีมีข้อมูล = ผิดปกติ (meta หาย/ชี้ผิดที่) ห้ามล้าง — เคยทำให้ดัชนีหายทั้งก้อน
+                logger.error("⛔ prune refused: file list is empty but the index has %d chunks", len(all_ids))
+                return 0
             
             to_delete = []
             for i, meta in enumerate(all_metas):
@@ -1116,6 +1175,9 @@ class KnowledgeBase:
                 if fid not in valid_file_ids:
                     to_delete.append(all_ids[i])
             
+            if to_delete and len(to_delete) == len(all_ids) and os.environ.get("KB_ALLOW_FULL_PRUNE") != "1":
+                logger.error("⛔ prune refused: it would delete ALL %d chunks (set KB_ALLOW_FULL_PRUNE=1 to force)", len(all_ids))
+                return 0
             if to_delete:
                 # Delete in batches to avoid overwhelming the system
                 batch_size = 100
@@ -1387,7 +1449,7 @@ def reinit_kb():
 def ingest_file(file_path: Path, original_name: str, department: str = "General", category_id: int = None, org_id: int = 1, force: bool = False) -> dict:
     """Parse file, chunk, embed, and store in ChromaDB. Returns metadata dict."""
     meta = _load_meta()
-    fid = _file_hash(file_path)
+    fid = _file_id(file_path, org_id, meta)
 
     # 🔄 Auto-update: purge previous chunks or obsolete versions of the same file in this org
     for existing_fid, existing_info in list(meta.items()):
@@ -1413,35 +1475,41 @@ def ingest_file(file_path: Path, original_name: str, department: str = "General"
                     pass
 
     logger.info(f"[INGEST] Ingesting: {original_name} ({fid}) | Dept: {department} | Org: {org_id}")
-    if not force and fid in meta and meta[fid].get("status") == "ready":
+    _dup = None if force else _find_org_duplicate(meta, file_path, org_id)
+    if _dup:
         logger.info(f"⏩ Duplicate file: {original_name}")
-        return {"status": "duplicate", "file_id": fid, "name": original_name}
+        return {"status": "duplicate", "file_id": _dup, "name": original_name}
 
     # Initial state to show in UI while processing
-    meta[fid] = {
-        "name": original_name,
-        "path": str(file_path),
-        "chunks": 0,
-        "size": file_path.stat().st_size,
-        "type": file_path.suffix.lower().lstrip("."),
-        "department": department,
-        "category_id": category_id,
-        "organization_id": org_id,
-        "status": "processing",
-        "api_key_status": _get_kb().api_key[:5] + "..." if _get_kb().is_key_valid() else "MISSING KEY",
-        "timestamp": datetime.now().isoformat()
-    }
-    _save_meta(meta)
+    # อ่าน-แก้-เขียนต้องทำใต้ล็อกเดียวกันและอ่านค่าล่าสุดใหม่ (เดิมใช้ meta ที่โหลดไว้ตอนเริ่ม → อัปโหลดหลายไฟล์พร้อมกัน
+    # เธรดหนึ่งเขียนทับสถานะของอีกเธรด ทำให้บางไฟล์ค้าง "processing/INDEXING" ทั้งที่ทำดัชนีเสร็จแล้ว)
+    with _META_LOCK:
+        meta = _load_meta()
+        meta[fid] = {
+            "name": original_name,
+            "path": str(file_path),
+            "chunks": 0,
+            "size": file_path.stat().st_size,
+            "type": file_path.suffix.lower().lstrip("."),
+            "department": department,
+            "category_id": category_id,
+            "organization_id": org_id,
+            "status": "processing",
+            "api_key_status": _get_kb().api_key[:5] + "..." if _get_kb().is_key_valid() else "MISSING KEY",
+            "timestamp": datetime.now().isoformat()
+        }
+        _save_meta(meta)
 
     def _mark_status(new_status: str, error_msg: str = ""):
         """อัปเดต status ใน meta เสมอ — ป้องกันไฟล์ค้างที่ 'processing'"""
         try:
-            m = _load_meta()
-            if fid in m:
-                m[fid]["status"] = new_status
-                if error_msg:
-                    m[fid]["error"] = error_msg
-                _save_meta(m)
+            with _META_LOCK:
+                m = _load_meta()
+                if fid in m:
+                    m[fid]["status"] = new_status
+                    if error_msg:
+                        m[fid]["error"] = error_msg
+                    _save_meta(m)
         except Exception:
             pass
 
@@ -1471,7 +1539,7 @@ def ingest_file(file_path: Path, original_name: str, department: str = "General"
         for i in range(0, len(chunks), batch_size):
             batch_chunks = chunks[i : i + batch_size]
             batch_metas  = chunk_metas[i : i + batch_size]
-            _get_kb().add_chunks(batch_chunks, source_name=original_name, file_id=fid, metadatas=batch_metas)
+            _get_kb().add_chunks(batch_chunks, source_name=original_name, file_id=fid, metadatas=batch_metas, start_idx=i)
             gc.collect()
     except Exception as e:
         err_str = str(e)
@@ -1483,20 +1551,22 @@ def ingest_file(file_path: Path, original_name: str, department: str = "General"
     finally:
         gc.collect()
 
-    meta[fid] = {
-        "name": original_name,
-        "path": str(file_path),
-        "chunks": len(chunks),
-        "size": file_path.stat().st_size,
-        "type": file_path.suffix.lower().lstrip("."),
-        "department": department,
-        "category_id": category_id,
-        "organization_id": org_id,
-        "status": "ready",
-        "api_key_status": _get_kb().api_key[:5] + "..." if _get_kb().is_key_valid() else "MISSING KEY",
-        "timestamp": meta[fid].get("timestamp", datetime.now().isoformat())
-    }
-    _save_meta(meta)
+    with _META_LOCK:
+        meta = _load_meta()           # ค่าล่าสุด — ห้ามใช้สำเนาเก่าที่โหลดไว้ตอนเริ่ม (ดูหมายเหตุด้านบน)
+        meta[fid] = {
+            "name": original_name,
+            "path": str(file_path),
+            "chunks": len(chunks),
+            "size": file_path.stat().st_size,
+            "type": file_path.suffix.lower().lstrip("."),
+            "department": department,
+            "category_id": category_id,
+            "organization_id": org_id,
+            "status": "ready",
+            "api_key_status": _get_kb().api_key[:5] + "..." if _get_kb().is_key_valid() else "MISSING KEY",
+            "timestamp": (meta.get(fid) or {}).get("timestamp", datetime.now().isoformat())
+        }
+        _save_meta(meta)
     return {"status": "ok", "file_id": fid, "name": original_name, "chunks": len(chunks),
             "department": department, "category_id": category_id, "organization_id": org_id}
 
@@ -1694,20 +1764,27 @@ def get_file_content(file_id: str) -> str:
         return ""
 
 
-def retrieve_context(question: str, where: dict = None) -> tuple[str, list[dict]]:
+def retrieve_context(question: str, where: dict = None, history: list = None, search_query: str = None) -> tuple[str, list[dict]]:
     """Return (context_text, list_of_detailed_sources) for the question."""
-    logger.info(f"[SEARCH] Starting RAG retrieval for: '{question[:20]}...' Filter: {where}")
+    if not search_query:
+        if history:
+            search_query = build_search_query(question, history)
+        else:
+            search_query = question or ""
+
+    logger.info(f"[SEARCH] Starting RAG retrieval for: '{search_query[:35]}...' (raw: '{(question or '')[:20]}...') Filter: {where}")
     
     # ⚡ FAST PATH: Skip ChromaDB / RAG for pure standalone greetings or single-character noise
     try:
-        clean_q = re.sub(r'[0-9๐-๙\s\W_]', '', question)
+        clean_q = re.sub(r'[0-9๐-๙\s\W_]', '', question or '')
+        clean_search = re.sub(r'[0-9๐-๙\s\W_]', '', search_query or '')
         # Skip only if truly empty or single character
-        if not question or len(clean_q) < 2:
+        if not search_query or len(clean_search) < 2:
             print(f"ℹ️ Fast Path: Skipping RAG for noisy/short query: '{question}'", flush=True)
             return "", []
-        # Skip pure generic greetings that don't need doc retrieval
+        # Skip pure generic greetings that don't need doc retrieval (only if search_query is also purely a greeting)
         standalone_greetings = {"สวัสดี", "หวัดดี", "ฮัลโหล", "hi", "hello", "hey", "ดีครับ", "ดีค่ะ", "มอนิ่ง", "อรุณสวัสดิ์"}
-        if clean_q.lower() in standalone_greetings:
+        if clean_search.lower() in standalone_greetings:
             print(f"ℹ️ Fast Path: Skipping RAG for pure greeting: '{question}'", flush=True)
             return "", []
     except Exception as fe:
@@ -1718,14 +1795,15 @@ def retrieve_context(question: str, where: dict = None) -> tuple[str, list[dict]
     try:
         # 1. Filename-based boost (Optimized for Thai: No split needed)
         filename_chunks = []
-        if question and len(question) > 2:
+        q_for_filename = f"{question} {search_query}".strip()
+        if q_for_filename and len(q_for_filename) > 2:
             try:
                 # 1a. Efficiently get candidates: Fetch unique source names first
                 inv_data = _get_kb().collection.get(include=['metadatas'], limit=100)
                 sources_in_db = list(set([m.get("source") for m in inv_data.get("metadatas", []) if m.get("source")]))
                 
-                # 1b. Match filenames against the RAW question (Better for Thai)
-                matched_sources = [s for s in sources_in_db if s.lower() in question.lower()]
+                # 1b. Match filenames against the RAW question or expanded search query
+                matched_sources = [s for s in sources_in_db if s.lower() in q_for_filename.lower()]
                 
                 if matched_sources:
                     logger.info(f"📂 Thai Match filenames: {matched_sources}")
@@ -1745,7 +1823,7 @@ def retrieve_context(question: str, where: dict = None) -> tuple[str, list[dict]
                 logger.error(f"⚠️ Filename match error: {fe}")
         
         # 2. Standard Hybrid Query (Semantic + Keyword)
-        results = _get_kb().hybrid_query(question, n_results=10, where=where)
+        results = _get_kb().hybrid_query(search_query, n_results=10, where=where)
         # Filter by score dynamically (keep only >= 0.25 AND within 0.35 of the top score, or keyword matched)
         if results:
             max_score = max(r.get("score", 0) for r in results)
@@ -1776,6 +1854,7 @@ def retrieve_context(question: str, where: dict = None) -> tuple[str, list[dict]
     context_parts = []
     detailed_sources = []
     seen_source_keys = set()
+    _ref_by_key = {}
     
     try:
         _meta_all = _load_meta()
@@ -1791,9 +1870,10 @@ def retrieve_context(question: str, where: dict = None) -> tuple[str, list[dict]
         context_parts.append(f"[เอกสารอ้างอิง {idx}] แหล่งที่มา: {src} [{loc}] ({dept})\nเนื้อหา:\n{r['text']}\n")
         
         # Build structured sources for UI
+        # SourceRef = dict ธรรมดา + .snippet (เนื้อหาท่อนที่ดึงมา) ไว้ให้ citation_filter เลือกเฉพาะแหล่งที่ใช้ตอบจริง — ไม่ติดไปกับ JSON/DB
         source_key = f"{fid}_{loc}"
         if source_key not in seen_source_keys:
-            detailed_sources.append({
+            _ref = SourceRef({
                 "file_id": fid,
                 "name": src,
                 "location": loc,
@@ -1801,7 +1881,14 @@ def retrieve_context(question: str, where: dict = None) -> tuple[str, list[dict]
                 "type": r.get("type", "file"),
                 "drive_link": (_meta_all.get(fid) or {}).get("drive_link", ""),
             })
+            _ref.snippet = r.get("text", "") or ""
+            detailed_sources.append(_ref)
+            _ref_by_key[source_key] = _ref
             seen_source_keys.add(source_key)
+        else:
+            _prev = _ref_by_key.get(source_key)
+            if _prev is not None:
+                _prev.snippet += " " + (r.get("text", "") or "")
         
     context = "\n\n".join(context_parts)
     logger.info(f"[CONTEXT] Context prepared: {len(context)} chars, {len(detailed_sources)} detailed sources.")
@@ -1860,39 +1947,70 @@ def wipe_knowledge_base():
             pass
 def cleanup_stale_processing(max_age_minutes: int = 30) -> int:
     """
-    ล้างไฟล์ที่ติดอยู่ที่ status='processing' นานเกิน max_age_minutes
-    คืนค่าจำนวนไฟล์ที่ถูกทำเครื่องหมายเป็น 'error'
+    ล้างไฟล์ที่ติดอยู่ที่ status='processing'
+    - ถ้า max_age_minutes <= 0 (เช่น ตอนเปิดเซิร์ฟเวอร์ใหม่หลัง restart): ล้างไฟล์ที่ค้าง processing ทั้งหมดทันที
+    - ถ้า max_age_minutes > 0 (ระหว่างรัน): ล้างไฟล์ที่เกินเวลาที่กำหนด
+    พร้อมล้าง chunks ที่อาจค้างใน vector store เพื่อให้จำนวน chunk ใน meta กับ vector store สอดคล้องกันเสมอ
     """
     from datetime import timezone as _tz
-    meta = _load_meta()
-    now = datetime.now(_tz.utc)
-    changed = 0
-    for fid, info in meta.items():
-        if info.get("status") != "processing":
-            continue
-        ts_str = info.get("timestamp", "")
-        if not ts_str:
-            info["status"] = "error"
-            info["error"] = "processing timeout (no timestamp)"
-            changed += 1
-            continue
-        try:
-            ts = datetime.fromisoformat(ts_str)
-            if ts.tzinfo is None:
-                ts = ts.replace(tzinfo=_tz.utc)
-            age_min = (now - ts).total_seconds() / 60
-            if age_min > max_age_minutes:
+    with _META_LOCK:
+        meta = _load_meta()
+        now = datetime.now(_tz.utc)
+        changed = 0
+        for fid, info in meta.items():
+            if info.get("status") != "processing":
+                continue
+            should_mark_error = False
+            err_msg = ""
+
+            if max_age_minutes <= 0:
+                should_mark_error = True
+                err_msg = "เซิร์ฟเวอร์ถูกปิดหรือรีสตาร์ตขณะกำลังประมวลผล (กรุณาลองใหม่อีกครั้ง)"
+            else:
+                ts_str = info.get("timestamp", "")
+                if not ts_str:
+                    should_mark_error = True
+                    err_msg = "processing timeout (no timestamp)"
+                else:
+                    try:
+                        ts = datetime.fromisoformat(ts_str)
+                        if ts.tzinfo is None:
+                            ts = ts.replace(tzinfo=_tz.utc)
+                        age_min = (now - ts).total_seconds() / 60
+                        if age_min > max_age_minutes:
+                            should_mark_error = True
+                            err_msg = f"processing timeout ({int(age_min)} นาที)"
+                    except Exception:
+                        should_mark_error = True
+                        err_msg = "processing timeout (invalid timestamp)"
+
+            if should_mark_error:
                 info["status"] = "error"
-                info["error"] = f"processing timeout ({int(age_min)} นาที)"
+                info["error"] = err_msg
+                info["chunks"] = 0
+                try:
+                    _get_kb().delete_by_file_id(fid)
+                except Exception as _e:
+                    logger.warning(f"Failed to clear orphan chunks for {fid}: {_e}")
                 changed += 1
-                logger.error(f"[Cleanup] {info.get('name')} stuck {int(age_min)}m → error")
-        except Exception:
-            info["status"] = "error"
-            info["error"] = "processing timeout (invalid timestamp)"
-            changed += 1
-    if changed:
-        _save_meta(meta)
-    return changed
+                logger.info(f"[Cleanup] {info.get('name')} stuck processing → error ({err_msg})")
+
+        if changed:
+            _save_meta(meta)
+        return changed
+
+
+def clear_cache() -> bool:
+    """Clear memory caches across RAG and reset vector store singleton."""
+    global _kb
+    _kb = None
+    try:
+        import rag_query
+        if hasattr(rag_query, "_QUERY_CACHE"):
+            rag_query._QUERY_CACHE.clear()
+    except Exception:
+        pass
+    return True
 
 
 def fix_categories():
@@ -1904,6 +2022,14 @@ def sync_uploads():
     """Scan the uploads folder and ingest any files that are not already in meta."""
     meta = _load_meta()
     existing_hashes = set(meta.keys())
+    # ไฟล์ที่อยู่ในคลังแล้ว อ้างด้วย path ที่บันทึกไว้ (file_id ขององค์กรอื่นมีส่วนต่อท้าย _o<org> จึงคำนวณจากแฮชล้วนไม่ได้)
+    _path_to_fid = {}
+    for _k, _v in meta.items():
+        try:
+            if _v.get("path"):
+                _path_to_fid[str(Path(_v["path"]).resolve())] = _k
+        except Exception:
+            pass
     results = []
     
     if not UPLOAD_DIR.exists():
@@ -1914,7 +2040,7 @@ def sync_uploads():
     for file_path in UPLOAD_DIR.iterdir():
         if file_path.is_file():
             try:
-                fid = _file_hash(file_path)
+                fid = _path_to_fid.get(str(file_path.resolve())) or _file_hash(file_path)
                 
                 # DEEP SYNC FIX: Check if the file actually has data in ChromaDB
                 in_db = False

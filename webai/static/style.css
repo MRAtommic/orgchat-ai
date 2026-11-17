@@ -1,6 +1,24 @@
 /* Global Utility Overrides */
 .hidden {
+  display: none;
+}
+.hidden:not([class*='sm:']):not([class*='md:']):not([class*='lg:']):not([class*='xl:']) {
   display: none !important;
+}
+@media (max-width: 639.98px) {
+  .hidden[class*="sm:"] {
+    display: none !important;
+  }
+}
+@media (max-width: 767.98px) {
+  .hidden[class*="md:"] {
+    display: none !important;
+  }
+}
+@media (max-width: 1023.98px) {
+  .hidden[class*="lg:"] {
+    display: none !important;
+  }
 }
 
 .view {
@@ -263,9 +281,7 @@ body {
   transition: opacity 0.3s ease;
 }
 
-.hidden {
-  display: none !important;
-}
+
 
 /* Sidebar Overlay - always hidden on desktop */
 .sidebar-overlay {

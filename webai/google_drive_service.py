@@ -580,6 +580,11 @@ class GoogleWorkspaceManager:
             mgr._local.creds = None
         logger.info(f"🔄 Invalidated Google Workspace credentials cache for user {username}")
 
+    @classmethod
+    def invalidate_org_cache(cls, org_id):
+        """เรียกหลังเชื่อม/ตัดการเชื่อมต่อ Google ระดับองค์กร (เดิมไม่มีเมธอดนี้ → callback ตอบ 500 หลังเชื่อมสำเร็จ)"""
+        cls.invalidate_user_cache(f"org:{org_id}")
+
     @property
     def drive_service(self):
         if not hasattr(self._local, 'drive_service') or self._local.drive_service is None:

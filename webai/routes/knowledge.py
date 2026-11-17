@@ -46,6 +46,7 @@ import web_crawler
 import tts_engine
 
 from routes.shared import (
+    platform_admin_required,
     VERSION, socketio, _limiter, login_required, admin_required,
     PENDING_LINE_LINKS, _OAUTH_STATES, _store_oauth_state, _pop_oauth_state,
     send_push_notification, batch_send_push_notification,
@@ -54,7 +55,7 @@ from routes.shared import (
     OAUTH2_AVAILABLE, oauth2_service,
     _set_session_org, get_current_org_id,
     _get_gemini_api_key, _configure_gemini,
-    can_edit_knowledge_base, can_view_knowledge_base, can_delete_knowledge_base,
+    can_edit_knowledge_base, can_view_knowledge_base, can_delete_knowledge_base, user_can_access_kb_file,
     is_admin, get_rag_filter,
     safe_thread_target, validate_uploaded_file,
     ALLOWED_EXTENSIONS, _is_safe_url,
@@ -312,6 +313,13 @@ def delete_kb_category(cat_id):
         
     try:
         database.delete_category(cat_id)
+        try:
+            # ไฟล์ที่เคยอยู่ในหมวดนี้ → กลับเป็น "ไม่มีหมวด" (ไม่งั้นจะอ้างหมวดที่ไม่มีแล้ว และมองไม่เห็นในรายการ)
+            for _f in rag_engine.list_files(org_id=org_id):
+                if str(_f.get("category_id") or "") == str(cat_id):
+                    rag_engine.update_file_category(_f["file_id"], None)
+        except Exception as _e:
+            logger.warning(f"detach files from deleted category {cat_id}: {_e}")
         database.log_event(f"Deleted KB category ID: {cat_id}", user=user, org_id=org_id)
         return jsonify({"ok": True})
     except Exception as e:
@@ -479,7 +487,7 @@ def view_kb_file(file_id):
     org_id = get_current_org_id()
     files = rag_engine.list_files(org_id=org_id)
     file_info = next((f for f in files if f["file_id"] == file_id), None)
-    if not file_info:
+    if not file_info or not user_can_access_kb_file(session.get("user"), org_id, file_info):
         return "File not found or unauthorized", 403
     
     path = Path(file_info["path"])
@@ -518,7 +526,7 @@ def get_kb_page_preview():
     elif filename:
         file_info = next((f for f in files if f.get("filename") == filename or f.get("name") == filename), None)
 
-    if not file_info:
+    if not file_info or not user_can_access_kb_file(session.get("user"), org_id, file_info):
         return jsonify({"ok": False, "error": "ไม่พบไฟล์เอกสารในคลังความรู้"}), 404
 
     path = Path(file_info["path"])
@@ -629,7 +637,7 @@ def manage_csv_combined(file_id):
     org_id = get_current_org_id()
     files = rag_engine.list_files(org_id=org_id)
     target = next((f for f in files if f["file_id"] == file_id), None)
-    if not target:
+    if not target or not user_can_access_kb_file(session.get("user"), org_id, target):
         return jsonify({"ok": False, "error": "File not found"}), 404
         
     path = Path(target["path"])
@@ -681,7 +689,7 @@ def manage_txt(file_id):
     org_id = get_current_org_id()
     files = rag_engine.list_files(org_id=org_id)
     target = next((f for f in files if f["file_id"] == file_id), None)
-    if not target:
+    if not target or not user_can_access_kb_file(session.get("user"), org_id, target):
         return jsonify({"ok": False, "error": "File not found"}), 404
     path = Path(target["path"])
     if request.method == "GET":
@@ -707,7 +715,7 @@ def manage_txt(file_id):
 
 
 @knowledge_bp.route("/api/sync", methods=["POST"])
-@admin_required
+@platform_admin_required
 def sync_kb():
     results = rag_engine.sync_uploads()
     return jsonify({"ok": True, "results": results})
@@ -729,14 +737,14 @@ def kb_reprocess_route(file_id):
 
 
 @knowledge_bp.route("/api/prune", methods=["POST"])
-@admin_required
+@platform_admin_required
 def prune_kb_route():
     count = rag_engine.prune_kb()
     return jsonify({"ok": True, "pruned": count})
 
 
 @knowledge_bp.route("/api/wipe", methods=["POST"])
-@admin_required
+@platform_admin_required
 def wipe():
     ok = rag_engine.wipe_knowledge_base()
     return jsonify({"ok": ok})

@@ -1,0 +1,343 @@
+/* ============================================================================
+   OrgChat — UI Harmony layer (โหลดหลังสุด)
+   เป้าหมาย: ดูเป็นมืออาชีพและสมดุลสายตา อ่านง่าย โดยไม่เปลี่ยนฟีเจอร์ใดๆ
+   หลักการ: ใช้ "มาตรฐานชุดเดียว" แทนค่าที่ปนกันตามแต่ละหน้า
+     • มุมโค้ง 3 ระดับ: ปุ่ม/ช่องกรอก 12px · การ์ด 16px · การ์ดเด่น 20px
+     • ตัวอักษรเล็กสุด 11px (เดิมมี 8–10px จำนวนมาก อ่านยาก)
+     • น้ำหนักตัวอักษรหนาสุด 800 (เดิม 900 ทำให้ภาษาไทยดูตัน/แข็ง)
+     • หัวเพจสูงเท่ากัน ระยะห่างตัวอักษรของป้ายหัวข้อไม่กว้างเกินไป
+   ลบไฟล์นี้หรือเอาแท็ก <link> ออก = กลับไปหน้าตาเดิมทันที
+   ============================================================================ */
+
+:root {
+  --ui-r-control: 12px;
+  --ui-r-card: 16px;
+  --ui-r-hero: 20px;
+  --ui-border: rgba(148, 163, 184, .22);
+  --ui-shadow-card: 0 1px 2px rgba(2, 6, 23, .10), 0 4px 14px rgba(2, 6, 23, .06);
+  --ui-focus: #3b82f6;
+}
+
+/* ───────── 1) มุมโค้งชุดเดียว ───────── */
+body .rounded-md  { border-radius: 8px; }
+body .rounded-lg  { border-radius: 10px; }
+body .rounded-xl  { border-radius: var(--ui-r-control); }
+body .rounded-2xl { border-radius: var(--ui-r-card); }
+body .rounded-3xl { border-radius: var(--ui-r-hero); }
+/* กล่องไอคอนสี่เหลี่ยมเล็ก (กว้างไม่เกิน 3rem) ไม่ให้โค้งจนเป็นวงกลม */
+body .rounded-2xl[class*="w-7"], body .rounded-2xl[class*="w-8"], body .rounded-2xl[class*="w-9"],
+body .rounded-2xl[class*="w-10"], body .rounded-2xl[class*="w-11"], body .rounded-2xl[class*="w-12"] { border-radius: 12px; }
+
+/* ───────── 2) ตัวอักษร: อ่านง่าย ไม่เล็ก ไม่หนาเกิน ───────── */
+body { line-height: 1.6; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+/* ขนาดเล็กสุด 11px — ป้ายจิ๋วแบบ text-[8px]/[9px]/[10px] ถูกยกขึ้นให้อ่านออก */
+body [class*="text-[8px]"], body [class*="text-[9px]"]   { font-size: 11px !important; }
+body [class*="text-[10px]"]                              { font-size: 11px !important; }
+body [class*="text-[10.5px]"]                            { font-size: 11px !important; }
+/* ป้ายจิ๋วตัวพิมพ์ใหญ่ (role/แพ็กเกจ/สถานะ) ห้ามตัดบรรทัดกลางคำ เมื่อที่แคบให้ทั้งป้ายขึ้นบรรทัดใหม่แทน */
+body span.uppercase[class*="text-[8px]"], body span.uppercase[class*="text-[9px]"],
+body span.uppercase[class*="text-[10px]"], body .plan-badge { white-space: nowrap; }
+/* น้ำหนัก 900 (font-black) หนาเกินสำหรับภาษาไทย → 800 */
+body .font-black { font-weight: 800; }
+/* ป้ายหัวข้อตัวพิมพ์ใหญ่ + เว้นอักษรกว้าง = ดูรก → ลดการเว้นอักษร */
+body .tracking-widest { letter-spacing: .06em; }
+body .tracking-wider  { letter-spacing: .04em; }
+body .uppercase.text-surface-400, body .uppercase.text-surface-500 { font-weight: 700; }
+
+/* ───────── 3) หัวเพจสูงเท่ากันทุกหน้า ───────── */
+.view > header, .view > .view-header {
+  min-height: 56px;
+  border-bottom: 1px solid var(--ui-border);
+  box-shadow: none;
+}
+.view > header.h-14, .view > header.h-16 { height: auto; min-height: 56px; padding-top: 6px; padding-bottom: 6px; }
+
+/* ───────── 4) การ์ด: เส้นขอบ/เงาชุดเดียว ───────── */
+.view .bg-white.border, .view [class*="dark:bg-surface-900"].border {
+  border-color: var(--ui-border);
+}
+.view .shadow-sm, .view .shadow-md { box-shadow: var(--ui-shadow-card); }
+.view .shadow-xs { box-shadow: 0 1px 2px rgba(2, 6, 23, .08); }
+.view .shadow-lg, .view .shadow-xl, .view .shadow-2xl { box-shadow: 0 8px 28px rgba(2, 6, 23, .14); }
+/* เงาสีฉูดฉาดบนปุ่ม (shadow-brand-500/20 ฯลฯ) ลดความจัด */
+.view [class*="shadow-brand-"], .view [class*="shadow-emerald-"], .view [class*="shadow-indigo-"],
+.view [class*="shadow-amber-"], .view [class*="shadow-rose-"] { box-shadow: 0 2px 10px rgba(2, 6, 23, .16); }
+
+/* ───────── 5) ปุ่ม/ช่องกรอก: ขนาดสัมผัสและโฟกัสชัดเจน ───────── */
+button, a, input, select, textarea { transition: background-color .15s ease, border-color .15s ease, color .15s ease, box-shadow .15s ease, transform .1s ease; }
+button:focus-visible, a:focus-visible, [role="button"]:focus-visible, summary:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+}
+input:focus-visible, select:focus-visible, textarea:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(59, 130, 246, .28); border-color: var(--ui-focus); }
+.view button:not(:disabled):active { transform: translateY(0.5px); }
+button:disabled, button[disabled] { cursor: not-allowed; }
+/* ช่องกรอกในฟอร์มสูงพอกดง่ายบนมือถือ */
+.view input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]), .view select { min-height: 38px; }
+
+/* ───────── 6) สีปุ่มหลักให้สอดคล้อง ───────── */
+/* ปุ่มหลักสีน้ำเงินเดียวกันทั้งระบบ (เดิมมีน้ำเงิน/คราม/ม่วงปนกัน) */
+.view button.bg-indigo-600, .view a.bg-indigo-600 { background-color: #2563eb; }
+.view button.bg-indigo-600:hover, .view a.bg-indigo-600:hover { background-color: #1d4ed8; }
+
+/* ───────── 7) เนื้อหาไม่ชิดขอบ / ตารางอ่านง่าย ───────── */
+.view table { border-collapse: separate; border-spacing: 0; }
+.view table th { font-weight: 700; letter-spacing: .02em; }
+.view table td, .view table th { padding-top: .5rem; padding-bottom: .5rem; }
+
+/* ───────── 8) แถบเลื่อนบางและกลมกลืน ───────── */
+* { scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, .45) transparent; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, .4); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, .65); }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ───────── 9) ผู้ใช้ที่ตั้งค่า "ลดการเคลื่อนไหว" ───────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+
+/* ───────── 10) การ์ดสมาชิกองค์กร (หน้า จัดการองค์กร → สมาชิก) ─────────
+   แถวบน: รูป + ชื่อ/ป้ายสิทธิ์ + ปุ่ม  ·  แถวล่าง: ชิปแผนก/ตำแหน่ง/สิทธิ์  (ไม่ใช้กฎเรียงคอลัมน์ของ .admin-user-row อีกต่อไป) */
+.org-mcard { background: #fff; border: 1px solid var(--ui-border); border-radius: var(--ui-r-card); padding: 12px 14px; transition: border-color .15s ease, background-color .15s ease; }
+.org-mcard:hover { border-color: rgba(59, 130, 246, .35); }
+.dark .org-mcard { background: #0f172a; }
+.org-mcard.is-off { opacity: .6; }
+.org-mcard-top { display: flex; align-items: center; gap: 12px; }
+.org-mcard-main { flex: 1; min-width: 0; }
+.org-mcard-name { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; }
+.org-mcard-title { font-size: 14px; font-weight: 700; line-height: 1.3; color: #0f172a; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dark .org-mcard-title { color: #f1f5f9; }
+.org-mcard-sub { margin-top: 2px; font-size: 12px; color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dark .org-mcard-sub { color: #94a3b8; }
+.org-mcard-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.org-mbtn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; min-width: 36px; padding: 0 12px; font-size: 12px; font-weight: 600; color: #334155; background: transparent; border: 1px solid var(--ui-border); border-radius: var(--ui-r-control); cursor: pointer; }
+.dark .org-mbtn { color: #cbd5e1; }
+.org-mbtn:hover { background: rgba(148, 163, 184, .14); }
+.org-mbtn-danger { padding: 0; color: #94a3b8; }
+.org-mbtn-danger:hover { color: #f43f5e; background: rgba(244, 63, 94, .1); border-color: rgba(244, 63, 94, .35); }
+.org-mcard-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--ui-border); }
+.org-mchip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; font-size: 11px; font-weight: 600; color: #475569; background: rgba(148, 163, 184, .14); border-radius: 999px; }
+.dark .org-mchip { color: #cbd5e1; }
+@media (max-width: 480px) {
+  .org-mcard { padding: 12px; }
+  .org-mbtn span { display: none; }   /* มือถือ: เหลือแค่ไอคอนดินสอ ไม่ให้ดันชื่อ */
+  .org-mbtn { padding: 0; }
+}
+
+/* ───────── 11) ความคมชัดตัวอักษร (WCAG AA ≥ 4.5:1) — ธีมสว่าง ─────────
+   ตรวจวัดจริงพบตัวอักษรสีเทาอ่อน/เขียว/ชมพูอ่อนบนพื้นขาวต่ำกว่า 3:1 จำนวนมาก → ใช้เฉดที่เข้มขึ้นเฉพาะธีมสว่าง
+   และไม่แตะตัวอักษรที่อยู่ในการ์ดสีเข้ม (ยังใช้เฉดอ่อนตามเดิม) */
+html:not(.dark) .text-surface-400:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #5b677a; }
+html:not(.dark) .text-surface-500:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #475569; }
+html:not(.dark) .text-slate-400:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #5b677a; }
+html:not(.dark) .text-slate-500:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #475569; }
+html:not(.dark) .text-gray-400:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #5b677a; }
+html:not(.dark) .text-gray-500:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #4b5563; }
+html:not(.dark) .text-emerald-500:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #047857; }
+html:not(.dark) .text-emerald-600:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #047857; }
+html:not(.dark) .text-green-500:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #15803d; }
+html:not(.dark) .text-green-600:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #15803d; }
+html:not(.dark) .text-rose-500:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #be123c; }
+html:not(.dark) .text-rose-600:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #be123c; }
+html:not(.dark) .text-red-500:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #dc2626; }
+html:not(.dark) .text-amber-500:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #b45309; }
+html:not(.dark) .text-amber-600:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #b45309; }
+html:not(.dark) .text-orange-500:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #c2410c; }
+html:not(.dark) .text-yellow-600:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #a16207; }
+html:not(.dark) .text-blue-500:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #2563eb; }
+html:not(.dark) .text-sky-500:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #0369a1; }
+html:not(.dark) .text-sky-600:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #0369a1; }
+html:not(.dark) .text-brand-500:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #2563eb; }
+html:not(.dark) .text-violet-500:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #6d28d9; }
+html:not(.dark) .text-purple-500:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #7e22ce; }
+html:not(.dark) .text-purple-600:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #7e22ce; }
+html:not(.dark) .text-teal-500:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #0f766e; }
+html:not(.dark) .text-teal-600:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #0f766e; }
+html:not(.dark) .text-cyan-600:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #0e7490; }
+html:not(.dark) .text-pink-500:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #be185d; }
+html:not(.dark) .text-surface-300:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #8a97ab; }
+
+/* ───────── 12) ขนาดตัวอักษรขั้นต่ำ 11px สำหรับจุดที่กฎเฉพาะ (ผูก ID) ใน style.css สั่งไว้ 8–10px ───────── */
+#view-kb header [id^="kb-tab-"], #view-kb header .text-\[10px\], #refreshFilesBtn, .kb-cat-item, .admin-stat-chip,
+#view-calendar .grid.grid-cols-7 > div:nth-child(n), .cal-day-cell .text-xs, .cal-filter-btn,
+#view-receipt-replacement th, #view-leave th { font-size: 11px !important; }
+
+/* ───────── 13) ปุ่ม/ป้ายพื้นทึบสีกลาง + ตัวอักษรขาว → เฉดเข้มขึ้นให้ผ่าน 4.5:1 (ใช้ทั้งสองธีม) ───────── */
+.bg-amber-500.text-white, .bg-amber-400.text-white { background-color: #b45309; }
+.bg-emerald-500.text-white, .bg-emerald-400.text-white { background-color: #047857; }
+.bg-green-500.text-white { background-color: #15803d; }
+.bg-rose-500.text-white, .bg-rose-400.text-white { background-color: #be123c; }
+.bg-red-500.text-white { background-color: #dc2626; }
+.bg-orange-500.text-white { background-color: #c2410c; }
+.bg-yellow-500.text-white { background-color: #a16207; }
+.bg-sky-500.text-white { background-color: #0369a1; }
+.bg-blue-500.text-white { background-color: #2563eb; }
+.bg-teal-500.text-white { background-color: #0f766e; }
+.bg-purple-500.text-white { background-color: #7e22ce; }
+.bg-pink-500.text-white { background-color: #be185d; }
+.bg-\[\#00B900\], .hover\:bg-\[\#009900\]:hover { background-color: #008a2e; }   /* ปุ่ม LINE: เขียวเข้มขึ้นเล็กน้อยให้อ่านตัวขาวออก */
+#btnMyBindLineWeb, #lg-sync-btn { background-color: #008a2e; color: #fff; }
+.plan-badge.bg-emerald-500 { background-color: #047857; }
+
+/* ตัวอักษรสีอ่อน (เฉดที่ 400) บนพื้นสว่าง */
+html:not(.dark) .text-red-400:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #dc2626; }
+html:not(.dark) .text-rose-400:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #be123c; }
+html:not(.dark) .text-emerald-400:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #047857; }
+html:not(.dark) .text-green-400:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #15803d; }
+html:not(.dark) .text-amber-400:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #b45309; }
+html:not(.dark) .text-orange-400:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #c2410c; }
+html:not(.dark) .text-yellow-500:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #a16207; }
+html:not(.dark) .text-yellow-400:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #a16207; }
+html:not(.dark) .text-blue-400:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #2563eb; }
+html:not(.dark) .text-sky-400:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #0369a1; }
+html:not(.dark) .text-indigo-400:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #4f46e5; }
+html:not(.dark) .text-purple-400:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #7e22ce; }
+html:not(.dark) .text-pink-400:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #be185d; }
+html:not(.dark) .text-teal-400:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #0f766e; }
+html:not(.dark) .text-cyan-400:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #0e7490; }
+html:not(.dark) .text-violet-400:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #6d28d9; }
+html:not(.dark) .admin-stat-chip:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-800,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950,.bg-gray-900,[class*="from-surface-9"],[class*="from-slate-9"],[class*="from-brand-9"]) *) { color: #1d4ed8; }
+
+/* ───────── 14) ธีมมืด: ตัวอักษร/พื้นที่ไม่มีเฉดสำหรับธีมมืดกำกับ ─────────
+   ตัวอักษรเทาเข้ม/สีเฉด 600–700 ที่ออกแบบไว้สำหรับพื้นสว่าง ไปอยู่บนพื้นมืด (วัดได้ 2.0–3.8:1) → ใช้เฉดสว่างขึ้น
+   ยกเว้นองค์ประกอบที่มี dark:text-* กำกับอยู่แล้ว และที่อยู่ในกล่องสว่างจริง */
+html.dark .text-surface-500:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *),
+html.dark .text-slate-500:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *),
+html.dark .text-gray-500:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *) { color: #94a3b8; }
+html.dark .text-surface-600:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *),
+html.dark .text-slate-600:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *),
+html.dark .text-gray-600:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *) { color: #a8b5c9; }
+html.dark .text-surface-700:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *),
+html.dark .text-slate-700:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *),
+html.dark .text-gray-700:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *) { color: #cbd5e1; }
+html.dark .text-surface-800:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *),
+html.dark .text-slate-800:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *),
+html.dark .text-gray-800:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *) { color: #e2e8f0; }
+html.dark .text-surface-900:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *),
+html.dark .text-slate-900:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *),
+html.dark .text-gray-900:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *) { color: #f1f5f9; }
+html.dark .text-emerald-600:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *),
+html.dark .text-emerald-700:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *) { color: #34d399; }
+html.dark .text-green-600:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *),
+html.dark .text-green-700:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *) { color: #4ade80; }
+html.dark .text-rose-600:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *),
+html.dark .text-rose-700:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *) { color: #fb7185; }
+html.dark .text-red-600:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *),
+html.dark .text-red-700:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *) { color: #f87171; }
+html.dark .text-amber-600:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *),
+html.dark .text-amber-700:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *) { color: #fbbf24; }
+html.dark .text-orange-600:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *),
+html.dark .text-orange-700:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *) { color: #fb923c; }
+html.dark .text-yellow-600:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *),
+html.dark .text-yellow-700:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *) { color: #facc15; }
+html.dark .text-blue-600:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *),
+html.dark .text-blue-700:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *),
+html.dark .text-brand-600:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *),
+html.dark .text-brand-700:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *) { color: #60a5fa; }
+html.dark .text-sky-600:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *),
+html.dark .text-sky-700:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *) { color: #38bdf8; }
+html.dark .text-indigo-600:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *),
+html.dark .text-indigo-700:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *) { color: #818cf8; }
+html.dark .text-violet-600:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *),
+html.dark .text-violet-700:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *) { color: #a78bfa; }
+html.dark .text-purple-600:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *),
+html.dark .text-purple-700:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *) { color: #c084fc; }
+html.dark .text-pink-600:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *),
+html.dark .text-pink-700:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *) { color: #f472b6; }
+html.dark .text-teal-600:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *),
+html.dark .text-teal-700:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *) { color: #2dd4bf; }
+html.dark .text-cyan-600:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *),
+html.dark .text-cyan-700:not([class*="dark:text-"]):not(:is(.bg-white:not([class*="dark:bg-"]),.bg-surface-50:not([class*="dark:bg-"]),.bg-surface-100:not([class*="dark:bg-"]),.bg-slate-50:not([class*="dark:bg-"]),.bg-slate-100:not([class*="dark:bg-"]),.bg-gray-50:not([class*="dark:bg-"]),.bg-gray-100:not([class*="dark:bg-"])) *) { color: #22d3ee; }
+
+/* พื้นอ่อนที่ไม่มีเฉดมืด (เช่น แถบตัวกรองแดชบอร์ด bg-slate-50/50 เดิมเป็นแถบสว่างลอยในการ์ดมืด) */
+html.dark .bg-slate-50:not([class*="dark:bg-"]), html.dark .bg-gray-50:not([class*="dark:bg-"]), html.dark .bg-surface-50:not([class*="dark:bg-"]) { background-color: rgba(15, 23, 42, .55); }
+html.dark .bg-slate-100:not([class*="dark:bg-"]), html.dark .bg-gray-100:not([class*="dark:bg-"]), html.dark .bg-surface-100:not([class*="dark:bg-"]) { background-color: rgba(30, 41, 59, .9); }
+html.dark [class*="bg-slate-50/"]:not([class*="dark:bg-"]), html.dark [class*="bg-gray-50/"]:not([class*="dark:bg-"]) { background-color: rgba(15, 23, 42, .55); }
+
+/* แท็บ/ปุ่มที่ active ซึ่งสีตัวอักษรถูกกำหนดใน CSS (น้ำเงินเข้มบนพื้นเทาเข้ม = 2.0:1) */
+html.dark .kb-main-tab.active, html.dark .cal-filter-btn.active, html.dark .admin-stat-chip,
+html.dark #viz-mode-chart, html.dark #viz-mode-chart.active { color: #93c5fd; }
+
+/* ปุ่มพื้นทึบ 600 + ตัวอักษรขาว */
+.bg-emerald-600.text-white { background-color: #047857; }
+.bg-green-600.text-white { background-color: #15803d; }
+.bg-rose-600.text-white { background-color: #be123c; }
+.bg-amber-600.text-white { background-color: #b45309; }
+.bg-indigo-500.text-white, .plan-btn-indigo { background-color: #4f46e5; }
+.bg-\[\#00B900\], .hover\:bg-\[\#009900\]:hover, #btnMyBindLineWeb, #lg-sync-btn { background-color: #007a29; }
+
+/* ───────── 15) ป้ายสีอ่อน (bg-*-50/100) ที่ไม่มีเฉดมืดกำกับ → พื้นโปร่งสีเดียวกัน (ไม่ให้เป็นแผ่นสว่างบนพื้นมืด) ───────── */
+html.dark .bg-emerald-50:not([class*="dark:bg-"]) { background-color: rgba(16,185,129, .16); }
+html.dark .bg-emerald-100:not([class*="dark:bg-"]) { background-color: rgba(16,185,129, .16); }
+html.dark .bg-green-50:not([class*="dark:bg-"]) { background-color: rgba(34,197,94, .16); }
+html.dark .bg-green-100:not([class*="dark:bg-"]) { background-color: rgba(34,197,94, .16); }
+html.dark .bg-rose-50:not([class*="dark:bg-"]) { background-color: rgba(244,63,94, .16); }
+html.dark .bg-rose-100:not([class*="dark:bg-"]) { background-color: rgba(244,63,94, .16); }
+html.dark .bg-red-50:not([class*="dark:bg-"]) { background-color: rgba(239,68,68, .16); }
+html.dark .bg-red-100:not([class*="dark:bg-"]) { background-color: rgba(239,68,68, .16); }
+html.dark .bg-amber-50:not([class*="dark:bg-"]) { background-color: rgba(245,158,11, .16); }
+html.dark .bg-amber-100:not([class*="dark:bg-"]) { background-color: rgba(245,158,11, .16); }
+html.dark .bg-orange-50:not([class*="dark:bg-"]) { background-color: rgba(249,115,22, .16); }
+html.dark .bg-orange-100:not([class*="dark:bg-"]) { background-color: rgba(249,115,22, .16); }
+html.dark .bg-yellow-50:not([class*="dark:bg-"]) { background-color: rgba(234,179,8, .16); }
+html.dark .bg-yellow-100:not([class*="dark:bg-"]) { background-color: rgba(234,179,8, .16); }
+html.dark .bg-blue-50:not([class*="dark:bg-"]) { background-color: rgba(59,130,246, .16); }
+html.dark .bg-blue-100:not([class*="dark:bg-"]) { background-color: rgba(59,130,246, .16); }
+html.dark .bg-brand-50:not([class*="dark:bg-"]) { background-color: rgba(59,130,246, .16); }
+html.dark .bg-brand-100:not([class*="dark:bg-"]) { background-color: rgba(59,130,246, .16); }
+html.dark .bg-sky-50:not([class*="dark:bg-"]) { background-color: rgba(14,165,233, .16); }
+html.dark .bg-sky-100:not([class*="dark:bg-"]) { background-color: rgba(14,165,233, .16); }
+html.dark .bg-indigo-50:not([class*="dark:bg-"]) { background-color: rgba(99,102,241, .16); }
+html.dark .bg-indigo-100:not([class*="dark:bg-"]) { background-color: rgba(99,102,241, .16); }
+html.dark .bg-violet-50:not([class*="dark:bg-"]) { background-color: rgba(139,92,246, .16); }
+html.dark .bg-violet-100:not([class*="dark:bg-"]) { background-color: rgba(139,92,246, .16); }
+html.dark .bg-purple-50:not([class*="dark:bg-"]) { background-color: rgba(168,85,247, .16); }
+html.dark .bg-purple-100:not([class*="dark:bg-"]) { background-color: rgba(168,85,247, .16); }
+html.dark .bg-pink-50:not([class*="dark:bg-"]) { background-color: rgba(236,72,153, .16); }
+html.dark .bg-pink-100:not([class*="dark:bg-"]) { background-color: rgba(236,72,153, .16); }
+html.dark .bg-teal-50:not([class*="dark:bg-"]) { background-color: rgba(20,184,166, .16); }
+html.dark .bg-teal-100:not([class*="dark:bg-"]) { background-color: rgba(20,184,166, .16); }
+html.dark .bg-cyan-50:not([class*="dark:bg-"]) { background-color: rgba(6,182,212, .16); }
+html.dark .bg-cyan-100:not([class*="dark:bg-"]) { background-color: rgba(6,182,212, .16); }
+
+/* ───────── 16) พื้นที่แตะบนมือถือ ─────────
+   ปุ่มไอคอนเล็ก (p-1 / p-1.5 / w-6 h-6) กดยาก (เล็กกว่า 30px) → ขยายพื้นที่แตะด้วยกล่องโปร่งใสรอบปุ่ม โดยไม่เปลี่ยนขนาด/การจัดวางที่เห็น */
+@media (max-width: 640px) {
+  button.p-1:not(.absolute):not(.fixed), button.p-1\.5:not(.absolute):not(.fixed),
+  button.w-6.h-6:not(.absolute):not(.fixed), button.w-7.h-7:not(.absolute):not(.fixed), .accent-color-btn:not(.absolute):not(.fixed) { position: relative; }
+  button.p-1:not(.fixed)::after, button.p-1\.5:not(.fixed)::after, button.w-6.h-6:not(.fixed)::after,
+  button.w-7.h-7:not(.fixed)::after, button.absolute.right-2\.5::after, .accent-color-btn::after {
+    content: ""; position: absolute; inset: -8px;
+  }
+}
+
+/* ───────── 17) ป้ายสถิติแอดมิน (สีผ่านคลาส ไม่ใช้ inline — inline ทำให้ธีมมืดอ่านไม่ออก) + ปุ่ม LINE ───────── */
+.admin-stat-chip.chip-ok { color: #047857; }
+.admin-stat-chip.chip-bad { color: #b91c1c; }
+html.dark .admin-stat-chip.chip-ok { color: #34d399; }
+html.dark .admin-stat-chip.chip-bad { color: #f87171; }
+html body button.bg-\[\#00B900\], html body button.bg-\[\#00B900\]:hover, html body a#btnMyBindLineWeb, html body button#lg-sync-btn { background-color: #007a29; color: #fff; }
+html body button.hover\:bg-\[\#009900\]:hover { background-color: #006b24; }
+html:not(.dark) .text-surface-300:not(:is(.bg-surface-800,.bg-surface-850,.bg-surface-900,.bg-surface-950,.bg-slate-900,.bg-black,.bg-brand-900,.bg-brand-950) *) { color: #6b7a90; }
+
+/* ───────── 18) เฉดมืดที่จางเกินไป ─────────
+   dark:text-surface-500/600 (#64748b / #475569) บนพื้นมืด (#0f172a) ได้ 2.4–3.8:1 → ยกขึ้นให้ ≥ 4.5:1 */
+html.dark [class*="dark:text-surface-500"], html.dark [class*="dark:text-slate-500"], html.dark [class*="dark:text-gray-500"] { color: #94a3b8; }
+html.dark [class*="dark:text-surface-600"], html.dark [class*="dark:text-slate-600"], html.dark [class*="dark:text-gray-600"] { color: #8392a8; }
+
+/* ───────── 19) หน้าต่างสายโทร ───────── */
+#callTopInfo { display: none; }
+#remoteVideo:not(.hidden) ~ #callTopInfo { display: flex; }
+#activeCallModal #remoteAvatarFallback > div:first-child { width: 8rem; height: 8rem; flex-shrink: 0; }
+
+/* ── แหล่งอ้างอิงใต้คำตอบบอต ──
+   components.css/style.css บังคับ .hidden { display:none !important } ทำให้คลาส "hidden sm:flex" ไม่เคยแสดงบนจอคอม (ชิปแหล่งอ้างอิงหายทั้งที่เซิร์ฟเวอร์ส่งมาแล้ว)
+   จึงใช้คลาสเฉพาะแทน: มือถือพับไว้แตะเปิดด้วย .src-open, จอ ≥640px แสดงเสมอ */
+.src-wrap { display: none; }
+.src-wrap.src-open { display: flex; }
+.src-label { display: none; }
+@media (min-width: 640px) {
+  .src-wrap { display: flex; }
+  .src-label { display: flex; align-items: center; }
+}

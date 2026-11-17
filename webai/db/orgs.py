@@ -47,6 +47,8 @@ def get_org(org_id: int) -> dict | None:
     return {"id": row[0], "name": row[1], "slug": row[2], "plan": row[3],
             "max_users": row[4], "trial_ends_at": row[5], "created_at": row[6]}
 
+get_organization_by_id = get_org
+
 
 def get_org_stripe_info(org_id: int) -> dict:
     conn = _get_conn()
@@ -288,6 +290,7 @@ def signup_create_user_and_org(username: str, password: str, display_name: str, 
         conn.close()
 
 
+
 def signup_create_user_and_join_org(
     username: str, password: str, display_name: str,
     org_id: int, role: str = "member", email: str = "", invited_by: str = "system"
@@ -342,6 +345,7 @@ def signup_create_user_and_join_org(
         conn.close()
 
 
+
 def create_organization(name: str, owner_username: str) -> tuple:
     import re
     slug = re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-') or 'org'
@@ -363,10 +367,7 @@ def create_organization(name: str, owner_username: str) -> tuple:
     """, (org_id, owner_username))
     cursor.execute("""
         INSERT OR IGNORE INTO user_settings (username, role, is_active)
-        VALUES (?, 'admin', 1)
-    """, (owner_username,))
-    cursor.execute("""
-        UPDATE user_settings SET role = 'admin' WHERE username = ?
+        VALUES (?, 'user', 1)
     """, (owner_username,))
     
     # Create default room for this organization and add the owner
@@ -383,6 +384,8 @@ def create_organization(name: str, owner_username: str) -> tuple:
     conn.commit()
     conn.close()
     return org_id, slug
+
+create_org = create_organization
 
 
 def add_org_member(org_id: int, username: str, role: str = 'member', invited_by: str = None):
@@ -447,6 +450,7 @@ def add_org_member_with_quota(org_id: int, username: str, role: str,
         raise
     finally:
         conn.close()
+
 
 
 def get_org_members(org_id: int) -> list:
@@ -608,6 +612,7 @@ def transfer_org_ownership(org_id: int, current_owner: str, new_owner: str) -> t
         conn.close()
 
 
+
 def get_org_quota_info(org_id: int) -> dict:
     """Returns organizational quota usage (members, storage, plan)."""
     try:
@@ -655,6 +660,7 @@ def get_org_quota_info(org_id: int) -> dict:
         conn.close()
 
 
+
 def create_org_invite_token(org_id: int, created_by: str, role: str = "member", department: str = None, expires_days: int = 7, max_uses: int = 0) -> str:
     import secrets
     from datetime import datetime, timedelta
@@ -671,6 +677,7 @@ def create_org_invite_token(org_id: int, created_by: str, role: str = "member", 
         return token
     finally:
         conn.close()
+
 
 
 def get_org_invite_token_info(token: str) -> dict | None:
@@ -701,6 +708,7 @@ def get_org_invite_token_info(token: str) -> dict | None:
         }
     finally:
         conn.close()
+
 
 
 def update_org_member_permissions(org_id: int, username: str, perms: dict) -> bool:
@@ -735,6 +743,7 @@ def update_org_member_permissions(org_id: int, username: str, perms: dict) -> bo
         return True
     finally:
         conn.close()
+
 
 
 def is_org_admin(org_id: int, username: str) -> bool:
@@ -790,6 +799,7 @@ def remove_org_member(org_id: int, username: str) -> bool:
         return affected > 0
     finally:
         conn.close()
+
 
 
 def update_org_member_role(org_id: int, username: str, new_role: str) -> bool:
@@ -848,6 +858,9 @@ def get_org_profile(org_id: int) -> dict | None:
     return dict(row) if row else None
 
 
+get_organization_profile = get_org_profile
+
+
 def update_org_profile(org_id: int, data: dict) -> bool:
     """Insert or update business profile for a specific organization."""
     conn = _get_conn()
@@ -879,6 +892,7 @@ def update_org_profile(org_id: int, data: dict) -> bool:
         return False
     finally:
         conn.close()
+
 
 
 def count_org_admins(org_id: int) -> int:
@@ -1003,6 +1017,7 @@ def get_org_departments(org_id: int) -> list:
         conn.close()
 
 
+
 def create_org_department(org_id: int, name: str, description: str = "", color: str = "#3b82f6", icon: str = "building", head_username: str = "") -> tuple:
     name = (name or "").strip()
     if not name:
@@ -1026,6 +1041,7 @@ def create_org_department(org_id: int, name: str, description: str = "", color: 
         return None, str(e)
     finally:
         conn.close()
+
 
 
 def update_org_department(dept_id: int, org_id: int, name: str, description: str = None, color: str = None, icon: str = None, head_username: str = None) -> tuple:
@@ -1076,6 +1092,7 @@ def update_org_department(dept_id: int, org_id: int, name: str, description: str
         conn.close()
 
 
+
 def delete_org_department(dept_id: int, org_id: int, fallback_dept: str = "") -> tuple:
     conn = _get_conn()
     cur = conn.cursor()
@@ -1103,6 +1120,7 @@ def delete_org_department(dept_id: int, org_id: int, fallback_dept: str = "") ->
         return False, str(e)
     finally:
         conn.close()
+
 
 
 # --- Whitelist Feature ---
@@ -1274,6 +1292,7 @@ def superadmin_delete_org(org_id: int) -> bool:
 
 
 
+
 def save_group_mapping(group_id, owner_username, group_name, default_folder_id=None, default_folder_name=None):
     """Save or update a LINE Group mapping for a corporate owner."""
     try:
@@ -1397,6 +1416,9 @@ def get_org_by_id(org_id: int) -> dict | None:
     ).fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+get_organization_profile = get_org_profile
 
 
 def is_org_member_active(org_id: int, username: str) -> bool:
@@ -1619,11 +1641,15 @@ def save_org_flex_settings(org_id: int, settings: dict) -> bool:
             settings.get("custom_json_template", "")
         ))
         conn.commit()
-        conn.close()
         return True
     except Exception as e:
         logger.error(f"Error saving org_flex_settings for org {org_id}: {e}")
         return False
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 def reset_org_flex_settings(org_id: int) -> bool:
     """Reset organization's LINE Flex Card settings to standard defaults."""
@@ -1631,11 +1657,13 @@ def reset_org_flex_settings(org_id: int) -> bool:
         return False
     try:
         conn = _get_conn()
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM org_flex_settings WHERE org_id = ?", (org_id,))
-        conn.commit()
-        conn.close()
-        return True
+        try:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM org_flex_settings WHERE org_id = ?", (org_id,))
+            conn.commit()
+            return True
+        finally:
+            conn.close()
     except Exception as e:
         logger.error(f"Error resetting org_flex_settings for org {org_id}: {e}")
         return False

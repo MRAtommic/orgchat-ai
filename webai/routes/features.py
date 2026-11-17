@@ -278,6 +278,9 @@ def crm_customers_get(cid):
 def crm_customers_update(cid):
     org_id = _org()
     data = request.get_json(force=True) or {}
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({"ok": False, "error": "กรุณาระบุชื่อลูกค้า"}), 400
     ok = database.crm_customer_update(cid, org_id, data)
     return jsonify({"ok": ok})
 

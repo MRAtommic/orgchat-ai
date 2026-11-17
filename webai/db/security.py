@@ -118,7 +118,11 @@ def get_audit_logs(org_id: int = 1, limit: int = 100, offset: int = 0, event_typ
 def get_security_audit_metrics(org_id: int = 1, days: int = 30) -> dict:
     """Calculates security, login, AI usage, and department statistics for IT Security Audit Dashboard."""
     from datetime import datetime, timedelta
-    since_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d 00:00:00")
+    try:
+        safe_days = max(1, min(int(days or 30), 3650))
+    except (ValueError, TypeError, OverflowError):
+        safe_days = 30
+    since_date = (datetime.now() - timedelta(days=safe_days)).strftime("%Y-%m-%d 00:00:00")
     
     conn = _get_conn()
     conn.row_factory = sqlite3.Row

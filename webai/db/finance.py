@@ -443,20 +443,38 @@ def crm_customer_get(cid: int, org_id: int) -> dict | None:
 
 def crm_customer_create(org_id: int, data: dict) -> int:
     conn = _get_conn(); cur = conn.cursor()
+    name = (data.get('name') or '').strip()
+    company = (data.get('company') or '').strip()
+    email = (data.get('email') or '').strip()
+    phone = (data.get('phone') or '').strip()
+    address = (data.get('address') or '').strip()
+    tax_id = (data.get('tax_id') or '').strip()
+    notes = (data.get('notes') or '').strip()
+    created_by = (data.get('created_by') or '').strip()
+    tags = data.get('tags') if isinstance(data.get('tags'), (list, dict)) else []
     cur.execute("""INSERT INTO crm_customers (org_id, name, company, email, phone, address, tax_id, tags, notes, created_by)
                    VALUES (?,?,?,?,?,?,?,?,?,?)""",
-                (org_id, data.get('name',''), data.get('company',''), data.get('email',''),
-                 data.get('phone',''), data.get('address',''), data.get('tax_id',''),
-                 __import__('json').dumps(data.get('tags',[])), data.get('notes',''), data.get('created_by','')))
+                (org_id, name, company, email, phone, address, tax_id,
+                 __import__('json').dumps(tags), notes, created_by))
     cid = cur.lastrowid; conn.commit(); conn.close(); return cid
 
 def crm_customer_update(cid: int, org_id: int, data: dict) -> bool:
     conn = _get_conn(); cur = conn.cursor()
+    name = (data.get('name') or '').strip()
+    if not name:
+        existing = cur.execute("SELECT name FROM crm_customers WHERE id=? AND org_id=?", (cid, org_id)).fetchone()
+        name = existing[0] if existing else "Customer"
+    company = (data.get('company') or '').strip()
+    email = (data.get('email') or '').strip()
+    phone = (data.get('phone') or '').strip()
+    address = (data.get('address') or '').strip()
+    tax_id = (data.get('tax_id') or '').strip()
+    notes = (data.get('notes') or '').strip()
+    tags = data.get('tags') if isinstance(data.get('tags'), (list, dict)) else []
     cur.execute("""UPDATE crm_customers SET name=?, company=?, email=?, phone=?, address=?, tax_id=?, tags=?, notes=?, updated_at=CURRENT_TIMESTAMP
                    WHERE id=? AND org_id=?""",
-                (data.get('name',''), data.get('company',''), data.get('email',''),
-                 data.get('phone',''), data.get('address',''), data.get('tax_id',''),
-                 __import__('json').dumps(data.get('tags',[])), data.get('notes',''), cid, org_id))
+                (name, company, email, phone, address, tax_id,
+                 __import__('json').dumps(tags), notes, cid, org_id))
     ok = cur.rowcount > 0; conn.commit(); conn.close(); return ok
 
 def crm_customer_delete(cid: int, org_id: int) -> bool:

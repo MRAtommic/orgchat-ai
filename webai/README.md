@@ -37,7 +37,7 @@
 ├── webai/
 │   ├── app_server.py           # จุดเริ่มต้นของแอปพลิเคชัน (Flask Server Setup & Middleware)
 │   ├── database.py             # ฟังก์ชันการจัดเก็บและดึงข้อมูลจากฐานข้อมูล SQLite
-│   ├── rag_engine.py           # เครื่องมือจัดการ Vector DB (Chroma) และระบบ Parsing เอกสาร
+│   ├── rag_engine.py           # เครื่องมือจัดการ Vector Store (Pure Python เป็นค่าเริ่มต้น หรือ ChromaDB) และระบบ Parsing เอกสาร
 │   ├── ai_providers.py         # ตัวเชื่อมต่อ API บริการ LLM (Google Gemini / Groq)
 │   ├── google_drive_service.py # บริการจัดการไฟล์บน Google Drive & Google Sheets
 │   ├── routes/                 # โฟลเดอร์แยกโมดูล API และเส้นทางการประมวลผล (Blueprints)

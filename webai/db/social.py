@@ -375,6 +375,8 @@ def kanban_get_board(org_id: int):
     conn.close()
     return columns
 
+kanban_get_or_create_board = kanban_get_board
+
 def kanban_add_column(title, color="#6366f1", created_by="System", org_id: int = 1):
     conn = _get_conn()
     cursor = conn.cursor()

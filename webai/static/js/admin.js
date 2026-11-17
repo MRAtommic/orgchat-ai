@@ -26,10 +26,10 @@ function renderWhitelist(emails) {
   list.innerHTML = emails.map(item => `
     <li class="py-2 flex items-center justify-between group">
       <div>
-        <div class="text-sm font-bold text-surface-900 dark:text-white">${item.email}</div>
+        <div class="text-sm font-bold text-surface-900 dark:text-white">${escHtml(item.email)}</div>
         <div class="text-xs text-surface-500">เพิ่มโดย: ${item.added_by} • ${new Date(item.created_at).toLocaleDateString('th-TH')}</div>
       </div>
-      <button type="button" onclick="removeWhitelistEmail('${item.email}')" class="text-red-500 hover:text-red-700 p-2 rounded opacity-0 group-hover:opacity-100 transition-opacity">
+      <button type="button" onclick="removeWhitelistEmail('${_jsq(item.email)}')" class="text-red-500 hover:text-red-700 p-2 rounded opacity-0 group-hover:opacity-100 transition-opacity">
         <i data-lucide="trash-2" class="w-4 h-4"></i>
       </button>
     </li>
@@ -189,7 +189,7 @@ async function dismissSystemAlertBanner(alertId = 'google_credential_error') {
       method: 'POST',
       body: JSON.stringify({ alert_id: alertId })
     });
-  } catch (e) {}
+  } catch (e) { }
 }
 
 async function checkSystemAlerts() {
@@ -228,12 +228,12 @@ function renderSystemAlertsBanner(alerts) {
     <div class="flex items-center gap-2">
       <span class="inline-block p-1 bg-amber-500 text-white rounded-md">⚠️</span>
       <div>
-        <span class="font-bold">${alert.title}:</span>
-        <span class="opacity-90 ml-1">${alert.message}</span>
-        ${alert.hint ? `<span class="block text-[11px] opacity-75 mt-0.5">${alert.hint}</span>` : ''}
+        <span class="font-bold">${escHtml(alert.title)}:</span>
+        <span class="opacity-90 ml-1">${escHtml(alert.message)}</span>
+        ${alert.hint ? `<span class="block text-[11px] opacity-75 mt-0.5">${escHtml(alert.hint)}</span>` : ''}
       </div>
     </div>
-    <button onclick="dismissSystemAlertBanner('${alert.id}')" class="text-amber-700 dark:text-amber-300 hover:opacity-100 opacity-60 p-1 font-bold text-sm" title="ปิดการแจ้งเตือน">✕</button>
+    <button onclick="dismissSystemAlertBanner('${escHtml(alert.id)}')" class="text-amber-700 dark:text-amber-300 hover:opacity-100 opacity-60 p-1 font-bold text-sm" title="ปิดการแจ้งเตือน">✕</button>
   `;
 }
 

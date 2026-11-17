@@ -12,6 +12,9 @@ import tempfile
 
 _TMP = tempfile.mkdtemp(prefix="orgchat_tests_")
 os.environ["DB_PATH"] = os.path.join(_TMP, "test_chat_history.db")
+# knowledge-base files (uploads, file_meta.json, vector index) must also be throw-away: a test run once wiped the real vector index
+os.environ["DATA_DIR"] = os.path.join(_TMP, "data")
+os.environ["VECTOR_BACKEND"] = "python"
 os.environ.pop("REDIS_URL", None)                       # never touch a real Redis from tests
 os.environ.pop("GOOGLE_SERVICE_ACCOUNT_JSON", None)     # never call real Google APIs from tests
 os.environ.setdefault("FLASK_SECRET_KEY", "test-only-secret-key-0123456789abcdef0123456789abcdef")

@@ -32,6 +32,9 @@
   document.addEventListener('input', (e) => { if (e.target && e.target.type === 'date') update(e.target); });
   document.addEventListener('change', (e) => { if (e.target && e.target.type === 'date') update(e.target); });
   function sweep() { document.querySelectorAll('input[type="date"]').forEach(update); }
-  document.addEventListener('DOMContentLoaded', () => { sweep(); setInterval(sweep, 2500); }); // ฟอร์มที่เติมค่าด้วยสคริปต์
-  if (document.readyState !== 'loading') { sweep(); setInterval(sweep, 2500); }
+  // ฟอร์มที่เติมค่าด้วยสคริปต์ → กวาดเป็นระยะ (ตัวเดียว ทุก 5 วินาที เฉพาะตอนแท็บมองเห็น; เดิมสร้างซ้ำ 2 ตัว ทุก 2.5 วินาที)
+  let _started = false;
+  function start() { if (_started) return; _started = true; sweep(); setInterval(() => { if (!document.hidden) sweep(); }, 5000); }
+  document.addEventListener('DOMContentLoaded', start);
+  if (document.readyState !== 'loading') start();
 })();

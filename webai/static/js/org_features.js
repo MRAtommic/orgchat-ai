@@ -137,4 +137,186 @@
       window.loadOrgAccess();
     });
   };
+
+  // ───────── ตั้งค่าเช็คชื่อเข้างาน (พิกัดสำนักงาน / รัศมี / เวลาเข้างาน) ─────────
+  window.loadAttendanceSettingsCard = async function () {
+    const host = $id('orgTabContent-attendance');
+    if (!host) return;
+    let card_ = $id('attSettingsCard');
+    if (!card_) {
+      card_ = document.createElement('div');
+      card_.id = 'attSettingsCard';
+      card_.className = card + ' mb-4';
+      host.insertBefore(card_, host.firstChild);
+    }
+    const { res, data } = await api('/api/org/attendance/settings');
+    if (!res.ok || !data.ok) { card_.innerHTML = ''; return; }
+    const s = data.settings;
+    card_.innerHTML = `
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+        <div class="text-sm font-black dark:text-white">ตั้งค่าการเช็คชื่อขององค์กร</div>
+        <span class="text-[11px] font-bold px-2 py-0.5 rounded-full ${s.configured ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'}">${s.configured ? 'ตั้งพิกัดแล้ว' : 'ยังไม่ได้ตั้งพิกัด'}</span>
+      </div>
+      <div class="text-[11px] text-surface-500 mb-3">${s.configured ? 'พนักงานที่เช็คชื่อห่างจากจุดนี้เกินรัศมีจะถูกบันทึกว่า "นอกพื้นที่"' : 'ตอนนี้ระบบ <b>ไม่ตัดสินว่านอกพื้นที่</b> ทุกคนเช็คชื่อได้ตามปกติ — ตั้งพิกัดสำนักงานเพื่อเปิดการตรวจรัศมี'}</div>
+      <div class="mb-3">
+        <div class="flex flex-wrap gap-2 mb-2">
+          <input id="attMapSearch" type="search" placeholder="ค้นหาชื่อสถานที่/บริษัท/ที่อยู่ แล้วกด Enter" class="${inputCls} flex-1 min-w-[200px]">
+          <input id="attMapPaste" type="text" placeholder="หรือวางลิงก์ Google Maps / พิกัด เช่น 13.8196, 100.5143" class="${inputCls} flex-1 min-w-[200px]">
+        </div>
+        <div id="attCfgMap" class="w-full rounded-xl border border-surface-200 dark:border-surface-700 overflow-hidden" style="height:300px;background:#e5e7eb"></div>
+        <div class="flex flex-wrap items-center justify-between gap-2 mt-1.5 text-[11px] text-surface-500">
+          <span>👆 คลิกบนแผนที่เพื่อวางหมุด (ลากหมุดปรับได้) — วงกลมคือรัศมีที่ถือว่า "อยู่ในพื้นที่"</span>
+          <a id="attMapGoogle" href="#" target="_blank" rel="noopener noreferrer" class="font-bold text-brand-600 hidden">ตรวจจุดนี้ใน Google Maps ↗</a>
+        </div>
+      </div>
+      <div class="grid sm:grid-cols-2 gap-2.5">
+        <label class="text-[11px] font-bold text-surface-500">ละติจูด<input id="attCfgLat" type="number" step="any" class="${inputCls} w-full mt-1" value="${s.office_lat == null ? '' : s.office_lat}" placeholder="เช่น 13.8196"></label>
+        <label class="text-[11px] font-bold text-surface-500">ลองจิจูด<input id="attCfgLng" type="number" step="any" class="${inputCls} w-full mt-1" value="${s.office_lng == null ? '' : s.office_lng}" placeholder="เช่น 100.5143"></label>
+        <label class="text-[11px] font-bold text-surface-500">รัศมีที่ถือว่าอยู่ในพื้นที่ (เมตร)<input id="attCfgRadius" type="number" min="20" max="20000" class="${inputCls} w-full mt-1" value="${Math.round(s.radius_m)}"></label>
+        <label class="text-[11px] font-bold text-surface-500">เวลาเข้างาน (เกินจากนี้ = สาย)<input id="attCfgStart" type="time" class="${inputCls} w-full mt-1" value="${String(s.work_start_h).padStart(2, '0')}:${String(s.work_start_m).padStart(2, '0')}"></label>
+      </div>
+      <div class="flex flex-wrap items-center gap-2 mt-3">
+        <button type="button" id="attCfgHere" class="${btnGhost}">📍 ใช้ตำแหน่งปัจจุบันของฉัน</button>
+        <button type="button" id="attCfgSave" class="${btnPrimary}">บันทึก</button>
+        <span class="text-[10px] text-surface-400">แนะนำรัศมี 100–300 ม. (GPS ในอาคารคลาดเคลื่อนได้หลายสิบเมตร)</span>
+      </div>`;
+    window._attInitMap(s);
+    $id('attCfgHere').addEventListener('click', () => {
+      if (!navigator.geolocation) { toast('เบราว์เซอร์ไม่รองรับ GPS', 'error'); return; }
+      toast('กำลังดึงตำแหน่ง...', 'info');
+      navigator.geolocation.getCurrentPosition((p) => {
+        $id('attCfgLat').value = p.coords.latitude.toFixed(6);
+        $id('attCfgLng').value = p.coords.longitude.toFixed(6);
+        toast(`ได้ตำแหน่งแล้ว (ความแม่นยำ ±${Math.round(p.coords.accuracy)} ม.) — กดบันทึก`, 'success');
+      }, () => toast('ดึงตำแหน่งไม่สำเร็จ — อนุญาตการเข้าถึงตำแหน่งในเบราว์เซอร์ก่อน', 'error'),
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
+    });
+    $id('attCfgSave').addEventListener('click', async () => {
+      const body = { office_lat: $id('attCfgLat').value, office_lng: $id('attCfgLng').value, radius_m: $id('attCfgRadius').value, work_start: $id('attCfgStart').value };
+      const r = await post('/api/org/attendance/settings', body);
+      toast(r.res.ok && r.data.ok ? 'บันทึกการตั้งค่าเช็คชื่อแล้ว' : (r.data.error || 'บันทึกไม่สำเร็จ'), r.res.ok ? 'success' : 'error');
+      if (r.res.ok) window.loadAttendanceSettingsCard();
+    });
+  };
+
+  // ───────── สรุปภาพรวมการเข้างานรายเดือน (รวม / รายคน / รายวัน) ─────────
+  window.loadAttendanceSummaryCard = async function (ym) {
+    const host = $id('orgTabContent-attendance');
+    if (!host) return;
+    let c = $id('attSummaryCard');
+    if (!c) {
+      c = document.createElement('div');
+      c.id = 'attSummaryCard';
+      c.className = card + ' mb-4';
+      const anchor = $id('attSettingsCard');
+      if (anchor && anchor.nextSibling) host.insertBefore(c, anchor.nextSibling); else host.insertBefore(c, host.firstChild);
+    }
+    const month = ym || (c.dataset.month || new Date().toISOString().slice(0, 7));
+    c.dataset.month = month;
+    const { res, data } = await api('/api/org/attendance/summary?month=' + encodeURIComponent(month));
+    if (!res.ok || !data.ok) { c.innerHTML = ''; return; }
+    const t = data.totals;
+    const stat = (label, val, sub, tone) => `<div class="rounded-xl border border-surface-200 dark:border-surface-800 p-3"><div class="text-[10px] font-bold uppercase tracking-widest text-surface-400">${label}</div><div class="text-xl font-black ${tone || 'dark:text-white'}">${val}</div><div class="text-[10px] text-surface-500">${sub || ''}</div></div>`;
+    c.innerHTML = `
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div><div class="text-sm font-black dark:text-white">สรุปภาพรวมการเข้างาน</div><div class="text-[11px] text-surface-500">นับจากการเช็คชื่อทุกวันในเดือนที่เลือก (ประวัติรายวันของแต่ละคนดูได้ที่ตารางด้านล่าง)</div></div>
+        <input id="attSumMonth" type="month" value="${esc(month)}" class="${inputCls}">
+      </div>
+      <div class="grid grid-cols-2 lg:grid-cols-5 gap-2.5 mb-4">
+        ${stat('คนที่เช็คชื่อ', `${t.people}<span class="text-sm font-bold text-surface-400"> / ${t.members}</span>`, 'ของสมาชิกทั้งหมด')}
+        ${stat('ครั้งที่เข้างาน', t.checkins, 'วัน-คน ในเดือนนี้')}
+        ${stat('ตรงเวลา', t.on_time_pct + '%', `${t.on_time} ครั้ง`, t.on_time_pct >= 90 ? 'text-emerald-600' : 'text-amber-600')}
+        ${stat('สาย / นอกพื้นที่', `${t.late} / ${t.outside}`, 'ครั้ง', t.late ? 'text-amber-600' : 'text-emerald-600')}
+        ${stat('ชั่วโมงทำงานรวม', t.hours, `เฉลี่ย ${t.avg_hours_per_day} ชม./วัน`)}
+      </div>
+      <div class="grid lg:grid-cols-2 gap-4">
+        <div>
+          <div class="text-xs font-black dark:text-white mb-1.5">รายคน</div>
+          ${data.employees.length ? `<div class="overflow-x-auto"><table class="w-full text-[11px]"><thead><tr class="text-left text-surface-400"><th class="py-1">ชื่อ</th><th>มา (วัน)</th><th>ตรงเวลา</th><th>สาย</th><th>นอกพื้นที่</th><th>ชม.รวม</th></tr></thead><tbody>
+            ${data.employees.map(e => `<tr class="border-t border-surface-100 dark:border-surface-800"><td class="py-1.5 font-bold dark:text-white">${esc(e.username)}</td><td>${e.days}</td><td>${e.on_time}</td><td class="${e.late ? 'text-amber-600 font-bold' : ''}">${e.late}</td><td class="${e.outside ? 'text-rose-600 font-bold' : ''}">${e.outside}</td><td>${e.hours}</td></tr>`).join('')}
+          </tbody></table></div>` : '<div class="text-xs text-surface-400 py-3">ยังไม่มีการเช็คชื่อในเดือนนี้</div>'}
+        </div>
+        <div>
+          <div class="text-xs font-black dark:text-white mb-1.5">รายวัน (ประวัติทุกวันของเดือน)</div>
+          ${data.days.length ? `<div class="overflow-y-auto max-h-64"><table class="w-full text-[11px]"><thead><tr class="text-left text-surface-400"><th class="py-1">วันที่</th><th>มาทำงาน</th><th>สาย</th><th>นอกพื้นที่</th></tr></thead><tbody>
+            ${data.days.slice().reverse().map(d => `<tr class="border-t border-surface-100 dark:border-surface-800"><td class="py-1.5 font-bold dark:text-white">${esc(d.date)}</td><td>${d.present} คน</td><td class="${d.late ? 'text-amber-600 font-bold' : ''}">${d.late}</td><td class="${d.outside ? 'text-rose-600 font-bold' : ''}">${d.outside}</td></tr>`).join('')}
+          </tbody></table></div>` : '<div class="text-xs text-surface-400 py-3">ยังไม่มีข้อมูล</div>'}
+        </div>
+      </div>`;
+    const inp = $id('attSumMonth');
+    if (inp) inp.addEventListener('change', () => { if (inp.value) window.loadAttendanceSummaryCard(inp.value); });
+  };
+
+  // ───────── แผนที่เลือกพิกัดสำนักงาน (Leaflet + OpenStreetMap — ฟรี ไม่ต้องใช้คีย์) ─────────
+  let _attMap = null;
+  function _ensureLeaflet() {
+    return new Promise((resolve, reject) => {
+      if (window.L && window.L.map) return resolve(window.L);
+      if (!document.getElementById('leafletCss')) {
+        const l = document.createElement('link');
+        l.id = 'leafletCss'; l.rel = 'stylesheet';
+        l.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
+        document.head.appendChild(l);
+      }
+      let sc = document.getElementById('leafletJs');
+      if (!sc) {
+        sc = document.createElement('script');
+        sc.id = 'leafletJs';
+        sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
+        document.head.appendChild(sc);
+      }
+      sc.addEventListener('load', () => resolve(window.L));
+      sc.addEventListener('error', () => reject(new Error('โหลดแผนที่ไม่สำเร็จ')));
+      if (window.L && window.L.map) resolve(window.L);
+    });
+  }
+  // ดึงพิกัดจากลิงก์ Google Maps (@lat,lng / !3dlat!4dlng / ?q=lat,lng / ll=) หรือข้อความ "lat, lng"
+  function _parseCoords(text) {
+    const t = String(text || '').trim();
+    const pats = [/@(-?\d+\.\d+),\s*(-?\d+\.\d+)/, /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/, /[?&](?:q|ll|query|center)=(-?\d+\.\d+)(?:,|%2C)\s*(-?\d+\.\d+)/, /^(-?\d+\.\d+)\s*[, ]\s*(-?\d+\.\d+)$/];
+    for (const p of pats) { const m = t.match(p); if (m) { const a = +m[1], b = +m[2]; if (Math.abs(a) <= 90 && Math.abs(b) <= 180) return [a, b]; } }
+    return null;
+  }
+  window._attInitMap = async function (st) {
+    const el = $id('attCfgMap');
+    if (!el) return;
+    if (_attMap) { try { _attMap.remove(); } catch (e) { /* ignore */ } _attMap = null; }
+    let L;
+    try { L = await _ensureLeaflet(); } catch (e) { el.innerHTML = '<div class="p-6 text-xs text-rose-500">โหลดแผนที่ไม่สำเร็จ — กรอกพิกัดด้วยมือหรือใช้ปุ่ม "ใช้ตำแหน่งปัจจุบันของฉัน" แทนได้</div>'; return; }
+    const latEl = $id('attCfgLat'), lngEl = $id('attCfgLng'), radEl = $id('attCfgRadius'), gLink = $id('attMapGoogle');
+    const has = st.office_lat != null && st.office_lng != null;
+    const start = has ? [st.office_lat, st.office_lng] : [13.7563, 100.5018];   // ยังไม่ตั้ง → เริ่มที่กรุงเทพ (แค่จุดเริ่มดูแผนที่ ไม่ได้บันทึก)
+    _attMap = L.map(el, { scrollWheelZoom: true }).setView(start, has ? 17 : 11);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(_attMap);
+    let marker = null, circle = null;
+    const radius = () => Math.max(20, Math.min(20000, parseFloat(radEl.value) || 200));
+    function place(lat, lng, pan) {
+      latEl.value = (+lat).toFixed(6); lngEl.value = (+lng).toFixed(6);
+      if (!marker) {
+        marker = L.marker([lat, lng], { draggable: true }).addTo(_attMap);
+        marker.on('dragend', () => { const p = marker.getLatLng(); place(p.lat, p.lng, false); });
+        circle = L.circle([lat, lng], { radius: radius(), color: '#2563eb', weight: 2, fillOpacity: 0.12 }).addTo(_attMap);
+      } else { marker.setLatLng([lat, lng]); circle.setLatLng([lat, lng]); }
+      circle.setRadius(radius());
+      if (gLink) { gLink.href = `https://www.google.com/maps?q=${(+lat).toFixed(6)},${(+lng).toFixed(6)}`; gLink.classList.remove('hidden'); }
+      if (pan) _attMap.setView([lat, lng], Math.max(_attMap.getZoom(), 17));
+    }
+    if (has) place(start[0], start[1], false);
+    _attMap.on('click', (e) => place(e.latlng.lat, e.latlng.lng, false));
+    radEl.addEventListener('input', () => { if (circle) circle.setRadius(radius()); });
+    const sync = () => { const a = parseFloat(latEl.value), b = parseFloat(lngEl.value); if (isFinite(a) && isFinite(b) && Math.abs(a) <= 90 && Math.abs(b) <= 180) place(a, b, true); };
+    latEl.addEventListener('change', sync); lngEl.addEventListener('change', sync);
+    $id('attMapPaste').addEventListener('input', (e) => { const c = _parseCoords(e.target.value); if (c) { place(c[0], c[1], true); toast('อ่านพิกัดจากลิงก์แล้ว', 'success'); } });
+    $id('attMapSearch').addEventListener('keydown', async (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const q = e.target.value.trim();
+      if (!q) return;
+      const r = await api('/api/maps/search?q=' + encodeURIComponent(q));
+      const hit = r.data && r.data.results && r.data.results[0];
+      if (hit && isFinite(hit.lat) && isFinite(hit.lng)) { place(+hit.lat, +hit.lng, true); toast('พบ: ' + (hit.name || q), 'success'); }
+      else toast('ไม่พบสถานที่นี้ ลองพิมพ์ให้ละเอียดขึ้น หรือคลิกบนแผนที่เอง', 'warning');
+    });
+    setTimeout(() => { try { _attMap.invalidateSize(); } catch (e) { /* ignore */ } }, 250);
+  };
 })();

@@ -23,7 +23,8 @@ from flask import Blueprint, Response, jsonify, request, session
 
 import database
 from db import org_security, org_features
-from routes.shared import get_current_org_id, login_required, org_admin_required
+from routes.shared import qint
+from routes.shared import get_current_org_id, login_required, org_admin_required, get_client_ip
 
 org_admin_bp = Blueprint("org_admin", __name__)
 
@@ -33,7 +34,7 @@ MAX_IMPORT_ROWS = 200
 
 
 def _ip():
-    return request.remote_addr or "unknown"
+    return get_client_ip()
 
 
 def _audit(action, details):
@@ -276,7 +277,7 @@ def _audit_query(org_id):
 def org_audit():
     org_id = get_current_org_id()
     try:
-        limit = max(1, min(200, int(request.args.get("limit", 50))))
+        limit = max(1, min(200, qint("limit", 50, 1, 500)))
         offset = max(0, int(request.args.get("offset", 0)))
     except ValueError:
         limit, offset = 50, 0
@@ -383,6 +384,37 @@ def decide_approval(req_id):
     threading.Thread(target=org_features.append_to_sheet, args=(org_features.get_request(req_id),), daemon=True).start()
     _audit("APPROVAL_DECIDED", f"request={req_id} status={status}")
     return jsonify({"ok": True, "status": status})
+
+
+# ───────────────────────── ตั้งค่าการเช็คชื่อ (พิกัดสำนักงาน / รัศมี / เวลาเข้างาน) ─────────────────────────
+@org_admin_bp.route("/api/org/attendance/settings", methods=["GET"])
+@org_admin_required
+def attendance_settings_get():
+    from db import attendance_settings
+    return jsonify({"ok": True, "settings": attendance_settings.get_settings(get_current_org_id())})
+
+
+@org_admin_bp.route("/api/org/attendance/settings", methods=["POST"])
+@org_admin_required
+def attendance_settings_save():
+    from db import attendance_settings
+    clean, err = attendance_settings.validate(request.get_json(silent=True) or {})
+    if err:
+        return jsonify({"ok": False, "error": err}), 400
+    attendance_settings.save_settings(get_current_org_id(), clean, session.get("user"))
+    _audit("ATTENDANCE_SETTINGS", f"radius={clean['radius_m']:.0f}m start={clean['work_start_h']:02d}:{clean['work_start_m']:02d}")
+    return jsonify({"ok": True, "settings": attendance_settings.get_settings(get_current_org_id())})
+
+
+@org_admin_bp.route("/api/org/attendance/summary", methods=["GET"])
+@org_admin_required
+def attendance_month_summary():
+    from datetime import datetime
+    from db import attendance_settings
+    ym = request.args.get("month") or datetime.now().strftime("%Y-%m")
+    if not re.match(r"^\d{4}-(0[1-9]|1[0-2])$", ym):
+        return jsonify({"ok": False, "error": "รูปแบบเดือนต้องเป็น YYYY-MM"}), 400
+    return jsonify({"ok": True, **attendance_settings.month_summary(get_current_org_id(), ym)})
 
 
 # ───────────────────────── Rich Menu ตามบทบาท ─────────────────────────

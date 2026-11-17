@@ -926,3 +926,5 @@ def generate_response(question: str, history: list = None, system_prompt: str = 
         full_response += chunk
     return strip_think_tags(full_response)
 
+generate_chat_response = generate_response
+
